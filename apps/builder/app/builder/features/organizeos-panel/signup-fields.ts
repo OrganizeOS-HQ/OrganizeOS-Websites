@@ -27,6 +27,7 @@ import {
   type SignupFormResolution,
   isRequiredField,
 } from "@organizeos/site-components/forms-data";
+import { formRootComponents } from "~/shared/organizeos-site-forms";
 import { builderApi } from "~/shared/builder-api";
 import { platformName } from "~/shared/branding";
 import {
@@ -63,8 +64,11 @@ export const signupFormComponent = `${organizeosNamespace}:SignupForm`;
 export const fieldComponent = `${organizeosNamespace}:Field`;
 const submitButtonComponent = `${organizeosNamespace}:SubmitButton`;
 
-/** The root components the Fields logic serves; the Join Form adds its root. */
-export const formRootComponents = new Set<string>([signupFormComponent]);
+/**
+ * The root components the Fields logic serves, the publish step's form roots
+ * (shared/organizeos-site-forms.ts); the Join Form adds its root there.
+ */
+export { formRootComponents };
 
 // Every root that gives its Fields a form: a Field belongs to the closest one,
 // so the walk below a root stops at another.

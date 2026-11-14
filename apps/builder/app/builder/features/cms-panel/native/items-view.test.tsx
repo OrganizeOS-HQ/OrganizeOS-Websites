@@ -20,6 +20,7 @@ import {
   type FakeCmsSource,
 } from "./fake-cms-source";
 import { fitFieldColumns } from "./cms-list-logic";
+import { createFakeCmsStructureSource } from "./fake-cms-structure-source";
 import type { CmsItemRow } from "./cms-source";
 
 (
@@ -97,6 +98,15 @@ const searchInput = () =>
   byLabel("Search Posts")?.querySelector("input") ??
   (byLabel("Search Posts") as HTMLInputElement | null);
 
+/** Sets an input's value as a keystroke does, inside the caller's act. */
+const typeInto = (field: HTMLInputElement, value: string) => {
+  Object.getOwnPropertyDescriptor(
+    HTMLInputElement.prototype,
+    "value"
+  )?.set?.call(field, value);
+  field.dispatchEvent(new Event("input", { bubbles: true }));
+};
+
 const lastListItemsCall = () => fake.listItems.mock.calls.at(-1);
 
 /** E3's answer for a page of `total` items, 50 to a page. */
@@ -162,22 +172,131 @@ describe("the items view", () => {
     mount();
     await settle();
     fake.listItems.mockClear();
-    await act(async () => userEvent.type(searchInput()!, "new"));
-    expect(fake.listItems).not.toHaveBeenCalled();
-    await wait(300);
+    // the debounce runs on a clock the test moves, so a slow keystroke
+    // never lets an earlier one's timer fire
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      // each keystroke restarts the pause
+      await act(async () => userEvent.type(searchInput()!, "n"));
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+      await act(async () => userEvent.type(searchInput()!, "e"));
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+      expect(fake.listItems).not.toHaveBeenCalled();
+      await act(async () => userEvent.type(searchInput()!, "w"));
+      act(() => {
+        vi.advanceTimersByTime(249);
+      });
+      expect(fake.listItems).not.toHaveBeenCalled();
+      act(() => {
+        vi.advanceTimersByTime(1);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+    await settle();
     expect(fake.listItems.mock.calls).toEqual([
       [POSTS.id, { q: "new", page: 1 }],
     ]);
+    expect(searchInput()?.value).toBe("new");
+  });
+
+  test("a trailing space stays in the field and is not sent", async () => {
+    mount();
+    await settle();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await act(async () => userEvent.type(searchInput()!, "new "));
+      act(() => {
+        vi.advanceTimersByTime(250);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+    await settle();
+    expect(searchInput()?.value).toBe("new ");
+    expect(lastListItemsCall()).toEqual([POSTS.id, { q: "new", page: 1 }]);
+  });
+
+  test("a key typed after the debounce sent the search is kept", async () => {
+    mount();
+    await settle();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await act(async () => userEvent.type(searchInput()!, "n"));
+      // the debounce sends "n", and "e" is typed before the echo of "n"
+      // comes back
+      const field = searchInput()!;
+      act(() => {
+        vi.advanceTimersByTime(250);
+        typeInto(field, "ne");
+      });
+      await act(async () => userEvent.type(searchInput()!, "w"));
+      act(() => {
+        vi.advanceTimersByTime(250);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+    await settle();
+    expect(searchInput()?.value).toBe("new");
+    expect(lastListItemsCall()).toEqual([POSTS.id, { q: "new", page: 1 }]);
+  });
+
+  test("a key typed while the sent search's answer lands is kept", async () => {
+    const base = fake.listItems.getMockImplementation();
+    const held = deferred<CmsItemsPage>();
+    mount();
+    await settle();
+    fake.listItems.mockImplementation(async (c, q) =>
+      q.q === "n" ? held.promise : base!(c, q)
+    );
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await act(async () => userEvent.type(searchInput()!, "n"));
+      // "e" is typed before the echo of the sent "n" comes back, and the
+      // answer for "n" lands before "w"
+      const field = searchInput()!;
+      act(() => {
+        vi.advanceTimersByTime(250);
+        typeInto(field, "ne");
+      });
+      expect(lastListItemsCall()).toEqual([POSTS.id, { q: "n", page: 1 }]);
+      await act(async () => held.resolve(pageOf(1, 3)));
+      await act(async () => userEvent.type(searchInput()!, "w"));
+      act(() => {
+        vi.advanceTimersByTime(250);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+    await settle();
+    expect(searchInput()?.value).toBe("new");
+    expect(lastListItemsCall()).toEqual([POSTS.id, { q: "new", page: 1 }]);
   });
 
   test("Escape clears the search", async () => {
     mount();
     await settle();
-    await act(async () => userEvent.type(searchInput()!, "new"));
-    await wait(300);
-    expect(lastListItemsCall()).toEqual([POSTS.id, { q: "new", page: 1 }]);
-    await act(async () => userEvent.keyboard("{Escape}"));
-    await wait(50);
+    // the debounce runs on a clock the test moves
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await act(async () => userEvent.type(searchInput()!, "new"));
+      act(() => {
+        vi.advanceTimersByTime(250);
+      });
+      expect(lastListItemsCall()).toEqual([POSTS.id, { q: "new", page: 1 }]);
+      await act(async () => userEvent.keyboard("{Escape}"));
+      act(() => {
+        vi.advanceTimersByTime(0);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+    await settle();
     expect(searchInput()?.value).toBe("");
     expect(lastListItemsCall()).toEqual([POSTS.id, { q: undefined, page: 1 }]);
   });
@@ -694,6 +813,15 @@ describe("the table's columns (Task 15)", () => {
     expect(text).not.toBeUndefined();
     expect(text!.textContent).toBe(longKey);
     expect(table.scrollWidth).toBe(table.clientWidth);
+    await act(async () => userEvent.hover(text!));
+    await vi.waitFor(
+      () => {
+        expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(
+          longKey
+        );
+      },
+      { timeout: 3000 }
+    );
   });
 });
 
@@ -866,8 +994,23 @@ describe("Filter and Sort (Task 16)", () => {
     await click(buttonByText("Sort"));
     const sortMenu = document.querySelector<HTMLElement>('[role="menu"]')!;
     fits(sortMenu);
-    expect(truncated(sortMenu, longKey)).not.toBeUndefined();
+    const sortLabel = truncated(sortMenu, longKey);
+    expect(sortLabel).not.toBeUndefined();
+    await act(async () => userEvent.hover(sortLabel!));
+    await vi.waitFor(
+      () => {
+        expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(
+          longKey
+        );
+      },
+      { timeout: 3000 }
+    );
+    // the tooltip's Escape, then the menu's
     await act(async () => userEvent.keyboard("{Escape}"));
+    await settle();
+    if (document.querySelector('[role="menu"]') !== null) {
+      await act(async () => userEvent.keyboard("{Escape}"));
+    }
     await settle();
 
     await click(buttonByText("Filter"));
@@ -885,6 +1028,15 @@ describe("Filter and Sort (Task 16)", () => {
     );
     expect(heading).not.toBeUndefined();
     expect(truncated(filterMenu, `Any ${longKey}`)).not.toBeUndefined();
+    await act(async () => userEvent.hover(heading!));
+    await vi.waitFor(
+      () => {
+        expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(
+          longKey
+        );
+      },
+      { timeout: 3000 }
+    );
   });
 });
 
@@ -1459,12 +1611,50 @@ describe("drag reorder (Task 18)", () => {
     mount();
     await settle();
     focusRow("a");
-    await altMove("ArrowDown");
-    await altMove("ArrowDown");
-    expect(itemSlugs()).toEqual(["b", "c", "a"]);
-    await wait(300);
-    expect(fake.reorderItems).not.toHaveBeenCalled();
-    await wait(400);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await altMove("ArrowDown");
+      await altMove("ArrowDown");
+      expect(itemSlugs()).toEqual(["b", "c", "a"]);
+      await act(async () => {
+        vi.advanceTimersByTime(300);
+      });
+      expect(fake.reorderItems).not.toHaveBeenCalled();
+      await act(async () => {
+        vi.advanceTimersByTime(400);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+    await settle();
+    expect(reorderCalls()).toEqual([[ROW_IDS[1], ROW_IDS[2], ROW_IDS[0]]]);
+  });
+
+  test("the pause runs from the last move, not the first", async () => {
+    reorderWorld();
+    mount();
+    await settle();
+    focusRow("a");
+    // the pause's clock alone is faked, so a slow runner cannot stretch it
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await altMove("ArrowDown");
+      await act(async () => {
+        vi.advanceTimersByTime(300);
+      });
+      await altMove("ArrowDown");
+      await act(async () => {
+        vi.advanceTimersByTime(300);
+      });
+      // 600 ms after the first move, 300 ms after the last: nothing yet
+      expect(fake.reorderItems).not.toHaveBeenCalled();
+      await act(async () => {
+        vi.advanceTimersByTime(300);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+    await settle();
     expect(reorderCalls()).toEqual([[ROW_IDS[1], ROW_IDS[2], ROW_IDS[0]]]);
   });
 
@@ -1687,6 +1877,10 @@ describe("drag reorder (Task 18)", () => {
       expect(error).toHaveBeenCalledWith("Try again in a minute");
       expect(toolbar()?.textContent).toContain("1 selected");
       expect(toolbarButton("Publish")?.disabled).toBe(false);
+      // E13's accepted order stays shown; a refused one goes back
+      expect(itemSlugs()).toEqual(
+        answer === "ok" ? ["b", "a", "c"] : ["a", "b", "c"]
+      );
       focusRow("b");
       await act(async () => userEvent.keyboard("{Enter}"));
       await settle();
@@ -2161,8 +2355,8 @@ describe("drag is offered only on the order the table draws", () => {
     expect(itemSlugs()).toEqual(["a", "c"]);
   });
 
-  test("a pending keyboard order is dropped when the list's key changes", async () => {
-    reorderWorld();
+  test("a pending keyboard order is sent when a column header changes the sort", async () => {
+    const world = reorderWorld();
     const gate = holdListItems();
     mount();
     await settle();
@@ -2179,10 +2373,887 @@ describe("drag is offered only on the order the table draws", () => {
       name.click();
     });
     await settle();
+    expect(reorderCalls()).toEqual([[ROW_IDS[1], ROW_IDS[0], ROW_IDS[2]]]);
     await wait(600);
-    expect(fake.reorderItems).not.toHaveBeenCalled();
     await gate.release();
     await wait(600);
-    expect(fake.reorderItems).not.toHaveBeenCalled();
+    expect(reorderCalls()).toEqual([[ROW_IDS[1], ROW_IDS[0], ROW_IDS[2]]]);
+    expect(world.ids).toEqual([ROW_IDS[1], ROW_IDS[0], ROW_IDS[2]]);
+  });
+
+  test("an order queued behind an E13 in flight is sent after it when a column header changes the sort", async () => {
+    const world = reorderWorld();
+    const held = deferred<CmsResult<{ changed: number }>>();
+    const store = fake.reorderItems.getMockImplementation()!;
+    fake.reorderItems
+      .mockImplementationOnce(async (c, body) => {
+        const answer = await held.promise;
+        await store(c, body);
+        return answer;
+      })
+      .mockImplementation(store);
+    const base = fake.listItems.getMockImplementation()!;
+    fake.listItems.mockImplementation(async (c, q) => {
+      const answer = await base(c, q);
+      if (q.sort !== "name" || isCmsFailure(answer)) {
+        return answer;
+      }
+      const items = [...answer.items].sort((left, right) =>
+        left.slug.localeCompare(right.slug)
+      );
+      return { ...answer, items };
+    });
+    mount();
+    await settle();
+    await dragBelow("a", "b");
+    expect(reorderCalls()).toEqual([[ROW_IDS[1], ROW_IDS[0], ROW_IDS[2]]]);
+    // b, a, c is in flight: a keyboard move, then the Name header at once
+    focusRow("c");
+    await altMove("ArrowUp");
+    expect(itemSlugs()).toEqual(["b", "c", "a"]);
+    const name = [
+      ...document.querySelectorAll<HTMLElement>('[role="columnheader"] button'),
+    ].find((button) => button.textContent?.startsWith("Name"))!;
+    act(() => {
+      name.click();
+    });
+    await settle();
+    await wait(600);
+    expect(fake.reorderItems).toHaveBeenCalledTimes(1);
+    await act(async () => held.resolve({ changed: 2 }));
+    await settle();
+    await wait(600);
+    expect(reorderCalls()).toEqual([
+      [ROW_IDS[1], ROW_IDS[0], ROW_IDS[2]],
+      [ROW_IDS[1], ROW_IDS[2], ROW_IDS[0]],
+    ]);
+    expect(world.ids).toEqual([ROW_IDS[1], ROW_IDS[2], ROW_IDS[0]]);
+    // the Name order is drawn
+    expect(itemSlugs()).toEqual(["a", "b", "c"]);
+  });
+});
+
+const PEOPLE_IDS = [
+  "00000000-0000-4000-8000-0000000000f1",
+  "00000000-0000-4000-8000-0000000000f2",
+];
+
+/** People answers rows x and y; Posts is the reorder world's. */
+const withPeople = () => {
+  const base = fake.listItems.getMockImplementation()!;
+  fake.listItems.mockImplementation(async (c, q) =>
+    c === PEOPLE.id
+      ? itemsPageOf(
+          ["x", "y"].map((name, index) =>
+            rowOf(
+              itemOf({
+                id: PEOPLE_IDS[index],
+                slug: name,
+                data: { title: name.toUpperCase() },
+              })
+            )
+          ),
+          2,
+          1
+        )
+      : base(c, q)
+  );
+};
+
+const collectionRow = (slug: string) =>
+  document.querySelector<HTMLElement>(`[data-cms-collection="${slug}"]`);
+
+describe("another collection while a list call is in flight", () => {
+  test("an E13 held in one collection blocks nothing in the next: a reorder, a bulk Publish and a row open run there", async () => {
+    reorderWorld();
+    withPeople();
+    const held = deferred<CmsResult<{ changed: number }>>();
+    const store = fake.reorderItems.getMockImplementation()!;
+    fake.reorderItems.mockImplementationOnce(async (c, body) => {
+      const answer = await held.promise;
+      await store(c, body);
+      return answer;
+    });
+    mount();
+    await settle();
+    await dragBelow("a", "c");
+    expect(fake.reorderItems).toHaveBeenCalledTimes(1);
+
+    await click(collectionRow("people"));
+    expect(itemSlugs()).toEqual(["x", "y"]);
+    // a drop there is sent there (item 7)
+    await dragBelow("x", "y");
+    expect(fake.reorderItems).toHaveBeenCalledTimes(2);
+    expect(fake.reorderItems.mock.calls[1]).toEqual([
+      PEOPLE.id,
+      { ids: [PEOPLE_IDS[1], PEOPLE_IDS[0]] },
+    ]);
+    // an Alt+Arrow there is sent there
+    expect(itemSlugs()).toEqual(["x", "y"]);
+    focusRow("x");
+    await altMove("ArrowDown");
+    await wait(600);
+    expect(fake.reorderItems).toHaveBeenCalledTimes(3);
+    expect(fake.reorderItems.mock.calls[2][0]).toBe(PEOPLE.id);
+
+    // a bulk Publish runs
+    await click(checkbox("Select X"));
+    expect(toolbarButton("Publish")?.disabled).toBe(false);
+    await click(toolbarButton("Publish"));
+    expect(fake.publishItems).toHaveBeenCalledWith(
+      PEOPLE.id,
+      expect.anything()
+    );
+
+    // the Posts answer lands, and a row open still runs
+    await act(async () => held.resolve({ changed: 3 }));
+    await settle();
+    focusRow("y");
+    await act(async () => userEvent.keyboard("{Enter}"));
+    await settle();
+    expect(fake.getItem).toHaveBeenCalledWith(PEOPLE.id, PEOPLE_IDS[1]);
+  });
+
+  test("back in a collection whose E13 is still in flight, a row open and a bulk Publish wait for it and its refetch", async () => {
+    const world = reorderWorld();
+    withPeople();
+    const held = deferred<CmsResult<{ changed: number }>>();
+    const store = fake.reorderItems.getMockImplementation()!;
+    fake.reorderItems.mockImplementationOnce(async (c, body) => {
+      const answer = await held.promise;
+      await store(c, body);
+      return answer;
+    });
+    fake.publishItems.mockImplementation(async (_c, { items }) => ({
+      published: items.map((item) => item.id),
+      unchanged: [],
+      conflicts: [],
+      failed: [],
+    }));
+    mount();
+    await settle();
+    await dragBelow("a", "c");
+    expect(fake.reorderItems).toHaveBeenCalledTimes(1);
+    await click(collectionRow("people"));
+    expect(itemSlugs()).toEqual(["x", "y"]);
+    await click(collectionRow("posts"));
+    expect(itemSlugs()).toEqual(["b", "c", "a"]);
+
+    await click(checkbox("Select A"));
+    await click(toolbarButton("Publish"));
+    focusRow("b");
+    await act(async () => userEvent.keyboard("{Enter}"));
+    await settle();
+    expect(fake.publishItems).not.toHaveBeenCalled();
+    expect(fake.getItem).not.toHaveBeenCalled();
+
+    await act(async () => held.resolve({ changed: 3 }));
+    await settle();
+    expect(fake.publishItems).toHaveBeenCalledTimes(1);
+    expect(fake.publishItems.mock.calls[0][1].items).toEqual([
+      { id: ROW_IDS[0], updatedAt: world.versions[ROW_IDS[0]] },
+    ]);
+    expect(world.versions[ROW_IDS[0]]).toBe(versionOf(ROW_IDS[0], 1));
+    expect(fake.getItem).toHaveBeenCalledWith(POSTS.id, ROW_IDS[1]);
+  });
+
+  test("a row opened while a bulk call is in flight is dropped when another collection opens", async () => {
+    reorderWorld();
+    withPeople();
+    const held = deferred<Awaited<ReturnType<FakeCmsSource["publishItems"]>>>();
+    fake.publishItems.mockImplementation(() => held.promise);
+    mount();
+    await settle();
+    await click(checkbox("Select A"));
+    await click(toolbarButton("Publish"));
+    await click(rowEl("b"));
+    await click(collectionRow("people"));
+    await act(async () =>
+      held.resolve({
+        published: [ROW_IDS[0]],
+        unchanged: [],
+        conflicts: [],
+        failed: [],
+      })
+    );
+    await settle();
+    expect(fake.getItem).not.toHaveBeenCalled();
+    expect(itemSlugs()).toEqual(["x", "y"]);
+  });
+});
+
+/** The Name sort answers the rows by slug. */
+const sortByName = () => {
+  const base = fake.listItems.getMockImplementation()!;
+  fake.listItems.mockImplementation(async (c, q) => {
+    const answer = await base(c, q);
+    if (q.sort !== "name" || isCmsFailure(answer)) {
+      return answer;
+    }
+    const items = [...answer.items].sort((left, right) =>
+      left.slug.localeCompare(right.slug)
+    );
+    return { ...answer, items };
+  });
+};
+
+/** The first E13 is held until resolved, then stores its order. */
+const holdFirstReorder = () => {
+  const held = deferred<CmsResult<{ changed: number }>>();
+  const store = fake.reorderItems.getMockImplementation()!;
+  fake.reorderItems
+    .mockImplementationOnce(async (c, body) => {
+      const answer = await held.promise;
+      await store(c, body);
+      return answer;
+    })
+    .mockImplementation(store);
+  return held;
+};
+
+/** The Name header, clicked with the focus kept in the table. */
+const clickNameHeader = async () => {
+  const name = [
+    ...document.querySelectorAll<HTMLElement>('[role="columnheader"] button'),
+  ].find((button) => button.textContent?.startsWith("Name"))!;
+  act(() => {
+    name.click();
+  });
+  await settle();
+};
+
+describe("the order E13 accepted is provisional", () => {
+  test("after E13 200 and a failed refetch, the next page drawn and another sort show the server's order", async () => {
+    const world = reorderWorld();
+    const base = fake.listItems.getMockImplementation()!;
+    fake.listItems.mockImplementation(async (c, q) => {
+      const answer = await base(c, q);
+      if (q.sort !== "name" || isCmsFailure(answer)) {
+        return answer;
+      }
+      const items = [...answer.items].sort((left, right) =>
+        left.slug.localeCompare(right.slug)
+      );
+      return { ...answer, items };
+    });
+    mount();
+    await settle();
+    fake.listItems.mockResolvedValueOnce({ error: "rate_limited" });
+    await dragBelow("a", "b");
+    expect(world.ids).toEqual([ROW_IDS[1], ROW_IDS[0], ROW_IDS[2]]);
+    // the refetch failed: the accepted order shows
+    expect(itemSlugs()).toEqual(["b", "a", "c"]);
+    // the next page drawn is the server's order, whatever it holds now
+    world.ids = [ROW_IDS[2], ROW_IDS[0], ROW_IDS[1]];
+    refreshCmsNative();
+    await settle();
+    expect(itemSlugs()).toEqual(["c", "a", "b"]);
+    world.ids = [ROW_IDS[1], ROW_IDS[0], ROW_IDS[2]];
+
+    await click(
+      [
+        ...document.querySelectorAll<HTMLElement>(
+          '[role="columnheader"] button'
+        ),
+      ].find((button) => button.textContent?.startsWith("Name"))
+    );
+    expect(itemSlugs()).toEqual(["a", "b", "c"]);
+    await click(buttonByText("Sort"));
+    await click(menuItemByText("Manual order"));
+    expect(itemSlugs()).toEqual(["b", "a", "c"]);
+  });
+
+  test("after E13 200 and a failed refetch, moves that cancel out keep the accepted order and send nothing", async () => {
+    reorderWorld();
+    mount();
+    await settle();
+    fake.listItems.mockResolvedValueOnce({ error: "rate_limited" });
+    await dragBelow("a", "b");
+    expect(reorderCalls()).toEqual([[ROW_IDS[1], ROW_IDS[0], ROW_IDS[2]]]);
+    expect(itemSlugs()).toEqual(["b", "a", "c"]);
+    focusRow("a");
+    await altMove("ArrowDown");
+    await altMove("ArrowUp");
+    await wait(600);
+    expect(itemSlugs()).toEqual(["b", "a", "c"]);
+    expect(fake.reorderItems).toHaveBeenCalledTimes(1);
+  });
+
+  test("E13 in flight, then the Name header: E13 200 and a failed refetch keep the Name order", async () => {
+    const world = reorderWorld();
+    sortByName();
+    const held = holdFirstReorder();
+    mount();
+    await settle();
+    await dragBelow("a", "b");
+    expect(itemSlugs()).toEqual(["b", "a", "c"]);
+    await clickNameHeader();
+    expect(itemSlugs()).toEqual(["a", "b", "c"]);
+    fake.listItems.mockResolvedValueOnce({ error: "rate_limited" });
+    await act(async () => held.resolve({ changed: 3 }));
+    await settle();
+    expect(world.ids).toEqual([ROW_IDS[1], ROW_IDS[0], ROW_IDS[2]]);
+    expect(itemSlugs()).toEqual(["a", "b", "c"]);
+  });
+
+  test("on a second visit, E13 in flight, then the Name header: E13 200 and a failed refetch keep the Name order", async () => {
+    const world = reorderWorld();
+    sortByName();
+    withPeople();
+    const held = holdFirstReorder();
+    mount();
+    await settle();
+    await dragBelow("a", "b");
+    await click(collectionRow("people"));
+    await click(collectionRow("posts"));
+    // the moved order shows while its E13 is in flight
+    expect(itemSlugs()).toEqual(["b", "a", "c"]);
+    await clickNameHeader();
+    expect(itemSlugs()).toEqual(["a", "b", "c"]);
+    fake.listItems.mockResolvedValueOnce({ error: "rate_limited" });
+    await act(async () => held.resolve({ changed: 3 }));
+    await settle();
+    expect(world.ids).toEqual([ROW_IDS[1], ROW_IDS[0], ROW_IDS[2]]);
+    expect(itemSlugs()).toEqual(["a", "b", "c"]);
+  });
+
+  test("after E13 200 and a failed refetch, a newer order drawn during the pause is the one moves that cancel out return to", async () => {
+    const world = reorderWorld();
+    mount();
+    await settle();
+    fake.listItems.mockResolvedValueOnce({ error: "rate_limited" });
+    await dragBelow("a", "b");
+    expect(itemSlugs()).toEqual(["b", "a", "c"]);
+    focusRow("a");
+    await altMove("ArrowDown");
+    expect(itemSlugs()).toEqual(["b", "c", "a"]);
+    // another person reorders to c, b, a; a refresh answers it in the pause
+    world.ids = [ROW_IDS[2], ROW_IDS[1], ROW_IDS[0]];
+    refreshCmsNative();
+    await settle();
+    focusRow("a");
+    await altMove("ArrowUp");
+    expect(itemSlugs()).toEqual(["b", "a", "c"]);
+    await wait(600);
+    // the server holds c, b, a: the order shown is sent
+    expect(reorderCalls()).toEqual([
+      [ROW_IDS[1], ROW_IDS[0], ROW_IDS[2]],
+      [ROW_IDS[1], ROW_IDS[0], ROW_IDS[2]],
+    ]);
+    expect(world.ids).toEqual([ROW_IDS[1], ROW_IDS[0], ROW_IDS[2]]);
+    expect(itemSlugs()).toEqual(["b", "a", "c"]);
+  });
+});
+
+describe("the top bar at 1024 px", () => {
+  test("an 80-character collection name leaves Filter and Sort whole", async () => {
+    const name = "Long name ".repeat(8);
+    fake.listCollections.mockResolvedValue({
+      collections: [{ ...POSTS, name }],
+    });
+    await mountThree();
+    container!.style.width = "1024px";
+    await wait(50);
+    for (const selector of ["[data-cms-filter]", "[data-cms-sort]"]) {
+      const button = document.querySelector<HTMLElement>(selector)!;
+      expect(button).not.toBeNull();
+      expect(button.scrollWidth).toBeLessThanOrEqual(button.clientWidth);
+      for (const element of button.querySelectorAll<HTMLElement>("*")) {
+        expect(element.scrollWidth).toBeLessThanOrEqual(element.clientWidth);
+      }
+    }
+  });
+});
+
+describe("bulk Publish's partial results", () => {
+  const D_ID = "00000000-0000-4000-8000-00000000000d";
+  const fourRows = () => [
+    ...threeRows(),
+    rowOf(itemOf({ id: D_ID, slug: "d", data: { title: "D" } })),
+  ];
+
+  test("counts several conflicts and failures in one toast each", async () => {
+    const error = vi.spyOn(toast, "error");
+    fake.listItems.mockImplementation(async () =>
+      itemsPageOf(fourRows(), 4, 1)
+    );
+    mount();
+    await settle();
+    fake.publishItems.mockResolvedValue({
+      published: [ROW_IDS[0]],
+      unchanged: [],
+      conflicts: [ROW_IDS[1], ROW_IDS[2]],
+      failed: [D_ID],
+    });
+    await click(checkbox("Select all on this page"));
+    await click(toolbarButton("Publish"));
+    expect(error).toHaveBeenCalledWith("2 changed by someone else");
+    expect(error).toHaveBeenCalledWith("1 not published");
+    expect(error).toHaveBeenCalledTimes(2);
+  });
+
+  test("a clean Publish shows no toast", async () => {
+    const error = vi.spyOn(toast, "error");
+    fake.listItems.mockImplementation(async () =>
+      itemsPageOf(fourRows(), 4, 1)
+    );
+    mount();
+    await settle();
+    fake.publishItems.mockResolvedValue({
+      published: [ROW_IDS[0], ROW_IDS[1], ROW_IDS[2], D_ID],
+      unchanged: [],
+      conflicts: [],
+      failed: [],
+    });
+    await click(checkbox("Select all on this page"));
+    await click(toolbarButton("Publish"));
+    expect(fake.publishItems).toHaveBeenCalledTimes(1);
+    expect(error).not.toHaveBeenCalled();
+  });
+});
+
+describe("a list write answered by a sign-in refusal", () => {
+  test.each(["unauthorized", "mfa_required"] as const)(
+    "a bulk call answered %s shows the line, with no toast",
+    async (code) => {
+      const error = vi.spyOn(toast, "error");
+      await mountThree();
+      fake.publishItems.mockResolvedValue({ error: code });
+      await click(checkbox("Select A"));
+      await click(toolbarButton("Publish"));
+      expect(
+        document.body.textContent?.includes(
+          code === "unauthorized"
+            ? "Signed out of OrganizeOS"
+            : "Two-step sign-in required"
+        )
+      ).toBe(true);
+      expect(error).not.toHaveBeenCalled();
+    }
+  );
+
+  test.each(["unauthorized", "mfa_required"] as const)(
+    "E13 answered %s shows the line, with no toast",
+    async (code) => {
+      const error = vi.spyOn(toast, "error");
+      reorderWorld();
+      fake.reorderItems.mockResolvedValue({ error: code });
+      mount();
+      await settle();
+      await dragBelow("a", "b");
+      expect(
+        document.body.textContent?.includes(
+          code === "unauthorized"
+            ? "Signed out of OrganizeOS"
+            : "Two-step sign-in required"
+        )
+      ).toBe(true);
+      expect(error).not.toHaveBeenCalled();
+    }
+  );
+});
+
+describe("a filter change goes back to page 1", () => {
+  test("from page 2, a status and then an option filter each ask page 1", async () => {
+    await mountEvents(
+      itemsPageOf([eventRow()], 60, 1, {
+        columns: ["kind"],
+        filterField: "kind",
+      })
+    );
+    await click(byLabel("Next"));
+    expect(lastListItemsCall()?.[1]).toMatchObject({ page: 2 });
+    await click(buttonByText("Filter"));
+    await click(menuItemByText("Draft"));
+    expect(lastListItemsCall()?.[1]).toMatchObject({
+      page: 1,
+      status: "draft",
+    });
+
+    await click(byLabel("Next"));
+    expect(lastListItemsCall()?.[1]).toMatchObject({ page: 2 });
+    await click(buttonByText("Filter 1"));
+    await click(menuItemByText("Café"));
+    expect(lastListItemsCall()?.[1]).toMatchObject({
+      page: 1,
+      status: "draft",
+      optionKey: "kind",
+      optionValue: "Café",
+    });
+  });
+});
+
+describe("an option filter whose field is not loaded", () => {
+  test("still shows in the Filter, which can clear it", async () => {
+    fake.listCollections.mockResolvedValue({ collections: [EVENTS] });
+    fake.getCollection.mockResolvedValue({ error: "unavailable" });
+    fake.listItems.mockImplementation(async (_c, q) => ({
+      ...itemsPageOf([eventRow()], 1, 1, { filterField: "kind" }),
+      applied: {
+        status: q.status ?? "all",
+        sort: q.sort ?? "order",
+        direction: q.direction ?? "asc",
+        optionKey: q.optionKey ?? null,
+        optionValue: q.optionValue ?? null,
+      },
+    }));
+    mount({
+      initialView: {
+        collectionId: EVENTS.id,
+        list: {
+          status: "all",
+          sort: "order",
+          direction: "asc",
+          option: { key: "kind", value: "Café" },
+        },
+      },
+    });
+    await settle();
+    expect(lastListItemsCall()?.[1]).toMatchObject({ optionKey: "kind" });
+    await click(buttonByText("Filter 1"));
+    await click(menuItemByText("Any kind"));
+    expect(lastListItemsCall()?.[1].optionKey).toBeUndefined();
+    expect(buttonByText("Filter")).not.toBeUndefined();
+  });
+});
+
+describe("the reorder's state outlives the table (W3g)", () => {
+  test("back in a collection whose E13 is in flight, a move then the Name header sends the order after it, and a waiting bulk Publish still waits", async () => {
+    const world = reorderWorld();
+    sortByName();
+    withPeople();
+    const held = holdFirstReorder();
+    fake.publishItems.mockImplementation(async (_c, { items }) => ({
+      published: items.map((item) => item.id),
+      unchanged: [],
+      conflicts: [],
+      failed: [],
+    }));
+    mount();
+    await settle();
+    await dragBelow("a", "c");
+    expect(reorderCalls()).toEqual([[ROW_IDS[1], ROW_IDS[2], ROW_IDS[0]]]);
+    await click(collectionRow("people"));
+    await click(collectionRow("posts"));
+    // the moved order shows, and moves start from it
+    expect(itemSlugs()).toEqual(["b", "c", "a"]);
+
+    await click(checkbox("Select A"));
+    await click(toolbarButton("Publish"));
+    focusRow("c");
+    await altMove("ArrowUp");
+    expect(itemSlugs()).toEqual(["c", "b", "a"]);
+    await clickNameHeader();
+    await wait(600);
+    expect(fake.publishItems).not.toHaveBeenCalled();
+    expect(fake.reorderItems).toHaveBeenCalledTimes(1);
+
+    await act(async () => held.resolve({ changed: 3 }));
+    await settle();
+    await wait(600);
+    expect(reorderCalls()).toEqual([
+      [ROW_IDS[1], ROW_IDS[2], ROW_IDS[0]],
+      [ROW_IDS[2], ROW_IDS[1], ROW_IDS[0]],
+    ]);
+    expect(world.ids).toEqual([ROW_IDS[2], ROW_IDS[1], ROW_IDS[0]]);
+    expect(fake.publishItems).toHaveBeenCalledTimes(1);
+    expect(fake.publishItems.mock.calls[0][1].items).toEqual([
+      { id: ROW_IDS[0], updatedAt: world.versions[ROW_IDS[0]] },
+    ]);
+  });
+
+  test("an order queued behind an E13 in flight is sent after it when a filter draws other rows first", async () => {
+    const world = reorderWorld();
+    const base = fake.listItems.getMockImplementation()!;
+    // Draft answers a and c only
+    fake.listItems.mockImplementation(async (c, q) => {
+      const answer = await base(c, q);
+      if (q.status !== "draft" || isCmsFailure(answer)) {
+        return answer;
+      }
+      const items = answer.items.filter((row) => row.slug !== "b");
+      return { ...answer, items, total: items.length };
+    });
+    const held = holdFirstReorder();
+    mount();
+    await settle();
+    await dragBelow("a", "b");
+    expect(itemSlugs()).toEqual(["b", "a", "c"]);
+    focusRow("c");
+    await altMove("ArrowUp");
+    expect(itemSlugs()).toEqual(["b", "c", "a"]);
+    await wait(600);
+    expect(fake.reorderItems).toHaveBeenCalledTimes(1);
+    await click(buttonByText("Filter"));
+    await click(menuItemByText("Draft"));
+    expect(itemSlugs()).toEqual(["a", "c"]);
+
+    await act(async () => held.resolve({ changed: 2 }));
+    await settle();
+    expect(reorderCalls()).toEqual([
+      [ROW_IDS[1], ROW_IDS[0], ROW_IDS[2]],
+      [ROW_IDS[1], ROW_IDS[2], ROW_IDS[0]],
+    ]);
+    expect(world.ids).toEqual([ROW_IDS[1], ROW_IDS[2], ROW_IDS[0]]);
+  });
+
+  test("after an item visit while E13 is in flight, the moved order shows and a move is made from it and sent after the E13", async () => {
+    const world = reorderWorld();
+    const held = holdFirstReorder();
+    mount();
+    await settle();
+    await dragBelow("a", "c");
+    expect(itemSlugs()).toEqual(["b", "c", "a"]);
+    // the table unmounts for the editor and mounts again on Back
+    await click(buttonByText("New item"));
+    expect(itemRows()).toHaveLength(0);
+    await click(byLabel("Back"));
+    expect(itemSlugs()).toEqual(["b", "c", "a"]);
+    expect(handles()).toHaveLength(3);
+
+    // a move starts from the order sent, and waits for its E13
+    focusRow("a");
+    await altMove("ArrowUp");
+    expect(itemSlugs()).toEqual(["b", "a", "c"]);
+    await wait(600);
+    expect(fake.reorderItems).toHaveBeenCalledTimes(1);
+    // a row open waits for the E13 and its refetch
+    focusRow("b");
+    await act(async () => userEvent.keyboard("{Enter}"));
+    await settle();
+    expect(fake.getItem).not.toHaveBeenCalled();
+
+    await act(async () => held.resolve({ changed: 3 }));
+    await settle();
+    await wait(600);
+    expect(reorderCalls()).toEqual([
+      [ROW_IDS[1], ROW_IDS[2], ROW_IDS[0]],
+      [ROW_IDS[1], ROW_IDS[0], ROW_IDS[2]],
+    ]);
+    expect(world.ids).toEqual([ROW_IDS[1], ROW_IDS[0], ROW_IDS[2]]);
+    expect(fake.getItem).toHaveBeenCalledWith(POSTS.id, ROW_IDS[1]);
+  });
+});
+
+// M14 (slice 3): a structure view replaces the items table, which mounts
+// again on Back; the reorder's shared state carries the moved order across
+describe("a structure view while E13 is in flight (M14)", () => {
+  const openSettingsAndBack = async () => {
+    await click(
+      [...document.querySelectorAll<HTMLElement>('[role="tab"]')].find(
+        (tab) => tab.textContent === "Collections"
+      )
+    );
+    await click(byLabel("Posts menu"));
+    await click(
+      [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+        (item) => item.textContent === "Settings"
+      )
+    );
+    expect(
+      document.querySelector("[data-cms-collection-settings]")
+    ).not.toBeNull();
+    expect(itemRows()).toHaveLength(0);
+    await click(byLabel("Back"));
+  };
+
+  test.each(["keyboard", "drag"] as const)(
+    "%s: the moved order is drawn again at once, a later move waits for the E13, and nothing undoes the first",
+    async (how) => {
+      const world = reorderWorld();
+      const held = holdFirstReorder();
+      mount({ structure: createFakeCmsStructureSource() });
+      await settle();
+      if (how === "drag") {
+        await dragBelow("a", "c");
+      } else {
+        focusRow("a");
+        await altMove("ArrowDown");
+        await altMove("ArrowDown");
+        await wait(600);
+      }
+      expect(itemSlugs()).toEqual(["b", "c", "a"]);
+      expect(fake.reorderItems).toHaveBeenCalledTimes(1);
+
+      await openSettingsAndBack();
+      expect(itemSlugs()).toEqual(["b", "c", "a"]);
+
+      focusRow("a");
+      await altMove("ArrowUp");
+      expect(itemSlugs()).toEqual(["b", "a", "c"]);
+      await wait(600);
+      expect(fake.reorderItems).toHaveBeenCalledTimes(1);
+
+      await act(async () => held.resolve({ changed: 3 }));
+      await settle();
+      await wait(600);
+      expect(reorderCalls()).toEqual([
+        [ROW_IDS[1], ROW_IDS[2], ROW_IDS[0]],
+        [ROW_IDS[1], ROW_IDS[0], ROW_IDS[2]],
+      ]);
+      expect(world.ids).toEqual([ROW_IDS[1], ROW_IDS[0], ROW_IDS[2]]);
+      expect(itemSlugs()).toEqual(["b", "a", "c"]);
+    }
+  );
+});
+
+describe("the reorder's state across visits (W3g round 3)", () => {
+  const B_C_A = [ROW_IDS[1], ROW_IDS[2], ROW_IDS[0]];
+  const B_A_C = [ROW_IDS[1], ROW_IDS[0], ROW_IDS[2]];
+
+  /** Drag a below c while E13 is held, then Alt+ArrowUp on a: b, a, c. */
+  const moveTwice = async () => {
+    const world = reorderWorld();
+    withPeople();
+    const held = holdFirstReorder();
+    mount();
+    await settle();
+    await dragBelow("a", "c");
+    focusRow("a");
+    await altMove("ArrowUp");
+    expect(itemSlugs()).toEqual(["b", "a", "c"]);
+    return { world, held };
+  };
+
+  test("an order queued behind E13 is sent when the E13 answers while the editor shows", async () => {
+    const { world, held } = await moveTwice();
+    await click(buttonByText("New item"));
+    expect(itemRows()).toHaveLength(0);
+    await act(async () => held.resolve({ changed: 3 }));
+    await settle();
+    expect(reorderCalls()).toEqual([B_C_A, B_A_C]);
+    expect(world.ids).toEqual(B_A_C);
+  });
+
+  test("an order queued behind E13 is sent when the E13 answers after another collection opened from the editor", async () => {
+    const { world, held } = await moveTwice();
+    await click(buttonByText("New item"));
+    await click(collectionRow("people"));
+    expect(itemSlugs()).toEqual(["x", "y"]);
+    await act(async () => held.resolve({ changed: 3 }));
+    await settle();
+    expect(reorderCalls()).toEqual([B_C_A, B_A_C]);
+    expect(world.ids).toEqual(B_A_C);
+  });
+
+  test("an order queued behind E13 is sent when the E13 answers after another collection opened from the table", async () => {
+    const { world, held } = await moveTwice();
+    await click(collectionRow("people"));
+    expect(itemSlugs()).toEqual(["x", "y"]);
+    await act(async () => held.resolve({ changed: 3 }));
+    await settle();
+    expect(reorderCalls()).toEqual([B_C_A, B_A_C]);
+    expect(world.ids).toEqual(B_A_C);
+    // back in Posts, the server's order
+    await click(collectionRow("posts"));
+    expect(itemSlugs()).toEqual(["b", "a", "c"]);
+  });
+
+  test("a drop made while E13 is in flight shows at once, and is sent after it", async () => {
+    const world = reorderWorld();
+    const held = holdFirstReorder();
+    mount();
+    await settle();
+    await dragBelow("a", "b");
+    expect(itemSlugs()).toEqual(["b", "a", "c"]);
+    await dragBelow("b", "a");
+    expect(itemSlugs()).toEqual(["a", "b", "c"]);
+    expect(fake.reorderItems).toHaveBeenCalledTimes(1);
+    await act(async () => held.resolve({ changed: 2 }));
+    await settle();
+    expect(reorderCalls()).toEqual([B_A_C, ROW_IDS]);
+    expect(world.ids).toEqual(ROW_IDS);
+  });
+
+  test("a bulk call waiting on the reorder is dropped with a toast when another collection opens", async () => {
+    reorderWorld();
+    withPeople();
+    const held = holdFirstReorder();
+    const error = vi.spyOn(toast, "error");
+    mount();
+    await settle();
+    await dragBelow("a", "b");
+    await click(checkbox("Select C"));
+    await click(toolbarButton("Publish"));
+    expect(error).not.toHaveBeenCalled();
+    await click(collectionRow("people"));
+    expect(error).toHaveBeenCalledWith("Try again in a minute");
+    await act(async () => held.resolve({ changed: 2 }));
+    await settle();
+    expect(fake.publishItems).not.toHaveBeenCalled();
+  });
+});
+
+describe("a bulk call waiting on the reorder when the table unmounts (W3g round 4)", () => {
+  test("an item visit drops it with one toast, and it never runs", async () => {
+    reorderWorld();
+    const held = holdFirstReorder();
+    const error = vi.spyOn(toast, "error");
+    mount();
+    await settle();
+    await dragBelow("a", "b");
+    await click(checkbox("Select C"));
+    await click(toolbarButton("Publish"));
+    // Escape clears the selection; the call still waits
+    act(() => {
+      rowEl("a")!.focus();
+    });
+    await act(async () => userEvent.keyboard("{Escape}"));
+    await settle();
+    expect(error).not.toHaveBeenCalled();
+    await click(buttonByText("New item"));
+    expect(itemRows()).toHaveLength(0);
+    expect(
+      error.mock.calls.filter(([text]) => text === "Try again in a minute")
+    ).toHaveLength(1);
+    await act(async () => held.resolve({ changed: 2 }));
+    await settle();
+    expect(fake.publishItems).not.toHaveBeenCalled();
+  });
+});
+
+describe("the search box stays while a cleared search reads (W3g round 3)", () => {
+  /** "zzz" matches nothing; the next read waits until released. */
+  const searchNothing = async () => {
+    fake.listItems.mockImplementation(async (_c, q) =>
+      q.q === "zzz" ? itemsPageOf([], 0, 1) : pageOf(1, 3)
+    );
+    const gate = holdListItems();
+    mount();
+    await settle();
+    await act(async () => userEvent.type(searchInput()!, "zzz"));
+    await wait(300);
+    expect(itemRows()).toHaveLength(0);
+    expect(hasNoMatches()).toBe(true);
+    gate.hold();
+    return gate;
+  };
+  const hasNoMatches = () =>
+    document.querySelector("[data-cms-no-matches]") !== null;
+
+  test("erasing a search with no match keeps the search box and its focus", async () => {
+    const gate = await searchNothing();
+    const field = searchInput()!;
+    await act(async () => userEvent.clear(field));
+    await wait(300);
+    expect(searchInput()).toBe(field);
+    expect(document.activeElement).toBe(field);
+    await gate.release();
+    expect(itemRows()).toHaveLength(3);
+    expect(document.activeElement).toBe(field);
+  });
+
+  test("Escape on a search with no match keeps the search box and its focus", async () => {
+    const gate = await searchNothing();
+    const field = searchInput()!;
+    act(() => {
+      field.focus();
+    });
+    await act(async () => userEvent.keyboard("{Escape}"));
+    await wait(50);
+    expect(searchInput()).toBe(field);
+    expect(document.activeElement).toBe(field);
+    await gate.release();
+    expect(itemRows()).toHaveLength(3);
   });
 });

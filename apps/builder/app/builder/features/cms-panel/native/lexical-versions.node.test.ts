@@ -4,8 +4,11 @@ import { fileURLToPath } from "node:url";
 import { expect, test } from "vitest";
 
 /**
- * Spec 4.3.3.1 and 8: the four Lexical packages the native CMS editor adds
- * resolve from the builder to the version of `lexical` itself.
+ * Spec 4.3.3.1 and 8, and slice 3 spec 7.3: the Lexical packages the native
+ * CMS editor adds (slice 1's four, and @lexical/clipboard) resolve from the
+ * builder to the version of `lexical` itself. sanitize-html and htmlparser2,
+ * the read-only check's, are pinned to the platform's versions in
+ * rich-text-pins.node.test.ts.
  *
  * A package is looked up in the node_modules folders above this file, as
  * Node does, but never through NODE_PATH: the test runner's NODE_PATH holds
@@ -48,6 +51,7 @@ const added = [
   "@lexical/list",
   "@lexical/html",
   "@lexical/code",
+  "@lexical/clipboard",
 ];
 
 test.each(added)("%s resolves to lexical's version", (name) => {
@@ -55,7 +59,7 @@ test.each(added)("%s resolves to lexical's version", (name) => {
   expect(versionOf(name)).toBe(versionOf("lexical"));
 });
 
-test("the builder lists the four as ^0.21.0, as lexical", () => {
+test("the builder lists each as ^0.21.0, as lexical", () => {
   const builder = readManifest(
     fileURLToPath(new URL("../../../../../package.json", import.meta.url))
   );

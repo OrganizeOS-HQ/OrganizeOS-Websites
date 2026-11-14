@@ -1,0 +1,21 @@
+{
+  "description": "X-OOS-Actor v1 test vector for the forms door (builder forms spec 2026-11-11 7.1): the CMS vector's format and rules (cms-actor-assertion.json) with aud forms. target is the canonical target of an F2 request; p is base64url (no padding) of SHA-256 over the UTF-8 bytes of target; h is base64url (no padding) of SHA-256 over the body bytes (empty for this GET). payloadSegment is base64url (no padding) of the UTF-8 JSON of payload, keys in the order aud, org, sub, sid, m, p, h, jti, iat, exp, ip; mac is base64url (no padding) of HMAC-SHA256 keyed by secret over the ASCII bytes of payloadSegment; header is v1. + payloadSegment + . + mac. The forms door signs with the builder door secret (WEBSITES2_CMS_SECRET); this secret is a test value only.",
+  "secret": "oos-forms-actor-fixture-secret-0123456789abcdef",
+  "target": "/api/internal/websites2/forms/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/forms?kind=contact-signup",
+  "payload": {
+    "aud": "forms",
+    "org": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    "sub": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    "sid": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+    "m": "GET",
+    "p": "pTPauyj6knhD-EbvZb2q6y7a0L3NTbz_4htFQZZB7Zs",
+    "h": "47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU",
+    "jti": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    "iat": 1793016000,
+    "exp": 1793016060,
+    "ip": "203.0.113.7"
+  },
+  "payloadSegment": "eyJhdWQiOiJmb3JtcyIsIm9yZyI6ImFhYWFhYWFhLWFhYWEtNGFhYS04YWFhLWFhYWFhYWFhYWFhYSIsInN1YiI6ImNjY2NjY2NjLWNjY2MtNGNjYy04Y2NjLWNjY2NjY2NjY2NjYyIsInNpZCI6ImRkZGRkZGRkLWRkZGQtNGRkZC04ZGRkLWRkZGRkZGRkZGRkZCIsIm0iOiJHRVQiLCJwIjoicFRQYXV5ajZrbmhELUVidlpiMnE2eTdhMEwzTlRiel80aHRGUVpaQjdacyIsImgiOiI0N0RFUXBqOEhCU2EtX1RJbVctNUpDZXVRZVJrbTVOTXBKV1pHM2hTdUZVIiwianRpIjoiYmJiYmJiYmItYmJiYi00YmJiLThiYmItYmJiYmJiYmJiYmJiIiwiaWF0IjoxNzkzMDE2MDAwLCJleHAiOjE3OTMwMTYwNjAsImlwIjoiMjAzLjAuMTEzLjcifQ",
+  "mac": "Hm5VMAJf9zLNKntnfq81QqktapJmUWvi9Z5jh6wOz2U",
+  "header": "v1.eyJhdWQiOiJmb3JtcyIsIm9yZyI6ImFhYWFhYWFhLWFhYWEtNGFhYS04YWFhLWFhYWFhYWFhYWFhYSIsInN1YiI6ImNjY2NjY2NjLWNjY2MtNGNjYy04Y2NjLWNjY2NjY2NjY2NjYyIsInNpZCI6ImRkZGRkZGRkLWRkZGQtNGRkZC04ZGRkLWRkZGRkZGRkZGRkZCIsIm0iOiJHRVQiLCJwIjoicFRQYXV5ajZrbmhELUVidlpiMnE2eTdhMEwzTlRiel80aHRGUVpaQjdacyIsImgiOiI0N0RFUXBqOEhCU2EtX1RJbVctNUpDZXVRZVJrbTVOTXBKV1pHM2hTdUZVIiwianRpIjoiYmJiYmJiYmItYmJiYi00YmJiLThiYmItYmJiYmJiYmJiYmJiIiwiaWF0IjoxNzkzMDE2MDAwLCJleHAiOjE3OTMwMTYwNjAsImlwIjoiMjAzLjAuMTEzLjcifQ.Hm5VMAJf9zLNKntnfq81QqktapJmUWvi9Z5jh6wOz2U"
+}

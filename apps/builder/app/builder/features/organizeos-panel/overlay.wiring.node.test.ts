@@ -24,6 +24,7 @@ const builderNanoStates = read("../../shared/nano-states.ts");
 const builder = read("../../builder.tsx");
 const insertBlock = read("./insert-organizeos-block.ts");
 const contextServer = read("../../../shared/context.server.ts");
+const propsSection = read("../settings-panel/props-section/props-section.tsx");
 
 describe("the Components panel's OrganizeOS section", () => {
   test("components.tsx imports both OrganizeOS modules", () => {
@@ -536,5 +537,21 @@ describe("the Style panel's variable binding", () => {
     expect(close).toBeGreaterThan(labelClose);
     expect(label.match(/<VariableBindControl\b/g)).toHaveLength(1);
     expect(label.match(/<\/VariableBindControl>/g)).toHaveLength(1);
+  });
+});
+
+describe("the Settings panel's + menu", () => {
+  test("props-section.tsx leaves the props no OrganizeOS row draws out of $availableProps", () => {
+    expect(propsSection).toMatch(
+      /import \{ isOrganizeosHiddenProp \} from "\.\.\/controls\/organizeos-controls";/
+    );
+    const available = propsSection.slice(
+      propsSection.indexOf("const $availableProps = computed(")
+    );
+    expect(
+      available.slice(0, available.indexOf("const AddPropertyOrAttribute"))
+    ).toMatch(
+      /if \(isOrganizeosHiddenProp\(instance\?\.component, name\)\) \{\s*continue;\s*\}/
+    );
   });
 });

@@ -272,7 +272,7 @@ type Send =
   | { method: "POST" | "PUT"; json: unknown }
   | { method: "POST"; form: FormData };
 
-const request = async <Value, Answer = Value>(
+export const request = async <Value, Answer = Value>(
   path: string,
   schema: z.ZodType<Value>,
   send: Send,

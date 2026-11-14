@@ -35,6 +35,7 @@ import { ChevronLeftIcon, EllipsesIcon } from "@webstudio-is/icons";
 import {
   emptyItemData,
   differsFromStored,
+  getChangedFieldKeys,
   emptyValueFor,
   getFieldErrorText,
   getItemTitle,
@@ -64,6 +65,7 @@ import {
   type CmsFailure,
   type CmsItem,
   type CmsItemData,
+  type CmsRichTextValue,
   type CmsResult,
   type CmsSource,
 } from "./cms-source";
@@ -89,7 +91,12 @@ type Busy = "save" | "publish" | "discard" | "reload" | "status" | "delete";
  * write followed a save in the same action, so `sent` is the saved item and
  * nothing set aside before that save is kept.
  */
-type Settle = { sent: CmsItem; afterSave?: boolean };
+type Settle = {
+  sent: CmsItem;
+  afterSave?: boolean;
+  /** The values the write sent, when a Save settled some of them. */
+  values?: CmsItemData;
+};
 
 /**
  * Whether an element is narrower than `width`, kept current on resize. The
@@ -133,6 +140,7 @@ export const ItemEditor = ({
   onDeleted,
   onCreated,
   onSchemaStale,
+  onBusyChange,
   onRefusal,
   onOpenHome,
   onOpenClassic,
@@ -163,6 +171,13 @@ export const ItemEditor = ({
    * are fetched again before the toast.
    */
   onSchemaStale: () => Promise<void>;
+  /**
+   * Save, Publish, Discard changes, Unpublish, Archive or Restore runs
+   * (every call it makes and the read after), or a field's upload is in
+   * flight. `stay`: a chain or upload that just ended shows an error in the
+   * editor, so what waited on it is dropped, even while an upload runs on.
+   */
+  onBusyChange?: (busy: boolean, stay?: boolean) => void;
   /**
    * A call answered `unauthorized` or `mfa_required` (any call), or
    * `forbidden` or `plan` on the item's load: the screen shows the line
@@ -208,7 +223,17 @@ export const ItemEditor = ({
   // one after E6 answers not_found.
   const [clientId, setClientId] = useState(() => crypto.randomUUID());
   const backRef = useRef<HTMLButtonElement>(null);
+  const itemMenuRef = useRef<HTMLButtonElement>(null);
+  // Save, Publish, Discard changes, Unpublish, Archive or Restore, from its
+  // first call to its last answer
+  const [isChainRunning, setIsChainRunning] = useState(false);
+  // the chain or upload that just ended showed an error in the editor
+  const chainStays = useRef(false);
+  // the field whose upload just ended: an error it shows keeps the editor
+  const uploadEnded = useRef<string | undefined>(undefined);
   const cancelRef = useRef<HTMLButtonElement>(null);
+  // what had the focus when the Discard changes dialog opened
+  const discardOpener = useRef<Element | null>(null);
   // Per reference field, its chosen ids whose items E5 no longer finds.
   const unresolved = useRef<Record<string, readonly string[]>>({});
   // Discard changes or Delete chosen in the Item menu: its dialog takes the
@@ -374,7 +399,24 @@ export const ItemEditor = ({
   useEffect(() => {
     onDirtyChange(isDirty);
   }, [isDirty, onDirtyChange]);
+  // an upload's value lands after it answers: what waits sees it
+  const isEditorBusy = isChainRunning || busyFields.size > 0;
+  // a stay is reported once, as the chain or upload that ended with it ends
+  // (each upload's start and end makes a new busyFields)
+  useEffect(() => {
+    onBusyChange?.(isEditorBusy, chainStays.current);
+    chainStays.current = false;
+    uploadEnded.current = undefined;
+  }, [isEditorBusy, isChainRunning, busyFields, onBusyChange]);
+  useEffect(() => () => onBusyChange?.(false), [onBusyChange]);
   useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
+
+  /** An error shows in the editor: what waited on the chain is dropped. */
+  const showsInPlace = () => {
+    if (isMounted.current) {
+      chainStays.current = true;
+    }
+  };
 
   /**
    * An unknown outcome (4.3.2): read the item before the buttons enable
@@ -382,7 +424,11 @@ export const ItemEditor = ({
    * baseline, with the person's values kept aside, so a write that landed
    * leaves the editor clean and one that did not shows "Use my edit".
    */
-  const settle = async ({ sent, afterSave = false }: Settle) => {
+  const settle = async ({
+    sent,
+    afterSave = false,
+    values: sentValues,
+  }: Settle) => {
     setBusy("reload");
     let result: CmsResult<{ item: CmsItem }>;
     try {
@@ -396,6 +442,7 @@ export const ItemEditor = ({
       // Reload is the way on; a refusal is answered as on a write, so the
       // view stays unless the session itself needs the person
       setConflict(true);
+      showsInPlace();
       const refusal = getRefusal(result.error, "write");
       if (refusal !== undefined) {
         onRefusal(refusal);
@@ -415,28 +462,38 @@ export const ItemEditor = ({
             kept: undefined,
             baseline: { ...emptyItemData(fields), ...sent.data },
             baselineSlug: sent.slug,
-            values,
+            values: sentValues ?? values,
             slug,
           })
-        : keepAside({ fields, kept, baseline, baselineSlug, values, slug })
+        : keepAside({
+            fields,
+            kept,
+            baseline,
+            baselineSlug,
+            values: sentValues ?? values,
+            slug,
+          })
     );
     applyItem(result.item);
     setLive(result.item.live);
     onWritten(result.item);
   };
 
+  /** Answers the read an unknown outcome runs, for the chain to wait on. */
   const fail = (
     failure: CmsFailure,
     settleWith?: Settle,
     on: "load" | "write" = "write"
-  ) => {
+  ): Promise<void> | undefined => {
     if (failure.error === "conflict") {
       setConflict(true);
+      showsInPlace();
       return;
     }
     // the address clash never carries a field (5.7)
     if (failure.error === "slug_taken") {
       setErrors((current) => ({ ...current, slug: "Address in use" }));
+      showsInPlace();
       return;
     }
     // a field the editor draws, or the address, shows its error in place
@@ -473,12 +530,14 @@ export const ItemEditor = ({
         ...current,
         ...Object.fromEntries(keys.map((key) => [key, text])),
       }));
+      showsInPlace();
       return;
     }
     const fieldText = getFieldErrorText(failure.error);
     const fieldKey = failure.field;
     if (fieldText !== undefined && fieldKey !== undefined) {
       setErrors((current) => ({ ...current, [fieldKey]: fieldText }));
+      showsInPlace();
       return;
     }
     const refusal = getRefusal(failure.error, on);
@@ -487,8 +546,7 @@ export const ItemEditor = ({
       return;
     }
     if (failure.error === "unavailable" && settleWith !== undefined) {
-      void settle(settleWith);
-      return;
+      return settle(settleWith);
     }
     toast.error(getToastText(failure.error));
   };
@@ -523,7 +581,7 @@ export const ItemEditor = ({
       setBusy(undefined);
     }
     if (isCmsFailure(result)) {
-      fail(result, settleWith);
+      await fail(result, settleWith);
       return;
     }
     setLine(undefined);
@@ -547,11 +605,14 @@ export const ItemEditor = ({
    * E6 replay leaves.
    */
   const saveFrom = async (
-    from: CmsItem | null
-  ): Promise<{ saved: CmsItem; differs: boolean } | undefined> => {
+    from: CmsItem | null,
+    drafted: CmsItemData = values
+  ): Promise<
+    { saved: CmsItem; differs: boolean; values: CmsItemData } | undefined
+  > => {
     const clientErrors = validateItem({
       fields,
-      values,
+      values: drafted,
       slug,
       isNew: from === null,
     });
@@ -559,7 +620,9 @@ export const ItemEditor = ({
     if (Object.keys(clientErrors).length > 0) {
       return;
     }
-    const data = toItemData(fields, values);
+    setBusy("save");
+    const sent = await settleRichText(drafted);
+    const data = toItemData(fields, sent);
     let replayed = false;
     const saved = await write(
       "save",
@@ -588,7 +651,7 @@ export const ItemEditor = ({
         return result;
       },
       // E6's repeat is the same clientId; E7 reads the item back
-      from === null ? undefined : { sent: from }
+      from === null ? undefined : { sent: from, values: sent }
     );
     if (saved === undefined) {
       return;
@@ -606,7 +669,7 @@ export const ItemEditor = ({
       differsFromStored({
         fields,
         stored: { ...emptyItemData(fields), ...saved.data },
-        values,
+        values: sent,
         storedSlug: saved.slug,
         slug,
       });
@@ -615,22 +678,79 @@ export const ItemEditor = ({
     if (replayed && differs === false) {
       applyItem(saved);
     }
-    return { saved, differs };
+    return { saved, differs, values: sent };
   };
 
-  const save = async () => {
-    if (item === undefined) {
-      return;
+  /**
+   * Each changed rich-text field whose value would reopen read-only is sent
+   * as the editor's own write of it when that write holds the same content
+   * (`settleRichTextHtml`); every other value is sent as drafted.
+   */
+  const settleRichText = async (drafted: CmsItemData) => {
+    const changed = getChangedFieldKeys(fields, baseline, drafted);
+    const richText = fields.filter(
+      (field) => field.kind === "richtext" && changed.includes(field.key)
+    );
+    if (richText.length === 0) {
+      return drafted;
     }
-    await saveFrom(item);
+    try {
+      const { settleRichTextHtml } = await import("./rich-text-html");
+      let sent = drafted;
+      for (const field of richText) {
+        const value = drafted[field.key];
+        if (
+          typeof value !== "object" ||
+          value === null ||
+          typeof (value as CmsRichTextValue).html !== "string"
+        ) {
+          continue;
+        }
+        const settled = settleRichTextHtml((value as CmsRichTextValue).html);
+        if (settled.outcome === "settled") {
+          sent = {
+            ...sent,
+            [field.key]: { ...(value as CmsRichTextValue), html: settled.html },
+          };
+        }
+      }
+      return sent;
+    } catch {
+      return drafted;
+    }
   };
 
-  const publish = async () => {
+  /** Runs one chain of calls; Back and the other exits wait for its end. */
+  const runChain = async (run: () => Promise<void>) => {
+    chainStays.current = false;
+    setIsChainRunning(true);
+    try {
+      await run();
+    } finally {
+      if (isMounted.current) {
+        setIsChainRunning(false);
+      }
+    }
+  };
+
+  const save = () =>
+    runChain(async () => {
+      if (item === undefined) {
+        return;
+      }
+      await saveFrom(item);
+    });
+
+  const publish = () => runChain(publishNow);
+
+  const publishNow = async () => {
     let current = item;
     if (current === undefined) {
       return;
     }
     const afterSave = current === null || isDirty;
+    // the values the last save sent, rich text as settled
+    let saved: CmsItemData | undefined;
     // With unsaved edits it saves, then publishes: two calls, each locked.
     if (current === null || isDirty) {
       const first = await saveFrom(current);
@@ -638,13 +758,15 @@ export const ItemEditor = ({
         return;
       }
       current = first.saved;
+      saved = first.values;
       // an E6 replay of older values: they are saved before publishing
       if (first.differs) {
-        const second = await saveFrom(current);
+        const second = await saveFrom(current, first.values);
         if (second === undefined) {
           return;
         }
         current = second.saved;
+        saved = second.values;
       }
     }
     const target = current;
@@ -654,11 +776,13 @@ export const ItemEditor = ({
         source.publishItem(collection.id, target.id, {
           expectedUpdatedAt: target.updatedAt,
         }),
-      { sent: target, afterSave }
+      { sent: target, afterSave, values: saved }
     );
   };
 
-  const discard = async () => {
+  const discard = () => runChain(discardNow);
+
+  const discardNow = async () => {
     setConfirmDiscard(false);
     if (item === undefined || item === null) {
       return;
@@ -697,12 +821,16 @@ export const ItemEditor = ({
         onRefusal(refusal);
         return;
       }
+      // Retry reads the item as Reload does: an edit made meanwhile is
+      // kept aside
       setLine({
         kind: "unavailable",
         retry: () => {
-          loadedId.current = undefined;
-          setLine(undefined);
-          setLoadAttempt((current) => current + 1);
+          void reloadRef.current().then((read) => {
+            if (read && isMounted.current) {
+              setLine(undefined);
+            }
+          });
         },
       });
       return;
@@ -718,10 +846,15 @@ export const ItemEditor = ({
    * stopping on its failure; then E11; then the item is read.
    */
   const changeStatus = async (status: "draft" | "archived") => {
-    let current = item;
-    if (current === undefined || current === null) {
+    if (item === undefined || item === null) {
       return;
     }
+    const from = item;
+    await runChain(() => runStatus(status, from));
+  };
+
+  const runStatus = async (status: "draft" | "archived", from: CmsItem) => {
+    let current = from;
     if (isDirty) {
       const first = await saveFrom(current);
       if (first === undefined) {
@@ -755,7 +888,12 @@ export const ItemEditor = ({
         return;
       }
       if (result.error === "slug_taken") {
+        if (isMounted.current === false) {
+          toast.error(getListFailureText("status", result.error));
+          return;
+        }
         setErrors((current) => ({ ...current, slug: "Address in use" }));
+        chainStays.current = true;
         return;
       }
       toast.error(
@@ -814,10 +952,13 @@ export const ItemEditor = ({
     );
   };
 
-  /** Reload keeps the person's unsaved values aside (4.3.2). */
-  const reload = async () => {
+  /**
+   * Reload keeps the person's unsaved values aside (4.3.2). Answers whether
+   * the item was read.
+   */
+  const reload = async (): Promise<boolean> => {
     if (item === undefined || item === null) {
-      return;
+      return false;
     }
     setBusy("reload");
     let result: CmsResult<{ item: CmsItem }>;
@@ -831,13 +972,16 @@ export const ItemEditor = ({
     if (isCmsFailure(result)) {
       // the editor holds the person's values: refused as a write is, so the
       // view and the conflict line with its Reload stay
-      fail(result);
-      return;
+      void fail(result);
+      return false;
     }
     setKept(keepAside({ fields, kept, baseline, baselineSlug, values, slug }));
     applyItem(result.item);
     setLive(result.item.live);
+    return true;
   };
+  const reloadRef = useRef(reload);
+  reloadRef.current = reload;
 
   const setField = (key: string, value: unknown) => {
     setValues((current) => ({ ...current, [key]: value }));
@@ -847,7 +991,36 @@ export const ItemEditor = ({
     }
   };
 
-  const restoreMine = (key: string) => {
+  const keptRef = useRef(kept);
+  keptRef.current = kept;
+
+  /**
+   * A restored rich-text value takes the form a Save would send
+   * (`settleRichTextHtml`) when that settles it; otherwise it is restored as
+   * drafted.
+   */
+  const settleRestored = async (key: string, value: unknown) => {
+    const field = fields.find((candidate) => candidate.key === key);
+    if (
+      field?.kind !== "richtext" ||
+      typeof value !== "object" ||
+      value === null ||
+      typeof (value as CmsRichTextValue).html !== "string"
+    ) {
+      return value;
+    }
+    try {
+      const { settleRichTextHtml } = await import("./rich-text-html");
+      const settled = settleRichTextHtml((value as CmsRichTextValue).html);
+      return settled.outcome === "settled"
+        ? { ...(value as CmsRichTextValue), html: settled.html }
+        : value;
+    } catch {
+      return value;
+    }
+  };
+
+  const restoreMine = async (key: string) => {
     // a write's answer replaces the values: nothing is restored under it
     if (kept === undefined || busy !== undefined) {
       return;
@@ -859,10 +1032,23 @@ export const ItemEditor = ({
       }
       return;
     }
+    const restored = await settleRestored(
+      key,
+      structuredClone(kept.values[key])
+    );
+    if (
+      isMounted.current === false ||
+      keptRef.current !== kept ||
+      latest.current.busy !== undefined
+    ) {
+      return;
+    }
     setValues((current) => ({
       ...current,
-      [key]: structuredClone(kept.values[key]),
+      [key]: restored,
     }));
+    // what is set aside is what was restored, so it is no longer offered
+    setKept({ ...kept, values: { ...kept.values, [key]: restored } });
     setFieldEpochs((current) => ({
       ...current,
       [key]: (current[key] ?? 0) + 1,
@@ -966,7 +1152,7 @@ export const ItemEditor = ({
         <DropdownMenu modal={false}>
           <Tooltip content="Item menu" side="bottom">
             <DropdownMenuTrigger asChild>
-              <IconButton aria-label="Item menu">
+              <IconButton ref={itemMenuRef} aria-label="Item menu">
                 <EllipsesIcon />
               </IconButton>
             </DropdownMenuTrigger>
@@ -1054,7 +1240,9 @@ export const ItemEditor = ({
             <Button
               color="neutral"
               state={busy === "reload" ? "pending" : undefined}
-              disabled={busy !== undefined && busy !== "reload"}
+              disabled={
+                (busy !== undefined && busy !== "reload") || isFieldBusy
+              }
               onClick={() => void reload()}
             >
               Reload
@@ -1107,10 +1295,10 @@ export const ItemEditor = ({
                     changed={changedSince.keys.has(field.key)}
                     onUseMine={
                       canEdit && keptDifferences.includes(field.key)
-                        ? () => restoreMine(field.key)
+                        ? () => void restoreMine(field.key)
                         : undefined
                     }
-                    useMineDisabled={busy !== undefined}
+                    useMineDisabled={busy !== undefined || isFieldBusy}
                   >
                     <FieldControl
                       id={id}
@@ -1126,14 +1314,23 @@ export const ItemEditor = ({
                       disabled={disabled}
                       invalid={errors[field.key] !== undefined}
                       onChange={(value) => setField(field.key, value)}
-                      onError={(error) =>
+                      onError={(error) => {
+                        if (
+                          error !== undefined &&
+                          uploadEnded.current === field.key
+                        ) {
+                          showsInPlace();
+                        }
                         setErrors(({ [field.key]: _, ...rest }) =>
                           error === undefined
                             ? rest
                             : { ...rest, [field.key]: error }
-                        )
-                      }
-                      onBusyChange={(isBusy) =>
+                        );
+                      }}
+                      onBusyChange={(isBusy) => {
+                        if (isBusy === false) {
+                          uploadEnded.current = field.key;
+                        }
                         setBusyFields((current) => {
                           const next = new Set(current);
                           if (isBusy) {
@@ -1142,8 +1339,8 @@ export const ItemEditor = ({
                             next.delete(field.key);
                           }
                           return next;
-                        })
-                      }
+                        });
+                      }}
                       onRefusal={onRefusal}
                       onOpenClassic={onOpenClassic}
                       onUnresolvedChange={(ids) => {
@@ -1160,10 +1357,10 @@ export const ItemEditor = ({
                 changed={changedSince.address}
                 onUseMine={
                   canEdit && keptDifferences.includes("slug")
-                    ? () => restoreMine("slug")
+                    ? () => void restoreMine("slug")
                     : undefined
                 }
-                useMineDisabled={busy !== undefined}
+                useMineDisabled={busy !== undefined || isFieldBusy}
               >
                 <InputField
                   id="cms-field-slug"
@@ -1209,7 +1406,29 @@ export const ItemEditor = ({
           // the safe choice takes the first focus; Discard stays right
           onOpenAutoFocus={(event) => {
             event.preventDefault();
+            discardOpener.current = document.activeElement;
             cancelRef.current?.focus();
+          }}
+          // the focus goes back to its opener, else (gone, or disabled
+          // while Discard runs) to the Item menu
+          onCloseAutoFocus={(event) => {
+            const element = discardOpener.current;
+            discardOpener.current = null;
+            event.preventDefault();
+            if (
+              element instanceof HTMLElement &&
+              element !== document.body &&
+              element.isConnected
+            ) {
+              element.focus();
+            }
+            if (
+              element === null ||
+              element === document.body ||
+              document.activeElement !== element
+            ) {
+              itemMenuRef.current?.focus();
+            }
           }}
         >
           <DialogActions>
@@ -1231,6 +1450,7 @@ export const ItemEditor = ({
         title={getDeleteTitle(1, collection)}
         busy={busy === "delete"}
         onCancel={() => setConfirmDelete(false)}
+        onFocusLost={() => itemMenuRef.current?.focus()}
         onConfirm={() => void remove()}
       />
     </Flex>

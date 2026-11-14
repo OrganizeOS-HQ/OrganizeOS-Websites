@@ -200,6 +200,7 @@ describe("resolveOrganizeosSite", () => {
       cmsPanelEnabled: false,
       shopBlocksEnabled: false,
       cmsNativeEnabled: false,
+      siteFormsEnabled: false,
     });
   });
 
@@ -311,6 +312,28 @@ describe("resolveOrganizeosSite", () => {
     ).toBe(expected);
   });
 
+  const forms = { siteForms: "true", cmsSecretSet: true };
+
+  test.each([
+    ["everything set", {}, true],
+    ["the switch unset", { siteForms: undefined }, false],
+    ["the switch TRUE", { siteForms: "TRUE" }, false],
+    ["the switch ' true'", { siteForms: " true" }, false],
+    ["no secret", { cmsSecretSet: false }, false],
+    ["the secret not reported", { cmsSecretSet: undefined }, false],
+    ["the org denied the blocks", { blocksDenyOrgIds: ORG_ID }, false],
+  ])("siteFormsEnabled with %s: %s", (_case, change, expected) => {
+    expect(
+      resolveOrganizeosSite({
+        ...base,
+        owner: SERVICE_OWNER,
+        projectDomain: "acme",
+        ...forms,
+        ...change,
+      })?.siteFormsEnabled
+    ).toBe(expected);
+  });
+
   test("every org gets it once the switch is on", () => {
     for (const organizationId of [ORG_ID, OTHER_ORG_ID]) {
       expect(
@@ -338,6 +361,7 @@ describe("resolveOrganizeosSite", () => {
     );
     expect(loader).not.toMatch(/:\s*env\.WEBSITES2_CMS_SECRET\s*[,}]/);
     expect(loader).not.toContain("ORGANIZEOS_CMS_NATIVE_ORG_IDS");
+    expect(loader).toContain("siteForms: env.ORGANIZEOS_SITE_FORMS,");
   });
 
   test("an org project still on the placeholder has no subdomain", () => {

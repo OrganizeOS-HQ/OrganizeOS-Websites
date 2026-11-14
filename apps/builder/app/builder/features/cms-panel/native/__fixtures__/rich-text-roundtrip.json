@@ -1,199 +1,2019 @@
 {
   "format": "OrganizeOS rich-text round trip, version 1",
-  "about": "Each case is a stored rich-text value (input), the HTML the builder's native CMS editor writes after loading it (editor, pinned by the fork's test), and that HTML after the platform's normalizeRichText (stored, pinned by this repository's test; null when nothing is left). readOnly holds stored values the editor must open read-only, with the reason: images, or lossy for a shape it would not keep whole. The builder fork copies this file unchanged. Spec: docs/superpowers/specs/2026-11-07-native-cms-in-the-builder-design.md, 4.3.3.1 and 8.",
+  "pins": {
+    "sanitize-html": "2.17.7",
+    "htmlparser2": "12.0.0",
+    "entities": "8.1.0",
+    "domhandler": "6.0.1",
+    "launder": "1.7.1",
+    "rich-text-nodes.ts": "66a1dd5cebb7a6971b79f3f8d444f30843cf36b0a848835c1f77a6dcb246429b",
+    "sanitizer": "394ce43f23cda608bc179dec1aa178bf87b2afd3b4ee7d713668aa634b3872aa"
+  },
+  "about": "Each case is a stored rich-text value (input), the HTML the builder's native CMS editor writes after loading it (editor, pinned by the fork's test), and that HTML after the platform's normalizeRichText (stored, pinned by this repository's test; null when nothing is left). readOnly holds stored values the editor must open read-only, with the reason: lossy, for a shape it would not keep whole. The builder fork copies this file unchanged. Spec: docs/superpowers/specs/2026-11-07-native-cms-in-the-builder-design.md, 4.3.3.1 and 8. Each case and read-only entry carries nodes: the platform's toRichTextNodes of its stored value (a case's stored, a read-only entry's input), which the fork's copy of that module must reproduce. pins holds the resolved versions of sanitize-html, htmlparser2, and the entities, domhandler and launder packages they use, and the sha256 of rich-text-nodes.ts and of the sanitiser (rich-text.ts from RICH_TEXT_ALLOWED_TAGS through sanitizeRichTextHtml, comment lines left out), which both repositories check against their own.",
   "cases": [
     {
       "name": "paragraphs",
       "input": "<p>One</p><p>Two</p>",
       "editor": "<p><span style=\"white-space: pre-wrap;\">One</span></p><p><span style=\"white-space: pre-wrap;\">Two</span></p>",
-      "stored": "<p>One</p><p>Two</p>"
+      "stored": "<p>One</p><p>Two</p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "One"
+              }
+            ]
+          },
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "Two"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "name": "headings 2 to 4",
       "input": "<h2>A</h2><h3>B</h3><h4>C</h4><p>Body</p>",
       "editor": "<h2><span style=\"white-space: pre-wrap;\">A</span></h2><h3><span style=\"white-space: pre-wrap;\">B</span></h3><h4><span style=\"white-space: pre-wrap;\">C</span></h4><p><span style=\"white-space: pre-wrap;\">Body</span></p>",
-      "stored": "<h2>A</h2><h3>B</h3><h4>C</h4><p>Body</p>"
+      "stored": "<h2>A</h2><h3>B</h3><h4>C</h4><p>Body</p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "h",
+            "level": 2,
+            "c": [
+              {
+                "t": "text",
+                "text": "A"
+              }
+            ]
+          },
+          {
+            "t": "h",
+            "level": 3,
+            "c": [
+              {
+                "t": "text",
+                "text": "B"
+              }
+            ]
+          },
+          {
+            "t": "h",
+            "level": 4,
+            "c": [
+              {
+                "t": "text",
+                "text": "C"
+              }
+            ]
+          },
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "Body"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "name": "every mark",
       "input": "<p><strong>bold</strong> <em>italic</em> <u>underline</u> <s>struck</s> <code>code</code></p>",
       "editor": "<p><b><strong style=\"white-space: pre-wrap;\">bold</strong></b><span style=\"white-space: pre-wrap;\"> </span><i><em style=\"white-space: pre-wrap;\">italic</em></i><span style=\"white-space: pre-wrap;\"> </span><u><span style=\"white-space: pre-wrap;\">underline</span></u><span style=\"white-space: pre-wrap;\"> </span><s><span style=\"white-space: pre-wrap;\">struck</span></s><span style=\"white-space: pre-wrap;\"> </span><code spellcheck=\"false\" style=\"white-space: pre-wrap;\"><span>code</span></code></p>",
-      "stored": "<p><b><strong>bold</strong></b> <i><em>italic</em></i> <u>underline</u> <s>struck</s> <code>code</code></p>"
+      "stored": "<p><b><strong>bold</strong></b> <i><em>italic</em></i> <u>underline</u> <s>struck</s> <code>code</code></p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "bold",
+                "marks": ["b"]
+              },
+              {
+                "t": "text",
+                "text": " "
+              },
+              {
+                "t": "text",
+                "text": "italic",
+                "marks": ["i"]
+              },
+              {
+                "t": "text",
+                "text": " "
+              },
+              {
+                "t": "text",
+                "text": "underline",
+                "marks": ["u"]
+              },
+              {
+                "t": "text",
+                "text": " "
+              },
+              {
+                "t": "text",
+                "text": "struck",
+                "marks": ["s"]
+              },
+              {
+                "t": "text",
+                "text": " "
+              },
+              {
+                "t": "text",
+                "text": "code",
+                "marks": ["code"]
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "name": "b, i and nested marks",
       "input": "<p><b>b</b> <i>i</i> <strong><em>both</em></strong></p>",
       "editor": "<p><b><strong style=\"white-space: pre-wrap;\">b</strong></b><span style=\"white-space: pre-wrap;\"> </span><i><em style=\"white-space: pre-wrap;\">i</em></i><span style=\"white-space: pre-wrap;\"> </span><i><b><strong style=\"white-space: pre-wrap;\">both</strong></b></i></p>",
-      "stored": "<p><b><strong>b</strong></b> <i><em>i</em></i> <i><b><strong>both</strong></b></i></p>"
+      "stored": "<p><b><strong>b</strong></b> <i><em>i</em></i> <i><b><strong>both</strong></b></i></p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "b",
+                "marks": ["b"]
+              },
+              {
+                "t": "text",
+                "text": " "
+              },
+              {
+                "t": "text",
+                "text": "i",
+                "marks": ["i"]
+              },
+              {
+                "t": "text",
+                "text": " "
+              },
+              {
+                "t": "text",
+                "text": "both",
+                "marks": ["b", "i"]
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "name": "link, new tab",
       "input": "<p>Ask your <a target=\"_blank\" rel=\"noopener noreferrer\" href=\"https://example.org/stewards\">steward</a>.</p>",
       "editor": "<p><span style=\"white-space: pre-wrap;\">Ask your </span><a href=\"https://example.org/stewards\" target=\"_blank\" rel=\"noopener noreferrer\"><span style=\"white-space: pre-wrap;\">steward</span></a><span style=\"white-space: pre-wrap;\">.</span></p>",
-      "stored": "<p>Ask your <a href=\"https://example.org/stewards\" target=\"_blank\" rel=\"noopener noreferrer\">steward</a>.</p>"
+      "stored": "<p>Ask your <a href=\"https://example.org/stewards\" target=\"_blank\" rel=\"noopener noreferrer\">steward</a>.</p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "Ask your "
+              },
+              {
+                "t": "a",
+                "href": "https://example.org/stewards",
+                "newTab": true,
+                "c": [
+                  {
+                    "t": "text",
+                    "text": "steward"
+                  }
+                ]
+              },
+              {
+                "t": "text",
+                "text": "."
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "name": "link, same tab, title",
       "input": "<p><a href=\"https://example.org/\" title=\"Home\">Home</a></p>",
       "editor": "<p><a href=\"https://example.org/\" title=\"Home\"><span style=\"white-space: pre-wrap;\">Home</span></a></p>",
-      "stored": "<p><a href=\"https://example.org/\" title=\"Home\">Home</a></p>"
+      "stored": "<p><a href=\"https://example.org/\" title=\"Home\">Home</a></p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "a",
+                "href": "https://example.org/",
+                "c": [
+                  {
+                    "t": "text",
+                    "text": "Home"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "name": "link schemes and paths",
       "input": "<p><a href=\"mailto:info@example.org\">Mail</a> <a href=\"tel:+15550100\">Call</a> <a href=\"/about\">About</a> <a href=\"#join\">Join</a></p>",
       "editor": "<p><a href=\"mailto:info@example.org\"><span style=\"white-space: pre-wrap;\">Mail</span></a><span style=\"white-space: pre-wrap;\"> </span><a href=\"tel:+15550100\"><span style=\"white-space: pre-wrap;\">Call</span></a><span style=\"white-space: pre-wrap;\"> </span><a href=\"/about\"><span style=\"white-space: pre-wrap;\">About</span></a><span style=\"white-space: pre-wrap;\"> </span><a href=\"#join\"><span style=\"white-space: pre-wrap;\">Join</span></a></p>",
-      "stored": "<p><a href=\"mailto:info@example.org\">Mail</a> <a href=\"tel:+15550100\">Call</a> <a href=\"/about\">About</a> <a href=\"#join\">Join</a></p>"
+      "stored": "<p><a href=\"mailto:info@example.org\">Mail</a> <a href=\"tel:+15550100\">Call</a> <a href=\"/about\">About</a> <a href=\"#join\">Join</a></p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "a",
+                "href": "mailto:info@example.org",
+                "c": [
+                  {
+                    "t": "text",
+                    "text": "Mail"
+                  }
+                ]
+              },
+              {
+                "t": "text",
+                "text": " "
+              },
+              {
+                "t": "a",
+                "href": "tel:+15550100",
+                "c": [
+                  {
+                    "t": "text",
+                    "text": "Call"
+                  }
+                ]
+              },
+              {
+                "t": "text",
+                "text": " "
+              },
+              {
+                "t": "a",
+                "href": "/about",
+                "c": [
+                  {
+                    "t": "text",
+                    "text": "About"
+                  }
+                ]
+              },
+              {
+                "t": "text",
+                "text": " "
+              },
+              {
+                "t": "a",
+                "href": "#join",
+                "c": [
+                  {
+                    "t": "text",
+                    "text": "Join"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "name": "protocol-relative link",
       "input": "<p><a href=\"//example.org/\">x</a></p>",
       "editor": "<p><a href=\"//example.org/\"><span style=\"white-space: pre-wrap;\">x</span></a></p>",
-      "stored": "<p><a href=\"//example.org/\">x</a></p>"
+      "stored": "<p><a href=\"//example.org/\">x</a></p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "x"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "name": "lists",
       "input": "<ul><li><p>One</p></li><li><p>Two</p></li></ul><ol><li><p>First</p></li></ol><p></p>",
       "editor": "<ul><li value=\"1\"><span style=\"white-space: pre-wrap;\">One</span></li><li value=\"2\"><span style=\"white-space: pre-wrap;\">Two</span></li></ul><ol><li value=\"1\"><span style=\"white-space: pre-wrap;\">First</span></li></ol><p></p>",
-      "stored": "<ul><li>One</li><li>Two</li></ul><ol><li>First</li></ol><p></p>"
+      "stored": "<ul><li>One</li><li>Two</li></ul><ol><li>First</li></ol><p></p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "ul",
+            "items": [
+              [
+                {
+                  "t": "p",
+                  "c": [
+                    {
+                      "t": "text",
+                      "text": "One"
+                    }
+                  ]
+                }
+              ],
+              [
+                {
+                  "t": "p",
+                  "c": [
+                    {
+                      "t": "text",
+                      "text": "Two"
+                    }
+                  ]
+                }
+              ]
+            ]
+          },
+          {
+            "t": "ol",
+            "items": [
+              [
+                {
+                  "t": "p",
+                  "c": [
+                    {
+                      "t": "text",
+                      "text": "First"
+                    }
+                  ]
+                }
+              ]
+            ]
+          }
+        ]
+      }
     },
     {
       "name": "nested list",
       "input": "<ul><li><p>a</p><ul><li><p>b</p></li></ul></li></ul><p></p>",
       "editor": "<ul><li value=\"1\"><span style=\"white-space: pre-wrap;\">a</span><ul><li value=\"1\"><span style=\"white-space: pre-wrap;\">b</span></li></ul></li></ul><p></p>",
-      "stored": "<ul><li>a<ul><li>b</li></ul></li></ul><p></p>"
+      "stored": "<ul><li>a<ul><li>b</li></ul></li></ul><p></p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "ul",
+            "items": [
+              [
+                {
+                  "t": "p",
+                  "c": [
+                    {
+                      "t": "text",
+                      "text": "a"
+                    }
+                  ]
+                },
+                {
+                  "t": "ul",
+                  "items": [
+                    [
+                      {
+                        "t": "p",
+                        "c": [
+                          {
+                            "t": "text",
+                            "text": "b"
+                          }
+                        ]
+                      }
+                    ]
+                  ]
+                }
+              ]
+            ]
+          }
+        ]
+      }
     },
     {
       "name": "quote",
       "input": "<blockquote><p>Quote</p></blockquote><p></p>",
       "editor": "<blockquote><p><span style=\"white-space: pre-wrap;\">Quote</span></p></blockquote><p></p>",
-      "stored": "<blockquote><p>Quote</p></blockquote><p></p>"
+      "stored": "<blockquote><p>Quote</p></blockquote><p></p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "quote",
+            "children": [
+              {
+                "t": "p",
+                "c": [
+                  {
+                    "t": "text",
+                    "text": "Quote"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "name": "quote with two paragraphs",
       "input": "<blockquote><p>a</p><p>b</p></blockquote><p></p>",
       "editor": "<blockquote><p><span style=\"white-space: pre-wrap;\">a</span></p><p><span style=\"white-space: pre-wrap;\">b</span></p></blockquote><p></p>",
-      "stored": "<blockquote><p>a</p><p>b</p></blockquote><p></p>"
+      "stored": "<blockquote><p>a</p><p>b</p></blockquote><p></p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "quote",
+            "children": [
+              {
+                "t": "p",
+                "c": [
+                  {
+                    "t": "text",
+                    "text": "a"
+                  }
+                ]
+              },
+              {
+                "t": "p",
+                "c": [
+                  {
+                    "t": "text",
+                    "text": "b"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "name": "line break",
       "input": "<p>Every signature<br />is counted.</p>",
       "editor": "<p><span style=\"white-space: pre-wrap;\">Every signature</span><br><span style=\"white-space: pre-wrap;\">is counted.</span></p>",
-      "stored": "<p>Every signature<br />is counted.</p>"
+      "stored": "<p>Every signature<br />is counted.</p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "Every signature"
+              },
+              {
+                "t": "br"
+              },
+              {
+                "t": "text",
+                "text": "is counted."
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "name": "empty paragraph between",
       "input": "<p>a</p><p></p><p>b</p>",
       "editor": "<p><span style=\"white-space: pre-wrap;\">a</span></p><p></p><p><span style=\"white-space: pre-wrap;\">b</span></p>",
-      "stored": "<p>a</p><p></p><p>b</p>"
+      "stored": "<p>a</p><p></p><p>b</p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "a"
+              }
+            ]
+          },
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "b"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "name": "horizontal rule",
       "input": "<p>Before</p><hr /><p>After</p>",
       "editor": "<p><span style=\"white-space: pre-wrap;\">Before</span></p><hr><p><span style=\"white-space: pre-wrap;\">After</span></p>",
-      "stored": "<p>Before</p><hr /><p>After</p>"
+      "stored": "<p>Before</p><hr /><p>After</p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "Before"
+              }
+            ]
+          },
+          {
+            "t": "hr"
+          },
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "After"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "name": "code block, several lines",
       "input": "<pre><code>line 1\nline 2\n  indented &lt;b&gt; &amp;&amp;</code></pre>",
       "editor": "<pre><code>line 1\nline 2\n  indented &lt;b&gt; &amp;&amp;</code></pre>",
-      "stored": "<pre><code>line 1\nline 2\n  indented &lt;b&gt; &amp;&amp;</code></pre>"
+      "stored": "<pre><code>line 1\nline 2\n  indented &lt;b&gt; &amp;&amp;</code></pre>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "code",
+            "text": "line 1\nline 2\n  indented <b> &&"
+          }
+        ]
+      }
     },
     {
       "name": "inline code across a break",
       "input": "<p><code>x<br />y</code></p>",
       "editor": "<p><code spellcheck=\"false\" style=\"white-space: pre-wrap;\"><span>x</span></code><br><code spellcheck=\"false\" style=\"white-space: pre-wrap;\"><span>y</span></code></p>",
-      "stored": "<p><code>x</code><br /><code>y</code></p>"
+      "stored": "<p><code>x</code><br /><code>y</code></p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "x",
+                "marks": ["code"]
+              },
+              {
+                "t": "br"
+              },
+              {
+                "t": "text",
+                "text": "y",
+                "marks": ["code"]
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "name": "loose root text",
       "input": "Title<p>Body</p>",
       "editor": "<p><span style=\"white-space: pre-wrap;\">Title</span></p><p><span style=\"white-space: pre-wrap;\">Body</span></p>",
-      "stored": "<p>Title</p><p>Body</p>"
+      "stored": "<p>Title</p><p>Body</p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "Title"
+              }
+            ]
+          },
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "Body"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "name": "entities",
       "input": "<p>Fish &amp; chips &lt;3 \"quoted\" it's</p>",
       "editor": "<p><span style=\"white-space: pre-wrap;\">Fish &amp; chips &lt;3 \"quoted\" it's</span></p>",
-      "stored": "<p>Fish &amp; chips &lt;3 \"quoted\" it's</p>"
+      "stored": "<p>Fish &amp; chips &lt;3 \"quoted\" it's</p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "Fish & chips <3 \"quoted\" it's"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "name": "non-breaking space",
       "input": "<p>a\u00a0b</p>",
       "editor": "<p><span style=\"white-space: pre-wrap;\">a&nbsp;b</span></p>",
-      "stored": "<p>a\u00a0b</p>"
+      "stored": "<p>a\u00a0b</p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "a\u00a0b"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "name": "empty",
       "input": "",
       "editor": "<p></p>",
-      "stored": null
+      "stored": null,
+      "nodes": {
+        "v": 1,
+        "children": []
+      }
     },
     {
       "name": "unsanitized: script, handlers and attributes",
       "input": "<p onclick=\"x()\" class=\"c\" style=\"color: red\">Hi</p><script>alert(1)</script><p>y</p>",
       "unsanitized": true,
       "editor": "<p><span style=\"white-space: pre-wrap;\">Hi</span></p><p><span style=\"white-space: pre-wrap;\">y</span></p>",
-      "stored": "<p>Hi</p><p>y</p>"
+      "stored": "<p>Hi</p><p>y</p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "Hi"
+              }
+            ]
+          },
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "y"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "name": "unsanitized: javascript link",
       "input": "<p><a href=\"javascript:alert(1)\">x</a></p>",
       "unsanitized": true,
       "editor": "<p><span style=\"white-space: pre-wrap;\">x</span></p>",
-      "stored": "<p>x</p>"
+      "stored": "<p>x</p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "x"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "name": "list inside a quote",
       "input": "<blockquote><ul><li><p>a</p></li></ul></blockquote><p></p>",
       "editor": "<blockquote><ul><li value=\"1\"><span style=\"white-space: pre-wrap;\">a</span></li></ul></blockquote><p></p>",
-      "stored": "<blockquote><ul><li>a</li></ul></blockquote><p></p>"
+      "stored": "<blockquote><ul><li>a</li></ul></blockquote><p></p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "quote",
+            "children": [
+              {
+                "t": "ul",
+                "items": [
+                  [
+                    {
+                      "t": "p",
+                      "c": [
+                        {
+                          "t": "text",
+                          "text": "a"
+                        }
+                      ]
+                    }
+                  ]
+                ]
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "name": "heading inside a quote",
       "input": "<blockquote><h2>A</h2><p>b</p></blockquote><p></p>",
       "editor": "<blockquote><h2><span style=\"white-space: pre-wrap;\">A</span></h2><p><span style=\"white-space: pre-wrap;\">b</span></p></blockquote><p></p>",
-      "stored": "<blockquote><h2>A</h2><p>b</p></blockquote><p></p>"
+      "stored": "<blockquote><h2>A</h2><p>b</p></blockquote><p></p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "quote",
+            "children": [
+              {
+                "t": "h",
+                "level": 2,
+                "c": [
+                  {
+                    "t": "text",
+                    "text": "A"
+                  }
+                ]
+              },
+              {
+                "t": "p",
+                "c": [
+                  {
+                    "t": "text",
+                    "text": "b"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "name": "quote inside a list item",
       "input": "<ul><li><blockquote><p>a</p></blockquote></li></ul><p></p>",
       "editor": "<ul><li value=\"1\"><blockquote><p><span style=\"white-space: pre-wrap;\">a</span></p></blockquote></li></ul><p></p>",
-      "stored": "<ul><li><blockquote><p>a</p></blockquote></li></ul><p></p>"
+      "stored": "<ul><li><blockquote><p>a</p></blockquote></li></ul><p></p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "ul",
+            "items": [
+              [
+                {
+                  "t": "quote",
+                  "children": [
+                    {
+                      "t": "p",
+                      "c": [
+                        {
+                          "t": "text",
+                          "text": "a"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            ]
+          }
+        ]
+      }
     },
     {
       "name": "code block inside a list item",
       "input": "<ul><li><pre><code>a</code></pre></li></ul><p></p>",
       "editor": "<ul><li value=\"1\"><pre><code>a</code></pre></li></ul><p></p>",
-      "stored": "<ul><li><pre><code>a</code></pre></li></ul><p></p>"
+      "stored": "<ul><li><pre><code>a</code></pre></li></ul><p></p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "ul",
+            "items": [
+              [
+                {
+                  "t": "code",
+                  "text": "a"
+                }
+              ]
+            ]
+          }
+        ]
+      }
     },
     {
       "name": "heading inside a list item",
       "input": "<ul><li><h3>A</h3></li></ul><p></p>",
       "editor": "<ul><li value=\"1\"><h3><span style=\"white-space: pre-wrap;\">A</span></h3></li></ul><p></p>",
-      "stored": "<ul><li><h3>A</h3></li></ul><p></p>"
+      "stored": "<ul><li><h3>A</h3></li></ul><p></p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "ul",
+            "items": [
+              [
+                {
+                  "t": "h",
+                  "level": 3,
+                  "c": [
+                    {
+                      "t": "text",
+                      "text": "A"
+                    }
+                  ]
+                }
+              ]
+            ]
+          }
+        ]
+      }
     },
     {
       "name": "schemeless link",
       "input": "<p><a href=\"contact\">Contact</a></p>",
       "editor": "<p><a href=\"contact\"><span style=\"white-space: pre-wrap;\">Contact</span></a></p>",
-      "stored": "<p><a href=\"contact\">Contact</a></p>"
-    }
-  ],
-  "readOnly": [
+      "stored": "<p><a href=\"contact\">Contact</a></p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "Contact"
+              }
+            ]
+          }
+        ]
+      }
+    },
     {
       "name": "image",
       "input": "<p>Text</p><p><img src=\"https://example.org/a.png\" alt=\"A\" width=\"640\" height=\"480\" /></p>",
-      "reason": "images"
+      "editor": "<p><span style=\"white-space: pre-wrap;\">Text</span></p><p><img src=\"https://example.org/a.png\" alt=\"A\" width=\"640\" height=\"480\"></p>",
+      "stored": "<p>Text</p><p><img src=\"https://example.org/a.png\" alt=\"A\" width=\"640\" height=\"480\" /></p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "Text"
+              }
+            ]
+          },
+          {
+            "t": "img",
+            "src": "https://example.org/a.png",
+            "alt": "A",
+            "width": 640,
+            "height": 480
+          }
+        ]
+      }
     },
     {
       "name": "figure with a caption",
       "input": "<figure><img src=\"https://example.org/a.png\" alt=\"A\" /><figcaption>Caption</figcaption></figure>",
-      "reason": "images"
+      "editor": "<figure><img src=\"https://example.org/a.png\" alt=\"A\"><figcaption>Caption</figcaption></figure>",
+      "stored": "<figure><img src=\"https://example.org/a.png\" alt=\"A\" /><figcaption>Caption</figcaption></figure>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "img",
+            "src": "https://example.org/a.png",
+            "alt": "A",
+            "caption": [
+              {
+                "t": "text",
+                "text": "Caption"
+              }
+            ]
+          }
+        ]
+      }
     },
+    {
+      "name": "image only",
+      "input": "<p><img src=\"https://example.org/a.png\" alt=\"A picture\" title=\"Picture\" /></p>",
+      "editor": "<p><img src=\"https://example.org/a.png\" alt=\"A picture\" title=\"Picture\"></p>",
+      "stored": "<p><img src=\"https://example.org/a.png\" alt=\"A picture\" title=\"Picture\" /></p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "img",
+            "src": "https://example.org/a.png",
+            "alt": "A picture"
+          }
+        ]
+      }
+    },
+    {
+      "name": "image in a link",
+      "input": "<p><a href=\"https://example.org/\"><img src=\"https://example.org/a.png\" alt=\"A\" /></a></p>",
+      "editor": "<p><a href=\"https://example.org/\"><img src=\"https://example.org/a.png\" alt=\"A\"></a></p>",
+      "stored": "<p><a href=\"https://example.org/\"><img src=\"https://example.org/a.png\" alt=\"A\" /></a></p>",
+      "nodes": {
+        "v": 1,
+        "children": []
+      }
+    },
+    {
+      "name": "image in a list item",
+      "input": "<ul><li><p>Item <img src=\"https://example.org/a.png\" alt=\"A\" /></p></li></ul><p></p>",
+      "editor": "<ul><li value=\"1\"><span style=\"white-space: pre-wrap;\">Item </span><img src=\"https://example.org/a.png\" alt=\"A\"></li></ul><p></p>",
+      "stored": "<ul><li>Item <img src=\"https://example.org/a.png\" alt=\"A\" /></li></ul><p></p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "ul",
+            "items": [
+              [
+                {
+                  "t": "p",
+                  "c": [
+                    {
+                      "t": "text",
+                      "text": "Item"
+                    }
+                  ]
+                },
+                {
+                  "t": "img",
+                  "src": "https://example.org/a.png",
+                  "alt": "A"
+                }
+              ]
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "image in a quote",
+      "input": "<blockquote><p>Quote <img src=\"https://example.org/a.png\" alt=\"A\" /></p></blockquote><p></p>",
+      "editor": "<blockquote><p><span style=\"white-space: pre-wrap;\">Quote </span><img src=\"https://example.org/a.png\" alt=\"A\"></p></blockquote><p></p>",
+      "stored": "<blockquote><p>Quote <img src=\"https://example.org/a.png\" alt=\"A\" /></p></blockquote><p></p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "quote",
+            "children": [
+              {
+                "t": "p",
+                "c": [
+                  {
+                    "t": "text",
+                    "text": "Quote"
+                  }
+                ]
+              },
+              {
+                "t": "img",
+                "src": "https://example.org/a.png",
+                "alt": "A"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "image in a heading",
+      "input": "<h2>Title <img src=\"https://example.org/a.png\" alt=\"A\" /></h2><p>Body</p>",
+      "editor": "<h2><span style=\"white-space: pre-wrap;\">Title </span><img src=\"https://example.org/a.png\" alt=\"A\"></h2><p><span style=\"white-space: pre-wrap;\">Body</span></p>",
+      "stored": "<h2>Title <img src=\"https://example.org/a.png\" alt=\"A\" /></h2><p>Body</p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "h",
+            "level": 2,
+            "c": [
+              {
+                "t": "text",
+                "text": "Title"
+              }
+            ]
+          },
+          {
+            "t": "img",
+            "src": "https://example.org/a.png",
+            "alt": "A"
+          },
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "Body"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "http image",
+      "input": "<p><img src=\"http://example.org/a.png\" alt=\"A\" /></p>",
+      "editor": "<p><img src=\"http://example.org/a.png\" alt=\"A\"></p>",
+      "stored": "<p><img src=\"http://example.org/a.png\" alt=\"A\" /></p>",
+      "nodes": {
+        "v": 1,
+        "children": []
+      }
+    },
+    {
+      "name": "image between words",
+      "input": "<p>Join us <img src=\"https://example.org/a.png\" alt=\"A\" /> today</p>",
+      "editor": "<p><span style=\"white-space: pre-wrap;\">Join us </span><img src=\"https://example.org/a.png\" alt=\"A\"><span style=\"white-space: pre-wrap;\"> today</span></p>",
+      "stored": "<p>Join us <img src=\"https://example.org/a.png\" alt=\"A\" /> today</p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "Join us"
+              }
+            ]
+          },
+          {
+            "t": "img",
+            "src": "https://example.org/a.png",
+            "alt": "A"
+          },
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "today"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "image in a link with text after",
+      "input": "<p><a href=\"https://example.org/\">More <img src=\"https://example.org/a.png\" alt=\"A\" /></a> after</p>",
+      "editor": "<p><a href=\"https://example.org/\"><span style=\"white-space: pre-wrap;\">More </span><img src=\"https://example.org/a.png\" alt=\"A\"></a><span style=\"white-space: pre-wrap;\"> after</span></p>",
+      "stored": "<p><a href=\"https://example.org/\">More <img src=\"https://example.org/a.png\" alt=\"A\" /></a> after</p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "a",
+                "href": "https://example.org/",
+                "c": [
+                  {
+                    "t": "text",
+                    "text": "More "
+                  }
+                ]
+              },
+              {
+                "t": "text",
+                "text": " after"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "linked image between words",
+      "input": "<p>See <a href=\"https://example.org/\"><img src=\"https://example.org/a.png\" alt=\"A\" /></a> here</p>",
+      "editor": "<p><span style=\"white-space: pre-wrap;\">See </span><a href=\"https://example.org/\"><img src=\"https://example.org/a.png\" alt=\"A\"></a><span style=\"white-space: pre-wrap;\"> here</span></p>",
+      "stored": "<p>See <a href=\"https://example.org/\"><img src=\"https://example.org/a.png\" alt=\"A\" /></a> here</p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "See here"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "linked image at the end of a line",
+      "input": "<p>Hi <a href=\"https://example.org/\"><img src=\"https://example.org/a.png\" alt=\"A\" /></a></p>",
+      "editor": "<p><span style=\"white-space: pre-wrap;\">Hi </span><a href=\"https://example.org/\"><img src=\"https://example.org/a.png\" alt=\"A\"></a></p>",
+      "stored": "<p>Hi <a href=\"https://example.org/\"><img src=\"https://example.org/a.png\" alt=\"A\" /></a></p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "Hi"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "linked image at the start of a line",
+      "input": "<p><a href=\"https://example.org/\"><img src=\"https://example.org/a.png\" alt=\"A\" /></a> after</p>",
+      "editor": "<p><a href=\"https://example.org/\"><img src=\"https://example.org/a.png\" alt=\"A\"></a><span style=\"white-space: pre-wrap;\"> after</span></p>",
+      "stored": "<p><a href=\"https://example.org/\"><img src=\"https://example.org/a.png\" alt=\"A\" /></a> after</p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "after"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "empty mark beside an image in a link",
+      "input": "<p><a href=\"https://example.org/\">x<img src=\"https://example.org/a.png\" alt=\"A\" /><strong></strong></a> after</p>",
+      "editor": "<p><a href=\"https://example.org/\"><span style=\"white-space: pre-wrap;\">x</span><img src=\"https://example.org/a.png\" alt=\"A\"></a><span style=\"white-space: pre-wrap;\"> after</span></p>",
+      "stored": "<p><a href=\"https://example.org/\">x<img src=\"https://example.org/a.png\" alt=\"A\" /></a> after</p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "a",
+                "href": "https://example.org/",
+                "c": [
+                  {
+                    "t": "text",
+                    "text": "x"
+                  }
+                ]
+              },
+              {
+                "t": "text",
+                "text": " after"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "empty mark beside an image",
+      "input": "<p>before <em></em><img src=\"https://example.org/a.png\" alt=\"A\" /> after</p>",
+      "editor": "<p><span style=\"white-space: pre-wrap;\">before </span><img src=\"https://example.org/a.png\" alt=\"A\"><span style=\"white-space: pre-wrap;\"> after</span></p>",
+      "stored": "<p>before <img src=\"https://example.org/a.png\" alt=\"A\" /> after</p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "before"
+              }
+            ]
+          },
+          {
+            "t": "img",
+            "src": "https://example.org/a.png",
+            "alt": "A"
+          },
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "after"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "link with nothing in it",
+      "input": "<p>x<a href=\"https://example.org/\"></a>y</p>",
+      "editor": "<p><span style=\"white-space: pre-wrap;\">xy</span></p>",
+      "stored": "<p>xy</p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "xy"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "link holding an empty mark",
+      "input": "<p>x<a href=\"https://example.org/\"><strong></strong></a>y</p>",
+      "editor": "<p><span style=\"white-space: pre-wrap;\">xy</span></p>",
+      "stored": "<p>xy</p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "xy"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "empty heading",
+      "input": "<h2></h2><p>x</p>",
+      "editor": "<h2></h2><p><span style=\"white-space: pre-wrap;\">x</span></p>",
+      "stored": "<h2></h2><p>x</p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "x"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "paragraph ending in a blank line",
+      "input": "<p>Last line<br /><br /></p>",
+      "editor": "<p><span style=\"white-space: pre-wrap;\">Last line</span><br><br></p>",
+      "stored": "<p>Last line<br /><br /></p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "Last line"
+              },
+              {
+                "t": "br"
+              },
+              {
+                "t": "br"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "list item ending in a blank line",
+      "input": "<ul><li>Last item<br /><br /></li></ul><p>x</p>",
+      "editor": "<ul><li value=\"1\"><span style=\"white-space: pre-wrap;\">Last item</span><br><br></li></ul><p><span style=\"white-space: pre-wrap;\">x</span></p>",
+      "stored": "<ul><li>Last item<br /><br /></li></ul><p>x</p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "ul",
+            "items": [
+              [
+                {
+                  "t": "p",
+                  "c": [
+                    {
+                      "t": "text",
+                      "text": "Last item"
+                    },
+                    {
+                      "t": "br"
+                    },
+                    {
+                      "t": "br"
+                    }
+                  ]
+                }
+              ]
+            ]
+          },
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "x"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "line break before a nested list",
+      "input": "<ul><li>Parent<br /><ul><li>Child</li></ul></li></ul><p>x</p>",
+      "editor": "<ul><li value=\"1\"><span style=\"white-space: pre-wrap;\">Parent</span><br><ul><li value=\"1\"><span style=\"white-space: pre-wrap;\">Child</span></li></ul></li></ul><p><span style=\"white-space: pre-wrap;\">x</span></p>",
+      "stored": "<ul><li>Parent<br /><ul><li>Child</li></ul></li></ul><p>x</p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "ul",
+            "items": [
+              [
+                {
+                  "t": "p",
+                  "c": [
+                    {
+                      "t": "text",
+                      "text": "Parent"
+                    },
+                    {
+                      "t": "br"
+                    }
+                  ]
+                },
+                {
+                  "t": "ul",
+                  "items": [
+                    [
+                      {
+                        "t": "p",
+                        "c": [
+                          {
+                            "t": "text",
+                            "text": "Child"
+                          }
+                        ]
+                      }
+                    ]
+                  ]
+                }
+              ]
+            ]
+          },
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "x"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "paragraph holding only a line break",
+      "input": "<p><br /></p><p>x</p>",
+      "editor": "<p><br></p><p><span style=\"white-space: pre-wrap;\">x</span></p>",
+      "stored": "<p><br /></p><p>x</p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "br"
+              }
+            ]
+          },
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "x"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "heading holding only a line break",
+      "input": "<h2><br /></h2><p>x</p>",
+      "editor": "<h2><br></h2><p><span style=\"white-space: pre-wrap;\">x</span></p>",
+      "stored": "<h2><br /></h2><p>x</p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "h",
+            "level": 2,
+            "c": [
+              {
+                "t": "br"
+              }
+            ]
+          },
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "x"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "list item holding only a line break",
+      "input": "<ul><li><br /></li></ul><p>x</p>",
+      "editor": "<ul><li value=\"1\"><br></li></ul><p><span style=\"white-space: pre-wrap;\">x</span></p>",
+      "stored": "<ul><li><br /></li></ul><p>x</p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "ul",
+            "items": [
+              [
+                {
+                  "t": "p",
+                  "c": [
+                    {
+                      "t": "br"
+                    }
+                  ]
+                }
+              ]
+            ]
+          },
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "x"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "blank line of a non-breaking space",
+      "input": "<p>a</p><p>\u00a0</p><p>b</p>",
+      "editor": "<p><span style=\"white-space: pre-wrap;\">a</span></p><p><span style=\"white-space: pre-wrap;\">&nbsp;</span></p><p><span style=\"white-space: pre-wrap;\">b</span></p>",
+      "stored": "<p>a</p><p>\u00a0</p><p>b</p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "a"
+              }
+            ]
+          },
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "\u00a0"
+              }
+            ]
+          },
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "b"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "heading holding only a non-breaking space",
+      "input": "<h2>\u00a0</h2><p>x</p>",
+      "editor": "<h2><span style=\"white-space: pre-wrap;\">&nbsp;</span></h2><p><span style=\"white-space: pre-wrap;\">x</span></p>",
+      "stored": "<h2>\u00a0</h2><p>x</p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "h",
+            "level": 2,
+            "c": [
+              {
+                "t": "text",
+                "text": "\u00a0"
+              }
+            ]
+          },
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "x"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "line break ending its paragraph inside a mark",
+      "input": "<p><strong>Bold end<br /></strong></p>",
+      "editor": "<p><b><strong style=\"white-space: pre-wrap;\">Bold end</strong></b><br></p>",
+      "stored": "<p><b><strong>Bold end</strong></b><br /></p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "Bold end",
+                "marks": ["b"]
+              },
+              {
+                "t": "br"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "line break before an empty mark at its block's end",
+      "input": "<p>one<br /><strong></strong></p>",
+      "editor": "<p><span style=\"white-space: pre-wrap;\">one</span><br></p>",
+      "stored": "<p>one<br /></p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "one"
+              },
+              {
+                "t": "br"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "readOnly": [
     {
       "name": "list item with two paragraphs",
       "input": "<ul><li><p>a</p><p>b</p></li></ul><p></p>",
-      "reason": "lossy"
+      "reason": "lossy",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "ul",
+            "items": [
+              [
+                {
+                  "t": "p",
+                  "c": [
+                    {
+                      "t": "text",
+                      "text": "a"
+                    }
+                  ]
+                },
+                {
+                  "t": "p",
+                  "c": [
+                    {
+                      "t": "text",
+                      "text": "b"
+                    }
+                  ]
+                }
+              ]
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "captioned figure in a quote",
+      "input": "<blockquote><figure><img src=\"https://example.org/a.png\" alt=\"A\" /><figcaption>c</figcaption></figure></blockquote>",
+      "reason": "lossy",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "quote",
+            "children": [
+              {
+                "t": "img",
+                "src": "https://example.org/a.png",
+                "alt": "A",
+                "caption": [
+                  {
+                    "t": "text",
+                    "text": "c"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "captioned figure in a list item",
+      "input": "<ul><li><figure><img src=\"https://example.org/a.png\" alt=\"A\" /><figcaption>c</figcaption></figure></li></ul><p></p>",
+      "reason": "lossy",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "ul",
+            "items": [
+              [
+                {
+                  "t": "img",
+                  "src": "https://example.org/a.png",
+                  "alt": "A",
+                  "caption": [
+                    {
+                      "t": "text",
+                      "text": "c"
+                    }
+                  ]
+                }
+              ]
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "list item with a paragraph and a figure",
+      "input": "<ul><li><p>a</p><figure><img src=\"https://example.org/a.png\" alt=\"A\" /></figure></li></ul><p></p>",
+      "reason": "lossy",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "ul",
+            "items": [
+              [
+                {
+                  "t": "p",
+                  "c": [
+                    {
+                      "t": "text",
+                      "text": "a"
+                    }
+                  ]
+                },
+                {
+                  "t": "img",
+                  "src": "https://example.org/a.png",
+                  "alt": "A"
+                }
+              ]
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "list item with a paragraph and an image",
+      "input": "<ul><li><img src=\"https://example.org/a.png\" alt=\"A\" /><p>b</p></li></ul><p></p>",
+      "reason": "lossy",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "ul",
+            "items": [
+              [
+                {
+                  "t": "img",
+                  "src": "https://example.org/a.png",
+                  "alt": "A"
+                },
+                {
+                  "t": "p",
+                  "c": [
+                    {
+                      "t": "text",
+                      "text": "b"
+                    }
+                  ]
+                }
+              ]
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "image in a link with no address",
+      "input": "<p>More <a><img src=\"https://example.org/a.png\" alt=\"A\" /></a> after</p>",
+      "reason": "lossy",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "More after"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "image beside a whitespace-only link",
+      "input": "<p>x<img src=\"https://example.org/a.png\" alt=\"A\" /><a href=\"https://example.org/\"> </a></p>",
+      "reason": "lossy",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "x"
+              }
+            ]
+          },
+          {
+            "t": "img",
+            "src": "https://example.org/a.png",
+            "alt": "A"
+          },
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "a",
+                "href": "https://example.org/",
+                "c": [
+                  {
+                    "t": "text",
+                    "text": " "
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "heading in a link",
+      "input": "<p><a href=\"https://example.org/\"><h2>Title</h2></a></p>",
+      "reason": "lossy",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "a",
+                "href": "https://example.org/",
+                "c": [
+                  {
+                    "t": "text",
+                    "text": " Title "
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "heading in a link after its text",
+      "input": "<p><a href=\"https://example.org/\">News<h3>Title</h3></a></p>",
+      "reason": "lossy",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "a",
+                "href": "https://example.org/",
+                "c": [
+                  {
+                    "t": "text",
+                    "text": "News Title "
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "rule in a link between words",
+      "input": "<p>x<a href=\"https://example.org/\">t<hr /></a>y</p>",
+      "reason": "lossy",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "x"
+              },
+              {
+                "t": "a",
+                "href": "https://example.org/",
+                "c": [
+                  {
+                    "t": "text",
+                    "text": "t"
+                  }
+                ]
+              },
+              {
+                "t": "text",
+                "text": "y"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "heading in a mark",
+      "input": "<p><em><h2>Title</h2></em></p>",
+      "reason": "lossy",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "h",
+            "level": 2,
+            "c": [
+              {
+                "t": "text",
+                "text": "Title"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "paragraph in a mark",
+      "input": "<strong><p>Bold</p></strong>",
+      "reason": "lossy",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "Bold"
+              }
+            ]
+          }
+        ]
+      }
     }
   ]
 }

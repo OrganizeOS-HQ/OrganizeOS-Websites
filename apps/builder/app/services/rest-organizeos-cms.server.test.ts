@@ -227,12 +227,16 @@ describe("matchCmsPath", () => {
     });
   });
 
-  test.each(["optionKey=kind", "status=live", "sort=field:Bad-key", "zz=1"])(
-    "E3 with %s is no match",
-    (search) =>
-      expect(
-        match("GET", `collections/${c}/items`, `?${search}`)
-      ).toBeUndefined()
+  test.each([
+    "optionKey=kind",
+    "optionValue=x",
+    "direction=up",
+    `optionKey=kind&optionValue=${"x".repeat(81)}`,
+    "status=live",
+    "sort=field:Bad-key",
+    "zz=1",
+  ])("E3 with %s is no match", (search) =>
+    expect(match("GET", `collections/${c}/items`, `?${search}`)).toBeUndefined()
   );
 
   test.each(["Q&A night", "Café", "a+b %2F c"])(
@@ -470,6 +474,20 @@ describe("rest.organizeos-cms", () => {
     const expected = `${base}/collections/${c}/items?page=2&q=caf%C3%A9`;
     expect(sent[0].target).toBe(expected);
     expect(claimsOf(sent[0].header).p).toBe(hashCmsBytes(expected));
+  });
+
+  test("answers 404 for the forms door's paths and still mints aud cms", async () => {
+    for (const [splat, search] of [
+      ["forms", "?kind=contact-signup"],
+      ["catalog", "?kind=membership"],
+    ]) {
+      const response = await call({ splat, search });
+      expect(response.status, splat).toBe(404);
+    }
+    expect(sent).toEqual([]);
+    await call();
+    expect(claimsOf(sent[0].header).aud).toBe("cms");
+    expect(sent[0].target.startsWith(`${CMS_PLATFORM_BASE_PATH}/`)).toBe(true);
   });
 
   test("takes the org from the project's owner, whatever the request says", async () => {
@@ -1083,4 +1101,118 @@ describe("bodies", () => {
       expect(claimsOf(sent[0].header).h).toBe(hashCmsBytes(bytes));
     }
   );
+});
+
+describe("the structure endpoints", () => {
+  const cases = [
+    { endpoint: "E20", method: "GET", splat: "structure", permit: "view" },
+    {
+      endpoint: "E21",
+      method: "GET",
+      splat: `collections/${c}/structure`,
+      permit: "view",
+    },
+    { endpoint: "E22", method: "POST", splat: "collections", permit: "edit" },
+    {
+      endpoint: "E23",
+      method: "PUT",
+      splat: `collections/${c}`,
+      permit: "edit",
+    },
+    {
+      endpoint: "E24",
+      method: "PUT",
+      splat: `collections/${c}/schema`,
+      permit: "edit",
+    },
+    {
+      endpoint: "E25",
+      method: "POST",
+      splat: `collections/${c}/delete`,
+      permit: "edit",
+    },
+  ] as const;
+
+  test.each(cases)(
+    "$endpoint matches and forwards its rebuilt path with its permit",
+    async ({ endpoint, method, splat, permit }) => {
+      expect(match(method, splat)).toEqual({
+        endpoint,
+        method,
+        path: splat,
+        query: [],
+        body: method === "GET" ? "none" : "json",
+      });
+      const response = await call({
+        method,
+        splat,
+        ...(method === "GET"
+          ? {}
+          : {
+              body: "{}",
+              headers: { "content-type": "application/json" },
+            }),
+      });
+      expect(response.status).toBe(200);
+      expect(asked).toEqual([permit]);
+      expect(sent).toHaveLength(1);
+      expect(sent[0].method).toBe(method);
+      expect(sent[0].target).toBe(`${base}/${splat}`);
+    }
+  );
+
+  test("DELETE on a collection is 405", async () => {
+    const response = await call({
+      method: "DELETE",
+      splat: `collections/${c}`,
+    });
+    expect(response.status).toBe(405);
+    expect(sent).toEqual([]);
+  });
+
+  test("an extra segment is 404 and never forwarded", async () => {
+    for (const splat of [
+      `collections/${c}/structure/x`,
+      `collections/${c}/delete/x`,
+      `collections/${c}/schema/x`,
+      "structure/x",
+    ]) {
+      const response = await call({ splat });
+      expect(response.status, splat).toBe(404);
+      const write = await call({
+        method: "POST",
+        splat,
+        body: "{}",
+        headers: { "content-type": "application/json" },
+      });
+      expect(write.status, splat).toBe(404);
+    }
+    expect(sent).toEqual([]);
+  });
+
+  test("a query on any of them is 404", async () => {
+    for (const { method, splat } of cases) {
+      expect(match(method, splat, "?a=1"), splat).toBeUndefined();
+      const response = await call({
+        method,
+        splat,
+        search: "?a=1",
+        ...(method === "GET"
+          ? {}
+          : {
+              body: "{}",
+              headers: { "content-type": "application/json" },
+            }),
+      });
+      expect(response.status, splat).toBe(404);
+    }
+    expect(sent).toEqual([]);
+  });
+
+  test("the wrong method on a structure path matches nothing", () => {
+    expect(match("GET", `collections/${c}/schema`)).toBeUndefined();
+    expect(match("GET", `collections/${c}/delete`)).toBeUndefined();
+    expect(match("POST", "structure")).toBeUndefined();
+    expect(match("PUT", `collections/${c}/structure`)).toBeUndefined();
+  });
 });

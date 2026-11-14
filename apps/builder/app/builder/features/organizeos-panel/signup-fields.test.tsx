@@ -385,6 +385,7 @@ describe("listRootFields and getFieldRows", () => {
           formId: "form-1",
           fields: requiredConsent,
           unavailable: undefined,
+          site: false,
         },
         rootFields: {
           byName: new Map([
@@ -775,6 +776,7 @@ describe("changeSignupForm", () => {
           formId: "form-2",
           fields: newFields,
           unavailable: undefined,
+          site: false,
         },
         rootFields: rootFields(rootId),
         failedLoads: false,
@@ -1036,6 +1038,7 @@ describe("getSignupWarning", () => {
     formId: "form-1",
     fields,
     unavailable: undefined,
+    site: false,
   });
   const present = (
     names: string[],
@@ -1066,7 +1069,12 @@ describe("getSignupWarning", () => {
     expect(warn({ nested: true })).toBe("Nested in a form");
     expect(
       warn({
-        resolution: { formId: "x", fields: undefined, unavailable: "record" },
+        resolution: {
+          formId: "x",
+          fields: undefined,
+          unavailable: "record",
+          site: false,
+        },
       })
     ).toBe("Form not found");
     expect(warn({ rootFields: present(["first_name"]) })).toBe(
@@ -1098,7 +1106,12 @@ describe("getSignupWarning", () => {
     );
     expect(
       warn({
-        resolution: { formId: "x", fields: undefined, unavailable: "kind" },
+        resolution: {
+          formId: "x",
+          fields: undefined,
+          unavailable: "kind",
+          site: false,
+        },
         rootFields: everything,
       })
     ).toBe("Form not found");
@@ -1149,6 +1162,7 @@ describe("getSignupWarning", () => {
       formId: "x",
       fields: undefined,
       unavailable: "data",
+      site: false,
     };
     expect(
       warn({
@@ -1173,7 +1187,12 @@ describe("getSignupWarning", () => {
     expect(
       warn({
         data: undefined,
-        resolution: { formId: "x", fields: undefined, unavailable: "data" },
+        resolution: {
+          formId: "x",
+          fields: undefined,
+          unavailable: "data",
+          site: false,
+        },
       })
     ).toBeUndefined();
   });

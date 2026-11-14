@@ -211,6 +211,7 @@ export const cmsErrorCodes = [
   "rate_limited",
   "unavailable",
   "updating",
+  "referenced",
 ] as const;
 
 export type CmsErrorCode = (typeof cmsErrorCodes)[number];

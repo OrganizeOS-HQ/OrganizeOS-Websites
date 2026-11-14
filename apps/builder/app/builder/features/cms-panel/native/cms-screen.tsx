@@ -32,6 +32,7 @@ import {
   toast,
 } from "@webstudio-is/design-system";
 import type { CmsDeepLink } from "../cms-panel";
+import { afterTwoFrames, keepFocusInScreen } from "./focus-keeper";
 import {
   getClassicDeepLink,
   getRefusal,
@@ -62,6 +63,13 @@ import { CollectionsColumn } from "./collections-column";
 import { ItemEditor } from "./item-editor";
 import { ItemsView } from "./items-view";
 import { RefusalLine, type CmsLineKind } from "./refusal-line";
+import { createReorderState } from "./reorder-state";
+import type { CmsStructureSource } from "./cms-structure-source";
+import {
+  useCmsStructure,
+  type CmsStructureEffect,
+  type CmsStructureInitial,
+} from "./use-cms-structure";
 
 export type CmsScreenView = {
   collectionId?: string;
@@ -71,6 +79,8 @@ export type CmsScreenView = {
   query?: string;
   /** The list's filter and sort; the selection always starts empty. */
   list?: Pick<CmsListState, "status" | "sort" | "direction" | "option">;
+  /** Slice 3: a tab, a view, a dialog. */
+  structure?: CmsStructureInitial;
 };
 
 export type CmsScreenProps = {
@@ -102,12 +112,25 @@ export type CmsScreenProps = {
   catalogSlots?: (
     collections: readonly CmsCollectionSummary[]
   ) => CmsCatalogSlots | undefined;
+  /** Slice 3: the structure screens' door (E20 to E25). */
+  structure?: CmsStructureSource;
+  /**
+   * After a structure write that changes values the canvas shows: its
+   * requests for the collection's old address are invalidated (4.7).
+   */
+  onCollectionCanvasStale?: (slug: string) => void;
 };
 
 /** What the column draws from the build's catalog (4.5). */
 export type CmsCatalogSlots = {
-  /** A row's "..." menu; null for a collection with no catalog Resource. */
-  renderActions: (collection: CmsCollectionSummary) => ReactNode;
+  /**
+   * A row's "..." menu, holding the given items first and last; null for a
+   * private collection or one with no catalog Resource.
+   */
+  renderActions: (
+    collection: CmsCollectionSummary,
+    items: { leading: ReactNode; trailing: ReactNode }
+  ) => ReactNode;
   /** The line under a row; null when its item page is not stale. */
   renderStaleLine: (collection: CmsCollectionSummary) => ReactNode;
   /** The orphan rows at the column's foot. */
@@ -154,7 +177,7 @@ const mapReadFailure = (
 };
 
 /** What showed the screen's line: E0 and E1, the editor, E2 or E3. */
-type LineCause = "load" | "editor" | "detail" | "page";
+type LineCause = "load" | "editor" | "detail" | "page" | "structure";
 
 const defaultNavigate = (url: string) => {
   window.location.assign(url);
@@ -190,6 +213,8 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       onItemWritten,
       initialView,
       catalogSlots,
+      structure,
+      onCollectionCanvasStale,
     },
     ref
   ) => {
@@ -240,6 +265,11 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
     // Bumped on every E3 answer for the current key, success or failure; a
     // reorder's wait reads it (Task 18).
     const [pageAnswer, setPageAnswer] = useState({ count: 0, ok: true });
+    // The items table's reorder state, kept while the table remounts (an
+    // item visit, the page line); other views read whether an E13 is in
+    // flight from it.
+    const [reorderState] = useState(createReorderState);
+    reorderState.notePageAnswer(pageAnswer.count);
     const [itemsPage, setItemsPage] = useState<CmsItemsPage | undefined>(
       undefined
     );
@@ -247,6 +277,13 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
     const [detailFailed, setDetailFailed] = useState(false);
     const [detailAttempt, setDetailAttempt] = useState(0);
     const [pageFailed, setPageFailed] = useState(false);
+    // The collection whose E3 failed with no page drawn, so its line shows:
+    // a failed E2 there adds no toast.
+    const pageLineFor = useRef<string | undefined>(undefined);
+    // The toast a failed E2 showed with no fields drawn, and its collection.
+    const detailToast = useRef<
+      { collectionId: string; id: string } | undefined
+    >(undefined);
     const [pageAttempt, setPageAttempt] = useState(0);
     const [isEditorDirty, setIsEditorDirty] = useState(false);
     const [pending, setPending] = useState<
@@ -297,6 +334,20 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
     const refetchFieldsRef = useRef<(() => Promise<void>) | undefined>(
       undefined
     );
+    // The field keys (columns, filter field, option key) the last E3
+    // answer named, and its collection.
+    const drawnPageWanted = useRef<
+      { collectionId: string; wanted: string[] } | undefined
+    >(undefined);
+    // The collection whose foreground E2 failed with no fields drawn: its
+    // next E3 answer asks for the fields once more.
+    const detailFailedFor = useRef<string | undefined>(undefined);
+    // read when a schema refresh answers: the collection open now
+    const openCollectionId = useRef(collectionId);
+    openCollectionId.current = collectionId;
+    // read when E2 fails: whether the editor shows, so its line is the one
+    const isItemOpen = useRef(false);
+    isItemOpen.current = itemId !== undefined;
     const applyLoadedFields = (loaded: CmsCollection) => {
       if (loadedFields.current?.id !== loaded.id) {
         refreshedMissing.current = new Set();
@@ -327,6 +378,34 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
         setOpens((current) => current + 1);
       }
     }, [isVisible]);
+
+    // One focus keeper: after each render, and whenever the focus leaves an
+    // element, two frames later (after the placements of their own), a focus
+    // lost to the page (the body, or an
+    // element no longer drawn) goes to the nearest control drawn, unless a
+    // dialog, menu or list is open
+    const keepsFocus = isVisible && hidden === false;
+    useEffect(() => {
+      if (keepsFocus === false) {
+        return;
+      }
+      return afterTwoFrames(keepFocusInScreen);
+    });
+    useEffect(() => {
+      if (keepsFocus === false) {
+        return;
+      }
+      let cancel = () => {};
+      const onFocusOut = () => {
+        cancel();
+        cancel = afterTwoFrames(keepFocusInScreen);
+      };
+      document.addEventListener("focusout", onFocusOut);
+      return () => {
+        cancel();
+        document.removeEventListener("focusout", onFocusOut);
+      };
+    }, [keepsFocus]);
 
     // E0 and E1, on open, on each reopen and on Retry (which reads E2 and
     // E3 again too).
@@ -465,12 +544,44 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
               });
             } else {
               setDetailFailed(true);
+              detailFailedFor.current = collectionId;
+              refreshedMissing.current = new Set();
+              // fields loaded on an earlier visit are not this answer's: the
+              // next E3 answer asks for them again
+              if (loadedFields.current?.id === collectionId) {
+                loadedFields.current = undefined;
+              }
+              // this collection's page answered first: its field keys ask
+              // for the fields once more now
+              const answered = drawnPageWanted.current;
+              if (
+                answered !== undefined &&
+                answered.collectionId === collectionId &&
+                answered.wanted.length > 0
+              ) {
+                for (const entry of answered.wanted) {
+                  refreshedMissing.current.add(entry);
+                }
+                void refetchFieldsRef.current?.();
+              }
+              // the list has no line for it: the toast, unless E3's line
+              // shows, and its next E3 answer asks for the fields again
+              if (
+                isItemOpen.current === false &&
+                pageLineFor.current !== collectionId
+              ) {
+                const id = `cms-read-${result.error}`;
+                detailToast.current = { collectionId, id };
+                toast.error(getToastText(result.error), { id });
+              }
             }
           }
           return;
         }
         clearLine("detail");
         setDetailFailed(false);
+        detailFailedFor.current = undefined;
+        detailToast.current = undefined;
         applyLoadedFields(result.collection);
         setDetail(result.collection);
       });
@@ -526,6 +637,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       let isCurrent = true;
       if (isBackground === false) {
         setPageFailed(false);
+        pageLineFor.current = undefined;
       }
       void source
         .listItems(collectionId, toItemsQuery(effectList, query, page))
@@ -582,12 +694,19 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
                 }
               } else {
                 setPageFailed(true);
+                pageLineFor.current = collectionId;
+                // the line says what a failed E2's toast said
+                if (detailToast.current?.collectionId === collectionId) {
+                  toast.dismiss(detailToast.current.id);
+                  detailToast.current = undefined;
+                }
               }
             }
             return;
           }
           clearLine("page");
           setPageFailed(false);
+          pageLineFor.current = undefined;
           setItemsPage(result);
           {
             const drawnList = adoptApplied(effectList, result.applied);
@@ -633,15 +752,20 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
           // a columns, filterField or option key the cached fields lack
           // refreshes the schema once (6.1), only while this collection's
           // fields are loaded
-          if (loadedFields.current?.id === collectionId) {
+          // a collection whose E2 failed has none: every key is missing
+          const wanted = [
+            ...result.columns,
+            result.filterField,
+            result.applied.optionKey,
+          ].filter((entry): entry is string => typeof entry === "string");
+          drawnPageWanted.current = { collectionId, wanted };
+          const fieldsLoaded = loadedFields.current?.id === collectionId;
+          if (fieldsLoaded || detailFailedFor.current === collectionId) {
             const have = new Set(
-              loadedFields.current.fields.map((field) => field.key)
+              fieldsLoaded
+                ? (loadedFields.current?.fields ?? []).map((field) => field.key)
+                : []
             );
-            const wanted = [
-              ...result.columns,
-              result.filterField,
-              result.applied.optionKey,
-            ].filter((entry): entry is string => typeof entry === "string");
             const missing = wanted.filter((entry) => have.has(entry) === false);
             if (
               missing.some(
@@ -685,8 +809,11 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
      * `movesFocus`: after Discard, the action runs once the dialog has
      * closed.
      */
+    // what had the focus when the guard asked: Keep editing gives it back
+    const guardOpener = useRef<Element | null>(null);
     const guard = (run: () => void, { movesFocus = false } = {}) => {
       if (isEditorDirty) {
+        guardOpener.current = document.activeElement;
         setPending({ run, movesFocus });
         return;
       }
@@ -708,27 +835,76 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
         ? lastCollection.current
         : undefined);
 
-    const selectCollection = (nextId: string) =>
+    /** Opens a collection's items, past the guard, closing a structure view. */
+    const applyCollection = (nextId: string | undefined) => {
+      setIsEditorDirty(false);
+      if (nextId !== collectionId) {
+        setItemsPage(undefined);
+        setDetail(undefined);
+      }
+      setCollectionId(nextId);
+      setItemId(undefined);
+      setPage(1);
+      setQuery("");
+      setReturnFocusItemId(undefined);
+      setDeletedItemId(undefined);
+      structureScreens.closeView();
+    };
+    // While the editor's Save, Publish, Discard changes, Unpublish, Archive
+    // or Restore runs (every call and the read after), or a field's upload
+    // is in flight, Back, another collection and Classic CMS wait for it to
+    // end, then run the guard on what it left.
+    const [isEditorBusy, setIsEditorBusy] = useState(false);
+    const isEditorBusyRef = useRef(false);
+    isEditorBusyRef.current = isEditorBusy;
+    const afterEditorBusy = useRef<(() => void) | undefined>(undefined);
+    const whenEditorIdle = (run: () => void) => {
+      if (isEditorBusyRef.current) {
+        afterEditorBusy.current = run;
+        return;
+      }
+      run();
+    };
+    useEffect(() => {
+      const run = afterEditorBusy.current;
+      if (isEditorBusy || run === undefined) {
+        return;
+      }
+      afterEditorBusy.current = undefined;
+      run();
+    }, [isEditorBusy]);
+    // a hidden overlay runs no exit that waited: its guard would open over
+    // the canvas
+    useEffect(() => {
+      if (isVisible === false) {
+        afterEditorBusy.current = undefined;
+      }
+    }, [isVisible]);
+    const onEditorBusyChange = useCallback((busy: boolean, stay?: boolean) => {
+      // an error the editor shows keeps it open: what waited is dropped,
+      // even while an upload still runs
+      if (stay === true) {
+        afterEditorBusy.current = undefined;
+      }
+      setIsEditorBusy(busy);
+    }, []);
+
+    const selectCollectionNow = (nextId: string) =>
       guard(() => {
-        setIsEditorDirty(false);
-        if (nextId !== collectionId) {
-          setItemsPage(undefined);
-          setDetail(undefined);
-        }
-        setCollectionId(nextId);
-        setItemId(undefined);
-        setPage(1);
-        setQuery("");
-        setReturnFocusItemId(undefined);
+        applyCollection(nextId);
+        setDeletedItemId(undefined);
       });
 
-    const openItem = (nextId: string | null) => {
-      // Back shows the list selection-free (5.1.5)
+    // Back from an item or a structure view shows the list selection-free (5.1.5)
+    const clearSelection = () =>
       setListState((current) =>
         current.selected.size === 0
           ? current
           : { ...current, selected: new Set<string>() }
       );
+
+    const openItem = (nextId: string | null) => {
+      clearSelection();
       setEditorSession((current) => current + 1);
       setFocusBack(true);
       setReturnFocusItemId(undefined);
@@ -736,7 +912,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       setItemId(nextId);
     };
 
-    const closeEditor = () =>
+    const closeEditorNow = () =>
       guard(() => {
         setIsEditorDirty(false);
         setReturnFocusItemId(itemId ?? undefined);
@@ -746,6 +922,88 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
     const onDirtyChange = useCallback((dirty: boolean) => {
       setIsEditorDirty(dirty);
     }, []);
+    const onDeletedFocused = useCallback(() => {
+      setDeletedItemId(undefined);
+    }, []);
+
+    // Slice 3's structure screens, after `onDirtyChange`, which they read.
+    const showStructureLine = useCallback(
+      (kind: CmsLineKind) => showLine(kind, "structure"),
+      [showLine]
+    );
+    const clearStructureLine = useCallback(
+      () => clearLine("structure"),
+      [clearLine]
+    );
+    const refetchCollections = useCallback(
+      () => setListVersion((current) => current + 1),
+      []
+    );
+    const onStructureWritten = (effect: CmsStructureEffect) => {
+      refetchCollections();
+      if (effect.kind === "created") {
+        const made = effect.collection;
+        setCollections((list) =>
+          list.some((entry) => entry.id === made.id) ? list : [...list, made]
+        );
+      }
+      if (effect.kind === "deleted") {
+        setCollections((list) =>
+          list.filter((entry) => entry.id !== effect.collectionId)
+        );
+        onCollectionCanvasStale?.(effect.slug);
+      }
+      if (effect.kind === "schema") {
+        // an open editor never sends a removed key
+        void refetchFields();
+        if (effect.changesCanvas) {
+          onCollectionCanvasStale?.(effect.slug);
+        }
+      }
+      if (effect.kind === "settings") {
+        // the item editor behind the view shows the new names
+        void refetchFields();
+        if (
+          effect.before.slug !== effect.after.slug ||
+          effect.before.isPublic !== effect.after.isPublic
+        ) {
+          onCollectionCanvasStale?.(effect.before.slug);
+        }
+      }
+    };
+    const structureScreens = useCmsStructure({
+      structure,
+      access,
+      collections,
+      collectionId,
+      opens,
+      refresh,
+      attempt,
+      initial: initialView?.structure,
+      // a structure view, Settings or New collection waits for the editor's
+      // running Save, Publish, Discard or status change, then the guard
+      guard: (run) => whenEditorIdle(() => nowActions.current.guardNow(run)),
+      onDirtyChange,
+      onWritten: onStructureWritten,
+      onOpenCollection: applyCollection,
+      // a structure view's Back returns the focus to its own row, never to
+      // the item row an earlier Back left marked
+      onViewOpen: () => {
+        clearSelection();
+        setReturnFocusItemId(undefined);
+        setDeletedItemId(undefined);
+        // nor to the item editor's Back
+        setFocusBack(false);
+      },
+      refetchCollections,
+      showLine: showStructureLine,
+      clearLine: clearStructureLine,
+      renderRowActions:
+        isReady && catalogSlots?.(collections) !== undefined
+          ? (entry, items) =>
+              catalogSlots(collections)?.renderActions(entry, items)
+          : undefined,
+    });
 
     /**
      * A write refused for the shape of its data: the open collection's
@@ -757,6 +1015,10 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
         return;
       }
       const result = await source.getCollection(collectionId);
+      // another collection opened meanwhile: this answer is not its
+      if (openCollectionId.current !== collectionId) {
+        return;
+      }
       if (isCmsFailure(result)) {
         const refusal = mapReadFailure(result.error);
         if (refusal !== undefined && refusal !== "toast") {
@@ -764,6 +1026,13 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
         }
         return;
       }
+      if (result.collection.id !== collectionId) {
+        return;
+      }
+      clearLine("detail");
+      setDetailFailed(false);
+      detailFailedFor.current = undefined;
+      detailToast.current = undefined;
       applyLoadedFields(result.collection);
       setDetail((current) =>
         current === undefined || current.id === result.collection.id
@@ -814,10 +1083,31 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
      * Classic CMS (4.6), from the column's menu or a read-only rich text:
      * the guard, then the frame on what is open here.
      */
-    const showClassic = () =>
+    const showClassicNow = () =>
       guard(() => onShowClassic(getClassicDeepLink(collection, itemId)), {
         movesFocus: true,
       });
+
+    // the latest of each, for a run that waited on the editor
+    const guardNow = (run: () => void) => guard(run);
+    const nowActions = useRef({
+      selectCollectionNow,
+      closeEditorNow,
+      showClassicNow,
+      guardNow,
+    });
+    nowActions.current = {
+      selectCollectionNow,
+      closeEditorNow,
+      showClassicNow,
+      guardNow,
+    };
+    const selectCollection = (nextId: string) =>
+      whenEditorIdle(() => nowActions.current.selectCollectionNow(nextId));
+    const closeEditor = () =>
+      whenEditorIdle(() => nowActions.current.closeEditorNow());
+    const showClassic = () =>
+      whenEditorIdle(() => nowActions.current.showClassicNow());
 
     /** `unauthorized` (4.3.4): the guard, then this tab to the home address. */
     const onOpenHome =
@@ -861,6 +1151,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
             refreshKey={opens + refresh}
             onBack={closeEditor}
             onDirtyChange={onDirtyChange}
+            onBusyChange={onEditorBusyChange}
             onWritten={onWritten}
             onDeleted={onDeleted}
             onCreated={(item) => setItemId(item.id)}
@@ -898,11 +1189,12 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
           canPublish={access.canPublish}
           focusItemId={returnFocusItemId}
           deletedItemId={deletedItemId}
-          onDeletedFocused={() => setDeletedItemId(undefined)}
+          onDeletedFocused={onDeletedFocused}
           source={source}
           fields={detail?.id === collection.id ? detail.fields : undefined}
           list={list}
           pageAnswer={pageAnswer}
+          reorderState={reorderState}
           onListChange={onListChange}
           onListWritten={onWritten}
           onRefusal={onEditorRefusal}
@@ -940,6 +1232,8 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
           collections={collections}
           currentCollectionId={line === undefined ? collectionId : undefined}
           slots={isReady ? catalogSlots?.(collections) : undefined}
+          structure={isReady ? structureScreens.column : undefined}
+          renderRowMenu={isReady ? structureScreens.renderRowMenu : undefined}
           onSelectCollection={selectCollection}
           onShowClassic={showClassic}
           onClose={onClose}
@@ -964,10 +1258,11 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
                 minHeight: 0,
               }}
             >
-              {renderView()}
+              {structureScreens.mainView ?? renderView()}
             </Box>
           )}
         </Main>
+        {structureScreens.dialogs}
         <Dialog
           open={pending !== undefined}
           onOpenChange={(open) => {
@@ -986,10 +1281,17 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
             }}
             onCloseAutoFocus={(event) => {
               const run = runOnDialogClose.current;
+              const opener = guardOpener.current;
+              guardOpener.current = null;
               if (run !== undefined) {
                 runOnDialogClose.current = undefined;
                 event.preventDefault();
                 run();
+                return;
+              }
+              if (opener instanceof HTMLElement && opener.isConnected) {
+                event.preventDefault();
+                opener.focus();
               }
             }}
           >
@@ -1007,6 +1309,9 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
                   // editor only hidden by the action keeps no discarded edit
                   setFocusBack(false);
                   setEditorSession((current) => current + 1);
+                  // an open settings view or field sheet shows its saved
+                  // values again, so nothing discarded stays on screen
+                  structureScreens.resetView();
                   if (next?.movesFocus) {
                     runOnDialogClose.current = next.run;
                   } else {

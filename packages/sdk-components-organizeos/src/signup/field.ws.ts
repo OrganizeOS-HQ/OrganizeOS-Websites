@@ -30,6 +30,26 @@ export const metaField: WsComponentMeta = {
       required: true,
       label: "Form field",
     },
+    // A site form's definition of the field (builder forms spec 9), written
+    // by the forms panel and drawn by no Settings row of its own.
+    fieldType: {
+      type: "string",
+      control: "text",
+      required: false,
+      label: "Field type",
+    },
+    options: {
+      type: "json",
+      control: "json",
+      required: false,
+      label: "Options",
+    },
+    required: {
+      type: "boolean",
+      control: "boolean",
+      required: false,
+      label: "Required",
+    },
   },
 };
 
