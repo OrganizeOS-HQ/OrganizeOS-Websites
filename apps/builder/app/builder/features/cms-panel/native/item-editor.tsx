@@ -1170,7 +1170,7 @@ export const ItemEditor = ({
                         ? () => restoreMine(field.key)
                         : undefined
                     }
-                    useMineDisabled={busy !== undefined}
+                    useMineDisabled={busy !== undefined || isFieldBusy}
                   >
                     <FieldControl
                       id={id}
@@ -1223,7 +1223,7 @@ export const ItemEditor = ({
                     ? () => restoreMine("slug")
                     : undefined
                 }
-                useMineDisabled={busy !== undefined}
+                useMineDisabled={busy !== undefined || isFieldBusy}
               >
                 <InputField
                   id="cms-field-slug"

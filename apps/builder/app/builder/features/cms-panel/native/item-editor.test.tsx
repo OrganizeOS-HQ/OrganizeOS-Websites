@@ -2280,6 +2280,52 @@ describe("the Item menu's actions (verification)", () => {
     expect(document.activeElement).toBe(field);
   });
 
+  test('"Use my edit" waits for an upload in flight (round 4)', async () => {
+    setFields([
+      ...POSTS_DETAIL.fields,
+      { key: "cover", label: "Cover", kind: "image" },
+    ]);
+    await openItem(
+      itemOf({
+        data: { title: "Hello", summary: null, author: null, cover: null },
+      })
+    );
+    await retype(titleInput(), "Mine");
+    fake.updateItem.mockResolvedValueOnce({ error: "conflict" });
+    await click(buttonByText("Save"));
+    fake.getItem.mockResolvedValueOnce({
+      item: itemOf({
+        data: { title: "Theirs", summary: null, author: null, cover: null },
+        updatedAt: "2026-11-14T06:00:00.000000+00:00",
+      }),
+    });
+    await click(buttonByText("Reload"));
+    const useMine = () =>
+      document.querySelector<HTMLButtonElement>(
+        '[aria-label="Use my edit: Title"]'
+      );
+    expect(useMine()?.disabled).toBe(false);
+    const held = deferred<CmsResult<{ url: string; path: string }>>();
+    fake.uploadImage.mockReturnValueOnce(held.promise);
+    const file = document
+      .querySelector<HTMLElement>('[data-cms-field="cms-field-cover"]')
+      ?.querySelector<HTMLInputElement>('input[type="file"]');
+    const transfer = new DataTransfer();
+    transfer.items.add(
+      new File([new Uint8Array([1, 2, 3])], "a.png", { type: "image/png" })
+    );
+    await act(async () => {
+      file!.files = transfer.files;
+      file!.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await settle();
+    expect(useMine()?.disabled).toBe(true);
+    await act(async () => {
+      held.resolve({ url: "https://cdn.example.org/a.png", path: "a.png" });
+    });
+    await vi.waitFor(() => expect(useMine()?.disabled).toBe(false));
+  });
+
   test("Reload waits for an upload in flight", async () => {
     setFields([
       ...POSTS_DETAIL.fields,
