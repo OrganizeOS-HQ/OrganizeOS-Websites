@@ -967,6 +967,37 @@ test("a move in Posts, then another in People: Posts' refused reorder still puts
   expect(error).toHaveBeenCalled();
 });
 
+// Round 4, item 14: the sheet's conflict line goes only once Reload's
+// reread has landed
+test("a sheet's conflict Reload whose reread fails keeps the conflict line", async () => {
+  harness.structure.updateSchema.mockResolvedValue({ error: "conflict" });
+  await openFields();
+  await click(fieldRow("summary")!.querySelector("button"));
+  await typeInto(
+    document.querySelector<HTMLInputElement>("#cms-field-sheet-label"),
+    "Teaser"
+  );
+  await click(
+    buttonByText("Save", document.querySelector("[data-cms-structure-header]")!)
+  );
+  expect(
+    document.querySelector("[data-cms-structure-conflict]")
+  ).not.toBeNull();
+  harness.structure.getCollectionStructure.mockResolvedValueOnce({
+    error: "unavailable",
+  });
+  await click(
+    buttonByText(
+      "Reload",
+      document.querySelector<HTMLElement>("[data-cms-structure-conflict]")!
+    )
+  );
+  await settle();
+  expect(
+    document.querySelector("[data-cms-structure-conflict]")
+  ).not.toBeNull();
+});
+
 // Round 4, item 3: Discard while a view's own Save is under way never draws
 // the view on the values from before that Save
 describe("Discard during a structure view's own Save", () => {

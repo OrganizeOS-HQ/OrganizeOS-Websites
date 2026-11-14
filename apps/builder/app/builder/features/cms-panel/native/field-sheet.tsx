@@ -392,25 +392,29 @@ export const FieldSheet = ({
     }
   };
 
-  /** A fresh read: the draft rebases on it, or the sheet closes. */
+  /**
+   * A fresh read: the draft rebases on it, or the sheet closes. False when
+   * the read failed, so a conflict's line stays.
+   */
   const rebase = async () => {
     const fresh = await reread();
     if (fresh === undefined) {
-      return;
+      return false;
     }
     if (originalKey === undefined) {
-      return;
+      return true;
     }
     const freshField = fresh.fields.find((field) => field.key === originalKey);
     if (freshField === undefined) {
       toast.error("Field not found", STRUCTURE_FAILURE_TOAST);
       onClose();
-      return;
+      return true;
     }
     if (saved !== undefined) {
       setDraft((current) => rebaseFieldDraft(saved, freshField, current));
     }
     setSaved(freshField);
+    return true;
   };
 
   /**
@@ -610,9 +614,11 @@ export const FieldSheet = ({
           <Text>Changed by someone else</Text>
           <Button
             color="ghost"
-            onClick={() => {
-              setLine(undefined);
-              void rebase();
+            onClick={async () => {
+              // the line goes once the reread has landed, not before
+              if (await rebase()) {
+                setLine(undefined);
+              }
             }}
           >
             Reload
