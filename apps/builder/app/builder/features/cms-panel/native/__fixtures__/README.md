@@ -2,8 +2,8 @@
 
 `rich-text-roundtrip.json` and `rich-text-corpus.json` are byte-for-byte
 copies of the OrganizeOS repo's files of the same names in
-`client/tests/fixtures/site-components/`, at commit
-`63d39f98cfe60db7ef7dfa3b875ac07a41e47333` (PR RT6), sha256
+`client/tests/fixtures/site-components/`, at `master` commit
+`100de6a1e935c42fb4c9273ba8a127c491f270e2` (the merge of PR #2382), sha256
 `17e70497d3a8a4cded3276ec11db1c9c06a910c0736f4f07931e94116db9a031` and
 `aedf52df2ba90f76cd260cedf7dcf17566e3a6e6f4470a484c8913529829202d`.
 
