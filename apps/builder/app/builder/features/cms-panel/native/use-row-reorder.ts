@@ -113,6 +113,10 @@ export const useRowReorder = (input: {
   // Bumped when another collection opens: an E13 sent for the last one
   // answers into nothing here.
   const generation = useRef(0);
+  // The E13 calls in flight per collection, kept across collection changes:
+  // back in a collection, its own E13 still holds an open, a bulk call and a
+  // further order until it answers.
+  const sending = useRef(new Map<string, number>());
   // Re-renders when a ref-held phase changes.
   const [, setPhase] = useState(0);
   const bump = () => setPhase((current) => current + 1);
@@ -139,9 +143,12 @@ export const useRowReorder = (input: {
     setPending(undefined);
   }, [input.collectionId]);
 
+  const isSending = (collectionId: string) => sending.current.has(collectionId);
+
   const isBusy = () =>
     timer.current !== undefined ||
     inFlight.current ||
+    isSending(latest.current.collectionId) ||
     awaitingAfter.current !== undefined;
 
   /**
@@ -158,6 +165,7 @@ export const useRowReorder = (input: {
       after === undefined ||
       count <= after ||
       inFlight.current ||
+      isSending(latest.current.collectionId) ||
       timer.current !== undefined
     ) {
       return;
@@ -209,7 +217,7 @@ export const useRowReorder = (input: {
       dropPending();
       return;
     }
-    if (inFlight.current) {
+    if (inFlight.current || isSending(current.collectionId)) {
       queued.current = ids;
       return;
     }
@@ -217,10 +225,11 @@ export const useRowReorder = (input: {
     const held =
       accepted.current ?? (current.page?.items ?? []).map((row) => row.id);
     if (sameOrder(ids, held)) {
-      // the moves cancel out: nothing to send
+      // the moves cancel out: nothing to send; the order E13 last accepted
+      // still shows
       if (awaitingAfter.current === undefined) {
-        pendingRef.current = undefined;
-        setPending(undefined);
+        pendingRef.current = accepted.current;
+        setPending(accepted.current);
         bump();
         runWaiting(true);
       } else {
@@ -234,6 +243,10 @@ export const useRowReorder = (input: {
     const { collectionId, onReordered, onFailed } = current;
     const sentIn = generation.current;
     const sentOn = movedOn.current?.drawn;
+    sending.current.set(
+      collectionId,
+      (sending.current.get(collectionId) ?? 0) + 1
+    );
     void current.source
       .reorderItems(collectionId, { ids: [...ids] })
       .catch((): CmsResult<{ changed: number }> => ({ error: "unavailable" }))
@@ -246,8 +259,38 @@ export const useRowReorder = (input: {
             onReordered();
           }
         };
+        const left = (sending.current.get(collectionId) ?? 1) - 1;
+        if (left > 0) {
+          sending.current.set(collectionId, left);
+        } else {
+          sending.current.delete(collectionId);
+        }
         // another collection opened meanwhile: its reorder state is its own
         if (sentIn !== generation.current) {
+          // back in the collection written: what waited on this E13 waits
+          // on the E3 answer after it, then a queued order is sent
+          if (
+            latest.current.collectionId === collectionId &&
+            isSending(collectionId) === false
+          ) {
+            const next = queued.current;
+            queued.current = undefined;
+            awaitingAfter.current = latest.current.pageAnswer.count;
+            if (isCmsFailure(result) === false) {
+              accepted.current = ids;
+              acceptedOn.current = signatures.current.drawn;
+            }
+            bump();
+            report();
+            if (
+              isCmsFailure(result) === false &&
+              next !== undefined &&
+              inFlight.current === false
+            ) {
+              send(next);
+            }
+            return;
+          }
           report();
           return;
         }
