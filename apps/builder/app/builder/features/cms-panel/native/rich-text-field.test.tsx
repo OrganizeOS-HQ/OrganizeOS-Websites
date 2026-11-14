@@ -1978,3 +1978,24 @@ describe("End from a caret right after a line break (round 5)", () => {
     }
   );
 });
+
+// round 5, item 8: the field's own clipboard keeps any image address the
+// platform's sanitiser keeps
+test.each(["//cdn.example.org/a.png", "/media/a.png"])(
+  "an image this field copied, with the address %s, pastes back whole (round 5)",
+  async (src) => {
+    const html = `<p>Text <img src="${src}" alt="A"></p>`;
+    expect(reopenReason(html)).toBeUndefined();
+    const { onChange } = mountField({ value: { html: "<p>Text</p>" } });
+    await settle();
+    await click(editable()!.querySelector<HTMLElement>("p"));
+    const data = JSON.parse(copiedImage(editorOf()!._config.namespace));
+    data.nodes[0].attributes.src = src;
+    paste(editable()!, {
+      "application/x-lexical-editor": JSON.stringify(data),
+      "text/html": `<p><img src="${src}" alt="A"></p>`,
+    });
+    await settle();
+    expect(lastHtml(onChange)).toContain(`src="${src}"`);
+  }
+);

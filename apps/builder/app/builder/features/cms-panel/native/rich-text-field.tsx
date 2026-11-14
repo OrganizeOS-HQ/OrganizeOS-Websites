@@ -147,6 +147,7 @@ import {
   richTextNodes,
 } from "./rich-text-html";
 import { RICH_TEXT_MAX_DEPTH } from "./rich-text-nodes";
+import { sanitizeRichTextHtml } from "./rich-text-sanitize";
 
 const blockSpacing = { margin: 0, marginBottom: theme.spacing[5] };
 
@@ -997,10 +998,17 @@ const LEXICAL_CLIPBOARD_TYPE = "application/x-lexical-editor";
 
 const imageAttributeKeys = ["alt", "height", "src", "title", "width"];
 
+/** Whether the platform's sanitiser keeps `src` on an `img`. */
+const keepsImageSrc = (src: string) => {
+  const holder = document.createElement("img");
+  holder.setAttribute("src", src);
+  return /\ssrc="/.test(sanitizeRichTextHtml(holder.outerHTML));
+};
+
 /**
  * An image node as this editor writes it: exactly its five attributes, each
- * a string or null, its address one the platform's sanitiser keeps (http or
- * https), and a figure's caption a string or null.
+ * a string or null, its address one the platform's sanitiser keeps on an
+ * `img`, and a figure's caption a string or null.
  */
 const isKeptImageNode = (node: {
   type?: unknown;
@@ -1023,7 +1031,7 @@ const isKeptImageNode = (node: {
     return false;
   }
   const src = (attributes as { src?: unknown }).src;
-  if (typeof src !== "string" || /^https?:\/\//i.test(src.trim()) === false) {
+  if (typeof src !== "string" || keepsImageSrc(src) === false) {
     return false;
   }
   return (
