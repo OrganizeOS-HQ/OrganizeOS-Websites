@@ -312,6 +312,8 @@ export const TemplatesScreen = () => {
   const [category, setCategory] = useState<CategoryChoice>("all");
   const [openId, setOpenId] = useState<string | undefined>(undefined);
   const backRef = useRef<HTMLButtonElement>(null);
+  const useTemplateRef = useRef<HTMLButtonElement>(null);
+  const wasApplying = useRef(false);
   const cardRefs = useRef(new Map<string, HTMLButtonElement>());
   // the card to give the focus back to, once its page view is left
   const returnFocusId = useRef<string | undefined>(undefined);
@@ -330,6 +332,15 @@ export const TemplatesScreen = () => {
       returnFocusId.current = undefined;
     }
   }, [isOffered]);
+
+  // an apply that leaves the screen open (refused or failed) gives the focus
+  // back to Use template, which the fieldset took it from while it ran
+  useEffect(() => {
+    if (wasApplying.current && isApplying === false) {
+      useTemplateRef.current?.focus();
+    }
+    wasApplying.current = isApplying;
+  }, [isApplying]);
 
   // the focus follows the view: Back in a page view, the card after it
   useEffect(() => {
@@ -512,8 +523,11 @@ export const TemplatesScreen = () => {
                           {openTemplate.name}
                         </TruncatedText>
                         <Button
+                          ref={useTemplateRef}
                           color="primary"
                           state={isApplying ? "pending" : undefined}
+                          // a long name gives way, never the action
+                          css={{ flexShrink: 0 }}
                           onClick={() => void use(openTemplate)}
                         >
                           Use template

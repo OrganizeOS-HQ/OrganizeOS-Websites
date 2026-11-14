@@ -641,6 +641,21 @@ describe("the screen", () => {
     expect(document.activeElement).toBe(backButton());
   });
 
+  test("a long name in the page view leaves Use template whole", async () => {
+    setCatalog([{ ...union, name: "N".repeat(120) }, nonprofit]);
+    setProject();
+    render();
+    await openTemplate("union");
+    const button = applyButton()!;
+    // the label clips inside the button, so look at every box in it
+    for (const element of [button, ...button.querySelectorAll("*")]) {
+      expect(element.scrollWidth).toBeLessThanOrEqual(element.clientWidth);
+    }
+    expect(button.getBoundingClientRect().right).toBeLessThanOrEqual(
+      dialog()!.getBoundingClientRect().right
+    );
+  });
+
   test("a page without a picture shows an empty frame", async () => {
     setCatalog([{ ...union, pagePictures: {} }, nonprofit]);
     setProject();
@@ -962,6 +977,8 @@ describe("choosing", () => {
     expect(toastError).toHaveBeenCalledTimes(1);
     expect(toastError).toHaveBeenCalledWith("Cannot apply union name.");
     expect(dialog()).not.toBeNull();
+    // the keyboard is where it was, not lost to the page
+    expect(document.activeElement).toBe(applyButton());
     expect(isDisabled(applyButton())).toBe(false);
     expect(isDisabled(startBlankButton())).toBe(false);
     expect(setBuilderMode).not.toHaveBeenCalled();
