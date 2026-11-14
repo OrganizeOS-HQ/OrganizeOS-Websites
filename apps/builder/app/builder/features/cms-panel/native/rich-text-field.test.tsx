@@ -764,6 +764,24 @@ test.each(["Bulleted list", "Numbered list"])(
   }
 );
 
+// exact-guard round, item 8: a code block holds plain text
+test("Code over a line with a link and formatting shows plain text, and saves what it shows", async () => {
+  const { onChange } = mountField({
+    value: {
+      html: '<p>See <a href="https://example.org/">the <strong>link</strong></a> <em>now</em></p>',
+    },
+  });
+  await settle();
+  await click(editable()!.querySelector<HTMLElement>("p"));
+  await chooseBlock("Code");
+  const code = editable()!.querySelector("code")!;
+  expect(code.querySelector("a, strong, b, em, i")).toBeNull();
+  expect(code.textContent).toBe("See the link now");
+  const written = lastHtml(onChange);
+  expect(written).not.toMatch(/<(a|strong|b|em|i)\b/);
+  expect(reopenReason(written)).toBeUndefined();
+});
+
 test("the toolbar wraps within 240 px", async () => {
   mountField({ id: "narrow" });
   await settle();

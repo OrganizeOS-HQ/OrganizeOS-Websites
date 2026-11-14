@@ -228,10 +228,6 @@ const exportList = (
 };
 
 /**
- * A `code` element outside a `pre` is the inline code format, even across a
- * line break; `CodeNode` would read that one as a code block.
- */
-/**
  * Whether a stored value is loading. Lexical drops a block's only or last
  * line break; a stored value's load keeps every one, so its save writes them
  * back as they were. Pasted HTML keeps Lexical's rule.
@@ -246,6 +242,8 @@ const inlineCodeImport: DOMConversionMap = {
           priority: 1,
         }
       : null,
+  // a `code` element outside a `pre` is the inline code format, even across
+  // a line break; `CodeNode` would read that one as a code block
   code: (domNode) =>
     domNode.parentElement?.tagName === "PRE"
       ? null

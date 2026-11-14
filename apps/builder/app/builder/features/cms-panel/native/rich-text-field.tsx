@@ -14,6 +14,7 @@ import {
   $getNodeByKey,
   $getSelection,
   $isRangeSelection,
+  $isTextNode,
   $setSelection,
   $isElementNode,
   $isLineBreakNode,
@@ -373,9 +374,26 @@ const useToolbarState = (editor: LexicalEditor) => {
  * A code block keeps text only: an image in a block made code moves to a
  * paragraph right after it, so the value keeps what the editor shows.
  */
+/**
+ * A code block holds plain text: its links give way to their text, its
+ * formats clear, and its images move to a paragraph after it.
+ */
 const $moveImagesOutOfCode = () => {
   const visit = (node: LexicalNode) => {
     if ($isCodeNode(node)) {
+      for (const child of node.getChildren()) {
+        if ($isLinkNode(child)) {
+          for (const inner of child.getChildren()) {
+            child.insertBefore(inner);
+          }
+          child.remove();
+        }
+      }
+      for (const child of node.getChildren()) {
+        if ($isTextNode(child) && child.getFormat() !== 0) {
+          child.setFormat(0);
+        }
+      }
       const images = node.getChildren().filter($isCmsImageNode);
       if (images.length > 0) {
         const paragraph = $createParagraphNode();

@@ -592,7 +592,9 @@ can be merged with minimal conflict.
   `list` and `rich-text` as direct dependencies in `apps/builder/package.json`, and so in
   `pnpm-lock.yaml` (neither can carry a mark), and `htmlparser2` (12.0.0) and
   `sanitize-html` (2.17.7, with `@types/sanitize-html`) for the rich-text
-  read-only check; `native/rich-text-nodes.ts` and `native/rich-text-sanitize.ts`,
+  read-only check (about 150 kB minified, 57 kB gzipped, with what they pull
+  in, postcss and dayjs among it, all in the rich-text field's lazy chunk,
+  loaded only once a rich-text field shows); `native/rich-text-nodes.ts` and `native/rich-text-sanitize.ts`,
   copies of the platform's `client/lib/collections/rich-text-nodes.ts` and of
   its sanitiser (`rich-text.ts`, comment lines left out; owner approval
   2026-11-14), kept exact by the round-trip fixture's pins
@@ -1815,9 +1817,10 @@ allow-top-navigation-by-user-activation"` (`allow-modals` so the frame's
     the editor would change the value on a load and save: the stored value,
     run through the platform's sanitiser, against the editor's own write of
     it, through the same sanitiser, by the platform's /v1 nodes, by each link
-    with every attribute and by each image with every attribute; a value at
-    the platform's node or depth limit, one the editor cannot load, and any
-    value where no DOM parser exists are read-only too. "Read only" for a
+    with every attribute and by each image with every attribute; a value the
+    platform cuts at its node limit or flattens at its depth limit, one the
+    editor cannot load (a list item with no list around it among them), and
+    any value where no DOM parser exists are read-only too. "Read only" for a
     value with images, else with "Edit in Classic CMS". The live editor and
     this check load with the same nodes and node rules
     (`registerRichTextTransforms`). A stored value's load keeps every line
@@ -1825,8 +1828,14 @@ allow-top-navigation-by-user-activation"` (`allow-modals` so the frame's
     line break shows one more blank line in the editor than on the page
     (owner decision, 2026-11-14); a block that holds nothing saves empty; a
     paste moves a link or mark inside the blocks it wraps, and so does a
-    stored value's load. A link never holds an image the Link control
-    adds, and Code moves a line's images to a paragraph after the block. A refusal is one line each, with the "Not in
+    stored value's load. A stored link keeps its address as stored, and an
+    emptied parent bullet keeps its sub-bullets. The editor's own writes
+    are what it loads: of two collapsible spaces meeting at a link's edge
+    the second goes, and so does a link's last space before a line break or
+    its line's end. A list made over a quote gives each of its paragraphs
+    its own item. A link never holds an image the Link control adds, and
+    Code holds plain text: a line's links give way to their text, its
+    formats clear, and its images move to a paragraph after the block. A refusal is one line each, with the "Not in
     plan" chip for the plan. The unsaved guard stands before Back, another
     collection, Classic CMS and "Open OrganizeOS". Every open reads the
     access (E0) again. The lists refetch after each write, on reopen and on
