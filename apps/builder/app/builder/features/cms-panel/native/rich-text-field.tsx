@@ -9,6 +9,7 @@
  */
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
+  $copyNode,
   $createNodeSelection,
   $createParagraphNode,
   $getAdjacentNode,
@@ -48,6 +49,7 @@ import {
   COPY_COMMAND,
   CUT_COMMAND,
   FORMAT_TEXT_COMMAND,
+  ParagraphNode,
   PASTE_COMMAND,
   SELECTION_CHANGE_COMMAND,
   SELECTION_INSERT_CLIPBOARD_NODES_COMMAND,
@@ -82,6 +84,7 @@ import {
   $createQuoteNode,
   $isHeadingNode,
   $isQuoteNode,
+  HeadingNode,
   QuoteNode,
 } from "@lexical/rich-text";
 import {
@@ -674,6 +677,34 @@ const $liftPastDepthLimit = (node: ListNode | QuoteNode) => {
   }
 };
 
+/**
+ * A paragraph or heading holds no block: one inside it (a list, a quote, a
+ * paragraph) splits it, standing between its two parts, and a part left
+ * empty goes.
+ */
+const $liftBlocksOutOfTextBlock = (block: ElementNode) => {
+  const inner = block
+    .getChildren()
+    .find(
+      (child) =>
+        ($isElementNode(child) || $isDecoratorNode(child)) &&
+        child.isInline() === false
+    );
+  if (inner === undefined) {
+    return;
+  }
+  const rest = inner.getNextSiblings();
+  block.insertAfter(inner);
+  if (rest.length > 0) {
+    const tail = $copyNode(block);
+    inner.insertAfter(tail);
+    tail.append(...rest);
+  }
+  if (block.getChildrenSize() === 0) {
+    block.remove();
+  }
+};
+
 /** The node rules the read-only check runs too (`registerRichTextTransforms`). */
 const TransformsPlugin = () => {
   const [editor] = useLexicalComposerContext();
@@ -684,7 +715,9 @@ const TransformsPlugin = () => {
         // the live editor's alone: a stored value of these shapes reads lossy
         editor.registerNodeTransform(ListItemNode, $liftBlocksAfterNestedList),
         editor.registerNodeTransform(ListNode, $liftPastDepthLimit),
-        editor.registerNodeTransform(QuoteNode, $liftPastDepthLimit)
+        editor.registerNodeTransform(QuoteNode, $liftPastDepthLimit),
+        editor.registerNodeTransform(ParagraphNode, $liftBlocksOutOfTextBlock),
+        editor.registerNodeTransform(HeadingNode, $liftBlocksOutOfTextBlock)
       ),
     [editor]
   );

@@ -732,3 +732,30 @@ describe("the depth lift keeps the reading order (K5)", () => {
     expectFixedPoint(written);
   });
 });
+
+describe("a list never stays in a heading or paragraph (K6)", () => {
+  test("a list item in a heading, pasted at the depth limit, writes an editable value", async () => {
+    const onChange = await mountAt("<p>s</p>", "s");
+    let quotes = "";
+    for (let level = 8; level >= 1; level -= 1) {
+      quotes = `<blockquote><p>e${level}</p>${quotes}</blockquote>`;
+    }
+    paste({ "text/html": quotes, "text/plain": "x" });
+    await settle();
+    await act(async () => {
+      editorOf()!.update(() => {
+        const e8 = $getRoot()
+          .getAllTextNodes()
+          .find((node) => node.getTextContent() === "e8")!;
+        e8.select(2, 2);
+      });
+    });
+    await settle();
+    paste({ "text/html": "<h2><li>hx</li></h2>", "text/plain": "hx" });
+    await settle();
+    const written = lastHtml(onChange);
+    expect(written).toContain("hx");
+    expect(written).not.toMatch(/<h2[^>]*>(<[^>]+>)*<(ul|ol)/);
+    expectFixedPoint(written);
+  });
+});
