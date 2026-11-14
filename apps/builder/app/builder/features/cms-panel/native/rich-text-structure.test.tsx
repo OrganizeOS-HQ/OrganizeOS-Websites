@@ -769,7 +769,7 @@ describe("a list's type changes in place inside a quote (K8)", () => {
     );
     await click(byLabel("Numbered list"));
     expect(sanitizeRichTextHtml(lastHtml(onChange))).toBe(
-      '<blockquote><p>Steps:</p><ol><li>one</li><li>two</li></ol><p>end</p></blockquote>'
+      "<blockquote><p>Steps:</p><ol><li>one</li><li>two</li></ol><p>end</p></blockquote>"
     );
   });
 });
