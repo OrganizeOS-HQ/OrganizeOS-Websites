@@ -853,10 +853,48 @@ const Toolbar = ({
 /** The clipboard type of Lexical's own copy, whose nodes carry their links. */
 const LEXICAL_CLIPBOARD_TYPE = "application/x-lexical-editor";
 
+const imageAttributeKeys = ["alt", "height", "src", "title", "width"];
+
 /**
- * Whether copied Lexical nodes hold a link the Link control's rule refuses.
- * Lexical reads copied nodes only from its own namespace, one per field, so
- * an image in them came from this field's own copy, cut or drag.
+ * An image node as this editor writes it: exactly its five attributes, each
+ * a string or null, its address one the platform's sanitiser keeps (http or
+ * https), and a figure's caption a string or null.
+ */
+const isKeptImageNode = (node: {
+  type?: unknown;
+  attributes?: unknown;
+  caption?: unknown;
+}) => {
+  const attributes = node.attributes;
+  if (typeof attributes !== "object" || attributes === null) {
+    return false;
+  }
+  const entries = Object.entries(attributes);
+  if (
+    entries.length !== imageAttributeKeys.length ||
+    entries.some(
+      ([key, value]) =>
+        imageAttributeKeys.includes(key) === false ||
+        (value !== null && typeof value !== "string")
+    )
+  ) {
+    return false;
+  }
+  const src = (attributes as { src?: unknown }).src;
+  if (typeof src !== "string" || /^https?:\/\//i.test(src.trim()) === false) {
+    return false;
+  }
+  return (
+    node.type !== "cms-figure" ||
+    node.caption === null ||
+    typeof node.caption === "string"
+  );
+};
+
+/**
+ * Whether copied Lexical nodes hold a link the Link control's rule refuses,
+ * or an image node unlike the ones this editor writes. Lexical reads copied
+ * nodes only from its own namespace, one per field.
  */
 const hasRefusedNode = (value: unknown): boolean => {
   if (Array.isArray(value)) {
@@ -868,9 +906,17 @@ const hasRefusedNode = (value: unknown): boolean => {
   const node = value as {
     type?: unknown;
     url?: unknown;
+    attributes?: unknown;
+    caption?: unknown;
     children?: unknown;
     nodes?: unknown;
   };
+  if (
+    (node.type === "cms-image" || node.type === "cms-figure") &&
+    isKeptImageNode(node) === false
+  ) {
+    return true;
+  }
   if (
     (node.type === "link" || node.type === "autolink") &&
     richTextHref(typeof node.url === "string" ? node.url : undefined) === null
@@ -891,8 +937,9 @@ const withoutRefusedLinks = (data: DataTransfer): DataTransfer | undefined => {
   if (html !== "") {
     const dom = new DOMParser().parseFromString(html, "text/html");
     const movedMarks = pushMarksIntoBlocks(dom.body);
-    // an image enters a value only from stored HTML or an upload: dropped
-    // here, before the import, so the words around it keep their space
+    // an image enters a value only from stored HTML, an upload or the
+    // field's own clipboard data: dropped from pasted HTML here, before the
+    // import, so the words around it keep their space
     const images = Array.from(dom.querySelectorAll("img")).filter(
       (image) => image.parentElement?.tagName !== "FIGURE"
     );

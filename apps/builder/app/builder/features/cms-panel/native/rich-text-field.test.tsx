@@ -1592,3 +1592,49 @@ test("an image copied before the field remounts pastes back whole", async () => 
   await settle();
   expect(lastHtml(onChange)).toContain('src="https://example.org/a.png"');
 });
+
+// Round 4, item 17: an image node in the field's own clipboard data is kept
+// only as this editor writes one
+test.each([
+  [
+    "a javascript: address",
+    {
+      src: "javascript:alert(1)",
+      alt: "A",
+      width: null,
+      height: null,
+      title: null,
+    },
+  ],
+  [
+    "an extra attribute",
+    {
+      src: "https://example.org/a.png",
+      alt: "A",
+      width: null,
+      height: null,
+      title: null,
+      onerror: "x",
+    },
+  ],
+  ["no attributes", undefined],
+])("an own image node with %s pastes as nothing", async (_name, attributes) => {
+  const { onChange } = mountField({ value: { html: "<p>Text</p>" } });
+  await settle();
+  await click(editable()!.querySelector<HTMLElement>("p"));
+  const node: Record<string, unknown> = { type: "cms-image", version: 1 };
+  if (attributes !== undefined) {
+    node.attributes = attributes;
+  }
+  paste(editable()!, {
+    "application/x-lexical-editor": JSON.stringify({
+      namespace: editorOf()!._config.namespace,
+      nodes: [node],
+    }),
+    "text/html": "<p>x</p>",
+    "text/plain": "x",
+  });
+  await settle();
+  expect(editable()!.querySelector("img")).toBeNull();
+  expect(lastHtml(onChange)).not.toContain("<img");
+});

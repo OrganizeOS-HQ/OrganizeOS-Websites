@@ -6,9 +6,9 @@
  * the tags and attributes the platform's sanitiser keeps: `src`, `alt`,
  * `width`, `height` and `title` on the `img`.
  *
- * An image enters a value only from its stored HTML or an upload: the HTML
- * import keeps one only while a stored value loads (`importStoredImages`), so
- * pasted HTML keeps none.
+ * An image enters a value only from its stored HTML, an upload, or the same
+ * field's own cut, copy or drag: the HTML import keeps one only while a
+ * stored value loads (`importStoredImages`), so pasted HTML keeps none.
  */
 import { useEffect, useId, useState } from "react";
 import {
