@@ -16,7 +16,9 @@ import {
   $isRangeSelection,
   $isTextNode,
   $setSelection,
+  $isDecoratorNode,
   $isElementNode,
+  $isParagraphNode,
   $isLineBreakNode,
   COMMAND_PRIORITY_CRITICAL,
   DRAGSTART_COMMAND,
@@ -47,7 +49,11 @@ import {
   TOGGLE_LINK_COMMAND,
 } from "@lexical/link";
 import {
+  $createListItemNode,
+  $createListNode,
+  $isListItemNode,
   $isListNode,
+  ListItemNode,
   INSERT_ORDERED_LIST_COMMAND,
   INSERT_UNORDERED_LIST_COMMAND,
   REMOVE_LIST_COMMAND,
@@ -442,9 +448,96 @@ const setBlockType = (editor: LexicalEditor, block: BlockType) => {
 };
 
 /** The node rules the read-only check runs too (`registerRichTextTransforms`). */
+/**
+ * No list item holds a block after its nested list (a paste into a nested
+ * item can leave one): a paragraph after it becomes an item after the item
+ * that holds the list, at that item's level, an empty one goes, and any
+ * other block leaves the outermost list, splitting it, with whatever follows
+ * it in that item, so the reading order stays.
+ */
+const $liftBlocksAfterNestedList = (item: ListItemNode) => {
+  const children = item.getChildren();
+  const listAt = children.findIndex($isListNode);
+  if (listAt === -1) {
+    return;
+  }
+  const after = children.slice(listAt + 1);
+  const isBlock = (node: LexicalNode) =>
+    ($isElementNode(node) || $isDecoratorNode(node)) &&
+    node.isInline() === false;
+  if (after.some(isBlock) === false) {
+    return;
+  }
+  let anchor: LexicalNode = item;
+  let lifted: LexicalNode | undefined;
+  for (const child of after) {
+    if (lifted !== undefined) {
+      lifted.insertAfter(child);
+      lifted = child;
+      continue;
+    }
+    if ($isParagraphNode(child)) {
+      if (child.getChildrenSize() === 0) {
+        child.remove();
+        continue;
+      }
+      const next = $createListItemNode();
+      next.append(...child.getChildren());
+      child.remove();
+      anchor.insertAfter(next);
+      anchor = next;
+      continue;
+    }
+    if (
+      $isListNode(child) &&
+      child
+        .getChildren()
+        .every(
+          (entry) => $isListItemNode(entry) && entry.getChildrenSize() === 0
+        )
+    ) {
+      child.remove();
+      continue;
+    }
+    if (isBlock(child) === false) {
+      continue;
+    }
+    // the outermost list splits after the top item holding the anchor
+    let top: LexicalNode = anchor;
+    let topList = top.getParent();
+    for (
+      let parent = topList?.getParent();
+      $isListItemNode(parent) && $isListNode(parent.getParent());
+      parent = parent.getParent()?.getParent()
+    ) {
+      top = parent;
+      topList = parent.getParent();
+    }
+    if ($isListNode(topList) === false) {
+      return;
+    }
+    const rest = top.getNextSiblings();
+    topList.insertAfter(child);
+    lifted = child;
+    if (rest.length > 0) {
+      const tail = $createListNode(topList.getListType());
+      tail.append(...rest);
+      child.insertAfter(tail);
+    }
+  }
+};
+
 const TransformsPlugin = () => {
   const [editor] = useLexicalComposerContext();
-  useEffect(() => registerRichTextTransforms(editor), [editor]);
+  useEffect(
+    () =>
+      mergeRegister(
+        registerRichTextTransforms(editor),
+        // the live editor's alone: a stored value of this shape reads lossy
+        editor.registerNodeTransform(ListItemNode, $liftBlocksAfterNestedList)
+      ),
+    [editor]
+  );
   return null;
 };
 

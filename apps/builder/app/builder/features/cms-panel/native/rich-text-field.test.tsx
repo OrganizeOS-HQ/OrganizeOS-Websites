@@ -1749,3 +1749,97 @@ test.each([
   expect(editable()!.querySelector("img")).toBeNull();
   expect(lastHtml(onChange)).not.toContain("<img");
 });
+
+// self-lock decision, 4a: a paste into a nested item never leaves a block
+// after the nested list
+describe("blocks pasted into a nested list item (self-lock decision, 4a)", () => {
+  const caretAtB = async () => {
+    const field = mountField({
+      value: { html: "<ul><li>a<ul><li>b</li></ul></li></ul>" },
+    });
+    await settle();
+    await click(editable()!.querySelector<HTMLElement>("li li"));
+    await act(async () => {
+      editorOf()!.update(() => {
+        const b = $getRoot()
+          .getAllTextNodes()
+          .find((node) => node.getTextContent() === "b")!;
+        b.select(1, 1);
+      });
+    });
+    await settle();
+    return field;
+  };
+  /** The saved value reopens editable, and a load and save keeps it. */
+  const expectFixedPoint = (html: string) => {
+    const stored = sanitizeRichTextHtml(html);
+    expect(reopenReason(html)).toBeUndefined();
+    expect(sanitizeRichTextHtml(writeRichTextHeadless(stored))).toBe(stored);
+  };
+
+  test.each([
+    ["two paragraphs", "<p>one</p><p>two</p>"],
+    ["a paragraph and a rule", "<p>one</p><hr>"],
+    ["a code block", "<pre><code>c1\nc2</code></pre>"],
+    ["a quote", "<blockquote><p>q</p></blockquote>"],
+    [
+      "a web snippet",
+      '<h3>Minutes</h3><p>Approved.</p><p>Next <a href="https://e.org/">here</a>.</p>',
+    ],
+  ])("%s: the value reopens editable and is a fixed point", async (_, html) => {
+    const { onChange } = await caretAtB();
+    paste(editable()!, { "text/html": html, "text/plain": "x" });
+    await settle();
+    const written = lastHtml(onChange) ?? "";
+    expect(written).not.toBe("");
+    expectFixedPoint(written);
+  });
+
+  test("an image paragraph from the field's own clipboard: the value reopens editable and keeps the image", async () => {
+    const { onChange } = await caretAtB();
+    paste(editable()!, {
+      "application/x-lexical-editor": JSON.stringify({
+        namespace: editorOf()!._config.namespace,
+        nodes: [
+          {
+            type: "paragraph",
+            version: 1,
+            children: [
+              {
+                type: "text",
+                version: 1,
+                text: "one",
+                format: 0,
+                detail: 0,
+                mode: "normal",
+                style: "",
+              },
+            ],
+            direction: null,
+            format: "",
+            indent: 0,
+            textFormat: 0,
+            textStyle: "",
+          },
+          {
+            type: "paragraph",
+            version: 1,
+            children: [
+              JSON.parse(copiedImage(editorOf()!._config.namespace)).nodes[0],
+            ],
+            direction: null,
+            format: "",
+            indent: 0,
+            textFormat: 0,
+            textStyle: "",
+          },
+        ],
+      }),
+      "text/html": `<p>one</p><p>${IMAGE}</p>`,
+    });
+    await settle();
+    const written = lastHtml(onChange) ?? "";
+    expect(written).toContain('src="https://example.org/a.png"');
+    expectFixedPoint(written);
+  });
+});
