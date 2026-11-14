@@ -1518,11 +1518,16 @@ test.each([
 
 // exact-guard round, item 2: every toolbar command over a whole editable
 // corpus value saves a value that reopens editable, on every twentieth one (the
-// corpus orders its matrix by shape, so this spans every shape it crosses)
-const corpusSample = corpus.entries
-  .filter((entry) => entry.verdict === "editable")
-  .filter((_entry, index) => index % 20 === 0)
-  .map((entry) => entry.input);
+// corpus orders its matrix by shape, so this spans every shape it crosses),
+// plus each value a run over the whole set found locking
+const corpusSample = [
+  ...corpus.entries
+    .filter((entry) => entry.verdict === "editable")
+    .filter((_entry, index) => index % 20 === 0)
+    .map((entry) => entry.input),
+  // the values the full set (every editable entry, every command) locked
+  "<p>z</p><ul><li> <ul><li>n</li></ul></li></ul>",
+];
 
 const toolbarActions: Array<[string, () => Promise<void>]> = [
   ["Bold", () => click(byLabel("Bold"))],
