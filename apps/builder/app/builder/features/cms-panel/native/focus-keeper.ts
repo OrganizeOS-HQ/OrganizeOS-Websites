@@ -38,8 +38,10 @@ const isDrawn = (element: Element) =>
 
 /**
  * Gives a focus lost to the page to the screen's nearest control: the open
- * view's Back, the field or collection row it belongs to, Add field or New
- * item, else the open collection's row.
+ * view's Back, the item editor's Back, the field or collection row it
+ * belongs to, Add field or New item, the open collection's row, a refusal
+ * line's first button, "+", the first collection's row, else the selected
+ * tab. A disabled control is passed over.
  */
 export const keepFocusInScreen = () => {
   if (placing > 0) {
@@ -59,25 +61,32 @@ export const keepFocusInScreen = () => {
   ) {
     return;
   }
+  const first = (selector: string) =>
+    screen.querySelector<HTMLElement>(selector) ?? undefined;
   const candidates: Array<HTMLElement | undefined> = [
-    ...[
-      '[data-cms-structure-header] [aria-label="Back"]',
-      "[data-cms-field-row][data-current] button",
-      '[aria-label="Add field"]',
-    ].map(
-      (selector) => screen.querySelector<HTMLElement>(selector) ?? undefined
-    ),
+    first('[data-cms-structure-header] [aria-label="Back"]'),
+    first('[data-cms-editor-header] [aria-label="Back"]'),
+    first("[data-cms-field-row][data-current] button"),
+    first('[aria-label="Add field"]'),
     [...screen.querySelectorAll<HTMLButtonElement>("button")].find(
       (button) => button.textContent === "New item"
     ),
-    screen.querySelector<HTMLElement>(
-      "[data-cms-collection][data-current] button"
-    ) ?? undefined,
+    first("[data-cms-collection][data-current] button"),
+    first("[data-cms-refusal] button"),
+    first('[aria-label="New collection"]'),
+    first("[data-cms-collection] button"),
+    first('[role="tab"][aria-selected="true"]'),
   ];
   for (const candidate of candidates) {
-    if (candidate !== undefined && isDrawn(candidate)) {
+    if (
+      candidate !== undefined &&
+      isDrawn(candidate) &&
+      candidate.matches(":disabled") === false
+    ) {
       candidate.focus();
-      return;
+      if (document.activeElement === candidate) {
+        return;
+      }
     }
   }
 };

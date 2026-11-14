@@ -1666,7 +1666,8 @@ describe("the focus after an item's Back, then a structure view (round 4)", () =
   });
 });
 
-// round 5, item 5: one focus keeper for the screen
+// round 5, item 5: one focus keeper for the screen; R5-10: each case's
+// exact target
 describe("a focus lost to the page comes back to the screen (round 5)", () => {
   const twoFrames = async () => {
     for (let frame = 0; frame < 3; frame += 1) {
@@ -1678,18 +1679,84 @@ describe("a focus lost to the page comes back to the screen (round 5)", () => {
   };
   const header = () =>
     document.querySelector<HTMLElement>("[data-cms-structure-header]")!;
+  const structureBack = () =>
+    document.querySelector<HTMLElement>(
+      '[data-cms-structure-header] [aria-label="Back"]'
+    );
+  const editorBack = () =>
+    document.querySelector<HTMLElement>(
+      '[data-cms-editor-header] [aria-label="Back"]'
+    );
+  const newItem = () => buttonByText("New item");
+  const lineButton = () =>
+    document.querySelector<HTMLElement>("[data-cms-refusal] button");
   const openSettings = async () => {
     await click(tab("Collections"));
     await click(byLabel("Posts menu"));
     await click(menuItem("Settings"));
   };
-  const cases: Array<[string, () => Promise<void>]> = [
+  const SPEAKERS_ROW: CmsCollectionSummary = {
+    ...PEOPLE,
+    id: "66666666-6666-4666-8666-000000000002",
+    slug: "speakers",
+    name: "Speakers",
+    singularName: "Speaker",
+  };
+  /** E22 makes a Custom collection whose E21 answers `held`. */
+  const createCustomHeld = () => {
+    harness.structure.createCollection.mockImplementation(async () => {
+      harness.fake.listCollections.mockResolvedValue({
+        collections: [POSTS, PEOPLE, SPEAKERS_ROW],
+      });
+      return { collection: SPEAKERS_ROW, created: true };
+    });
+    const held = deferred<{ error: "unavailable" }>();
+    harness.structure.getCollectionStructure.mockReturnValue(
+      held.promise as never
+    );
+    return held;
+  };
+  const createCustom = async () => {
+    await click(tab("Collections"));
+    await click(byLabel("New collection"));
+    await click(radio("cms-new-collection", "custom"));
+    await typeInto(nameInput(), "Speakers");
+    await click(createButton());
+  };
+  const cases: Array<
+    [
+      string,
+      () => Promise<void>,
+      () => Element | null | undefined,
+      (() => void)?,
+    ]
+  > = [
     [
       "Settings' Back after the column switched to Fields",
       async () => {
         await openSettings();
         await click(tab("Fields"));
         await click(byLabel("Back"));
+      },
+      () => byLabel("Add field"),
+    ],
+    [
+      "Settings' Back after the column switched to Fields, at the field cap",
+      async () => {
+        await openSettings();
+        await click(tab("Fields"));
+        await click(byLabel("Back"));
+      },
+      newItem,
+      () => {
+        harness.structure.getStructure.mockResolvedValue({
+          templates: [],
+          limits: {
+            fields: POSTS_DETAIL.fields.length,
+            customCollections: 5,
+            customCount: 0,
+          },
+        });
       },
     ],
     [
@@ -1701,6 +1768,7 @@ describe("a focus lost to the page comes back to the screen (round 5)", () => {
         await click(menuItem("Settings"));
         await keepEditing();
       },
+      editorBack,
     ],
     [
       "a failed Save in the field sheet",
@@ -1716,6 +1784,7 @@ describe("a focus lost to the page comes back to the screen (round 5)", () => {
         });
         await click(buttonByText("Save", header()));
       },
+      () => buttonByText("Save", header()),
     ],
     [
       "a failed Save in Settings",
@@ -1730,6 +1799,7 @@ describe("a focus lost to the page comes back to the screen (round 5)", () => {
         });
         await click(buttonByText("Save", header()));
       },
+      () => buttonByText("Save", header()),
     ],
     [
       "a successful Reload in the field sheet",
@@ -1746,6 +1816,23 @@ describe("a focus lost to the page comes back to the screen (round 5)", () => {
         await click(buttonByText("Save", header()));
         await click(buttonByText("Reload"));
       },
+      structureBack,
+    ],
+    [
+      "a successful Reload in Settings",
+      async () => {
+        await openSettings();
+        await typeInto(
+          document.querySelector<HTMLInputElement>("#cms-settings-name"),
+          "Articles"
+        );
+        harness.structure.updateCollection.mockResolvedValueOnce({
+          error: "conflict",
+        });
+        await click(buttonByText("Save", header()));
+        await click(buttonByText("Reload"));
+      },
+      structureBack,
     ],
     [
       "a Delete whose count read fails",
@@ -1758,21 +1845,213 @@ describe("a focus lost to the page comes back to the screen (round 5)", () => {
         await click(byLabel("People menu"));
         await click(menuItem("Delete"));
       },
+      newItem,
+    ],
+    [
+      "Enter on the item editor's Save",
+      async () => {
+        await editItemTitle();
+        harness.fake.updateItem.mockReturnValueOnce(deferred<never>().promise);
+        const save = buttonByText(
+          "Save",
+          document.querySelector("[data-cms-editor-header]")!
+        )!;
+        save.focus();
+        await act(async () => userEvent.keyboard("{Enter}"));
+        expect(save.disabled).toBe(true);
+      },
+      editorBack,
+    ],
+    [
+      "Custom Create before its E21 answers",
+      async () => {
+        createCustomHeld();
+        await createCustom();
+      },
+      newItem,
+    ],
+    [
+      "Custom Create whose E21 fails",
+      async () => {
+        const held = createCustomHeld();
+        await createCustom();
+        await act(async () => held.resolve({ error: "unavailable" }));
+      },
+      newItem,
+    ],
+    [
+      "a Retry refused in New collection",
+      async () => {
+        await click(byLabel("New collection"));
+        harness.structure.getStructure.mockResolvedValueOnce({
+          error: "forbidden",
+        });
+        await click(buttonByText("Retry", dialog()!));
+      },
+      lineButton,
+      () => {
+        harness.structure.getStructure.mockResolvedValueOnce({
+          error: "unavailable",
+        });
+      },
+    ],
+    [
+      "Cancel in New collection during a Retry it refuses",
+      async () => {
+        await click(byLabel("New collection"));
+        const held = deferred<{ error: "forbidden" }>();
+        harness.structure.getStructure.mockReturnValueOnce(
+          held.promise as never
+        );
+        await click(buttonByText("Retry", dialog()!));
+        await click(buttonByText("Cancel", dialog()!));
+        await act(async () => held.resolve({ error: "forbidden" }));
+      },
+      lineButton,
+      () => {
+        harness.structure.getStructure.mockResolvedValueOnce({
+          error: "unavailable",
+        });
+      },
+    ],
+    [
+      "the first run's Create",
+      async () => {
+        await click(radio("cms-first-run", "blog"));
+        await click(buttonByText("Create", firstRun()!));
+      },
+      () => document.querySelector('[data-cms-collection="posts"] button'),
+      () => {
+        harness.fake.listCollections.mockResolvedValue({ collections: [] });
+        harness.structure.createCollection.mockImplementation(async () => {
+          harness.fake.listCollections.mockResolvedValue({
+            collections: [POSTS],
+          });
+          return { collection: POSTS, created: true };
+        });
+      },
+    ],
+    [
+      "Cancel in New collection after the first run's Create",
+      async () => {
+        await click(radio("cms-first-run", "blog"));
+        await click(buttonByText("Create", firstRun()!));
+        await vi.waitFor(() => expect(rowOf("posts")).not.toBeNull());
+        await twoFrames();
+        await click(byLabel("New collection"));
+        await click(buttonByText("Cancel", dialog()!));
+      },
+      () => byLabel("New collection"),
+      () => {
+        harness.fake.listCollections.mockResolvedValue({ collections: [] });
+        harness.structure.createCollection.mockImplementation(async () => {
+          harness.fake.listCollections.mockResolvedValue({
+            collections: [POSTS],
+          });
+          return { collection: POSTS, created: true };
+        });
+      },
     ],
   ];
 
-  test.each(cases)("%s", async (_name, run) => {
+  test.each(cases)("%s", async (_name, run, target, before) => {
+    before?.();
     mount();
     await settle();
     await run();
     await twoFrames();
-    const active = document.activeElement;
-    expect(active).not.toBe(document.body);
-    expect(active?.isConnected).toBe(true);
+    await vi.waitFor(
+      () => {
+        const expected = target();
+        expect(expected).toBeTruthy();
+        expect(document.activeElement).toBe(expected);
+      },
+      { timeout: 1500 }
+    );
+  });
+
+  test.each([
+    [
+      "a row's menu",
+      async () => {
+        await click(tab("Collections"));
+        await click(byLabel("Posts menu"));
+      },
+    ],
+    [
+      "the unsaved guard",
+      async () => {
+        await editItemTitle();
+        await click(tab("Collections"));
+        await click(byLabel("New collection"));
+        expect(hasText("Discard unsaved changes?")).toBe(true);
+      },
+    ],
+  ])("with %s open, a focus on the page stays there", async (_name, run) => {
+    mount();
+    await settle();
+    await run();
+    act(() => {
+      (document.activeElement as HTMLElement).blur();
+    });
+    expect(document.activeElement).toBe(document.body);
+    await twoFrames();
+    await twoFrames();
+    expect(document.activeElement).toBe(document.body);
     expect(
-      active?.closest("[data-cms-native-screen], [role='dialog']")
+      document.querySelector('[role="menu"], [role="dialog"]')
     ).not.toBeNull();
   });
+
+  test('Cancel in New collection returns the focus to "+" every time', async () => {
+    mount();
+    await settle();
+    await click(tab("Collections"));
+    const landed: Array<string | null> = [];
+    for (let round = 0; round < 30; round += 1) {
+      await click(byLabel("New collection"));
+      await click(buttonByText("Cancel", dialog()!));
+      await twoFrames();
+      landed.push(
+        document.activeElement === byLabel("New collection")
+          ? "+"
+          : (document.activeElement?.textContent ?? null)
+      );
+    }
+    expect(landed).toEqual(Array.from({ length: 30 }, () => "+"));
+  });
+
+  test('Cancel and Escape in New collection return the focus to "+" however late the dialog places it', async () => {
+    mount();
+    await settle();
+    await click(tab("Collections"));
+    // the dialog's close places the focus on a zero-delay timer: it lands
+    // after the keeper's two frames here
+    const setTimeoutOf = window.setTimeout;
+    vi.spyOn(window, "setTimeout").mockImplementation(((
+      run: TimerHandler,
+      delay?: number,
+      ...rest: unknown[]
+    ) =>
+      setTimeoutOf(
+        run,
+        delay === undefined || delay === 0 ? 60 : delay,
+        ...rest
+      )) as typeof window.setTimeout);
+    for (const close of ["Cancel", "Escape"]) {
+      await click(byLabel("New collection"));
+      if (close === "Cancel") {
+        await click(buttonByText("Cancel", dialog()!));
+      } else {
+        await act(async () => userEvent.keyboard("{Escape}"));
+        await settle();
+      }
+      await twoFrames();
+      await vi.waitFor(() => expect(dialog()).toBeNull());
+      await twoFrames();
+      expect(document.activeElement).toBe(byLabel("New collection"));
+    }
+  }, 30000);
 });
 
 // round 5, item 6: the focus goes back to what opened the view or dialog

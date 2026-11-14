@@ -46,7 +46,7 @@ import {
   RATE_LIMIT_RETRY_MS,
   REORDER_PAUSE_MS,
 } from "./cms-structure-logic";
-import { holdFocusKeeper } from "./focus-keeper";
+import { holdFocusKeeper, keepFocusInScreen } from "./focus-keeper";
 import {
   CUSTOM_COLLECTION_TYPE,
   type CmsStructureCollection,
@@ -602,9 +602,18 @@ export const useCmsStructure = ({
   }, [view, viewCollectionId, collectionId, closeView]);
 
   // the collection New collection created, for the focus once it closes
-  const createdFocus = useRef<
-    { slug: string; custom: boolean; release: () => void } | undefined
-  >(undefined);
+  const createdFocus = useRef<{ slug: string; custom: boolean } | undefined>(
+    undefined
+  );
+  // New collection is closing: the keeper stands back until its focus is
+  // placed
+  const closingHold = useRef<(() => void) | undefined>(undefined);
+  const holdWhileClosing = () => {
+    closingHold.current?.();
+    closingHold.current = holdFocusKeeper();
+  };
+  const isNewOpenRef = useRef(isNewOpen);
+  isNewOpenRef.current = isNewOpen;
   // The focus: a view that opens takes it on Back, unless the view already
   // holds it; a view that closes gives it to the row it was opened from
   const shownView = useRef<
@@ -1125,15 +1134,87 @@ export const useCmsStructure = ({
     ),
   };
 
+  /** Where the focus goes after a create: the new row, Add field first for Custom. */
+  const createdTargets = (slug: string, custom: boolean) => {
+    const row = `[data-cms-collection="${CSS.escape(slug)}"] button`;
+    return custom ? ['[aria-label="Add field"]', row] : [row];
+  };
+
+  /**
+   * Focuses the first of `selectors` drawn and enabled, trying each frame
+   * for 30 frames, then "+"; a focus taken elsewhere (outside `from`) ends
+   * it. Then `release`, and the keeper for a focus still on the page.
+   */
+  const placeFocus = (
+    selectors: string[],
+    release: () => void,
+    from?: string
+  ) => {
+    const focusFirst = (candidates: string[]) => {
+      for (const selector of candidates) {
+        const element = document.querySelector<HTMLElement>(selector);
+        if (
+          element !== null &&
+          element.closest("[hidden]") === null &&
+          element.matches(":disabled") === false
+        ) {
+          element.focus();
+          if (document.activeElement === element) {
+            return true;
+          }
+        }
+      }
+      return false;
+    };
+    const done = () => {
+      release();
+      keepFocusInScreen();
+    };
+    let frames = 0;
+    const attempt = () => {
+      const active = document.activeElement;
+      // a guard dialog or another view took the focus
+      if (
+        active !== null &&
+        active !== document.body &&
+        active.isConnected &&
+        (from === undefined || active.closest(from) === null)
+      ) {
+        release();
+        return;
+      }
+      if (focusFirst(selectors)) {
+        release();
+        return;
+      }
+      frames += 1;
+      if (frames < 30) {
+        requestAnimationFrame(attempt);
+      } else {
+        focusFirst(['[aria-label="New collection"]']);
+        done();
+      }
+    };
+    attempt();
+  };
+
   const onCreated = (created: CmsCollectionSummary, type: string) => {
     pendingCreate.current = undefined;
-    createdFocus.current?.release();
-    createdFocus.current = {
-      slug: created.slug,
-      custom: type === CUSTOM_COLLECTION_TYPE,
-      // the keeper stands back from the create until the new row is focused
-      release: holdFocusKeeper(),
-    };
+    const targets = createdTargets(
+      created.slug,
+      type === CUSTOM_COLLECTION_TYPE
+    );
+    if (isNewOpenRef.current) {
+      // the dialog's close places the focus
+      createdFocus.current = {
+        slug: created.slug,
+        custom: type === CUSTOM_COLLECTION_TYPE,
+      };
+      holdWhileClosing();
+    } else {
+      // the first-run page places it once the new row is drawn
+      placeFocus(targets, holdFocusKeeper(), "[data-cms-first-run]");
+    }
     setIsNewOpen(false);
     written({ kind: "created", collection: created });
     setStructureVersion((current) => current + 1);
@@ -1155,43 +1236,14 @@ export const useCmsStructure = ({
     event.preventDefault();
     const created = createdFocus.current;
     createdFocus.current = undefined;
-    const selectors =
+    const release = closingHold.current ?? (() => {});
+    closingHold.current = undefined;
+    placeFocus(
       created === undefined
         ? ['[aria-label="New collection"]']
-        : created.custom
-          ? [
-              '[aria-label="Add field"]',
-              `[data-cms-collection="${CSS.escape(created.slug)}"] button`,
-            ]
-          : [`[data-cms-collection="${CSS.escape(created.slug)}"] button`];
-    let frames = 0;
-    const release = created?.release ?? (() => {});
-    const attempt = () => {
-      const active = document.activeElement;
-      // a guard dialog or another view took the focus
-      if (active !== null && active !== document.body) {
-        release();
-        return;
-      }
-      for (const selector of selectors) {
-        const element = document.querySelector<HTMLElement>(selector);
-        if (element !== null && element.closest("[hidden]") === null) {
-          element.focus();
-          release();
-          return;
-        }
-      }
-      frames += 1;
-      if (frames < 30) {
-        requestAnimationFrame(attempt);
-      } else {
-        document
-          .querySelector<HTMLElement>('[aria-label="New collection"]')
-          ?.focus();
-        release();
-      }
-    };
-    attempt();
+        : createdTargets(created.slug, created.custom),
+      release
+    );
   };
 
   const createCallbacks = {
@@ -1342,6 +1394,7 @@ export const useCmsStructure = ({
           // a create of unknown outcome is adopted only while its form is open
           if (isOpen === false) {
             pendingCreate.current = undefined;
+            holdWhileClosing();
           }
           setIsNewOpen(isOpen);
         }}
