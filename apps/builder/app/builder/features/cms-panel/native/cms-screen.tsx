@@ -32,6 +32,7 @@ import {
   toast,
 } from "@webstudio-is/design-system";
 import type { CmsDeepLink } from "../cms-panel";
+import { afterTwoFrames, keepFocusInScreen } from "./focus-keeper";
 import {
   getClassicDeepLink,
   getRefusal,
@@ -371,6 +372,34 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
         setOpens((current) => current + 1);
       }
     }, [isVisible]);
+
+    // One focus keeper: after each render, and whenever the focus leaves an
+    // element, two frames later (after the placements of their own), a focus
+    // lost to the page (the body, or an
+    // element no longer drawn) goes to the nearest control drawn, unless a
+    // dialog, menu or list is open
+    const keepsFocus = isVisible && hidden === false;
+    useEffect(() => {
+      if (keepsFocus === false) {
+        return;
+      }
+      return afterTwoFrames(keepFocusInScreen);
+    });
+    useEffect(() => {
+      if (keepsFocus === false) {
+        return;
+      }
+      let cancel = () => {};
+      const onFocusOut = () => {
+        cancel();
+        cancel = afterTwoFrames(keepFocusInScreen);
+      };
+      document.addEventListener("focusout", onFocusOut);
+      return () => {
+        cancel();
+        document.removeEventListener("focusout", onFocusOut);
+      };
+    }, [keepsFocus]);
 
     // E0 and E1, on open, on each reopen and on Retry (which reads E2 and
     // E3 again too).

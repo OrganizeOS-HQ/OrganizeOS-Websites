@@ -46,6 +46,7 @@ import {
   RATE_LIMIT_RETRY_MS,
   REORDER_PAUSE_MS,
 } from "./cms-structure-logic";
+import { holdFocusKeeper } from "./focus-keeper";
 import {
   CUSTOM_COLLECTION_TYPE,
   type CmsStructureCollection,
@@ -597,9 +598,9 @@ export const useCmsStructure = ({
   }, [view, viewCollectionId, collectionId, closeView]);
 
   // the collection New collection created, for the focus once it closes
-  const createdFocus = useRef<{ slug: string; custom: boolean } | undefined>(
-    undefined
-  );
+  const createdFocus = useRef<
+    { slug: string; custom: boolean; release: () => void } | undefined
+  >(undefined);
   // The focus: a view that opens takes it on Back, unless the view already
   // holds it; a view that closes gives it to the row it was opened from
   const shownView = useRef<
@@ -680,9 +681,11 @@ export const useCmsStructure = ({
     }
     // a write of this collection is under way: drawn again now, the view
     // would show the values from before it. It is drawn again once that
-    // collection's queue settles, whatever the answer
+    // collection's queue settles, whatever the answer, if it is still open
+    const asked = sessionRef.current;
     void queues.current.get(id)?.then(() => {
-      if (collectionIdRef.current === id) {
+      // only the view Discard was for: not one opened since
+      if (collectionIdRef.current === id && sessionRef.current === asked) {
         setSession((current) => current + 1);
       }
     });
@@ -1111,9 +1114,12 @@ export const useCmsStructure = ({
 
   const onCreated = (created: CmsCollectionSummary, type: string) => {
     pendingCreate.current = undefined;
+    createdFocus.current?.release();
     createdFocus.current = {
       slug: created.slug,
       custom: type === CUSTOM_COLLECTION_TYPE,
+      // the keeper stands back from the create until the new row is focused
+      release: holdFocusKeeper(),
     };
     setIsNewOpen(false);
     written({ kind: "created", collection: created });
@@ -1146,16 +1152,19 @@ export const useCmsStructure = ({
             ]
           : [`[data-cms-collection="${CSS.escape(created.slug)}"] button`];
     let frames = 0;
+    const release = created?.release ?? (() => {});
     const attempt = () => {
       const active = document.activeElement;
       // a guard dialog or another view took the focus
       if (active !== null && active !== document.body) {
+        release();
         return;
       }
       for (const selector of selectors) {
         const element = document.querySelector<HTMLElement>(selector);
         if (element !== null && element.closest("[hidden]") === null) {
           element.focus();
+          release();
           return;
         }
       }
@@ -1166,6 +1175,7 @@ export const useCmsStructure = ({
         document
           .querySelector<HTMLElement>('[aria-label="New collection"]')
           ?.focus();
+        release();
       }
     };
     attempt();

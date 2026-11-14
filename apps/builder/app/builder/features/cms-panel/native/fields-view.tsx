@@ -189,6 +189,7 @@ const FieldRow = ({
     role="listitem"
     data-id={field.key}
     data-cms-field-row={field.key}
+    data-current={isCurrent || undefined}
     data-dragging={isDragging || undefined}
     data-movable={isMovable || undefined}
     className={rowStyle()}
