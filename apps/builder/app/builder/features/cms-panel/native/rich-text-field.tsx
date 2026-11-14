@@ -24,7 +24,16 @@ import {
   $isParagraphNode,
   $isLineBreakNode,
   COMMAND_PRIORITY_CRITICAL,
+  DELETE_CHARACTER_COMMAND,
+  DELETE_LINE_COMMAND,
+  DELETE_WORD_COMMAND,
   DRAGSTART_COMMAND,
+  INSERT_LINE_BREAK_COMMAND,
+  INSERT_PARAGRAPH_COMMAND,
+  KEY_BACKSPACE_COMMAND,
+  KEY_DELETE_COMMAND,
+  REMOVE_TEXT_COMMAND,
+  type LexicalCommand,
   KEY_ARROW_LEFT_COMMAND,
   KEY_ARROW_RIGHT_COMMAND,
   KEY_DOWN_COMMAND,
@@ -69,7 +78,10 @@ import {
   $isQuoteNode,
   QuoteNode,
 } from "@lexical/rich-text";
-import { $getLexicalContent } from "@lexical/clipboard";
+import {
+  $generateNodesFromSerializedNodes,
+  $getLexicalContent,
+} from "@lexical/clipboard";
 import { $createCodeNode, $isCodeNode } from "@lexical/code";
 import { $setBlocksType } from "@lexical/selection";
 import {
@@ -386,43 +398,6 @@ const useToolbarState = (editor: LexicalEditor) => {
   return state;
 };
 
-/**
- * A code block holds plain text: its links give way to their text, its
- * formats clear, and its images move to a paragraph after it.
- */
-const $moveImagesOutOfCode = () => {
-  const visit = (node: LexicalNode) => {
-    if ($isCodeNode(node)) {
-      for (const child of node.getChildren()) {
-        if ($isLinkNode(child)) {
-          for (const inner of child.getChildren()) {
-            child.insertBefore(inner);
-          }
-          child.remove();
-        }
-      }
-      for (const child of node.getChildren()) {
-        if ($isTextNode(child) && child.getFormat() !== 0) {
-          child.setFormat(0);
-        }
-      }
-      const images = node.getChildren().filter($isCmsImageNode);
-      if (images.length > 0) {
-        const paragraph = $createParagraphNode();
-        paragraph.append(...images);
-        node.insertAfter(paragraph);
-        // the caret's offset counted the images: it goes to the block's end
-        node.selectEnd();
-      }
-      return;
-    }
-    if ($isElementNode(node)) {
-      node.getChildren().forEach(visit);
-    }
-  };
-  visit($getRoot());
-};
-
 const setBlockType = (editor: LexicalEditor, block: BlockType) => {
   editor.update(() => {
     const selection = $getSelection();
@@ -445,9 +420,6 @@ const setBlockType = (editor: LexicalEditor, block: BlockType) => {
           return $createHeadingNode(block);
       }
     });
-    if (block === "code") {
-      $moveImagesOutOfCode();
-    }
   });
   editor.focus();
 };
@@ -1024,6 +996,9 @@ const Toolbar = ({
   const state = useToolbarState(editor);
   const format = (type: TextFormatType) =>
     editor.dispatchCommand(FORMAT_TEXT_COMMAND, type);
+  // a code block holds plain text: no mark and no link
+  const inCode = state.block === "code";
+  const marksDisabled = disabled || inCode;
   const toggleList = (type: "bullet" | "number") => {
     if (state.list === type) {
       editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
@@ -1054,32 +1029,32 @@ const Toolbar = ({
       />
       <ToolbarButton
         label="Bold"
-        active={state.bold}
-        disabled={disabled}
+        active={state.bold && inCode === false}
+        disabled={marksDisabled}
         onClick={() => format("bold")}
       >
         <BoldIcon />
       </ToolbarButton>
       <ToolbarButton
         label="Italic"
-        active={state.italic}
-        disabled={disabled}
+        active={state.italic && inCode === false}
+        disabled={marksDisabled}
         onClick={() => format("italic")}
       >
         <TextItalicIcon />
       </ToolbarButton>
       <ToolbarButton
         label="Underline"
-        active={state.underline}
-        disabled={disabled}
+        active={state.underline && inCode === false}
+        disabled={marksDisabled}
         onClick={() => format("underline")}
       >
         <TextUnderlineIcon />
       </ToolbarButton>
       <ToolbarButton
         label="Strikethrough"
-        active={state.strikethrough}
-        disabled={disabled}
+        active={state.strikethrough && inCode === false}
+        disabled={marksDisabled}
         onClick={() => format("strikethrough")}
       >
         <TextStrikethroughIcon />
@@ -1100,7 +1075,11 @@ const Toolbar = ({
       >
         <NumberedListIcon />
       </ToolbarButton>
-      <LinkButton id={id} active={state.link} disabled={disabled} />
+      <LinkButton
+        id={id}
+        active={state.link && inCode === false}
+        disabled={marksDisabled}
+      />
       {upload !== undefined && (
         <ImageButton disabled={disabled} upload={upload} />
       )}
@@ -1806,6 +1785,342 @@ const LinkRulePlugin = () => {
   return null;
 };
 
+/** Wraps each pasted list item outside a list in a list; true when any was. */
+const wrapStrayListItems = (body: HTMLElement) => {
+  const strays = Array.from(body.querySelectorAll("li")).filter(
+    (item) => /^(UL|OL)$/.test(item.parentElement?.tagName ?? "") === false
+  );
+  for (const item of strays) {
+    const before = item.previousElementSibling;
+    if (
+      before !== null &&
+      before.tagName === "UL" &&
+      before.hasAttribute("data-stray")
+    ) {
+      before.appendChild(item);
+      continue;
+    }
+    const list = body.ownerDocument.createElement("ul");
+    list.setAttribute("data-stray", "");
+    item.replaceWith(list);
+    list.appendChild(item);
+  }
+  for (const list of Array.from(body.querySelectorAll("ul[data-stray]"))) {
+    list.removeAttribute("data-stray");
+  }
+  return strays.length > 0;
+};
+
+/** The pasted data with its list items in lists; undefined when none needs it. */
+const withStrayListItemsWrapped = (
+  data: DataTransfer
+): DataTransfer | undefined => {
+  const html = data.getData("text/html");
+  if (html === "" || /<li\b/i.test(html) === false) {
+    return;
+  }
+  const dom = new DOMParser().parseFromString(html, "text/html");
+  if (wrapStrayListItems(dom.body) === false) {
+    return;
+  }
+  const next = new DataTransfer();
+  for (const type of data.types) {
+    if (type === "Files") {
+      continue;
+    }
+    next.setData(
+      type,
+      type === "text/html" ? dom.body.innerHTML : data.getData(type)
+    );
+  }
+  return next;
+};
+
+/** The field's own copied nodes, when the data holds them. */
+const $ownClipboardNodes = (editor: LexicalEditor, data: DataTransfer) => {
+  const copied = data.getData(LEXICAL_CLIPBOARD_TYPE);
+  if (copied === "") {
+    return;
+  }
+  try {
+    const payload = JSON.parse(copied) as {
+      namespace?: unknown;
+      nodes?: unknown;
+    };
+    if (
+      payload.namespace === editor._config.namespace &&
+      Array.isArray(payload.nodes)
+    ) {
+      return $generateNodesFromSerializedNodes(payload.nodes);
+    }
+  } catch {
+    // not Lexical's data: the paste never reads it
+  }
+};
+
+/**
+ * Copied nodes as a code block's text: each block its own line, images and
+ * figures apart (they go after the block).
+ */
+const $codeTextOf = (nodes: LexicalNode[], images: LexicalNode[]) => {
+  const lines: string[] = [];
+  let line = "";
+  let open = false;
+  const walk = (node: LexicalNode) => {
+    if ($isCmsImageNode(node) || $isCmsFigureNode(node)) {
+      images.push(node);
+      return;
+    }
+    if ($isElementNode(node) && node.isInline() === false) {
+      if (open) {
+        lines.push(line);
+      }
+      line = "";
+      open = true;
+      node.getChildren().forEach(walk);
+      lines.push(line);
+      line = "";
+      open = false;
+      return;
+    }
+    if ($isElementNode(node)) {
+      node.getChildren().forEach(walk);
+      return;
+    }
+    if ($isDecoratorNode(node)) {
+      return;
+    }
+    line += node.getTextContent();
+    open = true;
+  };
+  nodes.forEach(walk);
+  if (open) {
+    lines.push(line);
+  }
+  return lines.join("\n");
+};
+
+/**
+ * A paste into a code block inserts its plain text there; the images and
+ * figures of the field's own copied nodes go after the block, in order.
+ */
+const $pasteIntoCode = (editor: LexicalEditor, data: DataTransfer) => {
+  const selection = $getSelection();
+  if ($isRangeSelection(selection) === false) {
+    return false;
+  }
+  const code = $findMatchingParent(selection.anchor.getNode(), $isCodeNode);
+  if (
+    code === null ||
+    $findMatchingParent(selection.focus.getNode(), $isCodeNode)?.is(code) !==
+      true
+  ) {
+    return false;
+  }
+  const clean = withoutRefusedLinks(data) ?? data;
+  const images: LexicalNode[] = [];
+  const nodes = $ownClipboardNodes(editor, clean);
+  let text =
+    nodes === undefined
+      ? clean.getData("text/plain")
+      : $codeTextOf(nodes, images);
+  if (nodes === undefined && text === "") {
+    const html = clean.getData("text/html");
+    text =
+      new DOMParser().parseFromString(html, "text/html").body.textContent ?? "";
+  }
+  selection.insertRawText(text);
+  let after: LexicalNode = code;
+  let run: ElementNode | undefined;
+  for (const image of images) {
+    if ($isCmsImageNode(image)) {
+      if (run === undefined) {
+        run = $createParagraphNode();
+        after.insertAfter(run);
+        after = run;
+      }
+      run.append(image);
+      continue;
+    }
+    run = undefined;
+    after.insertAfter(image);
+    after = image;
+  }
+  return true;
+};
+
+/**
+ * Figures alone from the field's own clipboard, pasted in a heading, stand
+ * before it with the caret at its start, else after it.
+ */
+const $pasteFiguresBesideHeading = (
+  editor: LexicalEditor,
+  data: DataTransfer
+) => {
+  const selection = $getSelection();
+  if (
+    $isRangeSelection(selection) === false ||
+    selection.isCollapsed() === false
+  ) {
+    return false;
+  }
+  const heading = $findMatchingParent(
+    selection.anchor.getNode(),
+    $isHeadingNode
+  );
+  if ($isHeadingNode(heading) === false) {
+    return false;
+  }
+  if (withoutRefusedLinks(data) !== undefined) {
+    return false;
+  }
+  const nodes = $ownClipboardNodes(editor, data);
+  if (
+    nodes === undefined ||
+    nodes.length === 0 ||
+    nodes.every($isCmsFigureNode) === false
+  ) {
+    return false;
+  }
+  const { anchor } = selection;
+  const first = heading.getFirstDescendant();
+  const atStart =
+    (anchor.type === "element" &&
+      anchor.offset === 0 &&
+      (anchor.key === heading.getKey() || first === null)) ||
+    (anchor.type === "text" &&
+      anchor.offset === 0 &&
+      first !== null &&
+      anchor.key === first.getKey());
+  if (atStart) {
+    for (const node of nodes) {
+      heading.insertBefore(node);
+    }
+    return true;
+  }
+  let after: LexicalNode = heading;
+  for (const node of nodes) {
+    after.insertAfter(node);
+    after = node;
+  }
+  return true;
+};
+
+/**
+ * Where a point sits on a quote or list item between a block child and
+ * another child, it moves into the block: to the start of the block at it,
+ * else to the end of the block before it.
+ */
+const $pointIntoAdjacentBlock = (point: PointType) => {
+  if (point.type !== "element") {
+    return;
+  }
+  const parent = point.getNode();
+  if ($isQuoteNode(parent) === false && $isListItemNode(parent) === false) {
+    return;
+  }
+  const isBlock = (node: LexicalNode | null): node is ElementNode =>
+    $isElementNode(node) && node.isInline() === false;
+  const at = parent.getChildAtIndex(point.offset);
+  const before =
+    point.offset > 0 ? parent.getChildAtIndex(point.offset - 1) : null;
+  const atEnd = isBlock(at) === false;
+  let block = isBlock(at) ? at : isBlock(before) ? before : undefined;
+  if (block === undefined) {
+    return;
+  }
+  for (;;) {
+    const child: LexicalNode | null = atEnd
+      ? block.getLastChild()
+      : block.getFirstChild();
+    if ($isElementNode(child)) {
+      block = child;
+      continue;
+    }
+    if ($isTextNode(child)) {
+      point.set(child.getKey(), atEnd ? child.getTextContentSize() : 0, "text");
+      return;
+    }
+    point.set(block.getKey(), atEnd ? block.getChildrenSize() : 0, "element");
+    return;
+  }
+};
+
+const $selectionIntoAdjacentBlocks = () => {
+  const selection = $getSelection();
+  if ($isRangeSelection(selection)) {
+    $pointIntoAdjacentBlock(selection.anchor);
+    $pointIntoAdjacentBlock(selection.focus);
+  }
+  return false;
+};
+
+/** The commands that edit at the selection. */
+const editingCommands: LexicalCommand<never>[] = [
+  INSERT_PARAGRAPH_COMMAND,
+  INSERT_LINE_BREAK_COMMAND,
+  CONTROLLED_TEXT_INSERTION_COMMAND,
+  PASTE_COMMAND,
+  CUT_COMMAND,
+  KEY_BACKSPACE_COMMAND,
+  KEY_DELETE_COMMAND,
+  DELETE_CHARACTER_COMMAND,
+  DELETE_WORD_COMMAND,
+  DELETE_LINE_COMMAND,
+  REMOVE_TEXT_COMMAND,
+] as LexicalCommand<never>[];
+
+const PasteRulesPlugin = () => {
+  const [editor] = useLexicalComposerContext();
+  useEffect(
+    () =>
+      mergeRegister(
+        // an edit at an element point between a quote's or item's blocks
+        // starts from a text point in the block beside it
+        ...editingCommands.map((command) =>
+          editor.registerCommand(
+            command,
+            $selectionIntoAdjacentBlocks,
+            COMMAND_PRIORITY_CRITICAL
+          )
+        ),
+        // above LinkRulePlugin's paste handler
+        editor.registerCommand(
+          PASTE_COMMAND,
+          (event) => {
+            if (
+              objectKlassEquals(event, ClipboardEvent) === false ||
+              (event as ClipboardEvent).clipboardData === null
+            ) {
+              return false;
+            }
+            const data = (event as ClipboardEvent).clipboardData!;
+            if (
+              $pasteIntoCode(editor, data) ||
+              $pasteFiguresBesideHeading(editor, data)
+            ) {
+              event.preventDefault();
+              return true;
+            }
+            const wrapped = withStrayListItemsWrapped(data);
+            if (wrapped === undefined) {
+              return false;
+            }
+            event.preventDefault();
+            editor.dispatchCommand(
+              PASTE_COMMAND,
+              new ClipboardEvent("paste", { clipboardData: wrapped })
+            );
+            return true;
+          },
+          COMMAND_PRIORITY_NORMAL
+        )
+      ),
+    [editor]
+  );
+  return null;
+};
+
 /** A save in flight turns editing off. */
 const EditablePlugin = ({ editable }: { editable: boolean }) => {
   const [editor] = useLexicalComposerContext();
@@ -1956,6 +2271,7 @@ export const RichTextField = ({
         <ListPlugin />
         <LinkPlugin />
         <LinkRulePlugin />
+        <PasteRulesPlugin />
         <ImageEditingPlugin />
         <HorizontalRulePlugin />
         <TransformsPlugin />

@@ -5,12 +5,17 @@
  * /v1 nodes, spec V12), the import and the export.
  */
 import {
+  $copyNode,
   $createParagraphNode,
   $getRoot,
+  $getSelection,
   $isDecoratorNode,
   $isElementNode,
+  $isLineBreakNode,
   $isRangeSelection,
+  $isRootOrShadowRoot,
   $isTextNode,
+  type ElementNode,
   createEditor,
   ParagraphNode,
   TextNode,
@@ -26,6 +31,7 @@ import {
 import { $generateHtmlFromNodes, $generateNodesFromDOM } from "@lexical/html";
 import { $isLinkNode, LinkNode } from "@lexical/link";
 import {
+  $createListNode,
   $isListItemNode,
   $isListNode,
   ListItemNode,
@@ -38,7 +44,7 @@ import {
   type HeadingTagType,
 } from "@lexical/rich-text";
 import { $isCodeNode, CodeHighlightNode, CodeNode } from "@lexical/code";
-import { mergeRegister } from "@lexical/utils";
+import { $findMatchingParent, mergeRegister } from "@lexical/utils";
 import { HorizontalRuleNode } from "@lexical/react/LexicalHorizontalRuleNode";
 import type { CmsRichTextValue } from "./cms-source";
 import { sanitizeRichTextHtml } from "./rich-text-sanitize";
@@ -49,6 +55,7 @@ import {
   type RichTextInline,
 } from "./rich-text-nodes";
 import {
+  $isCmsImageNode,
   CmsFigureNode,
   CmsImageNode,
   importStoredImages,
@@ -340,10 +347,165 @@ export const richTextImportHref = (raw: string | undefined): string | null => {
 
 export type RichTextReadOnlyReason = "lossy";
 
+const $codeAround = (node: LexicalNode) =>
+  $findMatchingParent(node, $isCodeNode) as CodeNode | null;
+
 const $plainInCode = (node: TextNode) => {
-  if (node.getFormat() !== 0 && $isCodeNode(node.getParent())) {
+  if (node.getFormat() !== 0 && $codeAround(node) !== null) {
     node.setFormat(0);
   }
+};
+
+/**
+ * A code block holds only text, tabs and line breaks: each block inside it
+ * becomes its own line of its text, each link and other inline element
+ * gives way to its content, and its images and other blocks (figures,
+ * rules) move after it, an image run in a paragraph, in order.
+ */
+const $keepCodePlain = (code: CodeNode) => {
+  const isPlain = (node: LexicalNode) =>
+    $isTextNode(node) || $isLineBreakNode(node);
+  if (code.getChildren().every(isPlain)) {
+    return;
+  }
+  const line: LexicalNode[] = [];
+  const moved: LexicalNode[] = [];
+  let breakBefore = false;
+  const endLine = () => {
+    const last = line.at(-1);
+    if (last !== undefined && $isLineBreakNode(last) === false) {
+      line.push($createLineBreakNode());
+    }
+  };
+  const walk = (parent: ElementNode) => {
+    for (const child of parent.getChildren()) {
+      if ($isCmsImageNode(child)) {
+        moved.push(child);
+      } else if ($isDecoratorNode(child)) {
+        if (child.isInline()) {
+          continue;
+        }
+        moved.push(child);
+      } else if ($isElementNode(child)) {
+        if (child.isInline()) {
+          walk(child);
+          continue;
+        }
+        endLine();
+        breakBefore = false;
+        walk(child);
+        breakBefore = true;
+      } else {
+        if (breakBefore) {
+          endLine();
+          breakBefore = false;
+        }
+        if ($isTextNode(child) && child.getFormat() !== 0) {
+          child.setFormat(0);
+        }
+        line.push(child);
+      }
+    }
+  };
+  walk(code);
+  const kept = new Set(line.map((node) => node.getKey()));
+  code.append(...line);
+  for (const child of code.getChildren()) {
+    if (kept.has(child.getKey()) === false) {
+      child.remove();
+    }
+  }
+  let after: LexicalNode = code;
+  let run: ElementNode | undefined;
+  for (const node of moved) {
+    if ($isCmsImageNode(node)) {
+      if (run === undefined) {
+        run = $createParagraphNode();
+        after.insertAfter(run);
+        after = run;
+      }
+      run.append(node);
+      continue;
+    }
+    run = undefined;
+    after.insertAfter(node);
+    after = node;
+  }
+  // a caret left on a removed element, or counting moved nodes, goes to the
+  // block's end
+  const selection = $getSelection();
+  if (
+    $isRangeSelection(selection) &&
+    [selection.anchor, selection.focus].some((point) => {
+      const node = point.getNode();
+      return (
+        node.isAttached() === false ||
+        (point.type === "element" && node.is(code))
+      );
+    })
+  ) {
+    code.selectEnd();
+  }
+};
+
+/** A figure inside a code block makes the block's rule run. */
+const $leaveCode = (node: LexicalNode) => {
+  $codeAround(node)?.markDirty();
+};
+
+/**
+ * A figure stands at the top level only: each block around it splits, the
+ * part after the figure following it, and a block left empty goes.
+ */
+const $liftFigure = (figure: CmsFigureNode) => {
+  if ($codeAround(figure) !== null) {
+    $leaveCode(figure);
+    return;
+  }
+  for (
+    let parent = figure.getParent();
+    parent !== null && $isRootOrShadowRoot(parent) === false;
+    parent = figure.getParent()
+  ) {
+    const rest = figure.getNextSiblings();
+    parent.insertAfter(figure);
+    if (rest.length > 0) {
+      const tail = $copyNode(parent);
+      figure.insertAfter(tail);
+      tail.append(...rest);
+    }
+    if (parent.getChildrenSize() === 0) {
+      parent.remove();
+    }
+  }
+};
+
+/** A list item stands in a list: one outside any joins the list before it. */
+const $keepItemInList = (item: ListItemNode) => {
+  const parent = item.getParent();
+  if (parent === null || $isListNode(parent)) {
+    return;
+  }
+  const before = item.getPreviousSibling();
+  if ($isListNode(before)) {
+    before.append(item);
+    return;
+  }
+  const list = $createListNode("bullet");
+  item.insertBefore(list);
+  list.append(item);
+};
+
+/** A link holding only line breaks links nothing: it gives way to them. */
+const $unwrapBreakOnlyLink = (link: LinkNode) => {
+  const children = link.getChildren();
+  if (children.length === 0 || children.every($isLineBreakNode) === false) {
+    return;
+  }
+  for (const child of children) {
+    link.insertBefore(child);
+  }
+  link.remove();
 };
 
 /** The heading tags the site keeps: h1 becomes h2, h5 and h6 become h4. */
@@ -353,8 +515,10 @@ const allowedHeadingTag = (tag: HeadingTagType): HeadingTagType =>
 /**
  * The node rules the live editor and the read-only check both run: a heading
  * the site does not keep takes the nearest kept tag, an empty link goes, a
- * link whose address the editor refuses gives way to its text, and a code
- * block holds plain text (no format, no link).
+ * link whose address the editor refuses or that holds only line breaks
+ * gives way to its content, a code block holds plain text (no format, no
+ * link, no block, no image, at any depth), a figure stands at the top level,
+ * and a list item stands in a list.
  */
 export const registerRichTextTransforms = (editor: LexicalEditor) =>
   mergeRegister(
@@ -377,7 +541,7 @@ export const registerRichTextTransforms = (editor: LexicalEditor) =>
       }
       if (
         richTextImportHref(node.getURL()) !== null &&
-        $isCodeNode(node.getParent()) === false
+        $codeAround(node) === null
       ) {
         return;
       }
@@ -387,7 +551,11 @@ export const registerRichTextTransforms = (editor: LexicalEditor) =>
       node.remove();
     }),
     editor.registerNodeTransform(TextNode, $plainInCode),
-    editor.registerNodeTransform(CodeHighlightNode, $plainInCode)
+    editor.registerNodeTransform(CodeHighlightNode, $plainInCode),
+    editor.registerNodeTransform(CodeNode, $keepCodePlain),
+    editor.registerNodeTransform(CmsFigureNode, $liftFigure),
+    editor.registerNodeTransform(ListItemNode, $keepItemInList),
+    editor.registerNodeTransform(LinkNode, $unwrapBreakOnlyLink)
   );
 
 /** The editor's load and save of a stored value, with no view. */
