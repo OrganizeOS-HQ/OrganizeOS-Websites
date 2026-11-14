@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { atom, computed } from "nanostores";
 import { useStore } from "@nanostores/react";
-import type { AuthPermit } from "@webstudio-is/trpc-interface/index.server";
 import {
   theme,
   rawTheme,
@@ -11,7 +9,6 @@ import {
   DialogContent,
   DialogTitle,
   Flex,
-  IconButton,
   InsetList,
   InsetListItem,
   List,
@@ -19,49 +16,48 @@ import {
   ScrollAreaNative,
   Select,
   Text,
-  Tooltip,
   styled,
 } from "@webstudio-is/design-system";
-import { ChevronLeftIcon } from "@webstudio-is/icons";
 import {
   type SiteTemplate,
   type TemplateCategory,
   CATEGORY_ORDER,
-  SITE_TEMPLATES,
-  listedTemplates,
 } from "@organizeos/site-components/site-templates";
 import {
-  $authPermit,
   $isContentModeAllowed,
-  $organizeosSite,
   selectPage,
   setBuilderMode,
 } from "~/shared/nano-states";
 import { builderApi } from "~/shared/builder-api";
 import { useMount } from "~/shared/hook-utils/use-mount";
-import {
-  $assets,
-  $instances,
-  $pages,
-  $projectSettings,
-  $props,
-  $styleSourceSelections,
-  $styles,
-} from "~/shared/sync/data-stores";
-import { $dataLoadingState } from "~/builder/shared/nano-states";
+import { $pages } from "~/shared/sync/data-stores";
 import { TruncatedText } from "../../cms-panel/native/truncated-text";
-import { isOrganizeosBlocksEnabled } from "../insert-organizeos-block";
 import { updateWebstudioDataStaged } from "../staged-data";
 import { unboundBlocksMessage } from "../unbound-blocks";
 import {
   type ApplyOutcome,
   type ApplyResult,
   applySiteTemplate,
-  hasCanonicalVariables,
-  isProjectUntouched,
   startBlankMutable,
 } from "./apply-site-template";
 import { useDialogBoundarySize } from "./use-dialog-boundary";
+import {
+  $isTemplatesScreenOffered,
+  $showTemplateDrafts,
+  getOfferedTemplates,
+} from "./templates-screen-state";
+import {
+  BackButton,
+  CardButton,
+  Caption,
+  EmptyFrame,
+  Figure,
+  PageGrid,
+  Picture,
+} from "./screen-parts";
+
+// Re-exported for the modules that import them from here.
+export { $isTemplatesScreenOffered, $showTemplateDrafts };
 
 /**
  * The Templates screen (OrganizeOS design
@@ -72,75 +68,6 @@ import { useDialogBoundarySize } from "./use-dialog-boundary";
  * template are the only ways out. Both write the canonical variables, which
  * ends the offer for every admin on every browser.
  */
-
-/**
- * Whether drafts are offered too, for the owner's review: `templateDrafts=1`
- * in the builder URL, read as the screen mounts with the builder, before the
- * builder rewrites its URL on a page or mode change and drops it.
- */
-export const $showTemplateDrafts = atom(false);
-
-/** Listed templates, and drafts when they are shown. */
-const getOfferedTemplates = (showDrafts: boolean): SiteTemplate[] => [
-  ...listedTemplates(SITE_TEMPLATES),
-  ...(showDrafts
-    ? SITE_TEMPLATES.filter((template) => template.status === "draft")
-    : []),
-];
-
-/** The permits that may build: applying writes pages, tokens and styles. */
-const buildPermits = new Set<AuthPermit>(["build", "admin", "own"]);
-
-/**
- * Whether the screen is offered: the data is loaded, the permit can build,
- * the org is not denied the blocks (templates place them, and this is the
- * only caller of applySiteTemplate), the project is untouched and has none of
- * the canonical variables, and a template is offered. Reads the raw stores,
- * since getWebstudioData() throws before the data loads.
- */
-export const $isTemplatesScreenOffered = computed(
-  [
-    $dataLoadingState,
-    $authPermit,
-    $organizeosSite,
-    $showTemplateDrafts,
-    $pages,
-    $instances,
-    $assets,
-    $props,
-    $projectSettings,
-    $styles,
-    $styleSourceSelections,
-  ],
-  (
-    dataLoadingState,
-    authPermit,
-    _organizeosSite,
-    showDrafts,
-    pages,
-    instances,
-    assets,
-    props,
-    projectSettings,
-    styles,
-    styleSourceSelections
-  ) =>
-    dataLoadingState === "loaded" &&
-    buildPermits.has(authPermit) &&
-    // the blocks deny list, read from $organizeosSite
-    isOrganizeosBlocksEnabled() &&
-    pages !== undefined &&
-    isProjectUntouched({
-      pages,
-      instances,
-      assets,
-      props,
-      styles,
-      projectSettings,
-    }) &&
-    hasCanonicalVariables({ styles, styleSourceSelections }) === false &&
-    getOfferedTemplates(showDrafts).length > 0
-);
 
 const categoryLabels: Record<TemplateCategory, string> = {
   nonprofit: "Nonprofit",
@@ -234,57 +161,6 @@ const CardGrid = styled("div", {
   gridTemplateColumns: `repeat(auto-fill, minmax(min(${theme.spacing[32]}, 100%), 1fr))`,
   gap: theme.spacing[9],
 });
-
-const PageGrid = styled("div", {
-  display: "grid",
-  gridTemplateColumns: `repeat(auto-fill, minmax(min(${theme.spacing[29]}, 100%), 1fr))`,
-  gap: theme.spacing[9],
-});
-
-const CardButton = styled("button", {
-  all: "unset",
-  boxSizing: "border-box",
-  display: "grid",
-  alignContent: "start",
-  gap: theme.spacing[3],
-  minWidth: 0,
-  padding: theme.spacing[3],
-  borderRadius: theme.borderRadius[4],
-  border: `1px solid ${cssVar("--border-default")}`,
-  cursor: "pointer",
-  "&:hover": { borderColor: cssVar("--border-focus") },
-  "&:focus-visible": {
-    outline: `1px solid ${cssVar("--border-focus")}`,
-    outlineOffset: 1,
-  },
-  "&:disabled": {
-    cursor: "default",
-    opacity: 0.5,
-    borderColor: cssVar("--border-default"),
-  },
-});
-
-const pictureStyle = {
-  display: "block",
-  width: "100%",
-  aspectRatio: "16 / 10",
-  borderRadius: theme.borderRadius[2],
-  background: cssVar("--background-secondary"),
-} as const;
-
-const Picture = styled("img", { ...pictureStyle, objectFit: "cover" });
-
-const EmptyFrame = styled("div", pictureStyle);
-
-const Figure = styled("figure", {
-  display: "grid",
-  alignContent: "start",
-  gap: theme.spacing[3],
-  minWidth: 0,
-  margin: 0,
-});
-
-const Caption = styled("figcaption", { minWidth: 0 });
 
 const pictureUrl = (template: SiteTemplate, file: string | undefined) =>
   file === undefined ? undefined : template.images[file]?.url;
@@ -398,177 +274,175 @@ export const TemplatesScreen = () => {
   // Open exactly while offered. With no onOpenChange, Escape and an outside
   // click do nothing to the dialog.
   return (
-    <Dialog open={isOffered}>
-      <DialogContent
-        width={size.width}
-        height={size.height}
-        // the design system's own boundary is 0x0 when the UI is hidden, which
-        // would cap the dialog at nothing; a min wins over that max
-        minWidth={size.width}
-        minHeight={size.height}
-        aria-describedby={undefined}
-        onKeyDown={(event) => {
-          // Keep builder shortcuts from acting behind the screen
-          event.stopPropagation();
-        }}
-        onEscapeKeyDown={(event) => {
-          event.preventDefault();
-          if (openId !== undefined) {
-            back();
-          }
-        }}
-      >
-        <fieldset
-          disabled={isApplying}
-          style={{ display: "contents", border: 0, margin: 0, padding: 0 }}
+    <>
+      <Dialog open={isOffered}>
+        <DialogContent
+          width={size.width}
+          height={size.height}
+          // the design system's own boundary is 0x0 when the UI is hidden, which
+          // would cap the dialog at nothing; a min wins over that max
+          minWidth={size.width}
+          minHeight={size.height}
+          aria-describedby={undefined}
+          onKeyDown={(event) => {
+            // Keep builder shortcuts from acting behind the screen
+            event.stopPropagation();
+          }}
+          onEscapeKeyDown={(event) => {
+            event.preventDefault();
+            if (openId !== undefined) {
+              back();
+            }
+          }}
         >
-          <Flex grow css={{ minHeight: 0 }}>
-            {isNarrow === false && (
-              <List asChild>
-                <InsetList
-                  role="list"
-                  aria-label="Categories"
-                  css={{
-                    width: COLUMN_WIDTH,
-                    borderRight: `1px solid ${cssVar("--border-default")}`,
-                  }}
-                >
-                  {(["all", ...categories] as const).map((choice, index) => (
-                    <div role="listitem" key={choice}>
-                      <ListItem
-                        asChild
-                        role={undefined}
-                        index={index}
-                        current={category === choice}
-                        onSelect={() => chooseCategory(choice)}
-                      >
-                        <InsetListItem data-template-category={choice}>
-                          <Text variant="labels" truncate>
-                            {labelOf(choice)}
-                          </Text>
-                        </InsetListItem>
-                      </ListItem>
-                    </div>
-                  ))}
-                </InsetList>
-              </List>
-            )}
-            <Flex direction="column" grow css={{ minWidth: 0 }}>
-              {isNarrow && (
-                <Flex css={{ padding: theme.panel.padding }}>
-                  <Select
-                    aria-label="Category"
-                    fullWidth
-                    disabled={isApplying}
-                    options={["all", ...categories] as CategoryChoice[]}
-                    value={category}
-                    getLabel={labelOf}
-                    onChange={chooseCategory}
-                  />
-                </Flex>
+          <fieldset
+            disabled={isApplying}
+            style={{ display: "contents", border: 0, margin: 0, padding: 0 }}
+          >
+            <Flex grow css={{ minHeight: 0 }}>
+              {isNarrow === false && (
+                <List asChild>
+                  <InsetList
+                    role="list"
+                    aria-label="Categories"
+                    css={{
+                      width: COLUMN_WIDTH,
+                      borderRight: `1px solid ${cssVar("--border-default")}`,
+                    }}
+                  >
+                    {(["all", ...categories] as const).map((choice, index) => (
+                      <div role="listitem" key={choice}>
+                        <ListItem
+                          asChild
+                          role={undefined}
+                          index={index}
+                          current={category === choice}
+                          onSelect={() => chooseCategory(choice)}
+                        >
+                          <InsetListItem data-template-category={choice}>
+                            <Text variant="labels" truncate>
+                              {labelOf(choice)}
+                            </Text>
+                          </InsetListItem>
+                        </ListItem>
+                      </div>
+                    ))}
+                  </InsetList>
+                </List>
               )}
-              <ScrollAreaNative
-                css={{ flexGrow: 1, flexBasis: 0, minHeight: 0 }}
-              >
-                <Flex
-                  direction="column"
-                  gap="3"
-                  css={{ padding: theme.panel.padding }}
+              <Flex direction="column" grow css={{ minWidth: 0 }}>
+                {isNarrow && (
+                  <Flex css={{ padding: theme.panel.padding }}>
+                    <Select
+                      aria-label="Category"
+                      fullWidth
+                      disabled={isApplying}
+                      options={["all", ...categories] as CategoryChoice[]}
+                      value={category}
+                      getLabel={labelOf}
+                      onChange={chooseCategory}
+                    />
+                  </Flex>
+                )}
+                <ScrollAreaNative
+                  css={{ flexGrow: 1, flexBasis: 0, minHeight: 0 }}
                 >
-                  {openTemplate === undefined ? (
-                    <CardGrid>
-                      {shown.map((template) => (
-                        <CardButton
-                          key={template.id}
-                          type="button"
-                          data-site-template={template.id}
-                          ref={(element) => {
-                            if (element === null) {
-                              cardRefs.current.delete(template.id);
-                            } else {
-                              cardRefs.current.set(template.id, element);
-                            }
-                          }}
-                          onClick={() => setOpenId(template.id)}
-                        >
-                          <Picture
-                            src={pictureUrl(template, template.thumbnail)}
-                            alt=""
-                          />
-                          <TruncatedText variant="labels">
-                            {template.name}
-                          </TruncatedText>
-                        </CardButton>
-                      ))}
-                    </CardGrid>
-                  ) : (
-                    <>
-                      <Flex align="center" gap="2">
-                        <Tooltip content="Back" side="bottom">
-                          <IconButton
-                            ref={backRef}
-                            aria-label="Back"
-                            onClick={back}
+                  <Flex
+                    direction="column"
+                    gap="3"
+                    css={{ padding: theme.panel.padding }}
+                  >
+                    {openTemplate === undefined ? (
+                      <CardGrid>
+                        {shown.map((template) => (
+                          <CardButton
+                            key={template.id}
+                            type="button"
+                            data-site-template={template.id}
+                            ref={(element) => {
+                              if (element === null) {
+                                cardRefs.current.delete(template.id);
+                              } else {
+                                cardRefs.current.set(template.id, element);
+                              }
+                            }}
+                            onClick={() => setOpenId(template.id)}
                           >
-                            <ChevronLeftIcon />
-                          </IconButton>
-                        </Tooltip>
-                        <TruncatedText
-                          variant="titles"
-                          css={{ flexGrow: 1, minWidth: 0 }}
-                        >
-                          {openTemplate.name}
-                        </TruncatedText>
-                        <Button
-                          ref={useTemplateRef}
-                          color="primary"
-                          state={isApplying ? "pending" : undefined}
-                          // a long name gives way, never the action
-                          css={{ flexShrink: 0 }}
-                          onClick={() => void use(openTemplate)}
-                        >
-                          Use template
-                        </Button>
-                      </Flex>
-                      <PageGrid>
-                        {openTemplate.pages.map((page) => {
-                          const src = pagePictureUrl(openTemplate, page);
-                          return (
-                            <Figure
-                              key={page.key}
-                              data-site-template-page={page.key}
-                            >
-                              {src === undefined ? (
-                                <EmptyFrame />
-                              ) : (
-                                <Picture src={src} alt="" />
-                              )}
-                              <Caption>
-                                <TruncatedText variant="labels">
-                                  {page.name}
-                                </TruncatedText>
-                              </Caption>
-                            </Figure>
-                          );
-                        })}
-                      </PageGrid>
-                    </>
-                  )}
-                </Flex>
-              </ScrollAreaNative>
+                            <Picture
+                              src={pictureUrl(template, template.thumbnail)}
+                              alt=""
+                            />
+                            <TruncatedText variant="labels">
+                              {template.name}
+                            </TruncatedText>
+                          </CardButton>
+                        ))}
+                      </CardGrid>
+                    ) : (
+                      <>
+                        <Flex align="center" gap="2">
+                          <BackButton ref={backRef} onClick={back} />
+                          <TruncatedText
+                            variant="titles"
+                            css={{ flexGrow: 1, minWidth: 0 }}
+                          >
+                            {openTemplate.name}
+                          </TruncatedText>
+                          <Button
+                            ref={useTemplateRef}
+                            color="primary"
+                            state={isApplying ? "pending" : undefined}
+                            // a long name gives way, never the action
+                            css={{ flexShrink: 0 }}
+                            onClick={() => void use(openTemplate)}
+                          >
+                            Use template
+                          </Button>
+                        </Flex>
+                        <PageGrid>
+                          {openTemplate.pages.map((page) => {
+                            const src = pagePictureUrl(openTemplate, page);
+                            return (
+                              <Figure
+                                key={page.key}
+                                data-site-template-page={page.key}
+                              >
+                                {src === undefined ? (
+                                  <EmptyFrame />
+                                ) : (
+                                  <Picture src={src} alt="" />
+                                )}
+                                <Caption>
+                                  <TruncatedText variant="labels">
+                                    {page.name}
+                                  </TruncatedText>
+                                </Caption>
+                              </Figure>
+                            );
+                          })}
+                        </PageGrid>
+                      </>
+                    )}
+                  </Flex>
+                </ScrollAreaNative>
+              </Flex>
             </Flex>
-          </Flex>
-        </fieldset>
-        <DialogTitle
-          suffix={
-            <Button color="neutral" disabled={isApplying} onClick={startBlank}>
-              Start blank
-            </Button>
-          }
-        >
-          Start from a template
-        </DialogTitle>
-      </DialogContent>
-    </Dialog>
+          </fieldset>
+          <DialogTitle
+            suffix={
+              <Button
+                color="neutral"
+                disabled={isApplying}
+                onClick={startBlank}
+              >
+                Start blank
+              </Button>
+            }
+          >
+            Start from a template
+          </DialogTitle>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };
