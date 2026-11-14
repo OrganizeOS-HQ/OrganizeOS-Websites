@@ -37,6 +37,7 @@ import {
   $styles,
 } from "~/shared/sync/data-stores";
 import { getResourceKey, invalidateResource } from "~/shared/resources";
+import { addCollectionCatalogResource } from "./cms-catalog-add";
 import {
   buildCollectionResourcePresets,
   buildOrgResourcePresets,
@@ -74,6 +75,15 @@ vi.mock("./cms-api", async (importOriginal) => ({
 vi.mock("./cms-structure-api", () => ({
   createCmsStructureApi: () => createFakeCmsStructureSource(),
 }));
+
+// the add on use, failed by a test on its own
+vi.mock("./cms-catalog-add", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./cms-catalog-add")>();
+  return {
+    ...actual,
+    addCollectionCatalogResource: vi.fn(actual.addCollectionCatalogResource),
+  };
+});
 
 vi.mock("~/shared/resources", async (importOriginal) => ({
   ...(await importOriginal<typeof import("~/shared/resources")>()),
@@ -1044,33 +1054,32 @@ describe("the catalog add on use (slice 3)", () => {
     expect($resources.get().has((await programsResource()).id)).toBe(false);
   });
 
-  test("a staged refusal toasts and runs nothing", async () => {
-    const error = vi.spyOn(toast, "error");
-    // a page template selected without build access: the runtime refuses
-    const pages = $pages.get()!;
-    $pages.set({
-      ...pages,
-      pageTemplates: new Map([
-        [
-          "template",
-          {
-            id: "template",
-            name: "Template",
-            title: "Template",
-            rootInstanceId: "bodyId",
-            meta: {},
-          },
-        ],
-      ]),
-    });
-    $selectedPageId.set("template");
-    $authPermit.set("view");
-    await render("programs");
-    await choose(menuItem(await openMenu("Programs menu"), "Create item page"));
-    await until(() => expect(error).toHaveBeenCalled());
-    expect(findCollectionItemPage("programs")).toBeUndefined();
-    expect($resources.get().has((await programsResource()).id)).toBe(false);
-  });
+  test.each(["Create item page", "Add list"])(
+    "a refused add toasts, and %s never runs",
+    async (action) => {
+      const error = vi.spyOn(toast, "error");
+      await render("programs");
+      vi.mocked(addCollectionCatalogResource).mockClear();
+      // the add refuses as it does on a failed write: a toast, then false
+      vi.mocked(addCollectionCatalogResource).mockImplementationOnce(
+        async () => {
+          toast.error("Not saved");
+          return false;
+        }
+      );
+      await choose(menuItem(await openMenu("Programs menu"), action));
+      await until(() => expect(error).toHaveBeenCalledWith("Not saved"));
+      await settle();
+      expect(addCollectionCatalogResource).toHaveBeenCalledTimes(1);
+      // the action's own refusal would toast too
+      expect(error.mock.calls).toEqual([["Not saved"]]);
+      expect(findCollectionItemPage("programs")).toBeUndefined();
+      expect($resources.get().has((await programsResource()).id)).toBe(false);
+      expect(
+        document.querySelector("[data-organizeos-add-list-submit]")
+      ).toBeNull();
+    }
+  );
 
   test("no :root binding is ever added", async () => {
     const before = rootBindings().length;
