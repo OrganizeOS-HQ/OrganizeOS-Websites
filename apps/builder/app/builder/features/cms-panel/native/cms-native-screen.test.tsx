@@ -896,6 +896,14 @@ describe("the canvas after a write", () => {
 describe("one row menu (slice 3)", () => {
   const menuTexts = (items: HTMLElement[]) =>
     items.map((item) => item.textContent);
+  // the catalog resolves after the column draws: until it does, the row
+  // holds the structure menu under the same name
+  const untilCatalogMenu = (slug: string) =>
+    until(() =>
+      expect(
+        row(slug)?.querySelector("[data-organizeos-collection-menu]")
+      ).not.toBeNull()
+    );
 
   beforeEach(() => {
     canManageSettings = true;
@@ -903,6 +911,7 @@ describe("one row menu (slice 3)", () => {
 
   test("one menu: Settings, Create item page, Add list, Delete", async () => {
     await render();
+    await untilCatalogMenu("news");
     expect(menuTexts(await openMenu("News menu"))).toEqual([
       "Settings",
       "Create item page",
@@ -914,6 +923,7 @@ describe("one row menu (slice 3)", () => {
   test("a sitemap orphan keeps Remove from sitemap after Delete", async () => {
     await addToSitemap("news", "News");
     await render();
+    await untilCatalogMenu("news");
     expect(menuTexts(await openMenu("News menu"))).toEqual([
       "Settings",
       "Create item page",
@@ -932,7 +942,7 @@ describe("one row menu (slice 3)", () => {
       ])
     );
     await render("members");
-    await until(() => expect(byLabel("News menu")).not.toBeNull());
+    await untilCatalogMenu("news");
     expect(menuTexts(await openMenu("Members menu"))).toEqual([
       "Settings",
       "Delete",

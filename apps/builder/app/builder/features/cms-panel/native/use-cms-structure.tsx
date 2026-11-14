@@ -239,6 +239,15 @@ export const useCmsStructure = ({
   const latestGuard = useRef(guard);
   latestGuard.current = guard;
 
+  const refocusFrame = useRef<number | undefined>(undefined);
+  useEffect(
+    () => () => {
+      if (refocusFrame.current !== undefined) {
+        cancelAnimationFrame(refocusFrame.current);
+      }
+    },
+    []
+  );
   const queues = useRef(new Map<string, Promise<unknown>>());
   const versions = useRef(new Map<string, string>());
   const inFlight = useRef(new Map<string, number>());
@@ -814,11 +823,22 @@ export const useCmsStructure = ({
     latestDetail.current = { ...before, fields };
     setDetail(latestDetail.current);
     pendingOrder.current = { id: before.id, slug: before.slug, fields };
-    // the moved row keeps the focus, for the next Alt+Arrow
-    requestAnimationFrame(() => {
-      document
-        .querySelector<HTMLElement>(`[data-cms-field-row="${key}"] button`)
-        ?.focus();
+    // the moved row keeps the focus, for the next Alt+Arrow: once the new
+    // order is drawn, and only when the move lost it; a later move replaces
+    // a refocus still waiting
+    if (refocusFrame.current !== undefined) {
+      cancelAnimationFrame(refocusFrame.current);
+    }
+    refocusFrame.current = requestAnimationFrame(() => {
+      refocusFrame.current = undefined;
+      const active = document.activeElement;
+      if (active === null || active === document.body) {
+        document
+          .querySelector<HTMLElement>(
+            `[data-cms-field-row="${CSS.escape(key)}"] button`
+          )
+          ?.focus();
+      }
     });
     reorderPending.current = before.id;
     cancelReorderTimer();
