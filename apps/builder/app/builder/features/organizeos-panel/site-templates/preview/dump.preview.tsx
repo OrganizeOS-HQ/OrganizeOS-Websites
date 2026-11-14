@@ -233,7 +233,6 @@ test("dump a template's site", async () => {
     projectId,
     presetIds: await getOrganizeosPresetIds(projectId),
     variables,
-    ignoreAssetIds: new Set(assetIds.values()),
     blockTokens: template.blockTokens,
   });
   if (result.status !== "applied") {

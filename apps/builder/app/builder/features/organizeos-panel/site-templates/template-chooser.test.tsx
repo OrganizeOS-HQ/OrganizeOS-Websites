@@ -12,9 +12,10 @@ import {
   CANONICAL_FONT_NAMES,
 } from "@organizeos/site-components/site-templates";
 import { createPages } from "../../../../../../../packages/project-build/src/template";
-import { registerContainers } from "~/shared/sync/sync-stores";
+import { registerContainers, serverSyncStore } from "~/shared/sync/sync-stores";
 import {
   $assets,
+  $projectSettings,
   $breakpoints,
   $dataSources,
   $instances,
@@ -36,7 +37,7 @@ import { $builderMode } from "~/shared/nano-states/misc";
 import { $dataLoadingState } from "~/builder/shared/nano-states";
 import { updateWebstudioDataStaged } from "../staged-data";
 import {
-  type ApplyResult,
+  type ApplyOutcome,
   applySiteTemplate,
   writeCanonicalVariablesMutable,
 } from "./apply-site-template";
@@ -130,6 +131,7 @@ const setProject = (change?: (data: WebstudioData) => void) => {
   $styleSources.set(data.styleSources);
   $styles.set(data.styles);
   $assets.set(data.assets);
+  $projectSettings.set(undefined);
   return data;
 };
 
@@ -210,11 +212,11 @@ const rootVariables = () => {
     .sort();
 };
 
-const applied = async (template: SiteTemplate): Promise<ApplyResult> => {
+const applied = async (template: SiteTemplate): Promise<ApplyOutcome> => {
   await updateWebstudioDataStaged((data) => {
     writeCanonicalVariablesMutable(data, template.variables, "overwrite");
   });
-  return { status: "applied", unboundBlocks: [] };
+  return { status: "applied", unboundBlocks: [], missingImages: 0 };
 };
 
 beforeEach(() => {
@@ -321,6 +323,54 @@ describe("the offer", () => {
     });
     render();
     expect($isTemplateChooserOffered.get()).toBe(false);
+  });
+
+  const imageAsset = (id: string) => ({
+    id,
+    projectId: "project-1",
+    type: "image" as const,
+    name: `${id}.jpg`,
+    format: "jpg",
+    size: 1,
+    createdAt: "2026-11-13T00:00:00.000Z",
+    meta: { width: 1, height: 1 },
+  });
+
+  test("offered with an asset nothing uses", () => {
+    setProject((data) => {
+      data.assets.set("asset-hero", imageAsset("asset-hero"));
+    });
+    render();
+    expect($isTemplateChooserOffered.get()).toBe(true);
+    expect(dialog()).not.toBeNull();
+  });
+
+  test("not offered with an asset a prop uses", () => {
+    setProject((data) => {
+      data.assets.set("asset-hero", imageAsset("asset-hero"));
+      data.props.set("p", {
+        id: "p",
+        instanceId: "any",
+        name: "src",
+        type: "asset",
+        value: "asset-hero",
+      });
+    });
+    render();
+    expect($isTemplateChooserOffered.get()).toBe(false);
+  });
+
+  test("not offered with an asset the favicon uses", () => {
+    setProject((data) => {
+      data.assets.set("asset-hero", imageAsset("asset-hero"));
+    });
+    $projectSettings.set({
+      meta: { faviconAssetId: "asset-hero" },
+      compiler: {},
+    });
+    render();
+    expect($isTemplateChooserOffered.get()).toBe(false);
+    $projectSettings.set(undefined);
   });
 
   test("not offered once Global Root declares a canonical variable", async () => {
@@ -503,6 +553,44 @@ describe("choosing", () => {
   });
 
   test.each([
+    { missingImages: 1, message: "1 photo could not be added." },
+    { missingImages: 2, message: "2 photos could not be added." },
+  ])(
+    "photos that could not be added are counted in one error ($missingImages)",
+    async ({ missingImages, message }) => {
+      vi.mocked(applySiteTemplate).mockImplementation(async (template) => ({
+        ...(await applied(template)),
+        missingImages,
+      }));
+      render();
+      await choose("union");
+      expect(dialog()).toBeNull();
+      expect(toastError).toHaveBeenCalledTimes(1);
+      expect(toastError).toHaveBeenCalledWith(message);
+    }
+  );
+
+  // Undone while its images uploaded: the project is empty again, the chooser
+  // offered again, and nothing more is done for the undone apply.
+  test("skips the steps after an apply that was undone", async () => {
+    vi.mocked(applySiteTemplate).mockImplementation(async (template) => {
+      const result = await applied(template);
+      serverSyncStore.undo();
+      return { ...result, unboundBlocks: ["Event List"], missingImages: 1 };
+    });
+    // a page other than Home is open, so opening Home would show
+    const notFoundPageId = findNotFoundPageId();
+    $selectedPageId.set(notFoundPageId);
+    render();
+    await choose("union");
+    expect($isTemplateChooserOffered.get()).toBe(true);
+    expect(dialog()).not.toBeNull();
+    expect(toastError).not.toHaveBeenCalled();
+    expect(setBuilderMode).not.toHaveBeenCalled();
+    expect($selectedPageId.get()).toBe(notFoundPageId);
+  });
+
+  test.each([
     { reason: "touched", message: "This site already has content." },
     {
       reason: "path-taken",
@@ -559,7 +647,7 @@ describe("choosing", () => {
   });
 
   test("cards are disabled while applying", async () => {
-    let finish: (result: ApplyResult) => void = () => {};
+    let finish: (result: ApplyOutcome) => void = () => {};
     vi.mocked(applySiteTemplate).mockImplementation(
       (template) =>
         new Promise((resolve) => {
@@ -578,7 +666,7 @@ describe("choosing", () => {
     expect(applySiteTemplate).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      finish({ status: "applied", unboundBlocks: [] });
+      finish({ status: "applied", unboundBlocks: [], missingImages: 0 });
     });
     await settle();
     expect(dialog()).toBeNull();

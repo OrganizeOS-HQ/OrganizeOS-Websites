@@ -3482,7 +3482,15 @@ starter templates, listed 2026-11-01 (OrganizeOS plan
   an untouched project with none of the six variables on Global Root: Home's
   body has no children, the only other pages are the 404 page (`/*`, which every
   project is created with) and the seeded sign-up page (`SIGNUP_PAGE_PATH`,
-  `/newsletter`), and the project has no assets. The chooser checks this before
+  `/newsletter`), and no asset is used: an asset counts only when
+  `calculateUsagesByAssetId` reports a use of it (a prop, a style, a font by the
+  family a style names, a page's social image, the favicon), so images an
+  interrupted or undone apply left behind, and uploads never placed, keep the
+  project untouched (the offer reads `$props` and `$projectSettings` for this,
+  and the staged recipe's data carries the project settings). Re-applying after
+  an undo uploads the images again by URL, with no content hash, so each cycle
+  leaves another unused copy; fonts deduplicate, with an "Asset already exists"
+  toast each. The chooser checks this before
   it opens and the routine decides it again inside the transaction, since two
   admins can apply at once and a chooser left open goes stale (colours set after
   "Start blank" are never overwritten); it also refuses, writing nothing, when a
@@ -3517,7 +3525,9 @@ starter templates, listed 2026-11-01 (OrganizeOS plan
   choice closes it: Escape and an outside click do nothing. It has no help text
   (`CLAUDE.md`, "Builder UI: options, not explanations"). A chosen template
   opens its Home, in Simple mode (the builder's Content mode) when the plan
-  allows it (`$isContentModeAllowed`), in Design mode otherwise. A refused apply
+  allows it (`$isContentModeAllowed`), in Design mode otherwise; an apply undone
+  while its images uploaded leaves the chooser offered again, and none of this
+  follows it. A refused apply
   says why in one error toast: the site already has content (touched, or one of
   the variables set), "Its pages clash with this site's pages.", the runtime's
   own message when it refuses the write, or, for a template holding a Resource
@@ -3530,18 +3540,28 @@ starter templates, listed 2026-11-01 (OrganizeOS plan
   builder's build bundles each one at a URL on the builder's own origin, never
   inlined as a `data:` URL (`assets.d.ts` declares only that form, for images
   and `woff2` fonts, so a bare `?url` import does not typecheck). The routine
-  renders the pages with each image's asset id computed first, the SHA-256 of
-  its URL, which is the id `uploadAssets` gives an upload by URL
-  (`getSha256Hash` in `asset-utils.ts`), and uploads the images by URL
-  (`uploadAssets("image", urls)`) only after the transaction returns an applied
-  result: a page that cannot render, or a refusal, leaves no asset behind, which
-  would make the project touched for good. It uploads only the images a rendered
+  renders the pages with a placeholder id for each image, the SHA-256 of its
+  URL (`getSha256Hash` in `asset-utils.ts`): since the 0.309.0 merge the server
+  mints an upload's id (`createUploadTicket` in
+  `packages/asset-uploader/src/upload.ts`), so no id is known before an upload.
+  It uploads the images by URL (`uploadAssets("image", urls)`) only after the
+  transaction returns an applied result: a page that cannot render, or a
+  refusal, uploads nothing. It confirms each returned id with
+  `waitForAssetUpload` (a ticket's id comes back even when its upload then
+  fails), then one staged write, `rewriteAssetIdsMutable`, points every prop
+  and style at the confirmed assets, only those the project still holds; it is
+  its own undo step, above the uploads' own steps (each landed upload is one,
+  as `safeSetAsset` makes it). The placeholders still in use afterwards are
+  the photos that could not be added (`missingImages`): an Image shows the
+  builder's placeholder, a background nothing, and the chooser toasts "1 photo
+  could not be added." or "{n} photos could not be added."; an undone apply
+  uses none, so it writes and counts nothing. Where the runtime refuses the
+  rewrite, the placeholders are counted from the current data. It uploads only the images a rendered
   page shows (`findPageAssetIds` in the package's `render.ts`: an Image's asset,
   a background image, or an asset in any other prop or style; the check reads a
   page's images through it too, so the two agree), so a thumbnail or a
   `previewEventCover` no page shows leaves no unused asset; the preview's dump
-  keeps the same ones. An id `uploadAssets` returns that differs from the
-  computed one is logged; a failed upload is reported by the builder's own
+  keeps the same ones. A failed upload is also reported by the builder's own
   upload toast. The builder's server fetches the URL, so a deployment that
   protects its origin (a Vercel preview with Deployment Protection) answers with
   its login page and every image fails. The package's own lib build emits each
@@ -3560,9 +3580,9 @@ starter templates, listed 2026-11-01 (OrganizeOS plan
   (`getImageNameAndType` in `asset-utils.ts` names anything else a random
   `.png`), so the routine fetches each font from the builder's origin before
   the transaction, makes it a `File` named by its key, of type `font/woff2`,
-  with the id `uploadAssets` gives a file, the SHA-256 of its bytes
-  (`getSha256HashOfFile`), and uploads the files after the images, once the
-  apply is applied: `uploadAssets("font", files)`. A font that cannot be
+  and uploads the files last, after the images' rewrite, once the apply is
+  applied: `uploadAssets("font", files)`. A font is named by its family, never
+  by its asset id. A font that cannot be
   fetched rejects the apply before anything is written. The upload route
   derives a font's family from its file (`getAssetData`), and the template
   records and names that family: a publish keeps a font asset only when a

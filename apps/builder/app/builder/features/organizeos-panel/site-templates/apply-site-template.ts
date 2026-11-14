@@ -25,21 +25,25 @@ import {
   isCanonicalName,
   renderSiteTemplate,
 } from "@organizeos/site-components/site-templates";
+import type { ProjectSettings } from "@webstudio-is/project-build";
 import {
+  calculateUsagesByAssetId,
   deleteLocalStyleSourcesMutable,
   findLocalStyleSourcesWithinInstances,
   insertWebstudioFragmentCopy,
+  replaceAssetMutable,
+  traverseStyleValue,
 } from "@webstudio-is/project-build/runtime";
 import { SIGNUP_PAGE_PATH } from "~/shared/organizeos-preset-ids";
 import { getWebstudioData } from "~/shared/instance-utils/data";
 import { selectInstance } from "~/shared/nano-states";
 import { $project } from "~/shared/sync/data-stores";
 import { getInstanceLabel } from "~/builder/shared/instance-label";
-import { uploadAssets } from "~/builder/shared/assets/upload-assets";
 import {
-  getSha256Hash,
-  getSha256HashOfFile,
-} from "~/builder/shared/assets/asset-utils";
+  uploadAssets,
+  waitForAssetUpload,
+} from "~/builder/shared/assets/upload-assets";
+import { getSha256Hash } from "~/builder/shared/assets/asset-utils";
 import { deleteSubtreeMutable } from "../collection-pages";
 import { addToFolderMutable, updateWebstudioDataStaged } from "../staged-data";
 import {
@@ -68,14 +72,18 @@ const NOT_FOUND_PAGE_PATH = "/*";
 
 /**
  * Whether a project is as provisioning left it: Home's body has no children,
- * the only other pages are the 404 page and the seeded sign-up page, and it
- * has no assets but `ignoreAssetIds` (an apply's own images, which an earlier
- * upload of the same files can have added). Reads only what it is given, so
- * the chooser can pass the raw stores.
+ * the only other pages are the 404 page and the seeded sign-up page, and no
+ * asset is used. An asset counts only when `calculateUsagesByAssetId` reports
+ * a use of it (a prop, a style, a font by the family a style names, a page's
+ * social image, the favicon), so images an interrupted or undone apply left
+ * behind, and uploads never placed, keep the project untouched. Reads only
+ * what it is given, so the chooser can pass the raw stores.
  */
 export const isProjectUntouched = (
-  data: Pick<WebstudioData, "pages" | "instances" | "assets">,
-  { ignoreAssetIds = new Set() }: { ignoreAssetIds?: Set<string> } = {}
+  data: Pick<
+    WebstudioData,
+    "pages" | "instances" | "assets" | "props" | "styles"
+  > & { projectSettings?: ProjectSettings }
 ): boolean => {
   const { pages } = data;
   const home = pages.pages.get(pages.homePageId);
@@ -93,8 +101,15 @@ export const isProjectUntouched = (
       return false;
     }
   }
+  const usages = calculateUsagesByAssetId({
+    pages,
+    projectSettings: data.projectSettings,
+    props: data.props,
+    styles: data.styles,
+    assets: data.assets,
+  });
   for (const assetId of data.assets.keys()) {
-    if (ignoreAssetIds.has(assetId) === false) {
+    if ((usages.get(assetId)?.length ?? 0) > 0) {
       return false;
     }
   }
@@ -195,6 +210,66 @@ export type ApplyResult =
     }
   // the runtime layer refused the write, and says why
   | { status: "refused"; reason: "runtime"; message: string };
+
+/**
+ * What applySiteTemplate returns: an applied result also counts the photos
+ * that could not be added (their pages still name a placeholder id).
+ */
+export type ApplyOutcome =
+  | Exclude<ApplyResult, { status: "applied" }>
+  | { status: "applied"; unboundBlocks: string[]; missingImages: number };
+
+/** How many of `ids` a prop or a style of `data` names. */
+export const countUsedAssetIds = (
+  data: Pick<WebstudioData, "props" | "styles">,
+  ids: Iterable<string>
+): number => {
+  const wanted = new Set(ids);
+  const used = new Set<string>();
+  for (const prop of data.props.values()) {
+    if (prop.type === "asset" && wanted.has(prop.value)) {
+      used.add(prop.value);
+    }
+  }
+  for (const decl of data.styles.values()) {
+    traverseStyleValue(decl.value, (item) => {
+      if (
+        item.type === "image" &&
+        item.value.type === "asset" &&
+        wanted.has(item.value.value)
+      ) {
+        used.add(item.value.value);
+      }
+    });
+  }
+  return used.size;
+};
+
+/**
+ * Point the applied pages at the assets their images were uploaded as. Each
+ * key of `placeholders` is a shown image's placeholder id (the SHA-256 of its
+ * URL, which the pages were rendered with) and its value the id the upload was
+ * confirmed as. A placeholder is rewritten, in every prop and style, only when
+ * its upload was confirmed and the project still holds that asset (an upload
+ * undone or deleted since keeps its placeholder). Returns how many
+ * placeholders the project still uses: the photos that could not be added. An
+ * undone apply uses none, so it writes nothing and counts none.
+ */
+export const rewriteAssetIdsMutable = (
+  data: WebstudioData,
+  placeholders: Map<string, string | undefined>
+): number => {
+  for (const [fromAssetId, toAssetId] of placeholders) {
+    if (toAssetId !== undefined && data.assets.has(toAssetId)) {
+      replaceAssetMutable({
+        props: data.props.values(),
+        styles: data.styles.values(),
+        replacement: { fromAssetId, toAssetId },
+      });
+    }
+  }
+  return countUsedAssetIds(data, placeholders.keys());
+};
 
 const isHomePage = (page: Pick<RenderedPage, "path">) => page.path === "";
 
@@ -350,13 +425,11 @@ export const applySiteTemplateMutable = (
     projectId,
     presetIds,
     variables,
-    ignoreAssetIds,
     blockTokens,
   }: {
     projectId: string;
     presetIds: OrganizeosPresetIds;
     variables: CanonicalValues;
-    ignoreAssetIds: Set<string>;
     /** The template's, which the pages were rendered with. */
     blockTokens: SiteTemplate["blockTokens"];
   }
@@ -364,7 +437,8 @@ export const applySiteTemplateMutable = (
   const homePage = data.pages.pages.get(data.pages.homePageId);
   if (
     homePage === undefined ||
-    isProjectUntouched(data, { ignoreAssetIds }) === false ||
+    // the recipe's data carries the project settings (getWebstudioData)
+    isProjectUntouched(data) === false ||
     hasCanonicalVariables(data)
   ) {
     return { status: "refused", reason: "touched" };
@@ -448,9 +522,9 @@ export const applySiteTemplateMutable = (
 /**
  * A template's fonts as files, fetched from the builder's origin: the upload
  * by URL reads only images (`getImageNameAndType` in asset-utils.ts). Each
- * file is named by its key and comes with the asset id uploadAssets gives a
- * file, the SHA-256 of its bytes (upload-assets.tsx). A font that cannot be
- * fetched throws.
+ * file is named by its key; the pages name a font by its family, through the
+ * font variables, never by its asset id. A font that cannot be fetched
+ * throws.
  */
 const fetchFontFiles = (template: SiteTemplate) =>
   Promise.all(
@@ -462,29 +536,33 @@ const fetchFontFiles = (template: SiteTemplate) =>
       const font = new File([await response.arrayBuffer()], file, {
         type: "font/woff2",
       });
-      return { file, font, assetId: await getSha256HashOfFile(font) };
+      return { file, font };
     })
   );
 
 /**
- * Apply a template from the chooser. An image's asset id is the one
- * uploadAssets gives its URL, the SHA-256 of the URL (upload-assets.tsx), so
- * the pages render with those ids. Fonts are fetched first and uploaded as
- * files (fetchFontFiles); the pages name them by family, through the font
- * variables. Images and fonts are uploaded only once the template is
- * applied: a page that cannot render, a font that cannot be fetched, or a
- * refusal, leaves no asset behind to make the project touched for good. Only
- * the images the pages show are uploaded (findPageAssetIds, which the check
- * reads a page's images with too), so the thumbnail and the preview event
- * cover leave no unused asset either. An id
- * the upload returns that is not the one computed here is logged; a failed
- * upload is reported by the upload's own toast. Where the runtime layer
- * refuses the write (a page template without build access), it is refused
- * with the runtime's message, writing and uploading nothing.
+ * Apply a template from the chooser. The pages render with a placeholder id
+ * for each image, the SHA-256 of its URL, since the server mints an upload's
+ * id only once it uploads (createUploadTicket, since the 0.309.0 merge). Fonts
+ * are fetched first and uploaded as files (fetchFontFiles); the pages name
+ * them by family, through the font variables. Nothing is uploaded until the
+ * template is applied: a page that cannot render, a font that cannot be
+ * fetched, or a refusal, leaves no asset behind. Then, in order: the images
+ * the pages show are uploaded (findPageAssetIds, which the check reads a
+ * page's images with too, so the thumbnail and the preview event cover are
+ * never uploaded), each returned id is confirmed (waitForAssetUpload), a
+ * staged write points the pages at the confirmed assets
+ * (rewriteAssetIdsMutable, its own undo step, above the uploads' own), and
+ * the fonts are uploaded. The placeholders still in use are counted as
+ * `missingImages`: an Image shows the builder's placeholder, a background
+ * nothing. Where the runtime layer refuses the apply (a page template
+ * without build access), it is refused with the runtime's message, writing
+ * and uploading nothing; where it refuses the rewrite, the photos are
+ * counted as missing.
  */
 export const applySiteTemplate = async (
   template: SiteTemplate
-): Promise<ApplyResult> => {
+): Promise<ApplyOutcome> => {
   const project = $project.get();
   if (project === undefined) {
     return { status: "refused", reason: "no-project" };
@@ -523,10 +601,6 @@ export const applySiteTemplate = async (
         projectId: project.id,
         presetIds,
         variables: template.variables,
-        ignoreAssetIds: new Set([
-          ...assetIds.values(),
-          ...fonts.map(({ assetId }) => assetId),
-        ]),
         blockTokens: template.blockTokens,
       });
     });
@@ -561,25 +635,38 @@ export const applySiteTemplate = async (
     "image",
     shownUrls.map(([, url]) => url)
   );
+  const placeholders = new Map<string, string | undefined>();
   for (const [file, url] of shownUrls) {
-    if (uploaded.get(url) !== assetIds.get(file)) {
-      console.error(
-        `Image "${file}" was uploaded with an asset id its pages do not use`
-      );
+    const placeholder = assetIds.get(file);
+    if (placeholder === undefined) {
+      continue;
     }
+    const uploadedId = uploaded.get(url);
+    // a ticket's id comes back even when its upload then fails
+    const confirmed =
+      uploadedId === undefined
+        ? undefined
+        : await waitForAssetUpload(uploadedId).then(
+            (asset) => asset.id,
+            () => undefined
+          );
+    placeholders.set(placeholder, confirmed);
+  }
+  let missingImages: number;
+  try {
+    missingImages = await updateWebstudioDataStaged((data) =>
+      rewriteAssetIdsMutable(data, placeholders)
+    );
+  } catch (error) {
+    // the runtime layer refused the rewrite: the pages keep the placeholders
+    console.error(error);
+    missingImages = countUsedAssetIds(getWebstudioData(), placeholders.keys());
   }
   if (fonts.length > 0) {
-    const uploadedFonts = await uploadAssets(
+    await uploadAssets(
       "font",
       fonts.map(({ font }) => font)
     );
-    for (const { file, font, assetId } of fonts) {
-      if (uploadedFonts.get(font) !== assetId) {
-        console.error(
-          `Font "${file}" was uploaded with an asset id the apply did not expect`
-        );
-      }
-    }
   }
-  return result;
+  return { ...result, missingImages };
 };
