@@ -81,15 +81,26 @@ const TopBar = ({
 }) => {
   const [draft, setDraft] = useState(query);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // The last query this field sent: its echo never rewrites the field, so a
+  // key typed before the echo arrives is kept, and so is a trailing space.
+  const sent = useRef(query);
   useEffect(() => {
-    // the trimmed query comes back: keep what the person typed
-    setDraft((current) => (current.trim() === query ? current : query));
+    if (query === sent.current) {
+      return;
+    }
+    // a query set from elsewhere replaces what is typed
+    sent.current = query;
+    clearTimeout(timer.current);
+    setDraft(query);
   }, [query]);
   useEffect(() => () => clearTimeout(timer.current), []);
   const change = (value: string, delay: number) => {
     setDraft(value);
     clearTimeout(timer.current);
-    timer.current = setTimeout(() => onQueryChange(value.trim()), delay);
+    timer.current = setTimeout(() => {
+      sent.current = value.trim();
+      onQueryChange(value.trim());
+    }, delay);
   };
   return (
     <Flex

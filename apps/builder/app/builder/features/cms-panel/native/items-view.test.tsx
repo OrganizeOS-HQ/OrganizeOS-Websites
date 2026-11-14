@@ -97,6 +97,15 @@ const searchInput = () =>
   byLabel("Search Posts")?.querySelector("input") ??
   (byLabel("Search Posts") as HTMLInputElement | null);
 
+/** Sets an input's value as a keystroke does, inside the caller's act. */
+const typeInto = (field: HTMLInputElement, value: string) => {
+  Object.getOwnPropertyDescriptor(
+    HTMLInputElement.prototype,
+    "value"
+  )?.set?.call(field, value);
+  field.dispatchEvent(new Event("input", { bubbles: true }));
+};
+
 const lastListItemsCall = () => fake.listItems.mock.calls.at(-1);
 
 /** E3's answer for a page of `total` items, 50 to a page. */
@@ -182,6 +191,81 @@ describe("the items view", () => {
     expect(fake.listItems.mock.calls).toEqual([
       [POSTS.id, { q: "new", page: 1 }],
     ]);
+    expect(searchInput()?.value).toBe("new");
+  });
+
+  test("a trailing space stays in the field and is not sent", async () => {
+    mount();
+    await settle();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await act(async () => userEvent.type(searchInput()!, "new "));
+      act(() => {
+        vi.advanceTimersByTime(250);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+    await settle();
+    expect(searchInput()?.value).toBe("new ");
+    expect(lastListItemsCall()).toEqual([POSTS.id, { q: "new", page: 1 }]);
+  });
+
+  test("a key typed after the debounce sent the search is kept", async () => {
+    mount();
+    await settle();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await act(async () => userEvent.type(searchInput()!, "n"));
+      // the debounce sends "n", and "e" is typed before the echo of "n"
+      // comes back
+      const field = searchInput()!;
+      act(() => {
+        vi.advanceTimersByTime(250);
+        typeInto(field, "ne");
+      });
+      await act(async () => userEvent.type(searchInput()!, "w"));
+      act(() => {
+        vi.advanceTimersByTime(250);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+    await settle();
+    expect(searchInput()?.value).toBe("new");
+    expect(lastListItemsCall()).toEqual([POSTS.id, { q: "new", page: 1 }]);
+  });
+
+  test("a key typed while the sent search's answer lands is kept", async () => {
+    const base = fake.listItems.getMockImplementation();
+    const held = deferred<CmsItemsPage>();
+    mount();
+    await settle();
+    fake.listItems.mockImplementation(async (c, q) =>
+      q.q === "n" ? held.promise : base!(c, q)
+    );
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await act(async () => userEvent.type(searchInput()!, "n"));
+      // "e" is typed before the echo of the sent "n" comes back, and the
+      // answer for "n" lands before "w"
+      const field = searchInput()!;
+      act(() => {
+        vi.advanceTimersByTime(250);
+        typeInto(field, "ne");
+      });
+      expect(lastListItemsCall()).toEqual([POSTS.id, { q: "n", page: 1 }]);
+      await act(async () => held.resolve(pageOf(1, 3)));
+      await act(async () => userEvent.type(searchInput()!, "w"));
+      act(() => {
+        vi.advanceTimersByTime(250);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+    await settle();
+    expect(searchInput()?.value).toBe("new");
+    expect(lastListItemsCall()).toEqual([POSTS.id, { q: "new", page: 1 }]);
   });
 
   test("Escape clears the search", async () => {
