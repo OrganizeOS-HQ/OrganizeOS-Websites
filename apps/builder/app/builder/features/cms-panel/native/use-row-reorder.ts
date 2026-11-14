@@ -67,10 +67,11 @@ export const useRowReorder = (input: {
 } => {
   const latest = useRef(input);
   latest.current = input;
-  const { state } = input;
-  state.notePageAnswer(input.pageAnswer.count);
+  // the page answers seen, for an E13 answered while no table shows
+  input.state.notePageAnswer(input.pageAnswer.count);
+  const store = () => latest.current.state;
   // the open collection's record
-  const record = () => state.get(latest.current.collectionId);
+  const record = () => store().get(latest.current.collectionId);
   const pageIds = (input.page?.items ?? []).map((row) => row.id);
 
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -109,6 +110,7 @@ export const useRowReorder = (input: {
   // another collection starts with nothing pending; the same one, shown
   // again, keeps its state
   useEffect(() => {
+    const state = store();
     if (state.current === input.collectionId) {
       return;
     }
@@ -162,7 +164,7 @@ export const useRowReorder = (input: {
       setShown(current.accepted);
     }
     bump();
-    state.notify();
+    store().notify();
     runWaiting(ok);
   };
 
@@ -223,7 +225,7 @@ export const useRowReorder = (input: {
     const sentOn = held.movedOn?.drawn;
     held.sending += 1;
     bump();
-    state.notify();
+    store().notify();
     void current.source
       .reorderItems(collectionId, { ids: [...ids] })
       .catch((): CmsResult<{ changed: number }> => ({ error: "unavailable" }))
@@ -236,30 +238,31 @@ export const useRowReorder = (input: {
             onReordered();
           }
         };
-        const written = state.get(collectionId);
+        const written = store().get(collectionId);
         written.sending = Math.max(0, written.sending - 1);
         // another collection shows: its reorder state is its own
-        if (state.current !== collectionId || written.sending > 0) {
-          state.notify();
+        if (store().current !== collectionId || written.sending > 0) {
+          store().notify();
           report();
           return;
         }
         const next = written.queued;
         written.queued = undefined;
         // the next E3 answer after this one settles the reorder
-        written.awaitingAfter = state.pageAnswerCount;
+        written.awaitingAfter = store().pageAnswerCount;
         if (isCmsFailure(result) === false) {
           written.accepted = ids;
           written.acceptedOn = sentOn;
         }
-        state.notify();
+        store().notify();
         report();
         if (isCmsFailure(result) === false && next !== undefined) {
-          if (state.sendQueued === undefined) {
+          const sendQueued = store().sendQueued;
+          if (sendQueued === undefined) {
             // sent when the table shows again
             written.queued = next;
           } else {
-            state.sendQueued(collectionId, next);
+            sendQueued(collectionId, next);
           }
         }
       });
@@ -361,11 +364,11 @@ export const useRowReorder = (input: {
         actions.current.send(ids, true);
       }
     };
-    state.sendQueued = sendQueued;
-    const unsubscribe = state.subscribe(bump);
+    store().sendQueued = sendQueued;
+    const unsubscribe = store().subscribe(bump);
     const current = record();
     if (
-      state.current === latest.current.collectionId &&
+      store().current === latest.current.collectionId &&
       current.sending === 0 &&
       current.queued !== undefined
     ) {
@@ -375,8 +378,8 @@ export const useRowReorder = (input: {
     }
     return () => {
       unsubscribe();
-      if (state.sendQueued === sendQueued) {
-        state.sendQueued = undefined;
+      if (store().sendQueued === sendQueued) {
+        store().sendQueued = undefined;
       }
       actions.current.flush();
       clearTimeout(timer.current);
@@ -384,9 +387,9 @@ export const useRowReorder = (input: {
   }, []);
 
   // a pending order shows only on the page it was made on
-  const shown = state.get(input.collectionId);
+  const shown = input.state.get(input.collectionId);
   const pending =
-    state.current === input.collectionId ? shown.pending : undefined;
+    input.state.current === input.collectionId ? shown.pending : undefined;
   const order =
     pending !== undefined &&
     shown.movedOn?.drawn === drawnSignature &&
