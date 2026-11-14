@@ -30,6 +30,9 @@ import {
   typeInto,
   unmount,
   keepEditing,
+  discardChanges,
+  deferred,
+  currentSlug,
 } from "./structure-test-harness";
 
 beforeEach(resetHarness);
@@ -740,4 +743,151 @@ test("a Save answered mfa_required, then Retry: the line clears, E21 is read aga
     harness.structure.getCollectionStructure.mock.calls.length
   ).toBeGreaterThan(reads);
   expect(sheet()).not.toBeNull();
+});
+
+test("an edit, then Classic CMS and Discard: the sheet no longer shows the edit, and nothing is unsaved (I4, round 4)", async () => {
+  withFields();
+  await openField("summary");
+  await typeInto(control("label")!, "Abstract");
+  expect($cmsNativeDirty.get()).toBe(true);
+  await click(byLabel("CMS menu"));
+  await click(menuItem("Classic CMS"));
+  await discardChanges();
+  expect(harness.props.onShowClassic).toHaveBeenCalled();
+  expect($cmsNativeDirty.get()).toBe(false);
+  // the view either closed or shows its saved values again
+  if (sheet() !== null) {
+    expect(control("label")?.value).toBe("Summary");
+  }
+  expect(hasText("Abstract")).toBe(false);
+});
+
+describe("a sheet's write that answers after a switch to another collection (I3, round 4)", () => {
+  const PEOPLE_FIELDS: CmsStructureField[] = [
+    { key: "name", label: "Name", kind: "text", isTitle: true, required: true },
+    { key: "summary", label: "Bio", kind: "textarea" },
+  ];
+  // Posts' schema as the platform holds it
+  let postsFields = FIELDS;
+  const withBoth = () => {
+    postsFields = FIELDS;
+    harness.structure.getCollectionStructure.mockImplementation(async (id) =>
+      id === PEOPLE.id
+        ? {
+            collection: {
+              ...POSTS_STRUCTURE,
+              id: PEOPLE.id,
+              slug: PEOPLE.slug,
+              name: PEOPLE.name,
+              fields: PEOPLE_FIELDS,
+            },
+          }
+        : { collection: { ...POSTS_STRUCTURE, fields: postsFields } }
+    );
+  };
+  const hold = () => {
+    const answer =
+      deferred<Awaited<ReturnType<typeof harness.structure.updateSchema>>>();
+    harness.structure.updateSchema.mockReturnValueOnce(answer.promise);
+    return answer;
+  };
+  const switchToPeople = async () => {
+    await click(tab("Collections"));
+    await click(
+      document.querySelector<HTMLElement>(
+        '[data-cms-collection="people"] button'
+      )
+    );
+    if (hasText("Discard unsaved changes?")) {
+      await discardChanges();
+    }
+    await settle();
+    expect(currentSlug()).toBe("people");
+  };
+  const crumbText = () =>
+    document.querySelector("[data-cms-structure-header]")?.textContent ?? "";
+
+  test("a held Save: no People sheet opens, and Posts' fields take the answer", async () => {
+    withBoth();
+    await openField("summary");
+    await typeInto(control("label")!, "Abstract");
+    const answer = hold();
+    await click(buttonByText("Save", header()!));
+    await switchToPeople();
+    postsFields = FIELDS.map((field) =>
+      field.key === "summary" ? { ...field, label: "Abstract" } : field
+    );
+    await act(async () =>
+      answer.resolve({ fields: postsFields, updatedAt: NEXT })
+    );
+    await settle();
+    expect(sheet()).toBeNull();
+    expect(crumbText()).not.toContain("People");
+    expect(currentSlug()).toBe("people");
+    await click(tab("Fields"));
+    expect(fieldRow("summary")?.textContent).toContain("Bio");
+    await click(tab("Collections"));
+    await click(
+      document.querySelector<HTMLElement>(
+        '[data-cms-collection="posts"] button'
+      )
+    );
+    await settle();
+    await click(tab("Fields"));
+    expect(fieldRow("summary")?.textContent).toContain("Abstract");
+  });
+
+  test("a held Save answering after Back and Settings on the same collection leaves the settings and their unsaved name in place", async () => {
+    withBoth();
+    await openField("summary");
+    await typeInto(control("label")!, "Abstract");
+    const answer = hold();
+    await click(buttonByText("Save", header()!));
+    await click(byLabel("Back"));
+    if (hasText("Discard unsaved changes?")) {
+      await discardChanges();
+    }
+    await settle();
+    expect(sheet()).toBeNull();
+    await click(tab("Collections"));
+    await click(byLabel("Posts menu"));
+    await click(menuItem("Settings"));
+    await settle();
+    const name = () =>
+      document.querySelector<HTMLInputElement>("#cms-settings-name");
+    await typeInto(name()!, "Articles");
+    postsFields = FIELDS.map((field) =>
+      field.key === "summary" ? { ...field, label: "Abstract" } : field
+    );
+    await act(async () =>
+      answer.resolve({ fields: postsFields, updatedAt: NEXT })
+    );
+    await settle();
+    expect(sheet()).toBeNull();
+    expect(name()?.value).toBe("Articles");
+    expect($cmsNativeDirty.get()).toBe(true);
+  });
+
+  test("a held Remove field: no People sheet opens, and People's fields stay", async () => {
+    withBoth();
+    await openField("summary");
+    const answer = hold();
+    await click(byLabel("Field menu"));
+    await click(menuItem("Remove field"));
+    await click(buttonByText("Remove", dialog()!));
+    // the dialog waits on the write; Escape leaves it running
+    await act(async () => userEvent.keyboard("{Escape}"));
+    await settle();
+    expect(dialog()).toBeNull();
+    await switchToPeople();
+    postsFields = FIELDS.filter((field) => field.key !== "summary");
+    await act(async () =>
+      answer.resolve({ fields: postsFields, updatedAt: NEXT })
+    );
+    await settle();
+    expect(sheet()).toBeNull();
+    expect(currentSlug()).toBe("people");
+    await click(tab("Fields"));
+    expect(fieldRow("summary")?.textContent).toContain("Bio");
+  });
 });
