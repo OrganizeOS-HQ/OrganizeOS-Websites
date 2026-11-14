@@ -939,3 +939,79 @@ describe("the list across a structure write", () => {
     });
   });
 });
+
+describe("the structure reads and views, from W4's review", () => {
+  test("a first run whose E20 fails shows Try again in a minute; Retry reads E20 and shows the options", async () => {
+    harness.fake.listCollections.mockResolvedValue({ collections: [] });
+    harness.structure.getStructure.mockResolvedValueOnce({
+      error: "unavailable",
+    });
+    mount();
+    await settle();
+    expect(firstRun()).toBeNull();
+    expect(hasText("Try again in a minute")).toBe(true);
+    await click(buttonByText("Retry"));
+    expect(firstRun()).not.toBeNull();
+    expect(radio("cms-first-run", "blog")).not.toBeNull();
+  });
+
+  test("with E20 failed, New collection shows its line in place of the options, and Retry brings them", async () => {
+    harness.structure.getStructure.mockResolvedValueOnce({
+      error: "unavailable",
+    });
+    mount();
+    await settle();
+    await openNewCollection();
+    expect(dialog()?.textContent).toContain("Try again in a minute");
+    expect(radio("cms-new-collection", "blog")).toBeNull();
+    await click(buttonByText("Retry", dialog()!));
+    expect(radio("cms-new-collection", "blog")).not.toBeNull();
+  });
+
+  test("Discard before another action shows the open settings view's saved values again, and nothing stays unsaved", async () => {
+    answerBoth();
+    mount();
+    await settle();
+    await click(byLabel("Posts menu"));
+    await click(menuItem("Settings"));
+    await typeInto(
+      document.querySelector<HTMLInputElement>("#cms-settings-name"),
+      "Edited"
+    );
+    expect($cmsNativeDirty.get()).toBe(true);
+    await click(byLabel("New collection"));
+    await discardChanges();
+    await click(buttonByText("Cancel", dialog()!));
+    await vi.waitFor(() => expect(dialog()).toBeNull());
+    expect($cmsNativeDirty.get()).toBe(false);
+    expect(
+      document.querySelector<HTMLInputElement>("#cms-settings-name")?.value
+    ).toBe("Posts");
+  });
+
+  test("a settings view closes when its collection leaves E1, and never moves to another collection", async () => {
+    answerBoth();
+    mount();
+    await settle();
+    await click(byLabel("Posts menu"));
+    await click(menuItem("Settings"));
+    expect(
+      document.querySelector("[data-cms-collection-settings]")
+    ).not.toBeNull();
+    harness.fake.listCollections.mockResolvedValue({ collections: [PEOPLE] });
+    await reopen();
+    expect(document.querySelector("[data-cms-collection-settings]")).toBeNull();
+    expect($cmsNativeDirty.get()).toBe(false);
+  });
+
+  test("Retry on E20's refusal line reads E20 again and clears the line once it answers", async () => {
+    harness.structure.getStructure.mockResolvedValueOnce({
+      error: "forbidden",
+    });
+    mount();
+    await settle();
+    expect(hasText("No access to the CMS")).toBe(true);
+    await click(buttonByText("Retry"));
+    expect(hasText("No access to the CMS")).toBe(false);
+  });
+});

@@ -614,3 +614,43 @@ test("a reorder waits in the queue behind a write in flight", async () => {
     harness.structure.updateSchema.mock.calls[1][1].expectedUpdatedAt
   ).toBe(NEXT);
 });
+
+test("a move made while a sheet's Save is in flight keeps that Save's edit in its own E24", async () => {
+  const held =
+    deferred<CmsResult<{ fields: CmsStructureField[]; updatedAt: string }>>();
+  let saved: CmsStructureField[] = [];
+  harness.structure.updateSchema
+    .mockImplementationOnce(async (_id, body) => {
+      saved = body.fields;
+      return held.promise;
+    })
+    .mockImplementation(async (_id, body) => ({
+      fields: body.fields,
+      updatedAt: LATER,
+    }));
+  await openFields();
+  await click(fieldRow("summary")!.querySelector("button"));
+  await typeInto(
+    document.querySelector<HTMLInputElement>("#cms-field-sheet-label"),
+    "Teaser"
+  );
+  await click(
+    [...sheet()!.querySelectorAll<HTMLButtonElement>("button")].find(
+      (button) => button.textContent === "Save"
+    )
+  );
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  await moveRow("title", "ArrowDown");
+  await pass(600);
+  expect(harness.structure.updateSchema).toHaveBeenCalledTimes(1);
+  held.resolve({ fields: saved, updatedAt: NEXT });
+  await settle();
+  expect(harness.structure.updateSchema).toHaveBeenCalledTimes(2);
+  const second = harness.structure.updateSchema.mock.calls[1][1].fields;
+  expect(second.find((field) => field.key === "summary")?.label).toBe("Teaser");
+  expect(second.map((field) => field.key)).toEqual([
+    "summary",
+    "title",
+    "author",
+  ]);
+});

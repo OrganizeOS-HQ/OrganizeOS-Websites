@@ -233,6 +233,9 @@ export const useCmsStructure = ({
   // writes answered per collection: a read sent before one answered carries
   // an older version than the queue holds
   const answered = useRef(new Map<string, number>());
+  // the schema the platform last answered or served, per collection, as it
+  // answers: a reorder's turn builds on it, never on a render's stale copy
+  const lastSchema = useRef(new Map<string, CmsStructureField[]>());
   const enqueue: CmsStructureEnqueue = useCallback((id, write) => {
     const run = async () => {
       inFlight.current.set(id, (inFlight.current.get(id) ?? 0) + 1);
@@ -240,6 +243,9 @@ export const useCmsStructure = ({
         const result = await write(versions.current.get(id) ?? "");
         if (isCmsFailure(result) === false) {
           versions.current.set(id, result.updatedAt);
+          if ("fields" in result && Array.isArray(result.fields)) {
+            lastSchema.current.set(id, result.fields as CmsStructureField[]);
+          }
         }
         answered.current.set(id, (answered.current.get(id) ?? 0) + 1);
         return result;
@@ -368,12 +374,14 @@ export const useCmsStructure = ({
         if (ordered.length === fresh.fields.length) {
           // the platform's order now is the read's, not the moved one
           acceptedOrder.current.set(fresh.id, fresh.fields);
+          lastSchema.current.set(fresh.id, fresh.fields);
           return { ...fresh, fields: ordered };
         }
         cancelReorderTimer();
         reorderPending.current = undefined;
       }
       acceptedOrder.current.set(fresh.id, fresh.fields);
+      lastSchema.current.set(fresh.id, fresh.fields);
       return fresh;
     },
     [cancelReorderTimer]
@@ -667,7 +675,10 @@ export const useCmsStructure = ({
     let fields = moved.fields;
     const result = await enqueue(id, (expectedUpdatedAt) => {
       const live = latestDetail.current;
-      fields = live?.id === id ? orderByKeys(live.fields, keys) : moved.fields;
+      const base =
+        lastSchema.current.get(id) ??
+        (live?.id === id ? live.fields : moved.fields);
+      fields = orderByKeys(base, keys);
       return structure.updateSchema(id, { fields, expectedUpdatedAt });
     });
     // a later move restarted the pause: that write carries the order
