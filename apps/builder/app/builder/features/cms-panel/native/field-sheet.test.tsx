@@ -251,6 +251,34 @@ describe("the field sheet", () => {
     );
   });
 
+  test("a long collection name truncates in Collection within the sheet, whole in its tooltip", async () => {
+    const long = `Speakers ${"and their sessions ".repeat(8)}`.trim();
+    harness.fake.listCollections.mockResolvedValue({
+      collections: [{ ...POSTS, name: long }, PEOPLE],
+    });
+    withFields();
+    await openNew("reference");
+    const trigger = control<HTMLButtonElement>("reference")!;
+    expect(trigger.textContent).toContain(long);
+    expect(trigger.getBoundingClientRect().right).toBeLessThanOrEqual(
+      sheet()!.getBoundingClientRect().right
+    );
+    const text = [...trigger.querySelectorAll<HTMLElement>("*")].find(
+      (element) => element.textContent === long && element.children.length === 0
+    )!;
+    expect(text.scrollWidth).toBeGreaterThan(text.clientWidth);
+    await act(async () => {
+      text.dispatchEvent(
+        new PointerEvent("pointermove", { bubbles: true, pointerType: "mouse" })
+      );
+    });
+    await vi.waitFor(() =>
+      expect(document.querySelector('[role="tooltip"]')?.textContent).toContain(
+        long
+      )
+    );
+  });
+
   test("Collection: disabled for a template reference and for any saved reference, as Kind is; enabled for a new one", async () => {
     withFields();
     await openField("team");

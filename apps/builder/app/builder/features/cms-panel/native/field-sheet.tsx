@@ -82,6 +82,7 @@ import type { CmsStructureEnqueue } from "./collection-settings";
 import { FieldRow, fieldIds } from "./field-controls";
 import { FieldKindLabel } from "./fields-view";
 import { LineRow, type CmsLineKind } from "./refusal-line";
+import { TruncatedText } from "./truncated-text";
 import {
   StructureBody,
   StructureHeader,
@@ -677,7 +678,10 @@ export const FieldSheet = ({
               value={draft.referenceId === "" ? undefined : draft.referenceId}
               placeholder="Choose"
               disabled={disabled || draft.locked || isNew === false}
-              getLabel={targetName}
+              // a long name truncates, whole in its tooltip
+              getLabel={(id: string) => (
+                <TruncatedText>{targetName(id)}</TruncatedText>
+              )}
               onChange={(referenceId) => update({ ...draft, referenceId })}
             />
           </FieldRow>
