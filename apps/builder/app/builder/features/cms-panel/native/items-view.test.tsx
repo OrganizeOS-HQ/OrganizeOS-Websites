@@ -2363,6 +2363,49 @@ describe("another collection while a list call is in flight", () => {
     expect(fake.getItem).toHaveBeenCalledWith(PEOPLE.id, PEOPLE_IDS[1]);
   });
 
+  test("back in a collection whose E13 is still in flight, a row open and a bulk Publish wait for it and its refetch", async () => {
+    const world = reorderWorld();
+    withPeople();
+    const held = deferred<CmsResult<{ changed: number }>>();
+    const store = fake.reorderItems.getMockImplementation()!;
+    fake.reorderItems.mockImplementationOnce(async (c, body) => {
+      const answer = await held.promise;
+      await store(c, body);
+      return answer;
+    });
+    fake.publishItems.mockImplementation(async (_c, { items }) => ({
+      published: items.map((item) => item.id),
+      unchanged: [],
+      conflicts: [],
+      failed: [],
+    }));
+    mount();
+    await settle();
+    await dragBelow("a", "c");
+    expect(fake.reorderItems).toHaveBeenCalledTimes(1);
+    await click(collectionRow("people"));
+    expect(itemSlugs()).toEqual(["x", "y"]);
+    await click(collectionRow("posts"));
+    expect(itemSlugs()).toEqual(["a", "b", "c"]);
+
+    await click(checkbox("Select A"));
+    await click(toolbarButton("Publish"));
+    focusRow("b");
+    await act(async () => userEvent.keyboard("{Enter}"));
+    await settle();
+    expect(fake.publishItems).not.toHaveBeenCalled();
+    expect(fake.getItem).not.toHaveBeenCalled();
+
+    await act(async () => held.resolve({ changed: 3 }));
+    await settle();
+    expect(fake.publishItems).toHaveBeenCalledTimes(1);
+    expect(fake.publishItems.mock.calls[0][1].items).toEqual([
+      { id: ROW_IDS[0], updatedAt: world.versions[ROW_IDS[0]] },
+    ]);
+    expect(world.versions[ROW_IDS[0]]).toBe(versionOf(ROW_IDS[0], 1));
+    expect(fake.getItem).toHaveBeenCalledWith(POSTS.id, ROW_IDS[1]);
+  });
+
   test("a row opened while a bulk call is in flight is dropped when another collection opens", async () => {
     reorderWorld();
     withPeople();
@@ -2427,6 +2470,22 @@ describe("the order E13 accepted is provisional", () => {
     await click(buttonByText("Sort"));
     await click(menuItemByText("Manual order"));
     expect(itemSlugs()).toEqual(["b", "a", "c"]);
+  });
+
+  test("after E13 200 and a failed refetch, moves that cancel out keep the accepted order and send nothing", async () => {
+    reorderWorld();
+    mount();
+    await settle();
+    fake.listItems.mockResolvedValueOnce({ error: "rate_limited" });
+    await dragBelow("a", "b");
+    expect(reorderCalls()).toEqual([[ROW_IDS[1], ROW_IDS[0], ROW_IDS[2]]]);
+    expect(itemSlugs()).toEqual(["b", "a", "c"]);
+    focusRow("a");
+    await altMove("ArrowDown");
+    await altMove("ArrowUp");
+    await wait(600);
+    expect(itemSlugs()).toEqual(["b", "a", "c"]);
+    expect(fake.reorderItems).toHaveBeenCalledTimes(1);
   });
 
   test("after E13 200 and a failed refetch, a successful refresh draws the newer order, and Alt+Arrow moves from it", async () => {

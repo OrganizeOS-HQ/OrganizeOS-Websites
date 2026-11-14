@@ -247,6 +247,13 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
     const [detailFailed, setDetailFailed] = useState(false);
     const [detailAttempt, setDetailAttempt] = useState(0);
     const [pageFailed, setPageFailed] = useState(false);
+    // The collection whose E3 failed with no page drawn, so its line shows:
+    // a failed E2 there adds no toast.
+    const pageLineFor = useRef<string | undefined>(undefined);
+    // The toast a failed E2 showed with no fields drawn, and its collection.
+    const detailToast = useRef<
+      { collectionId: string; id: string } | undefined
+    >(undefined);
     const [pageAttempt, setPageAttempt] = useState(0);
     const [isEditorDirty, setIsEditorDirty] = useState(false);
     const [pending, setPending] = useState<
@@ -297,6 +304,11 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
     const refetchFieldsRef = useRef<(() => Promise<void>) | undefined>(
       undefined
     );
+    // The field keys (columns, filter field, option key) the last E3
+    // answer named, and its collection.
+    const drawnPageWanted = useRef<
+      { collectionId: string; wanted: string[] } | undefined
+    >(undefined);
     // The collection whose foreground E2 failed with no fields drawn: its
     // next E3 answer asks for the fields once more.
     const detailFailedFor = useRef<string | undefined>(undefined);
@@ -476,12 +488,33 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
               setDetailFailed(true);
               detailFailedFor.current = collectionId;
               refreshedMissing.current = new Set();
-              // the list has no line for it: the toast, and its next E3
-              // answer asks for the fields again
-              if (isItemOpen.current === false) {
-                toast.error(getToastText(result.error), {
-                  id: `cms-read-${result.error}`,
-                });
+              // fields loaded on an earlier visit are not this answer's: the
+              // next E3 answer asks for them again
+              if (loadedFields.current?.id === collectionId) {
+                loadedFields.current = undefined;
+              }
+              // this collection's page answered first: its field keys ask
+              // for the fields once more now
+              const answered = drawnPageWanted.current;
+              if (
+                answered !== undefined &&
+                answered.collectionId === collectionId &&
+                answered.wanted.length > 0
+              ) {
+                for (const entry of answered.wanted) {
+                  refreshedMissing.current.add(entry);
+                }
+                void refetchFieldsRef.current?.();
+              }
+              // the list has no line for it: the toast, unless E3's line
+              // shows, and its next E3 answer asks for the fields again
+              if (
+                isItemOpen.current === false &&
+                pageLineFor.current !== collectionId
+              ) {
+                const id = `cms-read-${result.error}`;
+                detailToast.current = { collectionId, id };
+                toast.error(getToastText(result.error), { id });
               }
             }
           }
@@ -490,6 +523,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
         clearLine("detail");
         setDetailFailed(false);
         detailFailedFor.current = undefined;
+        detailToast.current = undefined;
         applyLoadedFields(result.collection);
         setDetail(result.collection);
       });
@@ -545,6 +579,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       let isCurrent = true;
       if (isBackground === false) {
         setPageFailed(false);
+        pageLineFor.current = undefined;
       }
       void source
         .listItems(collectionId, toItemsQuery(effectList, query, page))
@@ -601,12 +636,19 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
                 }
               } else {
                 setPageFailed(true);
+                pageLineFor.current = collectionId;
+                // the line says what a failed E2's toast said
+                if (detailToast.current?.collectionId === collectionId) {
+                  toast.dismiss(detailToast.current.id);
+                  detailToast.current = undefined;
+                }
               }
             }
             return;
           }
           clearLine("page");
           setPageFailed(false);
+          pageLineFor.current = undefined;
           setItemsPage(result);
           {
             const drawnList = adoptApplied(effectList, result.applied);
@@ -653,6 +695,12 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
           // refreshes the schema once (6.1), only while this collection's
           // fields are loaded
           // a collection whose E2 failed has none: every key is missing
+          const wanted = [
+            ...result.columns,
+            result.filterField,
+            result.applied.optionKey,
+          ].filter((entry): entry is string => typeof entry === "string");
+          drawnPageWanted.current = { collectionId, wanted };
           const fieldsLoaded = loadedFields.current?.id === collectionId;
           if (fieldsLoaded || detailFailedFor.current === collectionId) {
             const have = new Set(
@@ -660,11 +708,6 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
                 ? (loadedFields.current?.fields ?? []).map((field) => field.key)
                 : []
             );
-            const wanted = [
-              ...result.columns,
-              result.filterField,
-              result.applied.optionKey,
-            ].filter((entry): entry is string => typeof entry === "string");
             const missing = wanted.filter((entry) => have.has(entry) === false);
             if (
               missing.some(
@@ -827,6 +870,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       clearLine("detail");
       setDetailFailed(false);
       detailFailedFor.current = undefined;
+      detailToast.current = undefined;
       applyLoadedFields(result.collection);
       setDetail((current) =>
         current === undefined || current.id === result.collection.id

@@ -1735,6 +1735,26 @@ describe("the focus after Back (Review Focus 2)", () => {
     expect(document.activeElement).toBe(firstRow());
   });
 
+  test("Delete of the only row on page 2: page 1 shows, the focus on its first row", async () => {
+    listWorld(51, "draft");
+    mount({ initialView: { collectionId: POSTS.id, page: 2 } });
+    await settle();
+    expect(pager()).toBe("51-51 of 51");
+    await click(firstRow());
+    await click(byLabel("Item menu"));
+    await click(menuRadioOrItem("Delete"));
+    await click(
+      [
+        ...document.querySelectorAll<HTMLButtonElement>(
+          '[role="dialog"] button'
+        ),
+      ].find((button) => button.textContent === "Delete")
+    );
+    await settle();
+    expect(pager()).toBe("1-50 of 50");
+    expect(document.activeElement).toBe(firstRow());
+  });
+
   test("Back before the refetch after Archive answers: the focus moves to the first row once the row leaves", async () => {
     const world = listWorld(3, "published");
     mount({
@@ -1807,6 +1827,114 @@ describe("a failed E2 (verification)", () => {
     await click(document.querySelector<HTMLElement>("[data-cms-item-id]"));
     expect(titleInput()).not.toBeNull();
     expect(hasText("Try again in a minute")).toBe(false);
+  });
+
+  test.each(["E3 first", "E2 first"])(
+    "E2 and E3 failing together (%s) show the line and no toast",
+    async (order) => {
+      const error = vi.spyOn(toast, "error");
+      const dismiss = vi.spyOn(toast, "dismiss");
+      fake.listCollections.mockResolvedValue({ collections: [EVENTS] });
+      const e2 = deferred<void>();
+      const e3 = deferred<void>();
+      fake.getCollection.mockImplementation(async () => {
+        await e2.promise;
+        return { error: "unavailable" };
+      });
+      fake.listItems.mockImplementation(async () => {
+        await e3.promise;
+        return { error: "unavailable" };
+      });
+      mount({ initialView: { collectionId: EVENTS.id } });
+      await settle();
+      const [first, second] = order === "E3 first" ? [e3, e2] : [e2, e3];
+      await act(async () => first.resolve());
+      await settle();
+      await act(async () => second.resolve());
+      await settle();
+      expect(buttonByText("Retry")).toBeTruthy();
+      const shown = error.mock.calls.filter(
+        ([text]) => text === "Try again in a minute"
+      ).length;
+      const dismissed = dismiss.mock.calls.filter(
+        ([id]) => id === "cms-read-unavailable"
+      ).length;
+      expect(shown - Math.min(shown, dismissed)).toBe(0);
+    }
+  );
+
+  test("E2 failing after E3 has answered asks the fields once more, and draws the field columns once that answers", async () => {
+    fake.listCollections.mockResolvedValue({ collections: [EVENTS] });
+    const base = fake.getCollection.getMockImplementation()!;
+    const first = deferred<void>();
+    const refresh = deferred<void>();
+    let calls = 0;
+    fake.getCollection.mockImplementation(async (id) => {
+      calls += 1;
+      if (calls === 1) {
+        await first.promise;
+        return { error: "unavailable" };
+      }
+      await refresh.promise;
+      return base(id);
+    });
+    fake.listItems.mockImplementation(async (_c, q) =>
+      itemsPageOf([itemRowOf(itemOf())], 1, 1, {
+        ...echoPage(q),
+        columns: ["online"],
+      })
+    );
+    mount({ initialView: { collectionId: EVENTS.id } });
+    await settle();
+    // E3 has answered; E2 now fails
+    expect(fake.listItems).toHaveBeenCalled();
+    await act(async () => first.resolve());
+    await settle();
+    expect(fake.getCollection).toHaveBeenCalledTimes(2);
+    expect(document.querySelector('[data-cms-column-key="online"]')).toBeNull();
+    await act(async () => refresh.resolve());
+    await settle();
+    expect(fake.getCollection).toHaveBeenCalledTimes(2);
+    expect(
+      document.querySelector('[data-cms-column-key="online"]')
+    ).not.toBeNull();
+  });
+
+  test("back on a collection whose fields loaded before, a failed E2 still asks them once more", async () => {
+    fake.listCollections.mockResolvedValue({ collections: [EVENTS, POSTS] });
+    const base = fake.getCollection.getMockImplementation()!;
+    let eventsCalls = 0;
+    let failEvents = false;
+    fake.getCollection.mockImplementation(async (id) => {
+      if (id === POSTS.id) {
+        return { error: "unavailable" };
+      }
+      eventsCalls += 1;
+      if (failEvents) {
+        failEvents = false;
+        return { error: "unavailable" };
+      }
+      return base(id);
+    });
+    fake.listItems.mockImplementation(async (c, q) =>
+      itemsPageOf([itemRowOf(itemOf())], 1, 1, {
+        ...echoPage(q),
+        columns: c === EVENTS.id ? ["online"] : [],
+      })
+    );
+    mount({ initialView: { collectionId: EVENTS.id } });
+    await settle();
+    expect(eventsCalls).toBe(1);
+    expect(
+      document.querySelector('[data-cms-column-key="online"]')
+    ).not.toBeNull();
+    await click(rowOf(POSTS.slug));
+    failEvents = true;
+    await click(rowOf(EVENTS.slug));
+    expect(eventsCalls).toBe(3);
+    expect(
+      document.querySelector('[data-cms-column-key="online"]')
+    ).not.toBeNull();
   });
 
   test("a schema refresh answering after another collection opened leaves that collection's fields", async () => {

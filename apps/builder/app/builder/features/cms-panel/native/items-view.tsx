@@ -466,6 +466,8 @@ export const ItemsView = ({
   // listed, until a page answered after the list showed has landed.
   const answersAtShow = useRef(pageAnswer.count);
   const [returning, setReturning] = useState(true);
+  // New item, focused for want of a row: a row drawn later takes the focus
+  const fallbackFocus = useRef<HTMLElement | undefined>(undefined);
   const onDeletedFocusedRef = useRef(onDeletedFocused);
   onDeletedFocusedRef.current = onDeletedFocused;
   useEffect(() => {
@@ -483,19 +485,23 @@ export const ItemsView = ({
       active instanceof HTMLElement && root.contains(active)
         ? active.dataset.cmsItemId
         : undefined;
+    const rows = [
+      ...root.querySelectorAll<HTMLElement>("[data-cms-item-id]"),
+    ].filter((row) => row.dataset.cmsItemId !== deletedItemId);
     const isLost =
       active === null ||
       active === document.body ||
+      (active === fallbackFocus.current && rows.length > 0) ||
       (activeRowId !== undefined &&
         (activeRowId === deletedItemId || listed.has(activeRowId) === false));
     if (isLost) {
-      const rows = [
-        ...root.querySelectorAll<HTMLElement>("[data-cms-item-id]"),
-      ].filter((row) => row.dataset.cmsItemId !== deletedItemId);
+      const row =
+        rows.find((entry) => entry.dataset.cmsItemId === focusItemId) ??
+        rows[0];
       const target =
-        rows.find((row) => row.dataset.cmsItemId === focusItemId) ??
-        rows[0] ??
-        root.querySelector<HTMLElement>("[data-cms-new-item]");
+        row ?? root.querySelector<HTMLElement>("[data-cms-new-item]");
+      fallbackFocus.current =
+        row === undefined && target !== null ? target : undefined;
       target?.focus();
     }
     if (pageAnswer.count > answersAtShow.current) {
