@@ -1835,17 +1835,26 @@ allow-top-navigation-by-user-activation"` (`allow-modals` so the frame's
     emptied parent bullet keeps its sub-bullets, with no item added on a
     load and save. Of two collapsible spaces meeting at a link's edge the
     second goes, and so does a link's last space before a line break or its
-    line's end. A list made over a quote takes the paragraphs it covers out
-    of the quote, each its own item, in one undo step. A pasted list nested
-    past the depth limit moves up to it. A link never holds an image the
-    Link control adds, and Code holds plain text: a line's links give way to
-    their text, its formats clear (also for a format or link applied inside
-    it), and its images move to a paragraph after the block. Save sends each
-    changed rich-text value as written, unless it would reopen read-only:
-    then it sends the editor's own write of it, only when that write reopens
-    editable and differs from the value only by whitespace, empty paragraphs,
-    links or marks holding only spaces, or a list item's paragraphs becoming
-    line breaks (`settleRichTextHtml`); any other value is sent as written. A refusal is one line each, with the "Not in
+    line's end. A list made over part of a quote takes out only the blocks
+    from the one holding the selection's start to the one holding its end,
+    each its own item, at every level of nested quotes, in one undo step; a
+    quote inside a list item is left alone. These hold on every update,
+    from typing, a command or a paste of any source (HTML, plain text or the
+    field's own clipboard): no list or quote nests past the depth limit (one
+    past it moves up a level); a list item is always in a list; a figure is
+    never in a quote; blocks pasted into a nested item keep every untouched
+    item in its order and at its level; and Code holds plain text (its
+    images and figures move to a paragraph after the block, its paragraphs
+    become lines, no format or link applies inside it, a paste into it
+    inserts plain text, and the marks and Link are disabled there). A link
+    never holds an image the Link control adds. Save sends each changed
+    rich-text value as written, unless it would reopen read-only: then it
+    sends the editor's own write of it, only when that write reopens
+    editable and differs from the value only by collapsible whitespace,
+    paragraphs holding nothing visible and no line break, links or marks
+    holding only spaces, or a list item's paragraphs becoming line breaks
+    (`settleRichTextHtml`); any other value is sent as written. "Use my
+    edit" restores a rich-text value the same way. A refusal is one line each, with the "Not in
     plan" chip for the plan. The unsaved guard stands before Back, another
     collection, Classic CMS and "Open OrganizeOS". Every open reads the
     access (E0) again. The lists refetch after each write, on reopen and on

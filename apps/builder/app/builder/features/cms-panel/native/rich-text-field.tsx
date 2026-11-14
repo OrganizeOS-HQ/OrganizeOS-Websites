@@ -40,7 +40,6 @@ import {
   SELECTION_CHANGE_COMMAND,
   type LexicalEditor,
   type LexicalNode,
-  type NodeKey,
   type PointType,
   type RangeSelection,
   type TextFormatType,
@@ -61,14 +60,14 @@ import {
   INSERT_ORDERED_LIST_COMMAND,
   INSERT_UNORDERED_LIST_COMMAND,
   REMOVE_LIST_COMMAND,
-  type ListNode,
+  ListNode,
 } from "@lexical/list";
 import {
   $createHeadingNode,
   $createQuoteNode,
   $isHeadingNode,
   $isQuoteNode,
-  type QuoteNode,
+  QuoteNode,
 } from "@lexical/rich-text";
 import { $getLexicalContent } from "@lexical/clipboard";
 import { $createCodeNode, $isCodeNode } from "@lexical/code";
@@ -453,13 +452,15 @@ const setBlockType = (editor: LexicalEditor, block: BlockType) => {
   editor.focus();
 };
 
-/** The node rules the read-only check runs too (`registerRichTextTransforms`). */
 /**
  * No list item holds a block after its nested list (a paste into a nested
- * item can leave one): a paragraph after it becomes an item after the item
- * that holds the list, at that item's level, an empty one goes, and any
- * other block leaves the outermost list, splitting it, with whatever follows
- * it in that item, so the reading order stays.
+ * item can leave one). A paragraph after it becomes an item after the item
+ * that holds the list, at that item's level, and an empty one goes. A list
+ * after it (the rest of a list the paste split) nests under the last item
+ * made, or joins the list before it, keeping its level. Any other block
+ * leaves the outermost list, splitting it at every level between, with
+ * whatever follows it, so the reading order and every untouched item's
+ * level stay.
  */
 const $liftBlocksAfterNestedList = (item: ListItemNode) => {
   const children = item.getChildren();
@@ -474,10 +475,37 @@ const $liftBlocksAfterNestedList = (item: ListItemNode) => {
   if (after.some(isBlock) === false) {
     return;
   }
+  const isEmptyList = (node: ListNode) =>
+    node
+      .getChildren()
+      .every(
+        (entry) => $isListItemNode(entry) && entry.getChildrenSize() === 0
+      );
   let anchor: LexicalNode = item;
   let lifted: LexicalNode | undefined;
+  // once a block has left the lists: the tail's levels, innermost first,
+  // each held in an item at the start of the level around it
+  let levels: ListNode[] = [];
+  let remainders = 0;
   for (const child of after) {
     if (lifted !== undefined) {
+      if ($isListNode(child) && levels.length > 0) {
+        // the rest of a split list keeps its level, before what followed
+        if (isEmptyList(child) === false) {
+          const holder = $createListItemNode();
+          holder.append(child);
+          const at = levels[0].getChildAtIndex(remainders);
+          if (at === null) {
+            levels[0].append(holder);
+          } else {
+            at.insertBefore(holder);
+          }
+          remainders += 1;
+        } else {
+          child.remove();
+        }
+        continue;
+      }
       lifted.insertAfter(child);
       lifted = child;
       continue;
@@ -494,53 +522,144 @@ const $liftBlocksAfterNestedList = (item: ListItemNode) => {
       anchor = next;
       continue;
     }
-    if (
-      $isListNode(child) &&
-      child
-        .getChildren()
-        .every(
-          (entry) => $isListItemNode(entry) && entry.getChildrenSize() === 0
-        )
-    ) {
-      child.remove();
-      continue;
+    if ($isListNode(child)) {
+      if (isEmptyList(child)) {
+        child.remove();
+        continue;
+      }
+      if (anchor !== item && $isListItemNode(anchor)) {
+        anchor.append(child);
+        continue;
+      }
+      const before = child.getPreviousSibling();
+      if ($isListNode(before) && before.getListType() === child.getListType()) {
+        before.append(...child.getChildren());
+        child.remove();
+        continue;
+      }
     }
     if (isBlock(child) === false) {
       continue;
     }
-    // the outermost list splits after the top item holding the anchor
+    // every list from the anchor's to the outermost splits after the item
+    // on the anchor's path; what follows keeps its level in the tail
     let top: LexicalNode = anchor;
     let topList = top.getParent();
-    for (
-      let parent = topList?.getParent();
-      $isListItemNode(parent) && $isListNode(parent.getParent());
-      parent = parent.getParent()?.getParent()
-    ) {
+    levels = [];
+    for (;;) {
+      if ($isListNode(topList) === false) {
+        return;
+      }
+      const level = $createListNode(topList.getListType());
+      const inner = levels.at(-1);
+      if (inner !== undefined) {
+        const holder = $createListItemNode();
+        holder.append(inner);
+        level.append(holder);
+      }
+      level.append(...top.getNextSiblings());
+      levels.push(level);
+      const parent = topList.getParent();
+      if (
+        $isListItemNode(parent) === false ||
+        $isListNode(parent.getParent()) === false
+      ) {
+        break;
+      }
       top = parent;
       topList = parent.getParent();
     }
-    if ($isListNode(topList) === false) {
-      return;
-    }
-    const rest = top.getNextSiblings();
     topList.insertAfter(child);
     lifted = child;
-    if (rest.length > 0) {
-      const tail = $createListNode(topList.getListType());
-      tail.append(...rest);
-      child.insertAfter(tail);
+    lifted.insertAfter(levels[levels.length - 1]);
+  }
+  // levels left empty go, with the items that hold them
+  for (const [index, level] of levels.entries()) {
+    if (level.getChildrenSize() > 0) {
+      break;
+    }
+    const holder = level.getParent();
+    level.remove();
+    if (index < levels.length - 1 && $isListItemNode(holder)) {
+      holder.remove();
     }
   }
 };
 
+/** How many lists and quotes hold a node. */
+const $nestingOf = (node: LexicalNode) => {
+  let around = 0;
+  for (
+    let parent = node.getParent();
+    parent !== null;
+    parent = parent.getParent()
+  ) {
+    if ($isListNode(parent) || $isQuoteNode(parent)) {
+      around += 1;
+    }
+  }
+  return around;
+};
+
+/**
+ * No list or quote nests past the platform's depth limit, whatever made the
+ * nesting (a paste from any source, at any depth): one past it moves up a
+ * level, keeping the reading order, until it is within the limit. A list in
+ * an item moves its items beside that item; a list in a quote splits the
+ * quote around it; a quote gives way to its blocks.
+ */
+const $liftPastDepthLimit = (node: ListNode | QuoteNode) => {
+  if (node.isAttached() === false) {
+    return;
+  }
+  if ($nestingOf(node) < RICH_TEXT_MAX_DEPTH - 1) {
+    return;
+  }
+  const parent = node.getParent();
+  if ($isQuoteNode(node)) {
+    for (const child of node.getChildren()) {
+      node.insertBefore(child);
+    }
+    node.remove();
+    return;
+  }
+  if ($isListItemNode(parent)) {
+    let at: LexicalNode = parent;
+    for (const item of node.getChildren()) {
+      at.insertAfter(item);
+      at = item;
+    }
+    node.remove();
+    if (parent.getChildrenSize() === 0) {
+      parent.remove();
+    }
+    return;
+  }
+  if ($isQuoteNode(parent)) {
+    const rest = node.getNextSiblings();
+    parent.insertAfter(node);
+    if (rest.length > 0) {
+      const after = $createQuoteNode();
+      after.append(...rest);
+      node.insertAfter(after);
+    }
+    if (parent.getChildrenSize() === 0) {
+      parent.remove();
+    }
+  }
+};
+
+/** The node rules the read-only check runs too (`registerRichTextTransforms`). */
 const TransformsPlugin = () => {
   const [editor] = useLexicalComposerContext();
   useEffect(
     () =>
       mergeRegister(
         registerRichTextTransforms(editor),
-        // the live editor's alone: a stored value of this shape reads lossy
-        editor.registerNodeTransform(ListItemNode, $liftBlocksAfterNestedList)
+        // the live editor's alone: a stored value of these shapes reads lossy
+        editor.registerNodeTransform(ListItemNode, $liftBlocksAfterNestedList),
+        editor.registerNodeTransform(ListNode, $liftPastDepthLimit),
+        editor.registerNodeTransform(QuoteNode, $liftPastDepthLimit)
       ),
     [editor]
   );
@@ -804,59 +923,64 @@ const ImageButton = ({
 };
 
 /**
- * A quote holding blocks gives up the blocks the selection covers (and any
- * between them), in place: the blocks before them stay a quote, and those
- * after them make another.
+ * A quote holding blocks gives up the blocks the selection covers, from the
+ * one holding its start to the one holding its end, in place: the blocks
+ * before them stay a quote, and those after them make another. Each level of
+ * nested quotes splits the same way, innermost first, so every uncovered
+ * block keeps every quote around it. A quote in a list item is left alone:
+ * the list command acts on the list around it.
  */
 const $unwrapQuotedBlocks = () => {
   const selection = $getSelection();
   if ($isRangeSelection(selection) === false) {
     return;
   }
-  const covered = new Map<QuoteNode, Set<NodeKey>>();
+  const [start, end] = selection.isBackward()
+    ? [selection.focus, selection.anchor]
+    : [selection.anchor, selection.focus];
+  const quotes = new Set<QuoteNode>();
   for (const node of selection.getNodes()) {
-    const quote = $isQuoteNode(node)
-      ? node
-      : $findMatchingParent(node, $isQuoteNode);
-    if (
-      $isQuoteNode(quote) === false ||
-      quote
-        .getChildren()
-        .some(
-          (child) => $isElementNode(child) && child.isInline() === false
-        ) === false
-    ) {
-      continue;
-    }
-    const keys = covered.get(quote) ?? new Set<NodeKey>();
-    covered.set(quote, keys);
-    if (node.is(quote)) {
-      // the whole quote is in the selection
-      for (const child of quote.getChildren()) {
-        keys.add(child.getKey());
+    for (let at: LexicalNode | null = node; at !== null; at = at.getParent()) {
+      if ($isQuoteNode(at)) {
+        quotes.add(at);
       }
-      continue;
-    }
-    const child = node.getParent()?.is(quote)
-      ? node
-      : $findMatchingParent(
-          node,
-          (parent) => parent.getParent()?.is(quote) === true
-        );
-    if (child !== null) {
-      keys.add(child.getKey());
     }
   }
-  for (const [quote, keys] of covered) {
-    const children = quote.getChildren();
-    const indexes = children
-      .map((child, index) => (keys.has(child.getKey()) ? index : -1))
-      .filter((index) => index !== -1);
-    if (indexes.length === 0) {
+  const depthOf = (node: LexicalNode) => node.getParentKeys().length;
+  const ordered = [...quotes]
+    .filter(
+      (quote) =>
+        $findMatchingParent(quote, $isListItemNode) === null &&
+        quote
+          .getChildren()
+          .some((child) => $isElementNode(child) && child.isInline() === false)
+    )
+    .sort((one, two) => depthOf(two) - depthOf(one));
+  /** The index of the quote's child holding the point, if the quote holds it. */
+  const childAt = (quote: QuoteNode, point: typeof start) => {
+    const node = point.getNode();
+    if (node.is(quote)) {
+      return Math.min(point.offset, quote.getChildrenSize() - 1);
+    }
+    const child = $findMatchingParent(
+      node,
+      (parent) => parent.getParent()?.is(quote) === true
+    );
+    return child === null ? undefined : child.getIndexWithinParent();
+  };
+  for (const quote of ordered) {
+    if (quote.isAttached() === false) {
       continue;
     }
-    const first = Math.min(...indexes);
-    const last = Math.max(...indexes);
+    const children = quote.getChildren();
+    if (children.length === 0) {
+      continue;
+    }
+    const first = childAt(quote, start) ?? 0;
+    const last = childAt(quote, end) ?? children.length - 1;
+    if (last < first) {
+      continue;
+    }
     let anchor: LexicalNode = quote;
     // inline content between blocks keeps one paragraph per run
     let run: ElementNode | undefined;
@@ -1081,46 +1205,6 @@ const hasRefusedNode = (value: unknown): boolean => {
  * refuses unwrapped to its text, and links and marks moved inside the
  * blocks they wrap; undefined when it needs neither.
  */
-/** How many lists and quotes hold an element. */
-const listDepthOf = (element: Element) => {
-  let around = 0;
-  for (
-    let parent = element.parentElement;
-    parent !== null;
-    parent = parent.parentElement
-  ) {
-    if (/^(UL|OL|BLOCKQUOTE)$/.test(parent.tagName)) {
-      around += 1;
-    }
-  }
-  return around;
-};
-
-/**
- * A pasted list nested past the platform's depth limit moves up a level, its
- * items beside the item that held it, until every list is within the limit.
- */
-const liftListsPastDepthLimit = (body: HTMLElement) => {
-  let lifted = false;
-  for (;;) {
-    const list = Array.from(body.querySelectorAll("ul, ol")).find(
-      (element) =>
-        listDepthOf(element) >= RICH_TEXT_MAX_DEPTH - 1 &&
-        element.parentElement?.tagName === "LI"
-    );
-    if (list === undefined) {
-      return lifted;
-    }
-    const holder = list.parentElement!;
-    const next = holder.nextSibling;
-    for (const item of Array.from(list.children)) {
-      holder.parentNode?.insertBefore(item, next);
-    }
-    list.remove();
-    lifted = true;
-  }
-};
-
 const withoutRefusedLinks = (data: DataTransfer): DataTransfer | undefined => {
   const html = data.getData("text/html");
   let cleanHtml: string | undefined;
@@ -1150,9 +1234,7 @@ const withoutRefusedLinks = (data: DataTransfer): DataTransfer | undefined => {
     for (const anchor of emptied) {
       anchor.replaceWith(...Array.from(anchor.childNodes));
     }
-    const lifted = liftListsPastDepthLimit(dom.body);
     if (
-      lifted ||
       movedMarks ||
       images.length > 0 ||
       refused.length > 0 ||
