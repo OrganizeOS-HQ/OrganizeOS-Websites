@@ -42,7 +42,12 @@ import { mergeRegister } from "@lexical/utils";
 import { HorizontalRuleNode } from "@lexical/react/LexicalHorizontalRuleNode";
 import type { CmsRichTextValue } from "./cms-source";
 import { sanitizeRichTextHtml } from "./rich-text-sanitize";
-import { RICH_TEXT_MAX_DEPTH, toRichTextNodes } from "./rich-text-nodes";
+import {
+  RICH_TEXT_MAX_DEPTH,
+  toRichTextNodes,
+  type RichTextBlock,
+  type RichTextInline,
+} from "./rich-text-nodes";
 import {
   CmsFigureNode,
   CmsImageNode,
@@ -470,10 +475,13 @@ const READ_ONLY_MEMO_SIZE = 8;
  * platform's node or depth limit, and any value where no DOM parser exists
  * open read-only too.
  */
-const readOnlyReasonOf = (html: string): RichTextReadOnlyReason | undefined => {
+const inspect = (
+  html: string
+): { reason: RichTextReadOnlyReason | undefined; written?: string } => {
   if (typeof DOMParser === "undefined") {
-    return "lossy";
+    return { reason: "lossy" };
   }
+  let written: string | undefined;
   try {
     const stored = sanitizeRichTextHtml(html);
     // no free mark: the spaces beside its images would not be kept
@@ -481,14 +489,14 @@ const readOnlyReasonOf = (html: string): RichTextReadOnlyReason | undefined => {
       /<img\b/.test(stored) &&
       pickImageEdgeMark(parseHtml(html).body.textContent ?? "") === undefined
     ) {
-      return "lossy";
+      return { reason: "lossy" };
     }
     // at a limit the platform serves a tail of plain text, which hides
     // what the editor would change there
     if (isCutAtNodeLimit(stored) || isFlattenedAtDepthLimit(stored)) {
-      return "lossy";
+      return { reason: "lossy" };
     }
-    const written = sanitizeRichTextHtml(writeRichTextHeadless(html));
+    written = sanitizeRichTextHtml(writeRichTextHeadless(html));
     const before = toRichTextNodes(stored).children;
     const after = toRichTextNodes(written).children;
     if (
@@ -496,11 +504,12 @@ const readOnlyReasonOf = (html: string): RichTextReadOnlyReason | undefined => {
       sameList(linksOf(stored), linksOf(written)) === false ||
       sameList(imagesOf(stored), imagesOf(written)) === false
     ) {
-      return "lossy";
+      return { reason: "lossy", written };
     }
+    return { reason: undefined, written };
   } catch {
     // a value the editor cannot load opens read-only, never as a failure
-    return "lossy";
+    return { reason: "lossy" };
   }
 };
 
@@ -513,12 +522,186 @@ export const getRichTextReadOnlyReason = (
   if (readOnlyMemo.has(html)) {
     return readOnlyMemo.get(html);
   }
-  const reason = readOnlyReasonOf(html);
+  const { reason } = inspect(html);
   if (readOnlyMemo.size >= READ_ONLY_MEMO_SIZE) {
     readOnlyMemo.delete(readOnlyMemo.keys().next().value as string);
   }
   readOnlyMemo.set(html, reason);
   return reason;
+};
+
+type ContentToken =
+  | { k: "char"; ch: string; marks: string; href?: string; newTab?: true }
+  | { k: "space" }
+  | { k: "br" };
+
+const COLLAPSIBLE_CHAR_RE = /[ \t\n\r\f]/;
+
+/** An inline run as visible characters, collapsed spaces and line breaks. */
+const inlineTokens = (
+  inlines: RichTextInline[],
+  link?: { href: string; newTab?: true }
+): ContentToken[] => {
+  const tokens: ContentToken[] = [];
+  for (const inline of inlines) {
+    if (inline.t === "br") {
+      tokens.push({ k: "br" });
+    } else if (inline.t === "a") {
+      tokens.push(
+        ...inlineTokens(inline.c, { href: inline.href, newTab: inline.newTab })
+      );
+    } else {
+      const marks = (inline.marks ?? []).join(",");
+      for (const ch of inline.text) {
+        tokens.push(
+          COLLAPSIBLE_CHAR_RE.test(ch)
+            ? { k: "space" }
+            : {
+                k: "char",
+                ch,
+                marks,
+                ...(link === undefined ? {} : link),
+              }
+        );
+      }
+    }
+  }
+  // one space for a run; none at an edge or beside a line break
+  const kept: ContentToken[] = [];
+  for (const token of tokens) {
+    if (token.k === "space") {
+      const last = kept.at(-1);
+      if (last === undefined || last.k !== "char") {
+        continue;
+      }
+    } else if (token.k === "br" && kept.at(-1)?.k === "space") {
+      kept.pop();
+    }
+    kept.push(token);
+  }
+  if (kept.at(-1)?.k === "space") {
+    kept.pop();
+  }
+  return kept;
+};
+
+const BREAK: RichTextInline = { t: "br" };
+
+/** A block list as the content comparison sees it. */
+const normaliseBlocks = (
+  blocks: RichTextBlock[],
+  inItem = false
+): unknown[] => {
+  // inside one list item, consecutive paragraphs read as one with breaks
+  const merged: RichTextBlock[] = [];
+  for (const block of blocks) {
+    const last = merged.at(-1);
+    if (inItem && block.t === "p" && last?.t === "p") {
+      merged[merged.length - 1] = { t: "p", c: [...last.c, BREAK, ...block.c] };
+    } else {
+      merged.push(block);
+    }
+  }
+  const out: unknown[] = [];
+  for (const block of merged) {
+    switch (block.t) {
+      case "p": {
+        const tokens = inlineTokens(block.c);
+        if (tokens.some((token) => token.k === "char")) {
+          out.push({ t: "p", tokens });
+        }
+        break;
+      }
+      case "h":
+        out.push({ t: "h", level: block.level, tokens: inlineTokens(block.c) });
+        break;
+      case "ul":
+      case "ol":
+        out.push({
+          t: block.t,
+          items: block.items.map((item) => normaliseBlocks(item, true)),
+        });
+        break;
+      case "quote":
+        out.push({ t: "quote", children: normaliseBlocks(block.children) });
+        break;
+      case "img":
+        out.push({
+          ...block,
+          caption:
+            block.caption === undefined
+              ? undefined
+              : inlineTokens(block.caption),
+        });
+        break;
+      default:
+        out.push(block);
+    }
+  }
+  return out;
+};
+
+/** The links that show something, each with every attribute. */
+const visibleLinksOf = (html: string) =>
+  [...html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)]
+    .filter(
+      (match) =>
+        /\shref="/.test(match[1]) &&
+        (/<img\b/.test(match[2]) ||
+          isCollapsible(
+            match[2].replace(/<[^>]*>/g, "").replace(/&nbsp;/g, "\u00a0")
+          ) === false)
+    )
+    .map((match) => attributesOf(match[1]));
+
+/**
+ * Whether two values hold the same content: the same blocks in order (type,
+ * heading level, list type and nesting, quotes and their children, code text
+ * exactly), images with every attribute and their captions, and the same
+ * visible characters in order with their marks and links, and line breaks.
+ * Collapsible whitespace reads as one space, none at a block's edge or
+ * beside a line break, and carries no mark or link; a non-breaking space is
+ * visible. A paragraph with nothing visible, and a link with no visible text
+ * and no image, count as nothing; a list item's consecutive paragraphs read
+ * as one joined by line breaks.
+ */
+export const sameRichTextContent = (left: string, right: string) => {
+  const a = sanitizeRichTextHtml(left);
+  const b = sanitizeRichTextHtml(right);
+  return (
+    JSON.stringify(normaliseBlocks(toRichTextNodes(a).children)) ===
+      JSON.stringify(normaliseBlocks(toRichTextNodes(b).children)) &&
+    sameList(visibleLinksOf(a), visibleLinksOf(b)) &&
+    sameList(imagesOf(a), imagesOf(b))
+  );
+};
+
+/**
+ * The value a Save sends for a changed rich-text field. One the guard reads
+ * editable is sent as written. One that would reopen read-only is replaced by
+ * the editor's own write of it only when that write reopens editable and
+ * holds the same content (`sameRichTextContent`); otherwise it is sent as
+ * written.
+ */
+export const settleRichTextHtml = (
+  html: string
+): { html: string; outcome: "unchanged" | "settled" | "kept" } => {
+  if (getRichTextReadOnlyReason(sanitizeRichTextHtml(html)) === undefined) {
+    return { html, outcome: "unchanged" };
+  }
+  try {
+    const { written } = inspect(html);
+    if (
+      written !== undefined &&
+      getRichTextReadOnlyReason(written) === undefined &&
+      sameRichTextContent(html, written)
+    ) {
+      return { html: written, outcome: "settled" };
+    }
+  } catch {
+    // a write that fails keeps the value as written
+  }
+  return { html, outcome: "kept" };
 };
 
 /**

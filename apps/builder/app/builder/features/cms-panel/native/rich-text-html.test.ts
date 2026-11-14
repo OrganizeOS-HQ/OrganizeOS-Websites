@@ -12,8 +12,11 @@ import {
   richTextHtmlConfig,
   richTextImportHref,
   richTextNodes,
+  sameRichTextContent,
+  settleRichTextHtml,
   writeRichTextHeadless,
 } from "./rich-text-html";
+import corpus from "./__fixtures__/rich-text-corpus.json";
 import { toRichTextNodes } from "./rich-text-nodes";
 import { sanitizeRichTextHtml } from "./rich-text-sanitize";
 
@@ -571,5 +574,92 @@ describe("the platform's node and depth limits (exact-guard round)", () => {
     expect(
       getRichTextReadOnlyReason(`<blockquote>${nested(7)}</blockquote>`)
     ).toBe("lossy");
+  });
+});
+
+// the save-time backstop (self-lock decision, 2026-11-14)
+describe("settleRichTextHtml", () => {
+  test("every corpus value the guard reads editable comes back unchanged, as the same string", () => {
+    const moved: string[] = [];
+    for (const entry of corpus.entries) {
+      if (entry.verdict !== "editable") {
+        continue;
+      }
+      const result = settleRichTextHtml(entry.input);
+      if (result.outcome !== "unchanged" || result.html !== entry.input) {
+        moved.push(entry.input);
+      }
+    }
+    expect(moved).toEqual([]);
+  });
+
+  test.each([
+    "<p>Thanks</p><ol><li>On Mon wrote:<p>a</p><p>b</p></li></ol>",
+    "<ol><li><p>a</p><p>b</p><blockquote><blockquote><p>a</p><p>b</p></blockquote></blockquote><p></p></li></ol>",
+    '<p><a href="https://example.org/a b"><u>  </u></a><img src="https://cdn.example.org/u19.png" alt="" width="2" height="3" /></p>',
+  ])(
+    "a self-locking write settles, reopens editable, and settles to itself: %s",
+    (html) => {
+      expect(getRichTextReadOnlyReason(sanitizeRichTextHtml(html))).toBe(
+        "lossy"
+      );
+      const settled = settleRichTextHtml(html);
+      expect(settled.outcome).toBe("settled");
+      expect(getRichTextReadOnlyReason(settled.html)).toBeUndefined();
+      expect(settleRichTextHtml(settled.html)).toEqual({
+        html: settled.html,
+        outcome: "unchanged",
+      });
+    }
+  );
+
+  test.each([
+    "<ul><li>a</li><li><ul><li>bone</li></ul><p>two</p></li></ul>",
+    '<ul><li>a</li><li><ul><li>bone</li></ul><p><img src="https://e.org/a.png" alt="A" /></p></li></ul>',
+    "<ul><li>a</li><li><ul><li>bone</li></ul><hr /></li></ul>",
+    "<ul><li><ul><li></li></ul><p>b</p></li></ul>",
+    '<ul><li><figure><img src="https://e.org/a.png" alt="A" /><figcaption>cap</figcaption></figure></li></ul>',
+    "<ul><li><p>a</p><hr /><p>b</p></li></ul>",
+  ])(
+    "a write whose rewrite would move content is kept as written: %s",
+    (html) => {
+      expect(settleRichTextHtml(html)).toEqual({ html, outcome: "kept" });
+    }
+  );
+
+  test("the content comparison sees a removed space between words, a removed non-breaking space and changed code whitespace", () => {
+    expect(sameRichTextContent("<p>a b</p>", "<p>a  b</p>")).toBe(true);
+    expect(sameRichTextContent("<p>a b</p>", "<p>ab</p>")).toBe(false);
+    expect(sameRichTextContent("<p>a&nbsp;b</p>", "<p>ab</p>")).toBe(false);
+    expect(sameRichTextContent("<p>a&nbsp;b</p>", "<p>a b</p>")).toBe(false);
+    expect(
+      sameRichTextContent(
+        "<pre><code>a  b</code></pre>",
+        "<pre><code>a b</code></pre>"
+      )
+    ).toBe(false);
+  });
+
+  test("a list item's paragraphs read as one joined by line breaks; an empty paragraph and an empty link read as nothing", () => {
+    expect(
+      sameRichTextContent(
+        "<ul><li><p>a</p><p>b</p></li></ul>",
+        "<ul><li>a<br />b</li></ul>"
+      )
+    ).toBe(true);
+    expect(sameRichTextContent("<p>a</p><p></p>", "<p>a</p>")).toBe(true);
+    expect(
+      sameRichTextContent(
+        '<p>a <a href="https://e.org/"> </a>b</p>',
+        "<p>a b</p>"
+      )
+    ).toBe(true);
+    // but an image, a rule or an item moving is a difference
+    expect(
+      sameRichTextContent("<p>a</p><hr /><p>b</p>", "<p>a</p><p>b</p><hr />")
+    ).toBe(false);
+    expect(
+      sameRichTextContent("<ul><li>a</li><li></li></ul>", "<ul><li>a</li></ul>")
+    ).toBe(false);
   });
 });
