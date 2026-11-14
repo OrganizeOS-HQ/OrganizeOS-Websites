@@ -1829,13 +1829,20 @@ allow-top-navigation-by-user-activation"` (`allow-modals` so the frame's
     (owner decision, 2026-11-14); a block that holds nothing saves empty; a
     paste moves a link or mark inside the blocks it wraps, and so does a
     stored value's load. A stored link keeps its address as stored, and an
-    emptied parent bullet keeps its sub-bullets. The editor's own writes
-    are what it loads: of two collapsible spaces meeting at a link's edge
-    the second goes, and so does a link's last space before a line break or
-    its line's end. A list made over a quote gives each of its paragraphs
-    its own item. A link never holds an image the Link control adds, and
-    Code holds plain text: a line's links give way to their text, its
-    formats clear, and its images move to a paragraph after the block. A refusal is one line each, with the "Not in
+    emptied parent bullet keeps its sub-bullets, with no item added on a
+    load and save. Of two collapsible spaces meeting at a link's edge the
+    second goes, and so does a link's last space before a line break or its
+    line's end. A list made over a quote takes the paragraphs it covers out
+    of the quote, each its own item, in one undo step. A pasted list nested
+    past the depth limit moves up to it. A link never holds an image the
+    Link control adds, and Code holds plain text: a line's links give way to
+    their text, its formats clear (also for a format or link applied inside
+    it), and its images move to a paragraph after the block. Save sends each
+    changed rich-text value as written, unless it would reopen read-only:
+    then it sends the editor's own write of it, only when that write reopens
+    editable and differs from the value only by whitespace, empty paragraphs,
+    links or marks holding only spaces, or a list item's paragraphs becoming
+    line breaks (`settleRichTextHtml`); any other value is sent as written. A refusal is one line each, with the "Not in
     plan" chip for the plan. The unsaved guard stands before Back, another
     collection, Classic CMS and "Open OrganizeOS". Every open reads the
     access (E0) again. The lists refetch after each write, on reopen and on
