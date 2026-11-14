@@ -37,6 +37,7 @@ import {
   type CmsFieldKind,
 } from "./cms-source";
 import {
+  changesCanvas,
   getFieldCap,
   getStructureToastText,
   moveField,
@@ -102,7 +103,13 @@ export type CmsStructureEffect =
       before: { slug: string; isPublic: boolean };
       after: { slug: string; isPublic: boolean };
     }
-  | { kind: "schema"; slug: string; removed: string[] }
+  | {
+      kind: "schema";
+      slug: string;
+      removed: string[];
+      /** A field removed, a field's options or the title field changed. */
+      changesCanvas: boolean;
+    }
   | { kind: "deleted"; collectionId: string; slug: string };
 
 /**
@@ -780,7 +787,12 @@ export const useCmsStructure = ({
     setDetail((latest) =>
       latest?.id === id ? { ...latest, updatedAt: result.updatedAt } : latest
     );
-    written({ kind: "schema", slug: moved.slug, removed: [] });
+    written({
+      kind: "schema",
+      slug: moved.slug,
+      removed: [],
+      changesCanvas: false,
+    });
   };
 
   /** A move shows at once; E24 goes after a pause, with the latest order. */
@@ -1086,7 +1098,12 @@ export const useCmsStructure = ({
             setSession((current) => current + 1);
             setView({ type: "field", target: { key } });
           }
-          written({ kind: "schema", slug: openDetail.slug, removed: [] });
+          written({
+            kind: "schema",
+            slug: openDetail.slug,
+            removed: [],
+            changesCanvas: changesCanvas(openDetail.fields, fields),
+          });
         }}
         onRemoved={(fields, updatedAt) => {
           const removed = openDetail.fields
@@ -1101,7 +1118,12 @@ export const useCmsStructure = ({
           if (isSameView()) {
             closeView();
           }
-          written({ kind: "schema", slug: openDetail.slug, removed });
+          written({
+            kind: "schema",
+            slug: openDetail.slug,
+            removed,
+            changesCanvas: changesCanvas(openDetail.fields, fields),
+          });
         }}
       />
     );

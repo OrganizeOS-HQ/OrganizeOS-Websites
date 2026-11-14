@@ -814,6 +814,24 @@ describe("after a structure write", () => {
     expect(stale).toHaveBeenCalledTimes(4);
   });
 
+  test("a new field made the title invalidates the canvas (review)", async () => {
+    answerSchema();
+    const stale = vi.fn();
+    mount({ onCollectionCanvasStale: stale });
+    await settle();
+    await click(tab("Fields"));
+    await click(byLabel("Add field"));
+    await click(menuItem("Plain text"));
+    await typeInto(
+      document.querySelector<HTMLInputElement>("#cms-field-sheet-label"),
+      "Headline"
+    );
+    await click(document.querySelector<HTMLElement>("#cms-field-sheet-title"));
+    await click(buttonByText("Add field", header()!));
+    expect(harness.structure.updateSchema).toHaveBeenCalledTimes(1);
+    expect(stale).toHaveBeenLastCalledWith("posts");
+  });
+
   test("a rename, a reorder and a new field invalidate nothing on the canvas", async () => {
     answerSchema();
     answerSettings();

@@ -810,7 +810,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       if (effect.kind === "schema") {
         // an open editor never sends a removed key
         void refetchFields();
-        if (effect.removed.length > 0) {
+        if (effect.changesCanvas) {
           onCollectionCanvasStale?.(effect.slug);
         }
       }

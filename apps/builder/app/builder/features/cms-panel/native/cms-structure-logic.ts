@@ -331,6 +331,27 @@ export const moveField = (
 };
 
 /**
+ * Whether a schema save changes what the canvas shows of items it already
+ * holds: a field removed, a field's options, or which field is the title.
+ */
+export const changesCanvas = (
+  before: readonly CmsStructureField[],
+  after: readonly CmsStructureField[]
+): boolean => {
+  const optionsOf = (field: CmsStructureField) =>
+    JSON.stringify(field.options ?? null);
+  const titleOf = (fields: readonly CmsStructureField[]) =>
+    fields.find((field) => field.isTitle === true)?.key;
+  if (titleOf(before) !== titleOf(after)) {
+    return true;
+  }
+  return before.some((field) => {
+    const next = after.find((candidate) => candidate.key === field.key);
+    return next === undefined || optionsOf(next) !== optionsOf(field);
+  });
+};
+
+/**
  * The fields in the order of `keys`: a field `keys` does not name keeps its
  * place after those it does, so a field another person added stays.
  */

@@ -1876,9 +1876,10 @@ allow-top-navigation-by-user-activation"` (`allow-modals` so the frame's
     reference keeps its collection. Removing a field asks first, with a fresh
     count. An open sheet or settings view saves against the version it was
     built from, so another person's change in between answers a conflict. After a
-    structure write the lists refetch, with no reload; a field removal, an
-    Address or Public change and a delete also invalidate the canvas's
-    requests for the collection. Opening a structure view clears the list's
+    structure write the lists refetch, with no reload; a field removal, a
+    change to a field's options or to the title field, an Address or Public
+    change and a delete also invalidate the canvas's requests for the
+    collection. Opening a structure view clears the list's
     selection, and keyboard moves still in their pause are sent.
   - **The catalog Resource on first use** (`native/cms-catalog-add.ts`). A
     public collection with no catalog Resource gets one, in provisioning's

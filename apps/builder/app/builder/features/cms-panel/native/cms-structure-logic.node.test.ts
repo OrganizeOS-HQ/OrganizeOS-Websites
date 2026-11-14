@@ -7,6 +7,7 @@ import {
   getFieldCap,
   getFieldDraftErrors,
   getSettingsErrors,
+  changesCanvas,
   getStructureToastText,
   isFieldDraftDirty,
   keyFromLabel,
@@ -493,4 +494,41 @@ test("the errors the sheet's input caps keep out of reach", () => {
       undefined
     ).reference
   ).toBe("Choose a collection");
+});
+
+test("changesCanvas: a removal, options or the title field, never a label, an order or an addition", () => {
+  const fields = [
+    { key: "title", label: "Title", kind: "text" as const, isTitle: true },
+    {
+      key: "stage",
+      label: "Stage",
+      kind: "option" as const,
+      options: [{ value: "won", label: "Won" }],
+    },
+  ];
+  const [title, stage] = fields;
+  expect(changesCanvas(fields, [title])).toBe(true);
+  expect(
+    changesCanvas(fields, [
+      title,
+      { ...stage, options: [{ value: "won", label: "Closed" }] },
+    ])
+  ).toBe(true);
+  expect(
+    changesCanvas(fields, [
+      { ...title, isTitle: false },
+      stage,
+      { key: "name", label: "Name", kind: "text", isTitle: true },
+    ])
+  ).toBe(true);
+  expect(changesCanvas(fields, [{ ...title, label: "Headline" }, stage])).toBe(
+    false
+  );
+  expect(changesCanvas(fields, [stage, title])).toBe(false);
+  expect(
+    changesCanvas(fields, [
+      ...fields,
+      { key: "notes", label: "Notes", kind: "textarea" },
+    ])
+  ).toBe(false);
 });
