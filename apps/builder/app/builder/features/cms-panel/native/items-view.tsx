@@ -48,6 +48,7 @@ import { FilterMenu, SortMenu } from "./items-menus";
 import { ItemsTable } from "./items-table";
 import { TruncatedText } from "./truncated-text";
 import { useBulkActions } from "./use-bulk-actions";
+import type { ReorderState } from "./reorder-state";
 import { useRowReorder } from "./use-row-reorder";
 
 const TopBar = ({
@@ -220,6 +221,7 @@ export const ItemsView = ({
   fields,
   list,
   pageAnswer,
+  reorderState,
   onListChange,
   onListWritten,
   onRefusal,
@@ -248,6 +250,8 @@ export const ItemsView = ({
   list: CmsListState;
   /** The last E3 answer's counter, for the reorder wait (Task 18). */
   pageAnswer: { count: number; ok: boolean };
+  /** The screen's reorder state, kept while this view remounts. */
+  reorderState: ReorderState;
   /** A filter, sort or selection change (Tasks 16 to 18). */
   onListChange: (next: CmsListState) => void;
   /** After a bulk or reorder write: the lists and canvas refetch (Task 17). */
@@ -344,6 +348,7 @@ export const ItemsView = ({
     listKey: JSON.stringify([listKey(list), query]),
     page,
     pageAnswer,
+    state: reorderState,
     onReordered: onListWritten,
     onFailed: (code) => {
       // the refetch shows the server's order

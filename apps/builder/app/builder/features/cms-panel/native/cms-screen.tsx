@@ -62,6 +62,7 @@ import { CollectionsColumn } from "./collections-column";
 import { ItemEditor } from "./item-editor";
 import { ItemsView } from "./items-view";
 import { RefusalLine, type CmsLineKind } from "./refusal-line";
+import { createReorderState } from "./reorder-state";
 
 export type CmsScreenView = {
   collectionId?: string;
@@ -240,6 +241,11 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
     // Bumped on every E3 answer for the current key, success or failure; a
     // reorder's wait reads it (Task 18).
     const [pageAnswer, setPageAnswer] = useState({ count: 0, ok: true });
+    // The items table's reorder state, kept while the table remounts (an
+    // item visit, the page line); other views read whether an E13 is in
+    // flight from it.
+    const [reorderState] = useState(createReorderState);
+    reorderState.notePageAnswer(pageAnswer.count);
     const [itemsPage, setItemsPage] = useState<CmsItemsPage | undefined>(
       undefined
     );
@@ -1034,6 +1040,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
           fields={detail?.id === collection.id ? detail.fields : undefined}
           list={list}
           pageAnswer={pageAnswer}
+          reorderState={reorderState}
           onListChange={onListChange}
           onListWritten={onWritten}
           onRefusal={onEditorRefusal}
