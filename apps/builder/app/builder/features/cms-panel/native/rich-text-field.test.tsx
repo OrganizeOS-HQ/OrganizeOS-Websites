@@ -926,7 +926,7 @@ test("an image-only value is never null", async () => {
   expect(withoutClassAndDir(lastHtml(onChange))).toBe(image.editor);
 });
 
-test("selecting an image opens Alt, Caption for a figure, and Remove; Remove takes it out", async () => {
+test("a click on an image opens Alt, Caption for a figure, and Remove; Remove takes it out", async () => {
   const { onChange } = mountField({
     value: { html: fixtureCase("image").input },
   });
@@ -1872,58 +1872,89 @@ describe("the keyboard reaches an image (round 5)", () => {
   };
   const inEditor = () => editable()?.contains(document.activeElement) === true;
   const cases = [
+    // each from plain text and from a link's edge, which the browser's own
+    // arrow passes over
     {
       name: "an inline image",
-      html: `<p>See ${IMAGE}here</p>`,
-      word: "See ",
+      starts: [
+        { html: `<p>See ${IMAGE}here</p>`, word: "See " },
+        {
+          html: `<p><a href="https://e.org/">See </a>${IMAGE}here</p>`,
+          word: "See ",
+        },
+      ],
       typed: /See (<[^>]+>)*<img[^>]*>(<[^>]+>)*xy/,
     },
     {
       name: "a figure",
-      html: `<p>Before</p>${FIGURE}<p>After</p>`,
-      word: "Before",
+      starts: [
+        { html: `<p>Before</p>${FIGURE}<p>After</p>`, word: "Before" },
+        {
+          html: `<p><a href="https://e.org/">Before</a></p>${FIGURE}<p>After</p>`,
+          word: "Before",
+        },
+      ],
       typed: /<figure[\s\S]*<\/figure>[\s\S]*xy[\s\S]*After/,
     },
   ];
+  /** Runs `check` from each start, remounting the field between them. */
+  const fromEach = async (
+    starts: { html: string; word: string }[],
+    check: (onChange: ReturnType<typeof vi.fn>) => Promise<void>
+  ) => {
+    for (const [index, { html, word }] of starts.entries()) {
+      if (index > 0) {
+        act(() => {
+          root?.unmount();
+        });
+        container?.remove();
+      }
+      const { onChange } = await caretAfter(html, word);
+      await check(onChange);
+    }
+  };
 
   test.each(cases)(
     "$name: an arrow selects it, Enter opens its settings, and Alt takes what is typed",
-    async ({ html, word }) => {
-      const { onChange } = await caretAfter(html, word);
-      await type("{ArrowRight}");
-      expect(inputByLabel("Alt")).toBeNull();
-      await type("{Enter}");
-      const alt = inputByLabel("Alt")!;
-      expect(alt).not.toBeNull();
-      expect(document.activeElement).toBe(alt);
-      await userEvent.keyboard("{Control>}a{/Control}Lake");
-      await settle();
-      expect(lastHtml(onChange)).toContain('alt="Lake"');
+    async ({ starts }) => {
+      await fromEach(starts, async (onChange) => {
+        await type("{ArrowRight}");
+        expect(inputByLabel("Alt")).toBeNull();
+        await type("{Enter}");
+        const alt = inputByLabel("Alt")!;
+        expect(alt).not.toBeNull();
+        expect(document.activeElement).toBe(alt);
+        await userEvent.keyboard("{Control>}a{/Control}Lake");
+        await settle();
+        expect(lastHtml(onChange)).toContain('alt="Lake"');
+      });
     }
   );
 
   test.each(cases)(
     "$name: an arrow onto it, then typing, lands beside it with Alt closed",
-    async ({ html, word, typed }) => {
-      const { onChange } = await caretAfter(html, word);
-      await type("{ArrowRight}xy");
-      expect(inputByLabel("Alt")).toBeNull();
-      expect(lastHtml(onChange)).toMatch(typed);
+    async ({ starts, typed }) => {
+      await fromEach(starts, async (onChange) => {
+        await type("{ArrowRight}xy");
+        expect(inputByLabel("Alt")).toBeNull();
+        expect(lastHtml(onChange)).toMatch(typed);
+      });
     }
   );
 
   test.each(cases)(
     "$name: Enter, then Escape, gives the editor the focus, and typing lands beside it",
-    async ({ html, word, typed }) => {
-      const { onChange } = await caretAfter(html, word);
-      await type("{ArrowRight}{Enter}");
-      expect(inputByLabel("Alt")).not.toBeNull();
-      await userEvent.keyboard("{Escape}");
-      await settle();
-      expect(inputByLabel("Alt")).toBeNull();
-      expect(inEditor()).toBe(true);
-      await type("xy");
-      expect(lastHtml(onChange)).toMatch(typed);
+    async ({ starts, typed }) => {
+      await fromEach(starts, async (onChange) => {
+        await type("{ArrowRight}{Enter}");
+        expect(inputByLabel("Alt")).not.toBeNull();
+        await userEvent.keyboard("{Escape}");
+        await settle();
+        expect(inputByLabel("Alt")).toBeNull();
+        expect(inEditor()).toBe(true);
+        await type("xy");
+        expect(lastHtml(onChange)).toMatch(typed);
+      });
     }
   );
 });

@@ -312,7 +312,9 @@ const ImageView = ({ nodeKey, attributes, caption }: ImageViewProps) => {
         onEscapeKeyDown={() => {
           closedByKey.current = true;
         }}
-        // the keyboard goes back to the text, a caret right after the image
+        // closed by Escape, or with the focus lost, the keyboard goes back
+        // to the text, a caret right after the image; a click elsewhere
+        // keeps the focus where it went
         onCloseAutoFocus={(event) => {
           event.preventDefault();
           const active = document.activeElement;
@@ -320,15 +322,19 @@ const ImageView = ({ nodeKey, attributes, caption }: ImageViewProps) => {
             active === null ||
             active === document.body ||
             active.isConnected === false;
-          if (closedByKey.current || lost) {
-            editor.update(() => {
-              const node = $getNodeByKey(nodeKey);
-              if (node !== null) {
-                $caretBeside(node, false);
-              }
-            });
-          }
+          const byKey = closedByKey.current;
           closedByKey.current = false;
+          if (byKey === false && lost === false) {
+            return;
+          }
+          editor.update(() => {
+            const node = $getNodeByKey(nodeKey);
+            if (node === null) {
+              return;
+            }
+            $caretBeside(node, false);
+          });
+          editor.getRootElement()?.focus({ preventScroll: true });
           editor.focus();
         }}
       >
@@ -373,7 +379,11 @@ const ImageView = ({ nodeKey, attributes, caption }: ImageViewProps) => {
               color="ghost"
               onClick={() => {
                 setIsOpen(false);
-                edit((node) => node.remove());
+                // the caret takes the image's place
+                edit((node) => {
+                  $caretBeside(node, false, true);
+                  node.remove();
+                });
               }}
             >
               Remove
