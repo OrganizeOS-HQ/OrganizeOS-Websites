@@ -971,7 +971,36 @@ export const ItemEditor = ({
     }
   };
 
-  const restoreMine = (key: string) => {
+  const keptRef = useRef(kept);
+  keptRef.current = kept;
+
+  /**
+   * A restored rich-text value takes the form a Save would send
+   * (`settleRichTextHtml`) when that settles it; otherwise it is restored as
+   * drafted.
+   */
+  const settleRestored = async (key: string, value: unknown) => {
+    const field = fields.find((candidate) => candidate.key === key);
+    if (
+      field?.kind !== "richtext" ||
+      typeof value !== "object" ||
+      value === null ||
+      typeof (value as CmsRichTextValue).html !== "string"
+    ) {
+      return value;
+    }
+    try {
+      const { settleRichTextHtml } = await import("./rich-text-html");
+      const settled = settleRichTextHtml((value as CmsRichTextValue).html);
+      return settled.outcome === "settled"
+        ? { ...(value as CmsRichTextValue), html: settled.html }
+        : value;
+    } catch {
+      return value;
+    }
+  };
+
+  const restoreMine = async (key: string) => {
     // a write's answer replaces the values: nothing is restored under it
     if (kept === undefined || busy !== undefined) {
       return;
@@ -983,9 +1012,20 @@ export const ItemEditor = ({
       }
       return;
     }
+    const restored = await settleRestored(
+      key,
+      structuredClone(kept.values[key])
+    );
+    if (
+      isMounted.current === false ||
+      keptRef.current !== kept ||
+      latest.current.busy !== undefined
+    ) {
+      return;
+    }
     setValues((current) => ({
       ...current,
-      [key]: structuredClone(kept.values[key]),
+      [key]: restored,
     }));
     setFieldEpochs((current) => ({
       ...current,
@@ -1233,7 +1273,7 @@ export const ItemEditor = ({
                     changed={changedSince.keys.has(field.key)}
                     onUseMine={
                       canEdit && keptDifferences.includes(field.key)
-                        ? () => restoreMine(field.key)
+                        ? () => void restoreMine(field.key)
                         : undefined
                     }
                     useMineDisabled={busy !== undefined || isFieldBusy}
@@ -1286,7 +1326,7 @@ export const ItemEditor = ({
                 changed={changedSince.address}
                 onUseMine={
                   canEdit && keptDifferences.includes("slug")
-                    ? () => restoreMine("slug")
+                    ? () => void restoreMine("slug")
                     : undefined
                 }
                 useMineDisabled={busy !== undefined || isFieldBusy}

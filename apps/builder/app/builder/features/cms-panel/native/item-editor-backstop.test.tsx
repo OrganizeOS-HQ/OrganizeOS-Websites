@@ -308,4 +308,27 @@ describe("Save's rich-text backstop", () => {
     expect($cmsNativeDirty.get()).toBe(false);
     expect(buttonByText("Save")?.disabled).toBe(true);
   });
+
+  test("Use my edit after a conflict restores a rich-text draft as a Save would send it", async () => {
+    await openWithBody();
+    await typeBody("Two");
+    settles();
+    fake.updateItem.mockResolvedValueOnce({ error: "conflict" });
+    await click(buttonByText("Save"));
+    expect(conflictLine()).not.toBeNull();
+    fake.getItem.mockResolvedValueOnce({
+      item: itemOf({
+        data: dataWith({ html: "<p>Theirs</p>", text: "Theirs" }),
+        updatedAt: V2,
+      }),
+    });
+    await click(buttonByText("Reload"));
+    expect((await bodyEditable()).textContent).toBe("Theirs");
+    await click(byLabel("Use my edit: Body"));
+    await vi.waitFor(async () => {
+      expect((await bodyEditable()).textContent).toBe(
+        "Two, as the editor writes it"
+      );
+    });
+  });
 });
