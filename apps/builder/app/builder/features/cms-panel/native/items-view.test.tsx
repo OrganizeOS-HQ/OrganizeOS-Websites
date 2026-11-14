@@ -2504,7 +2504,7 @@ describe("another collection while a list call is in flight", () => {
     await click(collectionRow("people"));
     expect(itemSlugs()).toEqual(["x", "y"]);
     await click(collectionRow("posts"));
-    expect(itemSlugs()).toEqual(["a", "b", "c"]);
+    expect(itemSlugs()).toEqual(["b", "c", "a"]);
 
     await click(checkbox("Select A"));
     await click(toolbarButton("Publish"));
@@ -2673,7 +2673,8 @@ describe("the order E13 accepted is provisional", () => {
     await dragBelow("a", "b");
     await click(collectionRow("people"));
     await click(collectionRow("posts"));
-    expect(itemSlugs()).toEqual(["a", "b", "c"]);
+    // the moved order shows while its E13 is in flight
+    expect(itemSlugs()).toEqual(["b", "a", "c"]);
     await clickNameHeader();
     expect(itemSlugs()).toEqual(["a", "b", "c"]);
     fake.listItems.mockResolvedValueOnce({ error: "rate_limited" });
@@ -2901,13 +2902,14 @@ describe("the reorder's state outlives the table (W3g)", () => {
     expect(reorderCalls()).toEqual([[ROW_IDS[1], ROW_IDS[2], ROW_IDS[0]]]);
     await click(collectionRow("people"));
     await click(collectionRow("posts"));
-    expect(itemSlugs()).toEqual(["a", "b", "c"]);
+    // the moved order shows, and moves start from it
+    expect(itemSlugs()).toEqual(["b", "c", "a"]);
 
     await click(checkbox("Select A"));
     await click(toolbarButton("Publish"));
-    focusRow("a");
-    await altMove("ArrowDown");
-    expect(itemSlugs()).toEqual(["b", "a", "c"]);
+    focusRow("c");
+    await altMove("ArrowUp");
+    expect(itemSlugs()).toEqual(["c", "b", "a"]);
     await clickNameHeader();
     await wait(600);
     expect(fake.publishItems).not.toHaveBeenCalled();
@@ -2918,9 +2920,9 @@ describe("the reorder's state outlives the table (W3g)", () => {
     await wait(600);
     expect(reorderCalls()).toEqual([
       [ROW_IDS[1], ROW_IDS[2], ROW_IDS[0]],
-      [ROW_IDS[1], ROW_IDS[0], ROW_IDS[2]],
+      [ROW_IDS[2], ROW_IDS[1], ROW_IDS[0]],
     ]);
-    expect(world.ids).toEqual([ROW_IDS[1], ROW_IDS[0], ROW_IDS[2]]);
+    expect(world.ids).toEqual([ROW_IDS[2], ROW_IDS[1], ROW_IDS[0]]);
     expect(fake.publishItems).toHaveBeenCalledTimes(1);
     expect(fake.publishItems.mock.calls[0][1].items).toEqual([
       { id: ROW_IDS[0], updatedAt: world.versions[ROW_IDS[0]] },
@@ -2997,5 +2999,92 @@ describe("the reorder's state outlives the table (W3g)", () => {
     ]);
     expect(world.ids).toEqual([ROW_IDS[1], ROW_IDS[0], ROW_IDS[2]]);
     expect(fake.getItem).toHaveBeenCalledWith(POSTS.id, ROW_IDS[1]);
+  });
+});
+
+describe("the reorder's state across visits (W3g round 3)", () => {
+  const B_C_A = [ROW_IDS[1], ROW_IDS[2], ROW_IDS[0]];
+  const B_A_C = [ROW_IDS[1], ROW_IDS[0], ROW_IDS[2]];
+
+  /** Drag a below c while E13 is held, then Alt+ArrowUp on a: b, a, c. */
+  const moveTwice = async () => {
+    const world = reorderWorld();
+    withPeople();
+    const held = holdFirstReorder();
+    mount();
+    await settle();
+    await dragBelow("a", "c");
+    focusRow("a");
+    await altMove("ArrowUp");
+    expect(itemSlugs()).toEqual(["b", "a", "c"]);
+    return { world, held };
+  };
+
+  test("an order queued behind E13 is sent when the E13 answers while the editor shows", async () => {
+    const { world, held } = await moveTwice();
+    await click(buttonByText("New item"));
+    expect(itemRows()).toHaveLength(0);
+    await act(async () => held.resolve({ changed: 3 }));
+    await settle();
+    expect(reorderCalls()).toEqual([B_C_A, B_A_C]);
+    expect(world.ids).toEqual(B_A_C);
+  });
+
+  test("an order queued behind E13 is sent when the E13 answers after another collection opened from the editor", async () => {
+    const { world, held } = await moveTwice();
+    await click(buttonByText("New item"));
+    await click(collectionRow("people"));
+    expect(itemSlugs()).toEqual(["x", "y"]);
+    await act(async () => held.resolve({ changed: 3 }));
+    await settle();
+    expect(reorderCalls()).toEqual([B_C_A, B_A_C]);
+    expect(world.ids).toEqual(B_A_C);
+  });
+
+  test("an order queued behind E13 is sent when the E13 answers after another collection opened from the table", async () => {
+    const { world, held } = await moveTwice();
+    await click(collectionRow("people"));
+    expect(itemSlugs()).toEqual(["x", "y"]);
+    await act(async () => held.resolve({ changed: 3 }));
+    await settle();
+    expect(reorderCalls()).toEqual([B_C_A, B_A_C]);
+    expect(world.ids).toEqual(B_A_C);
+    // back in Posts, the server's order
+    await click(collectionRow("posts"));
+    expect(itemSlugs()).toEqual(["b", "a", "c"]);
+  });
+
+  test("a drop made while E13 is in flight shows at once, and is sent after it", async () => {
+    const world = reorderWorld();
+    const held = holdFirstReorder();
+    mount();
+    await settle();
+    await dragBelow("a", "b");
+    expect(itemSlugs()).toEqual(["b", "a", "c"]);
+    await dragBelow("b", "a");
+    expect(itemSlugs()).toEqual(["a", "b", "c"]);
+    expect(fake.reorderItems).toHaveBeenCalledTimes(1);
+    await act(async () => held.resolve({ changed: 2 }));
+    await settle();
+    expect(reorderCalls()).toEqual([B_A_C, ROW_IDS]);
+    expect(world.ids).toEqual(ROW_IDS);
+  });
+
+  test("a bulk call waiting on the reorder is dropped with a toast when another collection opens", async () => {
+    reorderWorld();
+    withPeople();
+    const held = holdFirstReorder();
+    const error = vi.spyOn(toast, "error");
+    mount();
+    await settle();
+    await dragBelow("a", "b");
+    await click(checkbox("Select C"));
+    await click(toolbarButton("Publish"));
+    expect(error).not.toHaveBeenCalled();
+    await click(collectionRow("people"));
+    expect(error).toHaveBeenCalledWith("Try again in a minute");
+    await act(async () => held.resolve({ changed: 2 }));
+    await settle();
+    expect(fake.publishItems).not.toHaveBeenCalled();
   });
 });

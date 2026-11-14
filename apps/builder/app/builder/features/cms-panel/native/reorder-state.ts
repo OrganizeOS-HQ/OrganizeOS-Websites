@@ -9,8 +9,8 @@
  * Read API for other views:
  * - `isSending(collectionId)`: an E13 for the collection is in flight.
  * - `whenSent(collectionId, run)`: runs `run` once no E13 for the
- *   collection is in flight (at once when none is); a later call for the
- *   same collection replaces a waiting one.
+ *   collection is in flight and no order waits to be sent after one (at
+ *   once when none does). Every waiter runs, in the order they came.
  * - `subscribe(listener)`: called after each change; answers the
  *   unsubscribe.
  * Writes belong to `useRowReorder` alone.
@@ -51,17 +51,18 @@ export type ReorderState = {
   /** The latest page answer count seen. */
   pageAnswerCount: number;
   notePageAnswer: (count: number) => void;
-  /** The table moved to another collection: the one left keeps only its E13 count. */
+  /**
+   * The table moved to another collection: the one left keeps its moves
+   * while its E13 is in flight, else only its E13 count.
+   */
   leave: (collectionId: string) => void;
   notify: () => void;
-  /** Sends a queued order through the table shown; unset while none is. */
-  sendQueued?: (collectionId: string, ids: readonly string[]) => void;
 };
 
 export const createReorderState = (): ReorderState => {
   const records = new Map<string, CollectionReorder>();
   const listeners = new Set<() => void>();
-  const waitingSent = new Map<string, () => void>();
+  const waitingSent = new Map<string, Array<() => void>>();
   const get = (collectionId: string) => {
     let record = records.get(collectionId);
     if (record === undefined) {
@@ -72,14 +73,20 @@ export const createReorderState = (): ReorderState => {
   };
   const isSending = (collectionId: string) =>
     (records.get(collectionId)?.sending ?? 0) > 0;
+  const isSent = (collectionId: string) =>
+    isSending(collectionId) === false &&
+    records.get(collectionId)?.queued === undefined;
   const state: ReorderState = {
     isSending,
     whenSent: (collectionId, run) => {
-      if (isSending(collectionId) === false) {
+      if (isSent(collectionId)) {
         run();
         return;
       }
-      waitingSent.set(collectionId, run);
+      waitingSent.set(collectionId, [
+        ...(waitingSent.get(collectionId) ?? []),
+        run,
+      ]);
     },
     subscribe: (listener) => {
       listeners.add(listener);
@@ -95,13 +102,22 @@ export const createReorderState = (): ReorderState => {
     },
     leave: (collectionId) => {
       const record = get(collectionId);
-      records.set(collectionId, { sending: record.sending });
+      record.awaitingAfter = undefined;
+      if (record.sending === 0) {
+        record.pending = undefined;
+        record.movedOn = undefined;
+        record.queued = undefined;
+        record.accepted = undefined;
+        record.acceptedOn = undefined;
+      }
     },
     notify: () => {
-      for (const [collectionId, run] of [...waitingSent]) {
-        if (isSending(collectionId) === false) {
+      for (const [collectionId, runs] of [...waitingSent]) {
+        if (isSent(collectionId)) {
           waitingSent.delete(collectionId);
-          run();
+          for (const run of runs) {
+            run();
+          }
         }
       }
       for (const listener of [...listeners]) {

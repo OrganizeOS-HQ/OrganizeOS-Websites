@@ -107,20 +107,37 @@ export const useRowReorder = (input: {
     record().pending = ids;
   };
 
-  // another collection starts with nothing pending; the same one, shown
-  // again, keeps its state
+  /** A bulk call that waited is dropped: the toast says so. */
+  const dropWaiting = () => {
+    const { bulk, bulkDropped } = waiting.current;
+    waiting.current = {};
+    if (bulk !== undefined) {
+      toast.error(getToastText("unavailable"));
+      bulkDropped?.();
+    }
+  };
+
+  // Another collection keeps the state of the one left only while its E13
+  // is in flight: its moves show again on return, and an order queued
+  // behind the E13 is still sent. The same one, shown again, keeps its
+  // state.
   useEffect(() => {
     const state = store();
     if (state.current === input.collectionId) {
       return;
     }
     if (state.current !== undefined) {
+      const left = state.get(state.current);
+      // keyboard moves not yet sent go behind the E13 in flight
+      if (timer.current !== undefined && left.sending > 0) {
+        left.queued = left.pending;
+      }
       state.leave(state.current);
     }
     state.current = input.collectionId;
     clearTimeout(timer.current);
     timer.current = undefined;
-    waiting.current = {};
+    dropWaiting();
     bump();
   }, [input.collectionId]);
 
@@ -193,17 +210,18 @@ export const useRowReorder = (input: {
     }
   };
 
-  /** `queued`: an order queued behind E13, checked against its rows then. */
-  const send = (ids: readonly string[], queued = false) => {
+  /** Sends an order, or queues it behind the E13 in flight. */
+  const send = (ids: readonly string[]) => {
     const current = latest.current;
     const held = record();
     const currentIds = (current.page?.items ?? []).map((row) => row.id);
-    if (queued === false && sameRows(ids, currentIds) === false) {
+    if (sameRows(ids, currentIds) === false) {
       dropPending();
       return;
     }
     if (isSending()) {
       held.queued = ids;
+      bump();
       return;
     }
     // the order the server holds: the one E13 last accepted, else the page's
@@ -221,51 +239,54 @@ export const useRowReorder = (input: {
       }
       return;
     }
-    const { collectionId, onReordered, onFailed } = current;
-    const sentOn = held.movedOn?.drawn;
-    held.sending += 1;
-    bump();
-    store().notify();
-    void current.source
-      .reorderItems(collectionId, { ids: [...ids] })
-      .catch((): CmsResult<{ changed: number }> => ({ error: "unavailable" }))
-      .then((result) => {
-        // the lists and the canvas of the collection written refetch
-        const report = () => {
-          if (isCmsFailure(result)) {
-            onFailed(result.error);
-          } else {
-            onReordered();
+    const { source, collectionId, onReordered, onFailed } = current;
+    const state = store();
+    // Sends one order. Its answer sends the order queued behind it, whichever
+    // table shows: the table drags only a whole collection, so the queued
+    // order is the collection's whole order.
+    const post = (order: readonly string[], sentOn: string | undefined) => {
+      state.get(collectionId).sending += 1;
+      void source
+        .reorderItems(collectionId, { ids: [...order] })
+        .catch((): CmsResult<{ changed: number }> => ({ error: "unavailable" }))
+        .then((result) => {
+          const written = state.get(collectionId);
+          written.sending = Math.max(0, written.sending - 1);
+          // the lists and the canvas of the collection written refetch
+          const report = () => {
+            if (isCmsFailure(result)) {
+              onFailed(result.error);
+            } else {
+              onReordered();
+            }
+          };
+          if (written.sending > 0) {
+            report();
+            state.notify();
+            return;
           }
-        };
-        const written = store().get(collectionId);
-        written.sending = Math.max(0, written.sending - 1);
-        // another collection shows: its reorder state is its own
-        if (store().current !== collectionId || written.sending > 0) {
-          store().notify();
+          const next = written.queued;
+          written.queued = undefined;
+          // the next E3 answer after this one settles the reorder
+          written.awaitingAfter = state.pageAnswerCount;
+          if (isCmsFailure(result) === false) {
+            written.accepted = order;
+            written.acceptedOn = sentOn;
+          }
           report();
-          return;
-        }
-        const next = written.queued;
-        written.queued = undefined;
-        // the next E3 answer after this one settles the reorder
-        written.awaitingAfter = store().pageAnswerCount;
-        if (isCmsFailure(result) === false) {
-          written.accepted = ids;
-          written.acceptedOn = sentOn;
-        }
-        store().notify();
-        report();
-        if (isCmsFailure(result) === false && next !== undefined) {
-          const sendQueued = store().sendQueued;
-          if (sendQueued === undefined) {
-            // sent when the table shows again
-            written.queued = next;
-          } else {
-            sendQueued(collectionId, next);
+          if (
+            isCmsFailure(result) === false &&
+            next !== undefined &&
+            sameOrder(next, order) === false
+          ) {
+            post(next, written.movedOn?.drawn);
           }
-        }
-      });
+          state.notify();
+        });
+    };
+    post(ids, held.movedOn?.drawn);
+    bump();
+    state.notify();
   };
 
   /** Runs what waited: an open always; a bulk call only on a drawn page. */
@@ -313,7 +334,12 @@ export const useRowReorder = (input: {
   useEffect(() => {
     const current = record();
     const moved = current.movedOn;
-    if (moved === undefined || moved.signature === pageSignature) {
+    // a collection shown again keeps its moves until its page is drawn
+    if (
+      latest.current.page === undefined ||
+      moved === undefined ||
+      moved.signature === pageSignature
+    ) {
       return;
     }
     if (
@@ -354,35 +380,17 @@ export const useRowReorder = (input: {
     send(ids);
   };
 
-  // The table shown sends what was queued behind an E13 that answered
-  // while no table showed; leaving it sends the moves not yet sent.
-  const actions = useRef({ send, flush });
-  actions.current = { send, flush };
+  // Leaving the table sends the moves not yet sent; a bulk call that
+  // waited is dropped.
+  const actions = useRef({ flush, dropWaiting });
+  actions.current = { flush, dropWaiting };
   useEffect(() => {
-    const sendQueued = (collectionId: string, ids: readonly string[]) => {
-      if (latest.current.collectionId === collectionId) {
-        actions.current.send(ids, true);
-      }
-    };
-    store().sendQueued = sendQueued;
     const unsubscribe = store().subscribe(bump);
-    const current = record();
-    if (
-      store().current === latest.current.collectionId &&
-      current.sending === 0 &&
-      current.queued !== undefined
-    ) {
-      const ids = current.queued;
-      current.queued = undefined;
-      actions.current.send(ids, true);
-    }
     return () => {
       unsubscribe();
-      if (store().sendQueued === sendQueued) {
-        store().sendQueued = undefined;
-      }
       actions.current.flush();
       clearTimeout(timer.current);
+      actions.current.dropWaiting();
     };
   }, []);
 
