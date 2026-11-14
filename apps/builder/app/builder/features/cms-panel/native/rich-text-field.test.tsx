@@ -992,6 +992,23 @@ test("typing in the middle of Alt keeps the caret where it is", async () => {
   expect(lastHtml(onChange)).toContain('alt="Big A"');
 });
 
+test("typing in the middle of Caption keeps the caret where it is (I14, round 4)", async () => {
+  const { onChange } = mountField({
+    value: { html: fixtureCase("figure with a caption").input },
+  });
+  await settle();
+  await click(editable()!.querySelector("img"));
+  const caption = inputByLabel("Caption")!;
+  expect(caption.value).toBe("Caption");
+  await click(caption);
+  caption.setSelectionRange(0, 0);
+  await userEvent.keyboard("My ");
+  await settle();
+  expect(caption.value).toBe("My Caption");
+  expect(caption.selectionStart).toBe(3);
+  expect(lastHtml(onChange)).toContain("My Caption");
+});
+
 /** An image as Lexical's clipboard data carries it. */
 const copiedImage = (namespace: string) =>
   JSON.stringify({

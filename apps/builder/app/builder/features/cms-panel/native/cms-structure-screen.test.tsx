@@ -1312,6 +1312,38 @@ test("Alt+Arrow keeps the moved field's row focused, for the next move (review)"
   expect(keys).toEqual(["summary", "author", "title"]);
 });
 
+test("a moved row's refocus leaves the focus where it went before its frame (round 4)", async () => {
+  mount();
+  await settle();
+  await click(tab("Fields"));
+  const titleButton = () => fieldRow("title")!.querySelector("button")!;
+  titleButton().focus();
+  // hold the frames: the refocus is still waiting when the focus moves
+  const held: FrameRequestCallback[] = [];
+  const frame = vi
+    .spyOn(window, "requestAnimationFrame")
+    .mockImplementation((callback) => {
+      held.push(callback);
+      return held.length;
+    });
+  try {
+    await act(async () => userEvent.keyboard("{Alt>}{ArrowDown}{/Alt}"));
+    expect(held.length).toBeGreaterThan(0);
+    const elsewhere = fieldRow("author")!.querySelector("button")!;
+    elsewhere.focus();
+    expect(document.activeElement).toBe(elsewhere);
+    frame.mockRestore();
+    await act(async () => {
+      for (const callback of held.splice(0)) {
+        callback(performance.now());
+      }
+    });
+    expect(document.activeElement).toBe(elsewhere);
+  } finally {
+    frame.mockRestore();
+  }
+});
+
 // I11: the structure entries wait for the editor's running Save, Publish or
 // create, then run the guard on what it left (fork #103's chain)
 describe("structure entries wait for the editor's running write (merge round)", () => {
