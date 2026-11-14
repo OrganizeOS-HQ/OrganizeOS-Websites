@@ -654,6 +654,40 @@ test.each([
   }
 );
 
+// I16: a link over a line break, and a paste ending in one, through the
+// live field
+test("Link over a line ending in Shift+Enter saves a value that reopens editable", async () => {
+  const { onChange } = mountField({ value: { html: "<p>line</p>" } });
+  await settle();
+  await click(editable()!.querySelector<HTMLElement>("p"));
+  await type("{End}{Shift>}{Enter}{/Shift}");
+  await selectAll();
+  await applyLink("https://example.org/");
+  const written = lastHtml(onChange);
+  expect(written).toContain('href="https://example.org/"');
+  expect(getRichTextReadOnlyReason(written)).toBeUndefined();
+});
+
+test.each([
+  ["a line ending in a break", "<p>pasted<br></p>"],
+  [
+    "a link ending in a break",
+    '<p><a href="https://example.org/">pasted<br></a></p>',
+  ],
+  ["a mark ending in a break", "<p><b>pasted<br></b></p>"],
+  ["two breaks", "<p>pasted<br><br>more</p>"],
+])("pasting %s saves a value that reopens editable", async (_name, html) => {
+  const { onChange } = mountField({ value: { html: "<p>x</p>" } });
+  await settle();
+  await click(editable()!.querySelector<HTMLElement>("p"));
+  await type("{End}");
+  paste(editable()!, { "text/html": html, "text/plain": "pasted" });
+  await settle();
+  const written = lastHtml(onChange);
+  expect(written).toContain("pasted");
+  expect(getRichTextReadOnlyReason(written)).toBeUndefined();
+});
+
 test("the toolbar wraps within 240 px", async () => {
   mountField({ id: "narrow" });
   await settle();
@@ -756,6 +790,52 @@ test("selecting an image opens Alt, Caption for a figure, and Remove; Remove tak
   await click(buttonByText("Remove"));
   expect(lastHtml(figure.onChange)).not.toContain("<figure");
   expect(lastHtml(figure.onChange)).not.toContain("<img");
+});
+
+test("End on a line ending in an image puts the caret after it", async () => {
+  const { onChange } = mountField({ value: { html: `<p>See ${IMAGE}</p>` } });
+  await settle();
+  await click(editable()!.querySelector<HTMLElement>("p"));
+  await act(async () => {
+    editorOf()!.update(() => {
+      ($getRoot().getFirstDescendant() as TextNode).select(0, 0);
+    });
+  });
+  await settle();
+  await type("{End}x");
+  expect(lastHtml(onChange)).toMatch(/<img[^>]*>(<[^>]+>)*x/);
+});
+
+test("End on a line ending in an image before a line break stays on that line", async () => {
+  const { onChange } = mountField({
+    value: { html: `<p>See ${IMAGE}<br>next</p>` },
+  });
+  await settle();
+  await click(editable()!.querySelector<HTMLElement>("p"));
+  await act(async () => {
+    editorOf()!.update(() => {
+      ($getRoot().getFirstDescendant() as TextNode).select(0, 0);
+    });
+  });
+  await settle();
+  await type("{End}x");
+  expect(lastHtml(onChange)).toMatch(/<img[^>]*>(<[^>]+>)*x(<[^>]+>)*<br>/);
+});
+
+test("Shift+End on a line ending in an image selects to after it", async () => {
+  const { onChange } = mountField({ value: { html: `<p>See ${IMAGE}</p>` } });
+  await settle();
+  await click(editable()!.querySelector<HTMLElement>("p"));
+  await act(async () => {
+    editorOf()!.update(() => {
+      ($getRoot().getFirstDescendant() as TextNode).select(0, 0);
+    });
+  });
+  await settle();
+  await type("{Shift>}{End}{/Shift}x");
+  const html = lastHtml(onChange);
+  expect(html).not.toContain("<img");
+  expect(editable()!.textContent).toBe("x");
 });
 
 test("Backspace beside an image removes it and keeps the keyboard in the text", async () => {

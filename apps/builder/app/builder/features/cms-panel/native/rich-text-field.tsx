@@ -16,8 +16,11 @@ import {
   $isRangeSelection,
   $setSelection,
   $isElementNode,
+  $isLineBreakNode,
   COMMAND_PRIORITY_CRITICAL,
   DRAGSTART_COMMAND,
+  KEY_DOWN_COMMAND,
+  type ElementNode,
   COMMAND_PRIORITY_LOW,
   COMMAND_PRIORITY_NORMAL,
   CONTROLLED_TEXT_INSERTION_COMMAND,
@@ -932,6 +935,62 @@ const $keepImagesOutOfLinks = (links: Set<LinkNode>) => {
   }
 };
 
+/**
+ * The inline image ending the caret's line (up to its next line break), when
+ * the browser's End would stop before it: the caret's End moves past it.
+ */
+const $imageEndingLine = (
+  editor: LexicalEditor,
+  focus: LexicalNode
+): LexicalNode | undefined => {
+  const block = $findMatchingParent(
+    focus,
+    (node) => $isElementNode(node) && node.isInline() === false
+  );
+  if ($isElementNode(block) === false) {
+    return;
+  }
+  // the block's leaves in order, stopping at a nested block
+  const leaves: LexicalNode[] = [];
+  const collect = (element: ElementNode) => {
+    for (const child of element.getChildren()) {
+      if ($isElementNode(child)) {
+        if (child.isInline()) {
+          collect(child);
+        }
+      } else {
+        leaves.push(child);
+      }
+    }
+  };
+  collect(block);
+  const start = leaves.findIndex(
+    (leaf) => leaf.is(focus) || leaf.isParentOf(focus) || focus.isParentOf(leaf)
+  );
+  let last: LexicalNode | undefined;
+  for (const leaf of leaves.slice(Math.max(start, 0))) {
+    if ($isLineBreakNode(leaf)) {
+      break;
+    }
+    last = leaf;
+  }
+  if (last === undefined || $isCmsImageNode(last) === false) {
+    return;
+  }
+  // a line the browser wraps ends where the browser says
+  const image = editor.getElementByKey(last.getKey());
+  const range = window.getSelection()?.rangeCount
+    ? window.getSelection()!.getRangeAt(0).getBoundingClientRect()
+    : undefined;
+  if (image !== null && range !== undefined && range.height > 0) {
+    const box = image.getBoundingClientRect();
+    if (range.top >= box.bottom || range.bottom <= box.top) {
+      return;
+    }
+  }
+  return last;
+};
+
 const ImageEditingPlugin = () => {
   const [editor] = useLexicalComposerContext();
   useEffect(
@@ -982,6 +1041,37 @@ const ImageEditingPlugin = () => {
               }
             }
             $keepImagesOutOfLinks(links);
+            return true;
+          },
+          COMMAND_PRIORITY_NORMAL
+        ),
+        // End and Shift+End on a line ending in an image go past it
+        editor.registerCommand(
+          KEY_DOWN_COMMAND,
+          (event) => {
+            if (
+              event.key !== "End" ||
+              event.ctrlKey ||
+              event.metaKey ||
+              event.altKey
+            ) {
+              return false;
+            }
+            const selection = $getSelection();
+            if ($isRangeSelection(selection) === false) {
+              return false;
+            }
+            const image = $imageEndingLine(editor, selection.focus.getNode());
+            if (image === undefined) {
+              return false;
+            }
+            event.preventDefault();
+            const parent = image.getParentOrThrow();
+            const offset = image.getIndexWithinParent() + 1;
+            selection.focus.set(parent.getKey(), offset, "element");
+            if (event.shiftKey === false) {
+              selection.anchor.set(parent.getKey(), offset, "element");
+            }
             return true;
           },
           COMMAND_PRIORITY_NORMAL
