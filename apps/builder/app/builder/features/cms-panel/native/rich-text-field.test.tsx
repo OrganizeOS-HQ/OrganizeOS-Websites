@@ -278,6 +278,41 @@ test("Enter in a code block after an indented line keeps editing", async () => {
   expect(lastValue(onChange)?.text).toContain("b");
 });
 
+test("Bold and a link applied inside a code block do not stay: the block shows and saves plain text (part 3, item 3)", async () => {
+  const { onChange } = mountField({
+    value: { html: "<pre><code>abc def</code></pre>" },
+  });
+  await settle();
+  await click(editable()!.querySelector<HTMLElement>("code, pre"));
+  await act(async () => {
+    editorOf()!.update(() => {
+      const code = $getRoot().getFirstChild() as ElementNode;
+      code.select(0, code.getChildrenSize());
+    });
+  });
+  await settle();
+  await click(byLabel("Bold"));
+  await settle();
+  expect(
+    editable()!.querySelector("code strong, code b, pre strong, pre b")
+  ).toBeNull();
+  expect(byLabel("Bold")?.getAttribute("aria-pressed")).not.toBe("true");
+  await act(async () => {
+    editorOf()!.update(() => {
+      const code = $getRoot().getFirstChild() as ElementNode;
+      const link = $createLinkNode("https://example.org/");
+      const first = code.getFirstChild()!;
+      first.insertBefore(link);
+      link.append(first);
+    });
+  });
+  await settle();
+  expect(editable()!.querySelector("a")).toBeNull();
+  const html = lastHtml(onChange) ?? "";
+  expect(html).toContain("<pre><code>");
+  expect(html).not.toMatch(/<(strong|b|em|i|a)\b/);
+});
+
 test("Enter after a stored code block's indented line keeps editing", async () => {
   const { onChange } = mountField({
     value: { html: "<pre><code>line 1\n  indented</code></pre>" },

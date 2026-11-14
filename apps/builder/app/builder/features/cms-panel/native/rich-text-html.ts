@@ -13,6 +13,7 @@ import {
   $isTextNode,
   createEditor,
   ParagraphNode,
+  TextNode,
   type BaseSelection,
   $createLineBreakNode,
   type DOMConversionMap,
@@ -36,7 +37,7 @@ import {
   QuoteNode,
   type HeadingTagType,
 } from "@lexical/rich-text";
-import { CodeHighlightNode, CodeNode } from "@lexical/code";
+import { $isCodeNode, CodeHighlightNode, CodeNode } from "@lexical/code";
 import { mergeRegister } from "@lexical/utils";
 import { HorizontalRuleNode } from "@lexical/react/LexicalHorizontalRuleNode";
 import type { CmsRichTextValue } from "./cms-source";
@@ -328,14 +329,21 @@ export const richTextImportHref = (raw: string | undefined): string | null => {
 
 export type RichTextReadOnlyReason = "lossy";
 
+const $plainInCode = (node: TextNode) => {
+  if (node.getFormat() !== 0 && $isCodeNode(node.getParent())) {
+    node.setFormat(0);
+  }
+};
+
 /** The heading tags the site keeps: h1 becomes h2, h5 and h6 become h4. */
 const allowedHeadingTag = (tag: HeadingTagType): HeadingTagType =>
   tag === "h1" ? "h2" : tag === "h5" || tag === "h6" ? "h4" : tag;
 
 /**
  * The node rules the live editor and the read-only check both run: a heading
- * the site does not keep takes the nearest kept tag, an empty link goes, and
- * a link whose address the editor refuses gives way to its text.
+ * the site does not keep takes the nearest kept tag, an empty link goes, a
+ * link whose address the editor refuses gives way to its text, and a code
+ * block holds plain text (no format, no link).
  */
 export const registerRichTextTransforms = (editor: LexicalEditor) =>
   mergeRegister(
@@ -356,14 +364,19 @@ export const registerRichTextTransforms = (editor: LexicalEditor) =>
         node.remove();
         return;
       }
-      if (richTextImportHref(node.getURL()) !== null) {
+      if (
+        richTextImportHref(node.getURL()) !== null &&
+        $isCodeNode(node.getParent()) === false
+      ) {
         return;
       }
       for (const child of node.getChildren()) {
         node.insertBefore(child);
       }
       node.remove();
-    })
+    }),
+    editor.registerNodeTransform(TextNode, $plainInCode),
+    editor.registerNodeTransform(CodeHighlightNode, $plainInCode)
   );
 
 /** The editor's load and save of a stored value, with no view. */

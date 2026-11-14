@@ -374,10 +374,6 @@ const useToolbarState = (editor: LexicalEditor) => {
 };
 
 /**
- * A code block keeps text only: an image in a block made code moves to a
- * paragraph right after it, so the value keeps what the editor shows.
- */
-/**
  * A code block holds plain text: its links give way to their text, its
  * formats clear, and its images move to a paragraph after it.
  */
