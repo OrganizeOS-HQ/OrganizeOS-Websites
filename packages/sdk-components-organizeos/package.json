@@ -67,6 +67,11 @@
       "types": "./lib/types/org-script.d.ts",
       "import": "./lib/org-script.js"
     },
+    "./platform-paths": {
+      "webstudio": "./src/platform-paths.ts",
+      "types": "./lib/types/platform-paths.d.ts",
+      "import": "./lib/platform-paths.js"
+    },
     "./page": {
       "webstudio": "./src/page.ts",
       "types": "./lib/types/page.d.ts",

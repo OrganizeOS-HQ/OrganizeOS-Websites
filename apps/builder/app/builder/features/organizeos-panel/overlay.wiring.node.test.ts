@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 
@@ -352,6 +352,42 @@ describe("the Variables edits in project-build", () => {
       /record\.type === "fontFamily" && Array\.isArray\(record\.value\)/
     );
     expect(styles).toMatch(/export const getCssVariableUsageCounts = /);
+  });
+});
+
+describe("the path guard in project-build", () => {
+  test("pages.ts takes isPlatformServedPath from the narrow export and refuses with the message", () => {
+    const pages = projectBuild("runtime/pages.ts");
+    expect(pages).toMatch(
+      /import \{ isPlatformServedPath \} from "@organizeos\/site-components\/platform-paths";/
+    );
+    expect(pages).toContain('"The platform uses this path"');
+  });
+
+  test("project-build imports the package only as ./org-script or ./platform-paths", () => {
+    const root = fileURLToPath(
+      new URL("../../../../../../packages/project-build/src/", import.meta.url)
+    );
+    const files = readdirSync(root, { recursive: true, encoding: "utf8" })
+      .filter((file) => /\.tsx?$/.test(file))
+      .filter((file) => /\.test\.tsx?$/.test(file) === false);
+    const specifiers = new Set(
+      files.flatMap((file) =>
+        Array.from(
+          readFileSync(`${root}${file}`, "utf8").matchAll(
+            /["'](@organizeos\/site-components(?:\/[^"']*)?)["']/g
+          ),
+          (match) => match[1]
+        )
+      )
+    );
+    expect(specifiers.size).toBeGreaterThan(0);
+    for (const specifier of specifiers) {
+      expect([
+        "@organizeos/site-components/org-script",
+        "@organizeos/site-components/platform-paths",
+      ]).toContain(specifier);
+    }
   });
 });
 

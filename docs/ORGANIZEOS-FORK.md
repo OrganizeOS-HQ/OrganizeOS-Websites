@@ -822,7 +822,13 @@ can be merged with minimal conflict.
     and `localStylesFirst` from `src/shared/style-order.ts`, which the block
     insert imports alone, as `@organizeos/site-components/style-order`) and,
     alone, as `@organizeos/site-components/site-templates/canonical-variables`;
-    neither `components.ts` nor `metas.ts` imports it. The block templates are
+    neither `components.ts` nor `metas.ts` imports it. The guard against a
+    page at a path the platform serves, `PLATFORM_SERVED_PATHS` and
+    `isPlatformServedPath`, is `src/platform-paths.ts` (with
+    `platform-paths.test.ts`), exported alone as
+    `@organizeos/site-components/platform-paths` and listed in
+    `tsconfig.dts.json`; it imports nothing, and `site-templates/platform-paths.ts`
+    re-exports it beside `PLATFORM_PATHS`. The block templates are
     factories, `signupFormTemplate` and `signupFormInlineTemplate` in
     `signup-form.template.tsx`, `fieldTemplate` in
     `signup/field.template.tsx`,
@@ -1043,7 +1049,17 @@ can be merged with minimal conflict.
   `project-settings.organizeos.test.ts` beside it), so the Redirects form, an
   import (`redirect-parsers.organizeos.test.ts`) and the runtime operations
   share one rule, for which `packages/project-build/package.json` lists
-  `@organizeos/site-components`.
+  `@organizeos/site-components`; and
+  `packages/project-build/src/runtime/pages.ts`, one marked import of
+  `isPlatformServedPath` from `@organizeos/site-components/platform-paths` and
+  one marked check in `validatePageSettingsGeneralSection`: a page's computed
+  full path that the platform serves gets "The platform uses this path",
+  unless it is the page's own stored path, so a page made there before the
+  guard still saves its other settings (`pages.organizeos.test.ts` beside it;
+  the page settings panel and upstream's create-from-page-template form share
+  the check). `packages/project-build` imports the package only as
+  `./org-script` and `./platform-paths`, which `overlay.wiring.node.test.ts`
+  pins with the import.
   The HTML Embed code check needs no change since 0.309.0: upstream's
   `validateHtmlEmbedCode` (`packages/project-build/src/runtime/html-embed.ts`)
   reads the code with parse5, and
@@ -3262,7 +3278,7 @@ starter templates, listed 2026-11-01 (OrganizeOS plan
   passes. It is a backstop to review, not a replacement. It fails a template
   for: a page at `/newsletter` or at `/*` (the 404 page's), a page at a path the
   platform answers itself on the site's host (`PLATFORM_SERVED_PATHS` in
-  `platform-paths.ts`, mirrored from the OrganizeOS repository's
+  `src/platform-paths.ts`, mirrored from the OrganizeOS repository's
   `public-route-allowlist.ts`, `org-host-route.ts` and `middleware.ts`: `/join`,
   `/donate`, `/events/<slug>`, `/auth`, `/org-profile` and the rest, prefixes by
   whole segment; below `/.well-known/`; and the static paths the middleware's

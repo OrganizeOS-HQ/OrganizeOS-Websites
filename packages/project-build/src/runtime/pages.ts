@@ -55,6 +55,9 @@ import {
 import { createRuntimeMutation } from "./mutation";
 import { validatePathnamePattern } from "./url-pattern";
 import { LOOP_ERROR, wouldCreateLoop } from "./redirect-loop-detection";
+// OrganizeOS fork: a page never takes a path the platform serves on the
+// site's host (docs/ORGANIZEOS-FORK.md section 7)
+import { isPlatformServedPath } from "@organizeos/site-components/platform-paths";
 
 type SerializedPages = ReturnType<typeof serializePages>;
 type SerializedPage = SerializedPages["pages"][number];
@@ -1388,6 +1391,17 @@ export const validatePageSettingsGeneralSection = async ({
     ) {
       errors.path = errors.path ?? [];
       errors.path.push("All paths must be unique");
+    }
+    // OrganizeOS fork: the platform answers this path on the site's host, so
+    // a page there never shows; a page already there keeps saving
+    // (docs/ORGANIZEOS-FORK.md section 7)
+    const fullPath = computePageSettingsPath(values, pages);
+    if (
+      isPlatformServedPath(fullPath) &&
+      (pageId === undefined || fullPath !== getPagePath(pageId, pages))
+    ) {
+      errors.path = errors.path ?? [];
+      errors.path.push("The platform uses this path");
     }
     const messages = validatePathnamePattern(values.path);
     if (messages.length > 0) {
