@@ -5,6 +5,8 @@
 //
 //   corepack pnpm preview:template <template-id> [--palette <file>] [--no-events]
 //   corepack pnpm preview:template <template-id> [--thumbnail] [--pages]
+//   corepack pnpm preview:template --starter <page-template-id> [--look <template-id>] [--no-events]
+//   corepack pnpm preview:template --starter <page-template-id> --thumbnail
 //
 // 1. A stub of the OrganizeOS public API on a fixed port
 //    (site-templates/preview/stub-api.mjs in the builder) answers the events
@@ -64,6 +66,17 @@
 // limit), 2 when the tool cannot run, 130 or 143 when SIGINT or SIGTERM stops
 // it. The temp folder, the servers, the browser and every command still
 // running are stopped however the tool ends (short of SIGKILL).
+//
+// With --starter, a page template (OrganizeOS plan
+// 2026-11-15-builder-templates-c2-page-templates.md, Task 5) in place of a
+// site template: step 3 adds it to a blank site, or with --look to that site
+// template applied, through the New page screen's insert, and step 5 checks
+// the new page alone. Its RSVP Form, if it has one, shows the first sample
+// event. Writes previews/starter-pages/<id>/<run>/, the run "neutral" or the
+// look's id, followed by ".no-events" for a --no-events run. With
+// --thumbnail, step 5 draws the new page's top on the blank site in
+// PAGE_PICTURE's frame, written over the page template's picture
+// (images/<id>.jpg in the blocks package's src/starter-pages/).
 
 import { spawn } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
@@ -509,9 +522,16 @@ const inspectPage = async (browser, url, width, screenshotPath) => {
   const consoleErrors = [];
   const failedRequests = [];
   page.on("console", (message) => {
-    if (message.type() === "error") {
-      consoleErrors.push(message.text());
+    if (message.type() !== "error") {
+      return;
     }
+    // A site with no favicon (the org sets one in Settings) links no icon,
+    // so the browser asks for /favicon.ico on its own, a 404 the page did not
+    // make and Playwright reports as no request. Only that one is let by.
+    if (message.location().url === new URL("/favicon.ico", url).href) {
+      return;
+    }
+    consoleErrors.push(message.text());
   });
   page.on("pageerror", (error) => consoleErrors.push(error.message));
   page.on("requestfailed", (request) =>
@@ -593,6 +613,8 @@ const main = async () => {
   // is the caller's
   const {
     templateId,
+    starterId,
+    lookId,
     paletteFile,
     paletteName,
     runName,
@@ -603,8 +625,13 @@ const main = async () => {
     process.argv.slice(2),
     process.env.INIT_CWD ?? process.cwd()
   );
-  const outDir = join(repoRoot, "previews", templateId, runName);
-  const siteDir = await mkdtemp(join(tmpdir(), `preview-${templateId}-`));
+  // the site template, or the page template, the run is of
+  const name = starterId ?? templateId;
+  const outDir =
+    starterId === undefined
+      ? join(repoRoot, "previews", templateId, runName)
+      : join(repoRoot, "previews", "starter-pages", starterId, runName);
+  const siteDir = await mkdtemp(join(tmpdir(), `preview-${name}-`));
   stopping.push(
     // retried: a stopped command's last processes may still be writing
     () => rm(siteDir, { recursive: true, force: true, maxRetries: 3 }),
@@ -625,7 +652,9 @@ const main = async () => {
     await run("corepack", ["pnpm", "--filter", "webstudio", "build"]);
 
     console.info(
-      `Applying ${templateId} (palette: ${paletteName}, events: ${events})`
+      starterId === undefined
+        ? `Applying ${templateId} (palette: ${paletteName}, events: ${events})`
+        : `Adding ${starterId} (look: ${lookId ?? "neutral"}, events: ${events})`
     );
     await run(
       "corepack",
@@ -633,7 +662,9 @@ const main = async () => {
       {
         cwd: builderDir,
         env: {
-          PREVIEW_TEMPLATE_ID: templateId,
+          PREVIEW_TEMPLATE_ID: templateId ?? "",
+          PREVIEW_STARTER_ID: starterId ?? "",
+          PREVIEW_LOOK_ID: lookId ?? "",
           PREVIEW_API_BASE_URL: STUB_API_BASE_URL,
           PREVIEW_OUT_DIR: siteDir,
           PREVIEW_PALETTE_FILE: paletteFile ?? "",
@@ -682,6 +713,29 @@ const main = async () => {
 
     const browser = await launchChromium();
     stopping.push(() => browser.close());
+
+    if (starterId !== undefined && thumbnail) {
+      const [{ path }] = JSON.parse(
+        await readFile(join(siteDir, "preview-pages.json"), "utf8")
+      );
+      console.info(`Drawing ${starterId}'s picture`);
+      const written = await writePicture(
+        browser,
+        new URL(path, origin).href,
+        PAGE_PICTURE,
+        files.pictureFile
+      );
+      if (written === undefined) {
+        console.error(
+          `Picture: no JPEG quality fits under ${PAGE_PICTURE.maxBytes} bytes`
+        );
+        return 1;
+      }
+      console.info(
+        `Picture: ${written.file} (${PAGE_PICTURE.width}x${PAGE_PICTURE.height}, quality ${written.quality}, ${written.bytes} bytes)`
+      );
+      return 0;
+    }
 
     if (thumbnail || drawPages) {
       if (files.imagesDir === null) {

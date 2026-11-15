@@ -38,6 +38,7 @@ import { builderApi } from "~/shared/builder-api";
 import { executeRuntimeMutation } from "~/shared/instance-utils/data";
 import { TruncatedText } from "../../cms-panel/native/truncated-text";
 import { unboundBlocksMessage } from "../unbound-blocks";
+import { SITE_FORM_CREATE_FAILED } from "../site-form-insert";
 import { useDialogBoundarySize } from "../site-templates/use-dialog-boundary";
 import {
   $isTemplatesScreenOffered,
@@ -53,6 +54,7 @@ import {
 import {
   type StarterInsertOutcome,
   insertStarterPage,
+  starterDefaultPath,
 } from "./insert-starter-page";
 import { $newPageScreenOpen } from "./new-page-screen-state";
 
@@ -115,16 +117,6 @@ const getOfferedCards = (showDrafts: boolean, blocksEnabled: boolean) => [
     .map((page): Card => ({ id: page.id, name: page.name, page })),
 ];
 
-/** A page template's default path, or the next free one after it. */
-const defaultPath = (pages: Pages, page: StarterPage) =>
-  isPathAvailable({
-    pages,
-    path: page.path,
-    parentFolderId: pages.rootFolderId,
-  })
-    ? page.path
-    : nameToPath(pages, page.path.slice(1));
-
 /** What a refused page template says, by its reason; the runtime's its own. */
 const refusalMessages: Record<
   Exclude<
@@ -138,6 +130,8 @@ const refusalMessages: Record<
   "platform-path": "The platform uses this path.",
   resources: "This page template cannot be added.",
   "no-project": "This page template cannot be added.",
+  // a sign-up form's site form (the forms insert's wording)
+  form: SITE_FORM_CREATE_FAILED,
 };
 
 /**
@@ -195,11 +189,12 @@ const createBlank = ({ name, path }: Fields): boolean => {
 /** A page template added (and selected), or why not, toasted. */
 const addPageTemplate = async (
   card: Card & { page: StarterPage },
-  fields: Fields
+  fields: Fields,
+  attemptToken: string
 ): Promise<boolean> => {
   let outcome: StarterInsertOutcome;
   try {
-    outcome = await insertStarterPage(card.page, fields);
+    outcome = await insertStarterPage(card.page, fields, { attemptToken });
   } catch (error) {
     console.error(error);
     builderApi.toast.error(`Cannot add ${card.name}.`);
@@ -243,7 +238,7 @@ const CreateView = ({
   const [path, setPath] = useState(() =>
     card.page === undefined
       ? nameToPath(pages, pageSettingsDefaultValues.name)
-      : defaultPath(pages, card.page)
+      : starterDefaultPath(pages, card.page)
   );
   const problem = pathProblem(pages, path);
   const canCreate =
@@ -269,6 +264,9 @@ const CreateView = ({
         </Flex>
       )}
       <form
+        // the fields stay a form's width when the screen is wide (plan C2,
+        // ruling 9)
+        style={{ maxWidth: 400 }}
         onSubmit={(event) => {
           event.preventDefault();
           if (canCreate) {
@@ -339,6 +337,9 @@ export const NewPageScreen = () => {
   const cardRefs = useRef(new Map<string, HTMLButtonElement>());
   // the card to give the focus back to, once its create view is left
   const returnFocusId = useRef<string | undefined>(undefined);
+  // the page template's forms identity: one per open, so a retry in the same
+  // open gets the same forms back and a later open makes its own
+  const attemptToken = useRef("");
 
   const canOpen =
     isDesignMode && isTemplatesScreenOffered === false && pages !== undefined;
@@ -352,10 +353,12 @@ export const NewPageScreen = () => {
   }, [requested, canOpen]);
 
   useEffect(() => {
-    if (isOpen === false) {
-      setOpenId(undefined);
-      returnFocusId.current = undefined;
+    if (isOpen) {
+      attemptToken.current = crypto.randomUUID();
+      return;
     }
+    setOpenId(undefined);
+    returnFocusId.current = undefined;
   }, [isOpen]);
 
   // back at the grid, the focus goes to the card that was open
@@ -407,8 +410,14 @@ export const NewPageScreen = () => {
       const done =
         card.page === undefined
           ? createBlank(fields)
-          : await addPageTemplate({ ...card, page: card.page }, fields);
+          : await addPageTemplate(
+              { ...card, page: card.page },
+              fields,
+              attemptToken.current
+            );
       if (done) {
+        // the next add, even before the screen closes, makes its own forms
+        attemptToken.current = crypto.randomUUID();
         $newPageScreenOpen.set(false);
       }
     } finally {

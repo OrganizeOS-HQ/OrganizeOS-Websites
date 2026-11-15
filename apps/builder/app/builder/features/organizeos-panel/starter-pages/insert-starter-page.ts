@@ -2,6 +2,7 @@ import { nanoid } from "nanoid";
 import { current, isDraft } from "immer";
 import {
   type Instance,
+  type Pages,
   type StyleDecl,
   type WebstudioData,
   type WebstudioFragment,
@@ -17,6 +18,7 @@ import {
   getSlotFragmentId,
   insertWebstudioFragmentCopy,
   isPathAvailable,
+  nameToPath,
   validatePathnamePattern,
 } from "@webstudio-is/project-build/runtime";
 import {
@@ -33,7 +35,18 @@ import {
 } from "@organizeos/site-components/starter-pages";
 import { isPlatformServedPath } from "@organizeos/site-components/platform-paths";
 import { selectPage } from "~/shared/nano-states";
-import { $project, $projectSettings } from "~/shared/sync/data-stores";
+import {
+  $pages,
+  $project,
+  $projectSettings,
+  $resources,
+} from "~/shared/sync/data-stores";
+import { canCommitWebstudioData } from "~/shared/instance-utils/data";
+import type { CreatedSiteForm, FormsKind } from "../forms-api";
+import {
+  createSiteFormsForPlacements,
+  markPlacementMutable,
+} from "../site-form-insert";
 import { getInstanceLabel } from "~/builder/shared/instance-label";
 import { addToFolderMutable, updateWebstudioDataStaged } from "../staged-data";
 import {
@@ -41,10 +54,13 @@ import {
   completeOrganizeosFragment,
   completeOrganizeosInsertMutable,
   getOrganizeosPresetIds,
+  isSiteFormsEnabled,
 } from "../insert-organizeos-block";
 import {
   hasCanonicalVariables,
   readSiteTemplateRecord,
+  siteFormPlacementKey,
+  siteFormPlacementsOf,
   startBlankMutable,
 } from "../site-templates/apply-site-template";
 
@@ -55,6 +71,23 @@ import {
  * footer around it and Home's body styles on it, in one staged write, one
  * undo step. Its blocks are bound as a site template's are.
  */
+
+/**
+ * A page template's default path, or the next free one after it in the root
+ * folder (`/events` taken gives `/events1`): the New page screen's prefill,
+ * and the preview tool's path.
+ */
+export const starterDefaultPath = (
+  pages: Pages,
+  page: Pick<StarterPage, "path">
+): string =>
+  isPathAvailable({
+    pages,
+    path: page.path,
+    parentFolderId: pages.rootFolderId,
+  })
+    ? page.path
+    : nameToPath(pages, page.path.slice(1));
 
 export type StarterRefusalReason =
   | "invalid"
@@ -154,6 +187,12 @@ const copyPieceMutable = (
   at: "start" | "end"
 ) => {
   const extracted = extractWebstudioFragment(data, pieceId);
+  // A legacy Form (one a load did not migrate) is a fragment upstream's copy
+  // refuses outright; the page is added without this piece rather than not
+  // at all (plan C2, rulings 9 and 10).
+  if (extracted.instances.some((instance) => instance.component === "Form")) {
+    return;
+  }
   const shared = new Set<Instance["id"]>();
   for (const instance of extracted.instances) {
     const fragmentId = getSlotFragmentId(instance);
@@ -265,11 +304,18 @@ export const insertStarterPageMutable = (
     presetIds,
     name,
     path,
+    siteForms,
   }: {
     projectId: string;
     presetIds: OrganizeosPresetIds;
     name: string;
     path: string;
+    /**
+     * The site forms made for the page's sign-up forms, by
+     * `siteFormPlacementKey`; none with the site-forms switch off, and none
+     * from the preview tool.
+     */
+    siteForms?: ReadonlyMap<string, CreatedSiteForm & { kind: FormsKind }>;
   }
 ): StarterInsertResult => {
   const refusal = findStarterInsertRefusal(data, rendered, { name, path });
@@ -320,7 +366,7 @@ export const insertStarterPageMutable = (
 
   data.pages.pages.set(rendered.pageId, {
     id: rendered.pageId,
-    name,
+    name: name.trim(),
     path,
     title: JSON.stringify(rendered.title),
     rootInstanceId: bodyId,
@@ -351,6 +397,14 @@ export const insertStarterPageMutable = (
       continue;
     }
     completeOrganizeosInsertMutable(data, completion, newInstanceIds);
+    const siteForm = siteForms?.get(siteFormPlacementKey(rendered, rootId));
+    if (siteForm !== undefined) {
+      markPlacementMutable(
+        data,
+        newInstanceIds.get(rootId) ?? rootId,
+        siteForm
+      );
+    }
   }
   return { status: "added", pageId: rendered.pageId, unboundBlocks };
 };
@@ -371,19 +425,69 @@ export const starterLook = (
 export type StarterInsertOutcome =
   | StarterInsertResult
   | { status: "refused"; reason: "no-project" }
+  // a sign-up form's site form could not be made (spec section 7)
+  | { status: "refused"; reason: "form" }
   // the runtime layer refused the write, and says why
   | { status: "refused"; reason: "runtime"; message: string };
 
 /**
- * Add `page` named `name` at `path`, then select it. A refusal writes
- * nothing; an error inside the write rejects with it.
+ * The site forms a page's sign-up forms need (spec section 7), made before
+ * the write, keyed for the mark: one per Signup Form placement, titled
+ * "{name}: Signup Form", with a client id from the project, the page
+ * template, the New page screen's per-open token and the placement, so a
+ * retry in the same open gets the same forms back. Undefined when none is
+ * needed; null when one could not be made.
+ */
+const createStarterSiteForms = async ({
+  page,
+  rendered,
+  projectId,
+  name,
+  attemptToken,
+}: {
+  page: StarterPage;
+  rendered: RenderedPage;
+  projectId: string;
+  name: string;
+  attemptToken: string;
+}) => {
+  const placements = await siteFormPlacementsOf(
+    [{ ...rendered, name }],
+    projectId,
+    `starter:${page.id}:${attemptToken}`
+  );
+  if (placements.length === 0) {
+    return undefined;
+  }
+  const created = await createSiteFormsForPlacements(projectId, placements);
+  if (created.ok === false) {
+    return null;
+  }
+  const kinds = new Map(
+    placements.map((placement) => [placement.rootId, placement.kind])
+  );
+  return new Map(
+    [...created.forms].map(([key, form]) => [
+      key,
+      { ...form, kind: kinds.get(key) ?? ("contact-signup" as const) },
+    ])
+  );
+};
+
+/**
+ * Add `page` named `name` at `path`, then select it. The refusal checks run
+ * before any site form is made (spec section 7); a refusal writes nothing;
+ * an error inside the write rejects with it. `attemptToken` is the New page
+ * screen's, minted each time it opens.
  */
 export const insertStarterPage = async (
   page: StarterPage,
-  { name, path }: { name: string; path: string }
+  { name, path }: { name: string; path: string },
+  { attemptToken }: { attemptToken: string }
 ): Promise<StarterInsertOutcome> => {
   const project = $project.get();
-  if (project === undefined) {
+  const pages = $pages.get();
+  if (project === undefined || pages === undefined) {
     return { status: "refused", reason: "no-project" };
   }
   const presetIds = await getOrganizeosPresetIds(project.id);
@@ -391,6 +495,34 @@ export const insertStarterPage = async (
     look: starterLook($projectSettings.get()),
     generatePageId: nanoid,
   });
+  const refusal = findStarterInsertRefusal({ pages }, rendered, {
+    name,
+    path,
+  });
+  if (refusal !== undefined) {
+    return { status: "refused", reason: refusal };
+  }
+  // No form for a write the runtime will refuse, or for blocks that will be
+  // left unbound (no Events Resource); the write itself still runs and says
+  // why (plan C2, ruling 8).
+  let siteForms: Map<string, CreatedSiteForm & { kind: FormsKind }> | undefined;
+  if (
+    isSiteFormsEnabled() &&
+    canCommitWebstudioData() &&
+    $resources.get().has(presetIds.events.resourceId)
+  ) {
+    const created = await createStarterSiteForms({
+      page,
+      rendered,
+      projectId: project.id,
+      name: name.trim(),
+      attemptToken,
+    });
+    if (created === null) {
+      return { status: "refused", reason: "form" };
+    }
+    siteForms = created;
+  }
   let staged = false;
   let result: StarterInsertResult;
   try {
@@ -401,6 +533,7 @@ export const insertStarterPage = async (
         presetIds,
         name,
         path,
+        siteForms,
       });
     });
   } catch (error) {

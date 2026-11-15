@@ -12,6 +12,80 @@ import {
 
 const cwd = "/work";
 
+describe("parsePreviewArguments with --starter", () => {
+  test("a page template alone: the neutral look, the sample events", () => {
+    expect(parsePreviewArguments(["--starter", "events"], cwd)).toEqual({
+      templateId: undefined,
+      starterId: "events",
+      lookId: undefined,
+      paletteFile: undefined,
+      paletteName: "default",
+      runName: "neutral",
+      events: "sample",
+      thumbnail: false,
+      pages: false,
+    });
+  });
+
+  test("a look and the empty state name the run", () => {
+    expect(
+      parsePreviewArguments(
+        ["--starter", "events", "--look", "workwear", "--no-events"],
+        cwd
+      )
+    ).toMatchObject({
+      starterId: "events",
+      lookId: "workwear",
+      runName: "workwear.no-events",
+      events: "none",
+    });
+  });
+
+  test("--thumbnail draws the neutral look with the sample events", () => {
+    expect(
+      parsePreviewArguments(["--starter", "event", "--thumbnail"], cwd)
+    ).toMatchObject({
+      starterId: "event",
+      thumbnail: true,
+      runName: "neutral",
+    });
+  });
+
+  // Each matches its own refusal's words: the usage that most append names
+  // every option, so an option's name alone would match any of them.
+  test.each([
+    [
+      ["spike", "--starter", "events"],
+      /--starter draws a page template, so it takes no template id/,
+    ],
+    [["--look", "workwear"], /--look takes --starter/],
+    [["spike", "--look", "workwear"], /--look takes --starter/],
+    [
+      ["--starter", "events", "--thumbnail", "--look", "workwear"],
+      /--thumbnail draws a page template .* neither --look nor --no-events/,
+    ],
+    [
+      ["--starter", "events", "--thumbnail", "--no-events"],
+      /--thumbnail draws a page template .* neither --look nor --no-events/,
+    ],
+    [["--starter", "events", "--pages"], /--pages draws a template's pages/],
+    [
+      ["--starter", "events", "--palette", "night.json"],
+      /--palette is a template's/,
+    ],
+    [
+      ["--starter", "Events"],
+      /--starter takes a page template's id.*not "Events"/,
+    ],
+    [
+      ["--starter", "events", "--look", "../spike"],
+      /--look takes a site template's id.*not "\.\.\/spike"/,
+    ],
+  ])("%j is refused", (args, message) => {
+    expect(() => parsePreviewArguments(args, cwd)).toThrow(message);
+  });
+});
+
 describe("parsePreviewArguments", () => {
   test("a template id alone: its own palette, the sample events", () => {
     expect(parsePreviewArguments(["field-journal"], cwd)).toEqual({

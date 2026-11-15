@@ -185,6 +185,41 @@ describe("checkStarterPage", () => {
     ).toBe(true);
   });
 
+  test("a picture entry needs an uploadable url, a source and alt", () => {
+    const entry = sampleStarterPage.images[sampleStarterPage.picture];
+    const withEntry = (change: Partial<typeof entry>): StarterPage => ({
+      ...sampleStarterPage,
+      images: { [sampleStarterPage.picture]: { ...entry, ...change } },
+    });
+    expect(
+      checkStarterPage(withEntry({ url: "data:image/jpeg;base64,x" }))
+    ).toContain(
+      `Page "sample": the picture "picture.jpg" has a URL that is not root-relative or http(s)`
+    );
+    expect(checkStarterPage(withEntry({ sourceUrl: " " }))).toContain(
+      `Page "sample": the picture "picture.jpg" has no source URL`
+    );
+    expect(checkStarterPage(withEntry({ alt: "" }))).toContain(
+      `Page "sample": the picture "picture.jpg" has no alt text`
+    );
+  });
+
+  // The kit keeps a placeholder's spaces no-break, so a long one cannot wrap
+  // and runs past a phone's width: a bracket holds a short name, and an
+  // instruction is written without one.
+  test("a placeholder over 24 characters is refused", () => {
+    const page = withBody(() => (
+      <ws.element ws:tag="section" ws:label="FAQ">
+        <ws.element ws:tag="p">
+          {"Is it free? [Say whether there is a cost.] [A question people ask]"}
+        </ws.element>
+      </ws.element>
+    ));
+    expect(checkStarterPage(page)).toEqual([
+      `Page "sample": the placeholder "[Say whether there is a cost.]" is over 24 characters, too long to keep on one line on a phone; bracket a short name, and write an instruction without brackets`,
+    ]);
+  });
+
   test("a look without headingWeight fails", () => {
     const { headingWeight: _, ...rest } = NEUTRAL_LOOK;
     const look = rest as unknown as CompleteKitStyle;

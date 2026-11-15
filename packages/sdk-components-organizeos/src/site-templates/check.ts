@@ -274,7 +274,7 @@ const checkPageText = (template: SiteTemplate): string[] =>
 // its URL, resolved against the builder's origin. A file small enough for
 // Vite to inline as a data: URL is not one it can upload, and a font inlined
 // so weighs on the chooser's chunk.
-const isUploadableUrl = (url: string) => {
+export const isUploadableUrl = (url: string) => {
   if (url.startsWith("/")) {
     return url.startsWith("//") === false;
   }
