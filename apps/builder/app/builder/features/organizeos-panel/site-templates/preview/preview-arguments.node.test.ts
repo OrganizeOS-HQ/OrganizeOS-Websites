@@ -12,6 +12,63 @@ import {
 
 const cwd = "/work";
 
+describe("parsePreviewArguments with --starter", () => {
+  test("a page template alone: the neutral look, the sample events", () => {
+    expect(parsePreviewArguments(["--starter", "events"], cwd)).toEqual({
+      templateId: undefined,
+      starterId: "events",
+      lookId: undefined,
+      paletteFile: undefined,
+      paletteName: "default",
+      runName: "neutral",
+      events: "sample",
+      thumbnail: false,
+      pages: false,
+    });
+  });
+
+  test("a look and the empty state name the run", () => {
+    expect(
+      parsePreviewArguments(
+        ["--starter", "events", "--look", "workwear", "--no-events"],
+        cwd
+      )
+    ).toMatchObject({
+      starterId: "events",
+      lookId: "workwear",
+      runName: "workwear.no-events",
+      events: "none",
+    });
+  });
+
+  test("--thumbnail draws the neutral look with the sample events", () => {
+    expect(
+      parsePreviewArguments(["--starter", "event", "--thumbnail"], cwd)
+    ).toMatchObject({
+      starterId: "event",
+      thumbnail: true,
+      runName: "neutral",
+    });
+  });
+
+  test.each([
+    [["spike", "--starter", "events"], /--starter/],
+    [["--look", "workwear"], /--look/],
+    [["spike", "--look", "workwear"], /--look/],
+    [
+      ["--starter", "events", "--thumbnail", "--look", "workwear"],
+      /--thumbnail/,
+    ],
+    [["--starter", "events", "--thumbnail", "--no-events"], /--thumbnail/],
+    [["--starter", "events", "--pages"], /--pages/],
+    [["--starter", "events", "--palette", "night.json"], /--palette/],
+    [["--starter", "Events"], /--starter/],
+    [["--starter", "events", "--look", "../spike"], /--look/],
+  ])("%j is refused", (args, message) => {
+    expect(() => parsePreviewArguments(args, cwd)).toThrow(message);
+  });
+});
+
 describe("parsePreviewArguments", () => {
   test("a template id alone: its own palette, the sample events", () => {
     expect(parsePreviewArguments(["field-journal"], cwd)).toEqual({

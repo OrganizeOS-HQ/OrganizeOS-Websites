@@ -11,17 +11,19 @@ import { parseArgs } from "node:util";
 export { PAGE_PICTURE, THUMBNAIL, pagePictureFile } from "./thumbnail.mjs";
 
 export const usage =
-  "Usage: corepack pnpm preview:template <template-id> [--palette <file>] [--no-events] [--thumbnail] [--pages]";
+  "Usage: corepack pnpm preview:template <template-id> [--palette <file>] [--no-events] [--thumbnail] [--pages], or --starter <page-template-id> [--look <template-id>] [--no-events] [--thumbnail]";
 
 /**
- * A template id, and a palette's run name: lowercase letters, digits and
- * hyphens, so each names one folder under previews/.
+ * A template id, a page template's, and a palette's run name: lowercase
+ * letters, digits and hyphens, so each names one folder under previews/.
  */
 const namePattern = /^[a-z0-9-]+$/;
 
 /**
  * @typedef {{
- *   templateId: string,
+ *   templateId: string | undefined,
+ *   starterId?: string,
+ *   lookId?: string,
  *   paletteFile: string | undefined,
  *   paletteName: string,
  *   runName: string,
@@ -42,7 +44,14 @@ const namePattern = /^[a-z0-9-]+$/;
  * `--thumbnail`, and likewise takes neither. The run's folder is removed before
  * a run writes it, so a run name is held to `namePattern`: a file named
  * `..json` would name the template's whole folder, and `...json` previews/
- * itself. Throws with the usage, or with what is wrong.
+ * itself.
+ *
+ * Or a page template: `--starter <id>` and no template id, drawn on a blank
+ * site (the run "neutral") or, with `--look <template-id>`, on that site
+ * template applied (the run named after it); `--no-events` as above, and
+ * `--thumbnail`, which writes the page template's picture from the blank site
+ * and the sample events, so takes neither. Its run folder is under
+ * previews/starter-pages/. Throws with the usage, or with what is wrong.
  *
  * @param {string[]} args
  * @param {string} cwd
@@ -54,11 +63,22 @@ export const parsePreviewArguments = (args, cwd) => {
     allowPositionals: true,
     options: {
       palette: { type: "string" },
+      starter: { type: "string" },
+      look: { type: "string" },
       "no-events": { type: "boolean", default: false },
       thumbnail: { type: "boolean", default: false },
       pages: { type: "boolean", default: false },
     },
   });
+  const events = values["no-events"] ? "none" : "sample";
+  if (values.starter !== undefined) {
+    return parseStarterArguments(values, positionals, events);
+  }
+  if (values.look !== undefined) {
+    throw new Error(
+      `--look takes --starter: a template is its own look. ${usage}`
+    );
+  }
   if (positionals.length !== 1 || namePattern.test(positionals[0]) === false) {
     throw new Error(usage);
   }
@@ -71,7 +91,6 @@ export const parsePreviewArguments = (args, cwd) => {
       `The palette file's name without .json names the run's folder, so it is lowercase letters, digits and hyphens: not "${paletteName}"`
     );
   }
-  const events = values["no-events"] ? "none" : "sample";
   if (values.thumbnail && (paletteFile !== undefined || events === "none")) {
     throw new Error(
       `--thumbnail takes the template's own palette and the sample events, so neither --palette nor --no-events. ${usage}`
@@ -90,6 +109,60 @@ export const parsePreviewArguments = (args, cwd) => {
     events,
     thumbnail: values.thumbnail ?? false,
     pages: values.pages ?? false,
+  };
+};
+
+/**
+ * A page template's arguments (`--starter`), from parsePreviewArguments.
+ *
+ * @param {{ starter?: string, look?: string, palette?: string, thumbnail?: boolean, pages?: boolean }} values
+ * @param {string[]} positionals
+ * @param {"sample" | "none"} events
+ * @returns {PreviewArguments}
+ */
+const parseStarterArguments = (values, positionals, events) => {
+  const starterId = values.starter ?? "";
+  if (positionals.length !== 0) {
+    throw new Error(
+      `--starter draws a page template, so it takes no template id. ${usage}`
+    );
+  }
+  if (namePattern.test(starterId) === false) {
+    throw new Error(
+      `--starter takes a page template's id, lowercase letters, digits and hyphens: not "${starterId}"`
+    );
+  }
+  if (values.look !== undefined && namePattern.test(values.look) === false) {
+    throw new Error(
+      `--look takes a site template's id, lowercase letters, digits and hyphens: not "${values.look}"`
+    );
+  }
+  if (values.palette !== undefined) {
+    throw new Error(
+      `--palette is a template's; --starter takes a look instead (--look). ${usage}`
+    );
+  }
+  if (values.pages) {
+    throw new Error(
+      `--pages draws a template's pages; --starter's picture is --thumbnail. ${usage}`
+    );
+  }
+  if (values.thumbnail && (values.look !== undefined || events === "none")) {
+    throw new Error(
+      `--thumbnail draws a page template on the blank site with the sample events, so neither --look nor --no-events. ${usage}`
+    );
+  }
+  const lookName = values.look ?? "neutral";
+  return {
+    templateId: undefined,
+    starterId,
+    lookId: values.look,
+    paletteFile: undefined,
+    paletteName: "default",
+    runName: events === "none" ? `${lookName}.no-events` : lookName,
+    events,
+    thumbnail: values.thumbnail ?? false,
+    pages: false,
   };
 };
 

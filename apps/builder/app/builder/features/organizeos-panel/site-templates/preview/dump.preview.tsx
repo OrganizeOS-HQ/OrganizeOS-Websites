@@ -9,6 +9,7 @@ import {
   type WebstudioData,
   asset as assetSchema,
   findPageByIdOrPath,
+  findTreeInstanceIds,
   getAllPages,
 } from "@webstudio-is/sdk";
 import {
@@ -26,13 +27,26 @@ import {
   findPageAssetIds,
   renderSiteTemplate,
 } from "@organizeos/site-components/site-templates";
+import {
+  NEUTRAL_LOOK,
+  STARTER_PAGES,
+  renderStarterPage,
+} from "@organizeos/site-components/starter-pages";
 import { getAssetData } from "../../../../../../../../packages/asset-uploader/src/utils/get-asset-data";
 import { spikeTemplate } from "../../../../../../../../packages/sdk-components-organizeos/src/site-templates/__fixtures__/spike";
 import { registerContainers } from "~/shared/sync/sync-stores";
 import { findCanonicalFontFamilies } from "~/shared/db/organizeos-canonical-fonts.server";
 import { getOrganizeosPresetIds } from "../../insert-organizeos-block";
-import { applySiteTemplateMutable } from "../apply-site-template";
+import {
+  applySiteTemplateMutable,
+  startBlankMutable,
+} from "../apply-site-template";
 import { createProvisionedProject } from "../provisioned-project";
+import {
+  insertStarterPageMutable,
+  starterDefaultPath,
+} from "../../starter-pages/insert-starter-page";
+import { sampleEvents } from "./stub-api.mjs";
 
 /**
  * The preview tool's dump (wave 1 plan, Task A1), run by
@@ -54,6 +68,16 @@ import { createProvisionedProject } from "../provisioned-project";
  *   --thumbnail writes, or null for a template with no image;
  * - PREVIEW_PALETTE_FILE (optional): a JSON file of the six canonical values,
  *   applied in place of the template's own.
+ *
+ * Or, with PREVIEW_STARTER_ID set, a page template (plan C2, Task 5) added to
+ * a blank site, or with PREVIEW_LOOK_ID to that site template applied,
+ * through the builder's own insert (insertStarterPageMutable), with no site
+ * forms. Its RSVP Form, if any, gets the first sample event as its record,
+ * which only the preview sets: the org picks the event. preview-pages.json
+ * then holds the new page alone, and preview-template.json also
+ * `pictureFile`, the page template's picture, which --thumbnail draws. Only
+ * the catalog's page templates are looked up, never the sample fixture, so
+ * no run can draw over the spike's cover.
  */
 
 // Ids as a counter, so two dumps of one template differ only in the palette.
@@ -196,16 +220,23 @@ const findStyleFontFamilies = (data: WebstudioData) => {
   return families;
 };
 
-test("dump a template's site", async () => {
-  const template = findTemplate(readEnv("PREVIEW_TEMPLATE_ID"));
-  const apiBaseUrl = readEnv("PREVIEW_API_BASE_URL");
-  const outDir = readEnv("PREVIEW_OUT_DIR");
-  const paletteFile = process.env.PREVIEW_PALETTE_FILE;
-  const variables =
-    paletteFile === undefined || paletteFile === ""
-      ? template.variables
-      : await readPalette(paletteFile);
+type AppliedTemplate = {
+  template: SiteTemplate;
+  pages: ReturnType<typeof renderSiteTemplate>;
+  imageFiles: Map<string, AssetFile>;
+  fontFiles: AssetFile[];
+};
 
+/**
+ * The builder's apply of `template` to `data`: renderSiteTemplate, then
+ * applySiteTemplateMutable (applySiteTemplate in ../apply-site-template.ts),
+ * with the asset rows its files' uploads would make.
+ */
+const applyTemplate = async (
+  data: WebstudioData,
+  template: SiteTemplate,
+  variables: CanonicalValues
+): Promise<AppliedTemplate> => {
   const imageFiles = new Map<string, AssetFile>();
   for (const [file, { url }] of Object.entries(template.images)) {
     imageFiles.set(file, await createAssetFile("image", file, url));
@@ -215,13 +246,6 @@ test("dump a template's site", async () => {
     fontFiles.push(await createAssetFile("font", file, url));
   }
 
-  // the builder's apply: renderSiteTemplate, then applySiteTemplateMutable
-  // on the project data (applySiteTemplate in ../apply-site-template.ts)
-  const data = await createProvisionedProject({
-    projectId,
-    apiBaseUrl,
-    readToken,
-  });
   const assetIds = new Map(
     Array.from(imageFiles, ([file, { asset }]) => [file, asset.id])
   );
@@ -241,9 +265,23 @@ test("dump a template's site", async () => {
   if (result.unboundBlocks.length > 0) {
     throw new Error(`Blocks left unbound: ${result.unboundBlocks.join(", ")}`);
   }
+  return { template, pages, imageFiles, fontFiles };
+};
 
-  // the images the apply uploads: those the pages show
-  const shownAssetIds = findPageAssetIds(pages);
+/**
+ * The bundle the publish workflow syncs, written to `outDir` with the files
+ * an upload of the template would have made: the images its pages show and
+ * the fonts the styles name.
+ */
+const writeSite = async (
+  outDir: string,
+  data: WebstudioData,
+  { title, applied }: { title: string; applied: AppliedTemplate | undefined }
+) => {
+  const shownAssetIds =
+    applied === undefined ? new Set<string>() : findPageAssetIds(applied.pages);
+  const imageFiles = applied?.imageFiles ?? new Map<string, AssetFile>();
+  const fontFiles = applied?.fontFiles ?? [];
   const fontFamilies = findStyleFontFamilies(data);
   const assetFiles = [
     ...Array.from(imageFiles.values()).filter(({ asset }) =>
@@ -281,7 +319,7 @@ test("dump a template's site", async () => {
     pages: getAllPages(data.pages),
     assets: assetFiles.map(({ asset }) => asset),
     projectDomain: "preview",
-    projectTitle: template.name,
+    projectTitle: title,
     bundleVersion,
   });
 
@@ -295,22 +333,161 @@ test("dump a template's site", async () => {
   for (const { asset, path } of assetFiles) {
     await copyFile(path, join(outDir, "public", "assets", asset.name));
   }
+};
+
+/** The file of a template's preview event cover, or null. */
+const previewEventCoverFile = (applied: AppliedTemplate | undefined) => {
+  const cover = applied?.template.previewEventCover;
+  return cover === undefined
+    ? null
+    : (applied?.imageFiles.get(cover)?.path ?? null);
+};
+
+const RSVP_FORM = "@organizeos/site-components:RsvpForm";
+
+/**
+ * Each RSVP Form on the page gets `eventId` as its event (`record`), in
+ * place of any it has.
+ */
+const setRsvpRecordMutable = (
+  data: WebstudioData,
+  rootInstanceId: string,
+  eventId: string
+) => {
+  for (const instanceId of findTreeInstanceIds(
+    data.instances,
+    rootInstanceId
+  )) {
+    if (data.instances.get(instanceId)?.component !== RSVP_FORM) {
+      continue;
+    }
+    for (const prop of Array.from(data.props.values())) {
+      if (prop.instanceId === instanceId && prop.name === "record") {
+        data.props.delete(prop.id);
+      }
+    }
+    const id = nanoid();
+    data.props.set(id, {
+      id,
+      instanceId,
+      name: "record",
+      type: "string",
+      value: eventId,
+    });
+  }
+};
+
+const dumpStarterPage = async (starterId: string, lookId: string) => {
+  const page = STARTER_PAGES.find((item) => item.id === starterId);
+  if (page === undefined) {
+    const known = STARTER_PAGES.map((item) => item.id).join(", ");
+    throw new Error(
+      `No page template has the id "${starterId}". Known: ${known}`
+    );
+  }
+  const apiBaseUrl = readEnv("PREVIEW_API_BASE_URL");
+  const outDir = readEnv("PREVIEW_OUT_DIR");
+  const template = lookId === "" ? undefined : findTemplate(lookId);
+
+  const data = await createProvisionedProject({
+    projectId,
+    apiBaseUrl,
+    readToken,
+  });
+  let applied: AppliedTemplate | undefined;
+  if (template === undefined) {
+    startBlankMutable(data);
+  } else {
+    applied = await applyTemplate(data, template, template.variables);
+  }
+
+  const rendered = renderStarterPage(page, {
+    look: template?.look ?? NEUTRAL_LOOK,
+    generatePageId: nanoid,
+  });
+  const path = starterDefaultPath(data.pages, page);
+  const result = insertStarterPageMutable(data, rendered, {
+    projectId,
+    presetIds: await getOrganizeosPresetIds(projectId),
+    name: page.pageName,
+    path,
+  });
+  if (result.status !== "added") {
+    throw new Error(`The insert refused the page template: ${result.reason}`);
+  }
+  if (result.unboundBlocks.length > 0) {
+    throw new Error(`Blocks left unbound: ${result.unboundBlocks.join(", ")}`);
+  }
+  const added = data.pages.pages.get(result.pageId);
+  if (added === undefined) {
+    throw new Error("The insert added no page");
+  }
+  setRsvpRecordMutable(
+    data,
+    added.rootInstanceId,
+    sampleEvents(apiBaseUrl)[0].id
+  );
+
+  await writeSite(outDir, data, {
+    title: template === undefined ? page.name : template.name,
+    applied,
+  });
+  await writeFile(
+    join(outDir, "preview-pages.json"),
+    JSON.stringify([{ key: page.id, path }])
+  );
+  await writeFile(
+    join(outDir, "preview-template.json"),
+    JSON.stringify({
+      previewEventCover: previewEventCoverFile(applied),
+      imagesDir: null,
+      pictureFile: getUrlFile(page.images[page.picture].url),
+    })
+  );
+};
+
+const dumpTemplate = async (templateId: string) => {
+  const template = findTemplate(templateId);
+  const apiBaseUrl = readEnv("PREVIEW_API_BASE_URL");
+  const outDir = readEnv("PREVIEW_OUT_DIR");
+  const paletteFile = process.env.PREVIEW_PALETTE_FILE;
+  const variables =
+    paletteFile === undefined || paletteFile === ""
+      ? template.variables
+      : await readPalette(paletteFile);
+  const data = await createProvisionedProject({
+    projectId,
+    apiBaseUrl,
+    readToken,
+  });
+  const applied = await applyTemplate(data, template, variables);
+  const { pages, imageFiles } = applied;
+  await writeSite(outDir, data, { title: template.name, applied });
   await writeFile(
     join(outDir, "preview-pages.json"),
     JSON.stringify(
       pages.map(({ key, path }) => ({ key, path: path === "" ? "/" : path }))
     )
   );
-  const cover = template.previewEventCover;
   // the thumbnail's file, else any image's, is in the template's images/
   const folderImage =
     imageFiles.get(template.thumbnail) ?? imageFiles.values().next().value;
   await writeFile(
     join(outDir, "preview-template.json"),
     JSON.stringify({
-      previewEventCover:
-        cover === undefined ? null : (imageFiles.get(cover)?.path ?? null),
+      previewEventCover: previewEventCoverFile(applied),
       imagesDir: folderImage === undefined ? null : dirname(folderImage.path),
     })
   );
+};
+
+test("dump a template's site", async () => {
+  // readEnv refuses "", which the script passes for an option not given, so
+  // the page template's two are read as they are
+  const starterId = process.env.PREVIEW_STARTER_ID ?? "";
+  if (starterId !== "") {
+    await dumpStarterPage(starterId, process.env.PREVIEW_LOOK_ID ?? "");
+    return;
+  }
+  await dumpTemplate(readEnv("PREVIEW_TEMPLATE_ID"));
 }, 60_000);

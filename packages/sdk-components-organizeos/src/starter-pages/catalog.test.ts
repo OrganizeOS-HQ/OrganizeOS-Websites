@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
@@ -9,6 +9,30 @@ import { NEUTRAL_LOOK } from "./look";
 import { renderStarterPage } from "./render";
 import type { StarterPage } from "./types";
 import { sampleStarterPage } from "./__fixtures__/sample";
+
+/** A JPEG's size, from its start-of-frame segment. */
+const jpegSize = (bytes: Uint8Array) => {
+  if (bytes[0] !== 0xff || bytes[1] !== 0xd8) {
+    return;
+  }
+  let offset = 2;
+  while (offset + 9 <= bytes.length && bytes[offset] === 0xff) {
+    const marker = bytes[offset + 1];
+    // the start-of-frame markers: C0 to CF but for C4, C8 and CC
+    if (
+      marker >= 0xc0 &&
+      marker <= 0xcf &&
+      [0xc4, 0xc8, 0xcc].includes(marker) === false
+    ) {
+      return {
+        width: (bytes[offset + 7] << 8) | bytes[offset + 8],
+        height: (bytes[offset + 5] << 8) | bytes[offset + 6],
+      };
+    }
+    offset += 2 + ((bytes[offset + 2] << 8) | bytes[offset + 3]);
+  }
+  return;
+};
 
 const looks = [
   NEUTRAL_LOOK,
@@ -85,6 +109,25 @@ describe("the starter-page catalog", () => {
           `${page.id}/${file}: ${script}`
         ).toBe(true);
       }
+    }
+  });
+
+  // The preview tool draws each (`--starter <id> --thumbnail`): the New page
+  // screen's card frame at PAGE_PICTURE's size and limit, never the seed
+  // copy of the spike's cover the page started with.
+  test("each picture is drawn", () => {
+    const folder = dirname(fileURLToPath(import.meta.url));
+    const cover = readFileSync(
+      join(folder, "../site-templates/__fixtures__/spike/images/cover.jpg")
+    );
+    for (const page of STARTER_PAGES) {
+      const bytes = readFileSync(join(folder, "images", page.picture));
+      expect(jpegSize(bytes), page.picture).toEqual({
+        width: 1200,
+        height: 750,
+      });
+      expect(bytes.byteLength, page.picture).toBeLessThanOrEqual(150_000);
+      expect(bytes.equals(cover), page.picture).toBe(false);
     }
   });
 
