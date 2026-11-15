@@ -17,12 +17,7 @@ import type { Project } from "@webstudio-is/project";
 import { createDefaultPages } from "@webstudio-is/project-build";
 import { renderData } from "@webstudio-is/template";
 import * as defaultMetas from "@webstudio-is/sdk-components-react/metas";
-import {
-  type DataSource,
-  type Instance,
-  type Resource,
-  coreMetas,
-} from "@webstudio-is/sdk";
+import { type Instance, coreMetas } from "@webstudio-is/sdk";
 import * as organizeosMetas from "@organizeos/site-components/metas";
 import * as organizeosTemplates from "@organizeos/site-components/templates";
 import { $ } from "@organizeos/site-components/site-templates";
@@ -31,7 +26,6 @@ import {
   $organizeosSite,
   $propValuesByInstanceSelector,
   $registeredComponentMetas,
-  $selectedInstanceSelector,
   getInstanceKey,
   registerComponentLibrary,
   selectInstance,
@@ -173,13 +167,6 @@ const renderPanel = async (rootId: string, width = 240) => {
   await settle();
   return container;
 };
-
-const stores = () => ({
-  instances: $instances.get(),
-  props: $props.get(),
-  dataSources: $dataSources.get(),
-  resources: $resources.get(),
-});
 
 const answer = (body: unknown, ok = true) =>
   loaderFetch.mockImplementation(async (_url: string, init: RequestInit) => {
@@ -335,7 +322,13 @@ describe("the Donation Form's rows", () => {
     const unknown = "b1c2d3e4-0000-4000-8000-0000000000ff";
     const target = propOf(form.id, "target")!;
     $props.set(
-      new Map($props.get()).set(target.id, { ...target, value: unknown })
+      new Map($props.get()).set(target.id, {
+        id: target.id,
+        instanceId: target.instanceId,
+        name: target.name,
+        type: "string",
+        value: unknown,
+      })
     );
     const host = await renderPanel(form.id);
     await vi.waitFor(() =>
