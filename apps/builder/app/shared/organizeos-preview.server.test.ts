@@ -80,6 +80,29 @@ describe("mintPreviewAssertion", () => {
   });
 });
 
+// builder donations spec 6.2; plan F1, F-D18: the Fundraisers read, exactly,
+// so the Give to rows and Goal Progress list drafts on the canvas
+describe("isPreviewableUrl for the Fundraisers read", () => {
+  test.each([
+    `${appUrl}/api/public/v1/fundraisers`,
+    `${appUrl}/api/public/v1/fundraisers?limit=10`,
+  ])("accepts %s", (href) => {
+    expect(isPreviewableUrl(href, appUrl)).toBe(true);
+  });
+
+  test.each([
+    `${appUrl}/api/public/v1/fundraisers/`,
+    `${appUrl}/api/public/v1/fundraisers/x`,
+    `${appUrl}/api/public/v1/fundraisersx`,
+    `${appUrl}/api/public/v1/fundraisers%2e`,
+    `${appUrl}/api/public/v1/fundraisers%2Fx`,
+    "https://evil.example/api/public/v1/fundraisers",
+    "http://app.organizeos.org/api/public/v1/fundraisers",
+  ])("refuses %s", (href) => {
+    expect(isPreviewableUrl(href, appUrl)).toBe(false);
+  });
+});
+
 describe("isPreviewableUrl", () => {
   test.each([
     `${appUrl}/api/public/v1/collections/news/items`,
