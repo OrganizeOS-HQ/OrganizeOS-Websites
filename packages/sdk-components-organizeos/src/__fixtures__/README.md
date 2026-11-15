@@ -1,6 +1,6 @@
 > Copied unchanged from `client/tests/fixtures/site-components/` in OrganizeOS-HQ/OrganizeOS (commit 39ce1bbe3): change both copies together.
 >
-> `rich-text.json` and `preview-assertion.json` were copied later, from commit 826b5a764 (where `rich-text.json` last changed in 35d7867ec and `preview-assertion.json` in 5a9d4789c). `products.json` and its bullet below were copied from commit 7a61c6866, where `products.json` last changed. Before each fork PR, `diff -r` this folder against the platform's to find drift.
+> `rich-text.json` and `preview-assertion.json` were copied later, from commit 826b5a764 (where `rich-text.json` last changed in 35d7867ec and `preview-assertion.json` in 5a9d4789c). `products.json` and its bullet below were copied from commit 7a61c6866, where `products.json` last changed. `fundraisers.json`, `give-embed-fonts.json` and `give-embed-messages.json` and their bullets below were copied from commit 512a4ab12, for the Giving blocks. Before each fork PR, `diff -r` this folder against the platform's to find drift.
 
 # Site component contract fixtures
 
@@ -104,3 +104,22 @@ additive, or it ships under a new endpoint version.
   nullable key, `image_url`, is null at least once, so a copy's schema is held
   to it. Prices are integer cents, `currency` is always `USD`, and `url` is the
   product's page, `{host}/shop/{slug}`.
+- `fundraisers.json`: the body of `GET /v1/fundraisers` (builder donations spec
+  `docs/superpowers/specs/2026-11-13-builder-donations-design.md`, 6.1 and 6.2):
+  the org's public campaigns, newest first, keyed by the campaign's id. A live
+  campaign with a goal and dates, an ended one with no goal, and a third marked
+  `"draft": true`, which the route lists only under a verified builder preview.
+  Amounts are integer cents and `currency` is always `USD`. The builder fork
+  copies it with its Giving blocks (F1).
+- `give-embed-fonts.json`: the font families the give embed accepts from a
+  site's theme (builder donations spec 2026-11-13, 5.5): the families the fork's
+  site templates ship, at the commit `source` names. The platform self-hosts
+  each (`client/lib/donations/give-embed/give-embed-fonts.ts`), and any other
+  family falls back to the system stack. The fork copies it in F1 and tests its
+  template catalog against it, so a new template family is added here first.
+- `give-embed-messages.json`: the give embed's frozen contract (builder
+  donations spec 2026-11-13, 5.1, 5.6 and W8): its address, the query names the
+  Donation form block may send, the fragment key of the site's theme, and the
+  two messages the frame posts to the block, to the validated parent origin
+  only. They change only additively, since a published block keeps building this
+  address. The fork copies this file and `give-embed-fonts.json` in F1.
