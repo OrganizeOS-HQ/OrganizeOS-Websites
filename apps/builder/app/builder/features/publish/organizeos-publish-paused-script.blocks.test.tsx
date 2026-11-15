@@ -129,6 +129,8 @@ const setProject = () => {
     // the Shop blocks are in the fixture too, as the panel offers them with
     // ORGANIZEOS_SHOP_BLOCKS on
     shopBlocksEnabled: true,
+    // and the Giving blocks, as it offers them with ORGANIZEOS_GIVING_BLOCKS on
+    givingBlocksEnabled: true,
   });
 };
 
