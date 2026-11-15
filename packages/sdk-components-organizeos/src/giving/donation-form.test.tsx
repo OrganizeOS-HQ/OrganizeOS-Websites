@@ -23,9 +23,14 @@ const LINE = "This form isn't available.";
 // wrapper comes near the viewport.
 let observers: Array<(entries: Array<{ isIntersecting: boolean }>) => void> =
   [];
+let observerOptions: Array<IntersectionObserverInit | undefined> = [];
 class StubIntersectionObserver {
-  constructor(callback: (entries: Array<{ isIntersecting: boolean }>) => void) {
+  constructor(
+    callback: (entries: Array<{ isIntersecting: boolean }>) => void,
+    options?: IntersectionObserverInit
+  ) {
     observers.push(callback);
+    observerOptions.push(options);
   }
   observe() {}
   disconnect() {}
@@ -93,6 +98,7 @@ const done = { type: "oos-give-done" };
 
 beforeEach(() => {
   observers = [];
+  observerOptions = [];
   vi.stubGlobal("IntersectionObserver", StubIntersectionObserver);
   window.history.replaceState({}, "", "/donate-now?r=AbCdEfGh23");
 });
@@ -192,6 +198,13 @@ test("no timer before the frame is near or loaded", () => {
   expect(iframeOf(container)).not.toBeNull();
 });
 
+// Final review I1: every browser has started a lazy frame's load once it
+// reaches the viewport, whatever its own lazy-load distance.
+test("the clock watches the viewport itself, with no margin", () => {
+  render(block());
+  expect(observerOptions).toEqual([{ rootMargin: "0px" }]);
+});
+
 test("a load event alone starts the clock", () => {
   vi.useFakeTimers();
   const { container, queryByText } = render(block());
@@ -220,6 +233,8 @@ test("ten seconds without an answer hides the frame and shows the line", () => {
   expect(iframe.getAttribute("aria-hidden")).toBe("true");
   expect(iframe.style.display).not.toBe("none");
   expect(iframe.style.opacity).toBe("0");
+  // final review M2: hidden from assistive technology, so out of the tab order
+  expect(iframe.getAttribute("tabindex")).toBe("-1");
   expect(queryByText(LINE)).toBeTruthy();
 });
 
@@ -252,6 +267,7 @@ test("a height after the timeout brings the frame back", () => {
   expect(queryByText(LINE)).toBeNull();
   const iframe = iframeOf(container)!;
   expect(iframe.getAttribute("aria-hidden")).toBeNull();
+  expect(iframe.getAttribute("tabindex")).toBeNull();
   expect(iframe.style.height).toBe("720px");
 });
 

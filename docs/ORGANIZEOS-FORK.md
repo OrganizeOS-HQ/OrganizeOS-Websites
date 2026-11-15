@@ -3472,7 +3472,7 @@ fundraiser's raised and goal figures.
   **Unavailable**: a bad `platformOrigin`, org id or target renders "This
   form isn't available." with no frame (the canvas check: "Re-insert this
   block." or "Pick what this form gives to."); and with no height 10 seconds
-  after the frame loads or first nears the viewport (the owner's ruling,
+  after the frame loads or first comes into view (the owner's ruling,
   2026-11-15), the frame is hidden, not removed, behind the same line, and a
   later height brings it back. A published block cannot know the site's own
   org: a copied block is refused by the frame's `frame-ancestors` and ends on

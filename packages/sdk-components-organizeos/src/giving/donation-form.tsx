@@ -119,8 +119,12 @@ export const donationUnavailableLine = "This form isn't available.";
 const SANDBOX =
   "allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox";
 
-/** The distance at which a lazy frame starts loading. */
-const NEAR_VIEWPORT_MARGIN = "1250px";
+/**
+ * The clock's observer watches the viewport itself: browsers start a lazy
+ * frame's load at different distances (about 1,250px in Chrome, less in
+ * Firefox), and every one has started it once the frame is in view.
+ */
+const VIEWPORT_MARGIN = "0px";
 
 // Hidden, not removed: a later height brings the frame back, and a lazy frame
 // under display: none would never load.
@@ -197,8 +201,8 @@ export const DonationFrame = forwardRef<
   // new frame and restarts the clock.
   const frameKey = src?.split("#")[0];
 
-  // The clock (F-D11): it starts when the frame loads or first comes near the
-  // viewport, whichever is first, since a lazy frame below the fold has not
+  // The clock (F-D11): it starts when the frame loads or first comes into
+  // view, whichever is first, since a lazy frame below the fold has not
   // started loading; or at mount where IntersectionObserver is missing.
   useEffect(() => {
     if (frameKey === undefined) {
@@ -226,7 +230,7 @@ export const DonationFrame = forwardRef<
             start();
           }
         },
-        { rootMargin: NEAR_VIEWPORT_MARGIN }
+        { rootMargin: VIEWPORT_MARGIN }
       );
       observer.observe(wrapper);
     }
@@ -306,6 +310,8 @@ export const DonationFrame = forwardRef<
           sandbox={SANDBOX}
           referrerPolicy="strict-origin-when-cross-origin"
           aria-hidden={failed ? true : undefined}
+          // hidden from assistive technology, so out of the tab order too
+          tabIndex={failed ? -1 : undefined}
           style={
             failed
               ? hiddenFrameStyle
