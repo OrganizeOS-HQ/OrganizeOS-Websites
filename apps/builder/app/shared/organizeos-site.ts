@@ -38,6 +38,12 @@ export type OrganizeosSite = {
    */
   shopBlocksEnabled?: boolean;
   /**
+   * Whether the deployment offers the Giving blocks, the Donation Form and
+   * Goal Progress (`ORGANIZEOS_GIVING_BLOCKS` is exactly `true`). Otherwise
+   * the Components panel lists neither and their insert is refused.
+   */
+  givingBlocksEnabled?: boolean;
+  /**
    * Whether the CMS overlay shows the native CMS screen in place of the framed
    * CMS: `ORGANIZEOS_CMS_PANEL` and `ORGANIZEOS_CMS_NATIVE` are exactly
    * `true` and `WEBSITES2_CMS_SECRET` is set, for every org.

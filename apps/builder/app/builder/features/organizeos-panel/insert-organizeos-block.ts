@@ -18,6 +18,8 @@ import {
   EVENTS_BINDING_NAME,
   FORMS_PRESET_KEY,
   FORMS_PRESET_NAME,
+  FUNDRAISERS_BINDING_NAME,
+  FUNDRAISERS_PRESET_KEY,
   PRODUCT_BINDING_NAME,
   PRODUCT_RESOURCE_NAME,
   PRODUCTS_BINDING_NAME,
@@ -49,6 +51,7 @@ import {
   siteFormFieldsOf,
   siteFormInserts,
 } from "./site-form-insert";
+import { completeDonationFormFragment } from "./giving-insert";
 
 /**
  * Inserting an OrganizeOS block (spec section 4.3). A template cannot know a
@@ -82,7 +85,7 @@ export const isOrganizeosBlock = (component: string) =>
  */
 export type BlockData = {
   /** The catalog Resource the block's binding references. */
-  catalog: "events" | "forms" | "upcoming-events" | "products";
+  catalog: "events" | "forms" | "upcoming-events" | "products" | "fundraisers";
   /**
    * The block's binding references a Resource of its own, under a fresh
    * nanoid, with the catalog Resource's request (its URL beside the Events
@@ -267,6 +270,24 @@ export const organizeosBlockData = new Map<string, BlockData>([
   ],
   [`${organizeosNamespace}:ProductGrid`, productGridBlockData],
   [`${organizeosNamespace}:ProductCard`, productCardBlockData],
+  [
+    // the Fundraisers Resource itself, never created: provisioning always
+    // writes it (STATIC_PRESET_KEYS). The block finds its fundraiser in the
+    // body by `record`, as the RSVP Form finds its event (builder donations
+    // spec 7.3; plan F1, F-D8).
+    `${organizeosNamespace}:GoalProgress`,
+    {
+      catalog: "fundraisers",
+      bindingName: FUNDRAISERS_BINDING_NAME,
+      binds: [
+        {
+          instance: "root",
+          prop: "data",
+          value: (variable) => `${variable}.data`,
+        },
+      ],
+    },
+  ],
 ]);
 
 type PresetIds = { resourceId: string; bindingId: string };
@@ -276,18 +297,21 @@ export type OrganizeosPresetIds = {
   forms: PresetIds;
   upcomingEvents: PresetIds;
   products: PresetIds;
+  fundraisers: PresetIds;
 };
 
 export const getOrganizeosPresetIds = async (
   projectId: string
 ): Promise<OrganizeosPresetIds> => {
-  const [events, forms, upcomingEvents, products] = await Promise.all([
-    getResourcePresetIds(projectId, "events"),
-    getResourcePresetIds(projectId, FORMS_PRESET_KEY),
-    getResourcePresetIds(projectId, UPCOMING_EVENTS_PRESET_KEY),
-    getResourcePresetIds(projectId, PRODUCTS_PRESET_KEY),
-  ]);
-  return { events, forms, upcomingEvents, products };
+  const [events, forms, upcomingEvents, products, fundraisers] =
+    await Promise.all([
+      getResourcePresetIds(projectId, "events"),
+      getResourcePresetIds(projectId, FORMS_PRESET_KEY),
+      getResourcePresetIds(projectId, UPCOMING_EVENTS_PRESET_KEY),
+      getResourcePresetIds(projectId, PRODUCTS_PRESET_KEY),
+      getResourcePresetIds(projectId, FUNDRAISERS_PRESET_KEY),
+    ]);
+  return { events, forms, upcomingEvents, products, fundraisers };
 };
 
 const isBlankExpression = (expression: string) => {
@@ -439,13 +463,25 @@ export const completeOrganizeosFragment = ({
     forms: presetIds.forms.resourceId,
     "upcoming-events": presetIds.upcomingEvents.resourceId,
     products: presetIds.products.resourceId,
+    fundraisers: presetIds.fundraisers.resourceId,
   }[entry.catalog];
   const resourceId =
     entry.ownResource === undefined ? catalogResourceId : nanoid();
   // A Resource of its own is always created, whatever the catalog: the
   // binding references its fresh id, which no project holds yet.
+  // Events and Fundraisers are static presets, always provisioned and never
+  // created here; one that is missing refuses the block.
+  if (
+    entry.catalog === "fundraisers" &&
+    entry.ownResource === undefined &&
+    resources.has(resourceId) === false
+  ) {
+    return { status: "refused" };
+  }
   const created =
-    entry.catalog === "events" ? undefined : createdResources[entry.catalog];
+    entry.catalog === "events" || entry.catalog === "fundraisers"
+      ? undefined
+      : createdResources[entry.catalog];
   let resource: undefined | Resource;
   if (
     entry.ownResource !== undefined ||
@@ -598,10 +634,21 @@ const siteFormCards = new Set([
 export const isSiteFormsEnabled = () =>
   $organizeosSite.get()?.siteFormsEnabled === true;
 
+/**
+ * The Giving blocks, offered only while the deployment's switch is on
+ * (`ORGANIZEOS_GIVING_BLOCKS`; builder donations F1, F-D17).
+ */
+const givingBlockComponents = new Set([
+  `${organizeosNamespace}:DonationForm`,
+  `${organizeosNamespace}:GoalProgress`,
+]);
+
 const isBlockOffered = (component: string) =>
   isOrganizeosBlocksEnabled() &&
   (shopBlockComponents.has(component) === false ||
     $organizeosSite.get()?.shopBlocksEnabled === true) &&
+  (givingBlockComponents.has(component) === false ||
+    $organizeosSite.get()?.givingBlocksEnabled === true) &&
   // the forms cards only with the site forms switch on
   (siteFormCards.has(component) === false || isSiteFormsEnabled());
 
@@ -678,12 +725,28 @@ export const insertOrganizeosBlock = async (
     return false;
   }
 
+  // The Donation Form's org and platform origin, from the site record
+  // (builder donations F1, F-D7); without them the frame has no address.
+  let fragment = completion.fragment;
+  if (component === `${organizeosNamespace}:DonationForm`) {
+    const giving = completeDonationFormFragment(
+      fragment,
+      $organizeosSite.get()
+    );
+    if (giving === undefined) {
+      builderApi.toast.error(
+        `Cannot add ${label}: this site's link to your organization's data was removed or changed. Contact ${platformName} support to restore it.`
+      );
+      return false;
+    }
+    fragment = giving;
+  }
+
   // A forms insert with the site forms switch on (fork doc section 9, "Site
   // forms"; builder forms spec 5.1): every local check above has passed, and
   // the block has a place, before its site form is created (F3 last before
   // the write, P11); F0's org name fills the intro, asked at the same time.
   // A failed create writes nothing.
-  let fragment = completion.fragment;
   let place = insertable;
   const siteForm = siteFormInserts.get(component);
   if (siteForm !== undefined && isSiteFormsEnabled()) {

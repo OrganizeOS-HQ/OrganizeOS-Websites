@@ -72,6 +72,15 @@ export const shopBlocks = ["ProductGrid", "ProductCard"];
 const isShopBlock = (name: string) =>
   shopBlocks.some((block) => name === `${organizeosNamespace}:${block}`);
 
+/**
+ * The Giving blocks (builder donations spec 7.1), offered only while the
+ * deployment's switch is on (`givingBlocksEnabled`, `ORGANIZEOS_GIVING_BLOCKS`).
+ */
+export const givingBlocks = ["DonationForm", "GoalProgress"];
+
+const isGivingBlock = (name: string) =>
+  givingBlocks.some((block) => name === `${organizeosNamespace}:${block}`);
+
 // Signups, Events, Membership and Donations in the spec; so far the Signup
 // Form, the Events blocks, Rotating Tabs, Marquee, Convergence Field and Rich
 // Text. A section names its blocks in the order they are listed, and one that
@@ -97,6 +106,11 @@ const sections: Section[] = [
   {
     label: "Signups",
     blocks: ["SignupForm", "SignupFormInline"],
+  },
+  {
+    // listed only while the Giving blocks are offered ($organizeosComponentGroups)
+    label: "Giving",
+    blocks: givingBlocks,
   },
   {
     // listed only while the Shop blocks are offered ($organizeosComponentGroups)
@@ -194,12 +208,14 @@ export const $organizeosComponentGroups = computed(
     }
     // Without the Shop blocks switch, neither the Shop section nor "More"
     // lists them, and "Find components" finds neither.
-    const offered =
-      site.shopBlocksEnabled === true
-        ? templates
-        : new Map(
-            [...templates].filter(([name]) => isShopBlock(name) === false)
-          );
+    // The Giving blocks follow their own switch the same way.
+    const offered = new Map(
+      [...templates].filter(
+        ([name]) =>
+          (site.shopBlocksEnabled === true || isShopBlock(name) === false) &&
+          (site.givingBlocksEnabled === true || isGivingBlock(name) === false)
+      )
+    );
     const blockSections = groupOrganizeosBlocks(offered, metas, {
       siteForms: site.siteFormsEnabled === true,
     });

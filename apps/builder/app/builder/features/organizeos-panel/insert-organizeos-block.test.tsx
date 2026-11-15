@@ -216,7 +216,7 @@ const provisioned = await buildOrgResourcePresets({
   apiBaseUrl: "https://staging.example.org/api/public/v1",
   readToken: "osk_eventstoken",
 });
-const { events, forms, upcomingEvents, products } =
+const { events, forms, upcomingEvents, products, fundraisers } =
   await getOrganizeosPresetIds(projectId);
 const formsResource = provisioned.resources.find(
   (resource) => resource.id === forms.resourceId
@@ -289,10 +289,14 @@ const setProject = (
     blocksEnabled = true,
     shopBlocksEnabled = true,
     siteFormsEnabled = false,
+    givingBlocksEnabled = true,
+    platformUrl = "https://app.example.org",
   }: {
     blocksEnabled?: boolean;
     shopBlocksEnabled?: boolean;
     siteFormsEnabled?: boolean;
+    givingBlocksEnabled?: boolean;
+    platformUrl?: string;
   } = {}
 ) => {
   const data = renderData(<$.Body ws:id="bodyId"></$.Body>);
@@ -319,10 +323,11 @@ const setProject = (
   $organizeosSite.set({
     organizationId: "org-1",
     manageUrl: "https://app.example.org/dashboard",
-    platformUrl: "https://app.example.org",
+    platformUrl,
     blocksEnabled,
     shopBlocksEnabled,
     siteFormsEnabled,
+    givingBlocksEnabled,
   });
 };
 
@@ -1390,7 +1395,7 @@ describe("an Events block, through the completion table", () => {
     const completion = completeOrganizeosFragment({
       component: testBlock,
       fragment: getComponentTemplateData(testBlock),
-      presetIds: { events, forms, upcomingEvents, products },
+      presetIds: { events, forms, upcomingEvents, products, fundraisers },
       resources: new Map(provisioned.resources.map((item) => [item.id, item])),
     });
 
@@ -2446,7 +2451,7 @@ describe("the inserted RSVP Form", () => {
 
 describe("completeOrganizeosFragment", () => {
   const presets = {
-    presetIds: { events, forms, upcomingEvents, products },
+    presetIds: { events, forms, upcomingEvents, products, fundraisers },
     resources: new Map(provisioned.resources.map((item) => [item.id, item])),
   };
 
@@ -2489,7 +2494,7 @@ describe("completeOrganizeosFragment", () => {
     const completion = completeOrganizeosFragment({
       component: signupForm,
       fragment: getComponentTemplateData(signupForm),
-      presetIds: { events, forms, upcomingEvents, products },
+      presetIds: { events, forms, upcomingEvents, products, fundraisers },
       resources: new Map(withoutForms.resources.map((item) => [item.id, item])),
     });
 
@@ -2572,7 +2577,7 @@ describe("completeOrganizeosFragment", () => {
       completeOrganizeosFragment({
         component: "Box",
         fragment,
-        presetIds: { events, forms, upcomingEvents, products },
+        presetIds: { events, forms, upcomingEvents, products, fundraisers },
         resources: new Map(),
       })
     ).toEqual({ status: "ready", fragment });
@@ -3648,4 +3653,99 @@ describe("a forms insert with the site forms switch on", () => {
     // the stacked form's two inputs have none; the card's three do
     expect(minHeights.filter(Boolean)).toHaveLength(3);
   });
+});
+
+// builder donations spec 7.1 to 7.3; plan F1, task 6 (F-D7, F-D8, F-D17)
+describe("the inserted Giving blocks", () => {
+  const donationForm = "@organizeos/site-components:DonationForm";
+  const goalProgress = "@organizeos/site-components:GoalProgress";
+  const rootsOf = (component: string) =>
+    [...$instances.get().values()].filter(
+      (instance) => instance.component === component
+    );
+
+  test("Goal Progress binds the Fundraisers catalog at its root, and rewrites no Resource", async () => {
+    const { fundraisers } = await getOrganizeosPresetIds(projectId);
+    setProject(withForms);
+    const before = [...$resources.get().values()];
+
+    expect(await insertOrganizeosBlock(goalProgress)).toBe(true);
+
+    const [root, ...others] = rootsOf(goalProgress);
+    expect(others).toEqual([]);
+    expect(getResourceBindings()).toEqual([
+      {
+        type: "resource",
+        id: expect.any(String),
+        scopeInstanceId: root.id,
+        name: "OrganizeOS Fundraisers",
+        resourceId: fundraisers.resourceId,
+      },
+    ]);
+    const [binding] = getResourceBindings();
+    expect(getInstanceProps(root.id, "data")).toEqual([
+      expect.objectContaining({
+        type: "expression",
+        value: `${encodeDataSourceVariable(binding.id)}.data`,
+      }),
+    ]);
+    expect([...$resources.get().values()]).toEqual(before);
+  });
+
+  test("no Fundraisers Resource refuses Goal Progress, writing nothing", async () => {
+    const { fundraisers } = await getOrganizeosPresetIds(projectId);
+    setProject({
+      resources: provisioned.resources.filter(
+        (resource) => resource.id !== fundraisers.resourceId
+      ),
+      dataSources: [],
+    });
+    const before = getStores();
+
+    expect(await insertOrganizeosBlock(goalProgress)).toBe(false);
+
+    expectNothingWritten(before);
+  });
+
+  test("a Donation Form is inserted with the site's org and the platform's origin, and no binding", async () => {
+    setProject(withForms, { platformUrl: "https://app.example.org/" });
+
+    expect(await insertOrganizeosBlock(donationForm)).toBe(true);
+
+    const [root] = rootsOf(donationForm);
+    expect(getInstanceProps(root.id, "organizationId")).toEqual([
+      expect.objectContaining({ type: "string", value: "org-1" }),
+    ]);
+    expect(getInstanceProps(root.id, "platformOrigin")).toEqual([
+      expect.objectContaining({
+        type: "string",
+        value: "https://app.example.org",
+      }),
+    ]);
+    expect(getResourceBindings()).toEqual([]);
+  });
+
+  test("a platform URL that does not parse refuses a Donation Form, writing nothing", async () => {
+    setProject(withForms, { platformUrl: "not a url" });
+    const before = getStores();
+
+    expect(await insertOrganizeosBlock(donationForm)).toBe(false);
+
+    expectNothingWritten(before);
+  });
+
+  test.each([
+    ["DonationForm", donationForm],
+    ["GoalProgress", goalProgress],
+  ])(
+    "without the Giving blocks switch, %s is refused, writing nothing",
+    async (_name, component) => {
+      setProject(withForms, { givingBlocksEnabled: false });
+      const before = getStores();
+
+      expect(await insertOrganizeosBlock(component)).toBe(false);
+
+      expectNothingWritten(before);
+    }
+  );
 });
