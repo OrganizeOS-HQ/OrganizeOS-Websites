@@ -610,6 +610,8 @@ export const recordDataComponents: ReadonlySet<string> = new Set([
   collectionComponent,
   "@organizeos/site-components:SignupForm",
   "@organizeos/site-components:RsvpForm",
+  // the Fundraisers body, bound at insert (builder donations spec 7.1)
+  "@organizeos/site-components:GoalProgress",
 ]);
 
 type InstanceKind = Pick<Instance, "component" | "tag">;

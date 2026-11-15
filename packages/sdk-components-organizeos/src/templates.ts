@@ -11,3 +11,5 @@ export { meta as ConvergenceField } from "./convergence-field.template";
 export { meta as RichText } from "./rich-text/rich-text.template";
 export { meta as ProductGrid } from "./product-grid.template";
 export { meta as ProductCard } from "./product-card.template";
+export { meta as DonationForm } from "./giving/donation-form.template";
+export { meta as GoalProgress } from "./giving/goal-progress.template";

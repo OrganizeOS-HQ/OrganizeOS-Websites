@@ -271,6 +271,8 @@ test("templates", () => {
     "RichText",
     "ProductGrid",
     "ProductCard",
+    "DonationForm",
+    "GoalProgress",
   ]);
   for (const template of Object.values(templates)) {
     expect(template.category).toBe("hidden");
@@ -284,6 +286,12 @@ test("templates", () => {
   expect(templates.SignupFormCard.description).toBe("Email updates, in a card");
   expect(templates.ContactFormCard.description).toBe(
     "Name, email and message, in a card"
+  );
+  expect(templates.DonationForm.label).toBe("Donation Form");
+  expect(templates.DonationForm.description).toBe("Takes a gift on the page");
+  expect(templates.GoalProgress.label).toBe("Goal Progress");
+  expect(templates.GoalProgress.description).toBe(
+    "Shows a fundraiser's progress to its goal"
   );
   expect(templates.EventList.label).toBe("Event List");
   expect(templates.EventCard.label).toBe("Event Card");

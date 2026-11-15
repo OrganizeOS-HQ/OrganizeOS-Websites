@@ -160,6 +160,29 @@ describe("groupOrganizeosBlocks", () => {
         ],
       },
       {
+        label: "Giving",
+        blocks: [
+          {
+            name: `${namespace}:DonationForm`,
+            label: "Donation Form",
+            description: organizeosTemplates.DonationForm.description,
+            icon: organizeosTemplates.DonationForm.icon,
+            firstInstance: expect.objectContaining({
+              component: `${namespace}:DonationForm`,
+            }),
+          },
+          {
+            name: `${namespace}:GoalProgress`,
+            label: "Goal Progress",
+            description: organizeosTemplates.GoalProgress.description,
+            icon: organizeosTemplates.GoalProgress.icon,
+            firstInstance: expect.objectContaining({
+              component: `${namespace}:GoalProgress`,
+            }),
+          },
+        ],
+      },
+      {
         label: "Shop",
         blocks: [
           {
@@ -250,6 +273,7 @@ describe("groupOrganizeosBlocks", () => {
         ],
       ],
       ["Signups", [`${namespace}:SignupForm`, `${namespace}:SignupFormInline`]],
+      ["Giving", [`${namespace}:DonationForm`, `${namespace}:GoalProgress`]],
       ["Shop", [`${namespace}:ProductGrid`, `${namespace}:ProductCard`]],
       ["More", [`${namespace}:FutureBlock`]],
     ]);
@@ -278,6 +302,7 @@ describe("groupOrganizeosBlocks", () => {
       ["Content", [`${namespace}:RichText`]],
       ["Events", [`${namespace}:EventList`, `${namespace}:EventCard`]],
       ["Signups", [`${namespace}:SignupForm`, `${namespace}:SignupFormInline`]],
+      ["Giving", [`${namespace}:DonationForm`, `${namespace}:GoalProgress`]],
       ["Shop", [`${namespace}:ProductGrid`, `${namespace}:ProductCard`]],
     ]);
   });
@@ -449,6 +474,66 @@ describe("$organizeosComponentGroups", () => {
       expect(names).not.toContain(`${namespace}:SignupFormCard`);
       expect(names).not.toContain(`${namespace}:ContactFormCard`);
       expect(names).toContain(`${namespace}:SignupForm`);
+    }
+  );
+
+  // builder donations spec 7.1; plan F1, F-D17
+  test("with the Giving blocks switch on, Donation Form then Goal Progress after the Signups, before the Shop", () => {
+    registerLibrary(organizeosTemplates);
+    $organizeosSite.set({
+      ...site,
+      givingBlocksEnabled: true,
+      shopBlocksEnabled: true,
+    });
+    const names = $organizeosComponentGroups
+      .get()[0]
+      .metas.map((meta) => meta.name);
+    const at = (block: string) => names.indexOf(`${namespace}:${block}`);
+    expect(at("DonationForm")).toBe(at("SignupFormInline") + 1);
+    expect(at("GoalProgress")).toBe(at("DonationForm") + 1);
+    expect(at("ProductGrid")).toBe(at("GoalProgress") + 1);
+    const giving = $organizeosComponentGroups
+      .get()[0]
+      .metas.filter((meta) =>
+        [`${namespace}:DonationForm`, `${namespace}:GoalProgress`].includes(
+          meta.name
+        )
+      );
+    expect(giving.map((meta) => [meta.label, meta.description])).toEqual([
+      ["Donation Form", organizeosTemplates.DonationForm.description],
+      ["Goal Progress", organizeosTemplates.GoalProgress.description],
+    ]);
+  });
+
+  test("with the site forms switch on too, the Giving blocks follow the Forms", () => {
+    registerLibrary(organizeosTemplates);
+    $organizeosSite.set({
+      ...site,
+      givingBlocksEnabled: true,
+      siteFormsEnabled: true,
+    });
+    const names = $organizeosComponentGroups
+      .get()[0]
+      .metas.map((meta) => meta.name);
+    expect(names.indexOf(`${namespace}:DonationForm`)).toBe(
+      names.indexOf(`${namespace}:ContactFormCard`) + 1
+    );
+  });
+
+  test.each([undefined, false])(
+    "with the Giving blocks switch %s, no group lists either Giving block, More included",
+    (givingBlocksEnabled) => {
+      registerLibrary({
+        ...organizeosTemplates,
+        FutureBlock: organizeosTemplates.SignupForm,
+      });
+      $organizeosSite.set({ ...site, givingBlocksEnabled });
+      const names = $organizeosComponentGroups
+        .get()
+        .flatMap((group) => group.metas.map((meta) => meta.name));
+      expect(names).not.toContain(`${namespace}:DonationForm`);
+      expect(names).not.toContain(`${namespace}:GoalProgress`);
+      expect(names.at(-1)).toBe(`${namespace}:FutureBlock`);
     }
   );
 

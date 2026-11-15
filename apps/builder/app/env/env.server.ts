@@ -115,6 +115,11 @@ const environment = z.object({
   // Grid and Product Card and seeds the Products catalog Resource.
   ORGANIZEOS_SHOP_BLOCKS: z.string().optional(),
 
+  // The Giving blocks' switch (OrganizeOS builder donations F1, F-D17): only
+  // the exact value `true` lists the Donation Form and Goal Progress and lets
+  // them be inserted. Off until the pilot acceptance passes.
+  ORGANIZEOS_GIVING_BLOCKS: z.string().optional(),
+
   // The site forms' switch (docs/ORGANIZEOS-FORK.md section 9, "Site forms"):
   // only the exact value `true`, with WEBSITES2_CMS_SECRET set, opens the
   // forms relay, lists the forms cards and Contact us, lets an insert or a
@@ -220,6 +225,7 @@ const rawEnv = {
   WEBSITES2_CMS_SECRET: process.env.WEBSITES2_CMS_SECRET,
   ORGANIZEOS_CMS_NATIVE: process.env.ORGANIZEOS_CMS_NATIVE,
   ORGANIZEOS_SHOP_BLOCKS: process.env.ORGANIZEOS_SHOP_BLOCKS,
+  ORGANIZEOS_GIVING_BLOCKS: process.env.ORGANIZEOS_GIVING_BLOCKS,
   ORGANIZEOS_SITE_FORMS: process.env.ORGANIZEOS_SITE_FORMS,
   ORGANIZEOS_CATALOG_ROOT_BINDINGS:
     process.env.ORGANIZEOS_CATALOG_ROOT_BINDINGS,

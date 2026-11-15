@@ -1,0 +1,9 @@
+{
+  "address": "/embed/give/{orgId}",
+  "query": ["to", "path", "parent", "r", "preview", "state"],
+  "fragment": "t",
+  "messages": {
+    "height": { "type": "oos-give-height", "height": 640 },
+    "done": { "type": "oos-give-done" }
+  }
+}

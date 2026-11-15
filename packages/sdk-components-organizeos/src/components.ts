@@ -20,3 +20,5 @@ export { RichText } from "./rich-text/rich-text";
 export { Price } from "./shop/price";
 export { ProductGrid } from "./shop/product-grid";
 export { ProductCard } from "./shop/product-card";
+export { DonationForm, DonationFrame } from "./giving/donation-form";
+export { GoalProgress, GoalProgressFigure } from "./giving/goal-progress";
