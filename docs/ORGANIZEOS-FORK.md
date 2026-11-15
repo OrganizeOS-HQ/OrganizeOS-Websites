@@ -934,8 +934,11 @@ can be merged with minimal conflict.
     `<TemplatesScreen />` mount in `builder/builder.tsx`, pinned by
     `overlay.wiring.node.test.ts`; **the page templates (§9, "Starter
     pages")**: in the blocks package, `src/starter-pages/` (`types.ts`,
-    `look.ts`, `render.ts`, `check.ts`, `catalog.ts`, `index.ts`, the
-    fixture `__fixtures__/sample/` and their tests), exported as
+    `look.ts`, `render.ts`, `check.ts`, `catalog.ts`, `index.ts`,
+    `sections.tsx`, `picture.ts`, the eight page templates' modules
+    (`events.tsx`, `event.tsx`, `donate.tsx`, `fundraiser.tsx`, `join.tsx`,
+    `volunteer.tsx`, `about.tsx`, `contact.tsx`), their pictures in
+    `images/`, the fixture `__fixtures__/sample/` and their tests), exported as
     `@organizeos/site-components/starter-pages`, which neither
     `components.ts` nor `metas.ts` imports (pinned); in the builder,
     `features/organizeos-panel/starter-pages/` (`insert-starter-page.ts`,
@@ -3839,7 +3842,9 @@ starter templates, listed 2026-11-01 (OrganizeOS plan
   asked for a bold the browser would synthesize.
 - **The preview tool**, `scripts/preview-site-template.mjs`
   (`corepack pnpm preview:template <id> [--palette <file>] [--no-events]`, or
-  `<id> [--thumbnail] [--pages]`), with its builder half in
+  `<id> [--thumbnail] [--pages]`, or for a page template
+  `--starter <id> [--look <template-id>] [--no-events]` and
+  `--starter <id> --thumbnail`), with its builder half in
   `features/organizeos-panel/site-templates/preview/`: it renders a template
   through the publish path and checks it against the phone bar (OrganizeOS spec
   section 2, rule 9). It is a local tool: CI runs the tests of its modules
@@ -3902,6 +3907,27 @@ starter templates, listed 2026-11-01 (OrganizeOS plan
     leaves the thumbnail as it is. A change to a page reruns it, and a new
     page's picture is drawn before its `?url&no-inline` import is added: the
     dump imports the template, so a missing file stops the tool.
+  - `--starter <id>` previews a page template (Starter pages, below) in place
+    of a site template, and takes no template id, `--palette` or `--pages`.
+    The dump provisions the project as above, then gives it the blank values
+    (`startBlankMutable`) or, with `--look <template-id>`, applies that site
+    template with its own palette, and adds the page template at its default
+    path (`starterDefaultPath`) through `insertStarterPageMutable`, the New
+    page screen's own insert, with no site forms; a refusal or an unbound
+    block stops it. Only the RSVP Form, if the page has one, is changed after:
+    its `record` is the first sample event's id, read from `sampleEvents`, so
+    the form shows; a page template never sets it, the org picks the event.
+    It looks only in `STARTER_PAGES`, never the sample fixture. The checks run
+    on the new page alone, written under
+    `previews/starter-pages/<id>/<run>/`, the run "neutral" or the look's id,
+    with ".no-events" after it for a `--no-events` run. `--thumbnail` takes
+    neither `--look` nor `--no-events`: it draws the new page's top on the
+    blank site in `PAGE_PICTURE`'s frame over the page template's picture
+    (`images/<id>.jpg`). The neutral look's body font is the visitor's
+    system font, so a picture shows the drawing machine's.
+  - A console error is the page's unless it is the browser's own
+    `/favicon.ico` request, a 404 on any site with no favicon (the org sets
+    one in Settings), which Playwright reports as no request.
 - **Not yet run in a deployed builder.** The spike (OrganizeOS spec, section
   7, step 2) is `spike`, a Hero, two Events sections (one with an Event Card,
   one with an Event List), and a Sign-up section with a Signup Form, with
@@ -3918,8 +3944,14 @@ templates), `src/starter-pages/` in the package and
 `docs/superpowers/specs/2026-11-13-builder-templates-screen-and-page-templates-design.md`
 section 6; plan `docs/superpowers/plans/2026-11-14-builder-templates-c1-new-page.md`):
 one page, written as code, that New page adds to a site with content. The
-catalog (`STARTER_PAGES`) is empty until the first page templates join as
-drafts.
+catalog (`STARTER_PAGES`, plan
+`docs/superpowers/plans/2026-11-15-builder-templates-c2-page-templates.md`)
+holds eight, in this order, all drafts until the owner has seen their
+pictures: Events (`/events`: an Event List of cards and a Signup Form), Event
+(`/event`: an RSVP Form), Donate (`/give`, its button to the platform's
+`/donate`), Fundraiser (`/campaign`), Join (`/join-us`, its button to the
+platform's `/join`), Volunteer (`/volunteer`: a Signup Form), About (`/about`)
+and Contact (`/contact`, with no form).
 
 - **New page.** The Pages panel's + menu item sets `$newPageScreenOpen`
   (one marked block in `pages.tsx`, §7), which opens the **New page screen**
@@ -3961,6 +3993,21 @@ drafts.
   700, the kit's name sizes) and `neutralBodyStyles()`. A page template is
   drawn in the recorded site template's `look` (`starterLook`, from
   `projectSettings.organizeos.siteTemplate`), else `NEUTRAL_LOOK`.
+- **The sections** (`sections.tsx`), the page templates' shared parts, each
+  a labelled section (`Page header`, `Hero: Split`, `Events: Card grid`,
+  `Sign-up: Side by side` and `: Centered`, `Call to action band: Centered`
+  and `: Split`, `Mission and values: Three columns` and `: List`,
+  `About: Text only` and `: Image left`, `Volunteer opportunities: Cards`,
+  `Team or leadership: Compact`, `Contact: Split`, `FAQ: Two columns`) drawn
+  only from the canonical variables and the look: every heading in the
+  heading font at the look's `headingWeight` and `headingCase`, eyebrows and
+  labels at 14px in capitals at its `buttonWeight`, and no other weight;
+  accent-2 only on text of 24px and over (the numerals, in the heading
+  font); no tag the browser bolds (`strong`, `b`, `th`, `dt`); a band's
+  button inverted (base on accent-1); a grid's columns from
+  `String(columns)`. `sections.test.tsx` holds these with sentinel weights
+  under every look. A page's picture entry comes from `pictureEntry`
+  (`picture.ts`), its `sourceUrl` the preview tool.
 - **The render and the check** share the site templates' per-page code,
   exported from `site-templates/render.ts` (`renderPageBody`) and `check.ts`
   (`checkPageRules`, `checkMediaQueries`, `findPagePathProblem`,
@@ -3995,9 +4042,24 @@ drafts.
   description, `excludePageFromSearch: "false"`) last in the root folder; and
   the placed blocks bound as a site template's, one unbound-blocks toast
   (`unbound-blocks.ts`) naming any that could not be. The page is never added
-  to a nav or footer. Forms placed by a page template get their site forms
-  with the forms work (fork PR 2b's helper), wired in with the first page
-  templates.
+  to a nav or footer. A legacy Form (one a load did not migrate) in Home's nav
+  or footer is not copied. The row's name is the trimmed name.
+- **A page template's sign-up forms** (plan C2, rulings 7 and 8). With the
+  site-forms switch on (`isSiteFormsEnabled`), a commit the runtime will take
+  (`canCommitWebstudioData`) and the Events Resource the blocks bind to,
+  `insertStarterPage` makes each Signup Form placement's site form before the
+  write, with the forms work's helpers (OrganizeOS-HQ/OrganizeOS-Websites#110:
+  `siteFormPlacementsOf`, `createSiteFormsForPlacements`), titled
+  "{page name}: Signup Form", and `insertStarterPageMutable` marks the
+  placement with it (`markPlacementMutable`), in the same undo step. Its
+  client id is made from the project, `starter:<id>:<token>` and the
+  placement, the token minted by the New page screen each time it opens and
+  after each add, so a retry in one open gets the same form back and a later
+  add makes its own. `findStarterInsertRefusal` runs against the current
+  pages first, so a refused add makes no form; a form that cannot be made
+  refuses the add with "Couldn't create the form. Try again.". With the
+  switch off, no form is made or marked, and the Signup Form keeps the org's
+  default, as a block from the Insert panel does.
 
 **Shipping in published sites**, `packages/cli/src/organizeos-components.ts`:
 
