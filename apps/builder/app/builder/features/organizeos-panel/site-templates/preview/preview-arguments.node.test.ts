@@ -51,19 +51,36 @@ describe("parsePreviewArguments with --starter", () => {
     });
   });
 
+  // Each matches its own refusal's words: the usage that most append names
+  // every option, so an option's name alone would match any of them.
   test.each([
-    [["spike", "--starter", "events"], /--starter/],
-    [["--look", "workwear"], /--look/],
-    [["spike", "--look", "workwear"], /--look/],
+    [
+      ["spike", "--starter", "events"],
+      /--starter draws a page template, so it takes no template id/,
+    ],
+    [["--look", "workwear"], /--look takes --starter/],
+    [["spike", "--look", "workwear"], /--look takes --starter/],
     [
       ["--starter", "events", "--thumbnail", "--look", "workwear"],
-      /--thumbnail/,
+      /--thumbnail draws a page template .* neither --look nor --no-events/,
     ],
-    [["--starter", "events", "--thumbnail", "--no-events"], /--thumbnail/],
-    [["--starter", "events", "--pages"], /--pages/],
-    [["--starter", "events", "--palette", "night.json"], /--palette/],
-    [["--starter", "Events"], /--starter/],
-    [["--starter", "events", "--look", "../spike"], /--look/],
+    [
+      ["--starter", "events", "--thumbnail", "--no-events"],
+      /--thumbnail draws a page template .* neither --look nor --no-events/,
+    ],
+    [["--starter", "events", "--pages"], /--pages draws a template's pages/],
+    [
+      ["--starter", "events", "--palette", "night.json"],
+      /--palette is a template's/,
+    ],
+    [
+      ["--starter", "Events"],
+      /--starter takes a page template's id.*not "Events"/,
+    ],
+    [
+      ["--starter", "events", "--look", "../spike"],
+      /--look takes a site template's id.*not "\.\.\/spike"/,
+    ],
   ])("%j is refused", (args, message) => {
     expect(() => parsePreviewArguments(args, cwd)).toThrow(message);
   });

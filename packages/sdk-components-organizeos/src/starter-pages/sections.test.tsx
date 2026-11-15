@@ -222,6 +222,7 @@ describe("the neutral sections", () => {
       placements.map((placement) => placement.rootId)
     );
     let headingFont = 0;
+    let labels = 0;
     for (const instance of own) {
       for (const decl of declsOf(fragment, instance.id)) {
         if (decl.property === "fontWeight") {
@@ -244,9 +245,15 @@ describe("the neutral sections", () => {
       }
       if (instance.label === "Eyebrow" || instance.label === "Label") {
         expect(css(declOf(fragment, instance.id, "fontWeight")!)).toBe("456");
+        expect(css(declOf(fragment, instance.id, "fontSize")!)).toBe("14px");
+        expect(css(declOf(fragment, instance.id, "textTransform")!)).toBe(
+          "uppercase"
+        );
+        labels += 1;
       }
     }
     expect(headingFont).toBeGreaterThan(10);
+    expect(labels).toBeGreaterThan(3);
 
     const neutral = render(both, NEUTRAL_LOOK);
     expect(

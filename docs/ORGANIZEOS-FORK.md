@@ -4004,9 +4004,11 @@ and Contact (`/contact`, with no form).
   labels at 14px in capitals at its `buttonWeight`, and no other weight;
   accent-2 only on text of 24px and over (the numerals, in the heading
   font); no tag the browser bolds (`strong`, `b`, `th`, `dt`); a band's
-  button inverted (base on accent-1); a grid's columns from
-  `String(columns)`. `sections.test.tsx` holds these with sentinel weights
-  under every look. A page's picture entry comes from `pictureEntry`
+  button inverted (base on accent-1). `sections.test.tsx` holds the weights,
+  case and eyebrow size under a look of sentinel weights, and accent-2, the
+  tags and the band's button under the neutral look; each section passes
+  the starter check alone under every look. A page's picture entry comes
+  from `pictureEntry`
   (`picture.ts`), its `sourceUrl` the preview tool.
 - **The render and the check** share the site templates' per-page code,
   exported from `site-templates/render.ts` (`renderPageBody`) and `check.ts`
@@ -4015,8 +4017,12 @@ and Contact (`/contact`, with no form).
   those rules under `NEUTRAL_LOOK` and every catalog template's `look`
   (`catalog.test.ts`), and its own: no section labelled Nav or Footer, no page
   link, a default path that is not empty, `/newsletter`, `/*` or platform
-  served, the picture in `images` and nothing else there, no style on the
-  body, `blocks` equal to what the body places, and no asset on the page.
+  served, the picture in `images` and nothing else there, its entry held as
+  a site template's images are (an uploadable URL, a source URL, alt text),
+  no style on the body, `blocks` equal to what the body places, no asset on
+  the page, and no bracketed placeholder over 24 characters: the kit's
+  `sample` makes a placeholder's spaces no-break, so a longer one cannot wrap
+  on a phone, and an instruction is written without brackets.
   `starter-pages/` imports the site-templates folder by module, never its
   barrel or catalog (pinned).
 - **Adding a page template** (`insert-starter-page.ts`): `insertStarterPage`
@@ -4042,8 +4048,9 @@ and Contact (`/contact`, with no form).
   description, `excludePageFromSearch: "false"`) last in the root folder; and
   the placed blocks bound as a site template's, one unbound-blocks toast
   (`unbound-blocks.ts`) naming any that could not be. The page is never added
-  to a nav or footer. A legacy Form (one a load did not migrate) in Home's nav
-  or footer is not copied. The row's name is the trimmed name.
+  to a nav or footer. A nav or footer of Home's that holds a legacy Form (one
+  a load did not migrate) is not copied, with no message: the page is added
+  without that piece. The row's name is the trimmed name.
 - **A page template's sign-up forms** (plan C2, rulings 7 and 8). With the
   site-forms switch on (`isSiteFormsEnabled`), a commit the runtime will take
   (`canCommitWebstudioData`) and the Events Resource the blocks bind to,

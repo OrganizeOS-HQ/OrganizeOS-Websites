@@ -76,8 +76,7 @@
 // look's id, followed by ".no-events" for a --no-events run. With
 // --thumbnail, step 5 draws the new page's top on the blank site in
 // PAGE_PICTURE's frame, written over the page template's picture
-// (images/<id>.jpg in the builder's starter-pages folder of the blocks
-// package).
+// (images/<id>.jpg in the blocks package's src/starter-pages/).
 
 import { spawn } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";

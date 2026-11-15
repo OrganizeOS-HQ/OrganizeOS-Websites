@@ -818,13 +818,21 @@ describe("creating", () => {
     render();
     await open();
     await clickCard("events");
-    await submit();
-    // reopened in the same render as the close
-    await act(async () => {
-      $newPageScreenOpen.set(true);
+    // The add closes the screen and something reopens it before React
+    // renders: the screen never renders closed, so its open effect does not
+    // run again, and only the mint after the add gives the next one a token
+    // of its own.
+    const reopen = $newPageScreenOpen.listen((isOpen) => {
+      if (isOpen === false) {
+        $newPageScreenOpen.set(true);
+      }
     });
-    await settle();
-    await clickCard("events");
+    try {
+      await submit();
+    } finally {
+      reopen();
+    }
+    expect(dialog()).not.toBeNull();
     await submit();
     const [first, second] = vi
       .mocked(insertStarterPage)
