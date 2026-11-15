@@ -33,6 +33,10 @@ import {
   organizeosNamespace,
 } from "~/builder/features/organizeos-panel/insert-organizeos-block";
 import {
+  fundraisersPicker,
+  goalProgressComponent,
+} from "~/builder/features/organizeos-panel/giving-blocks";
+import {
   type ControlProps,
   VerticalLayout,
   humanizeAttribute,
@@ -302,6 +306,8 @@ const recordPickers: ReadonlyMap<string, RecordPicker> = new Map([
     ),
   ],
   [`${organizeosNamespace}:RsvpForm`, eventsPicker],
+  // Goal Progress (builder donations F1, F-D4)
+  [goalProgressComponent, fundraisersPicker],
 ]);
 
 /** Whether a prop gets the record picker instead of its own control. */
