@@ -53,6 +53,7 @@ import {
 import {
   type StarterInsertOutcome,
   insertStarterPage,
+  starterDefaultPath,
 } from "./insert-starter-page";
 import { $newPageScreenOpen } from "./new-page-screen-state";
 
@@ -114,16 +115,6 @@ const getOfferedCards = (showDrafts: boolean, blocksEnabled: boolean) => [
     .filter((page) => page.blocks.length === 0 || blocksEnabled)
     .map((page): Card => ({ id: page.id, name: page.name, page })),
 ];
-
-/** A page template's default path, or the next free one after it. */
-const defaultPath = (pages: Pages, page: StarterPage) =>
-  isPathAvailable({
-    pages,
-    path: page.path,
-    parentFolderId: pages.rootFolderId,
-  })
-    ? page.path
-    : nameToPath(pages, page.path.slice(1));
 
 /** What a refused page template says, by its reason; the runtime's its own. */
 const refusalMessages: Record<
@@ -243,7 +234,7 @@ const CreateView = ({
   const [path, setPath] = useState(() =>
     card.page === undefined
       ? nameToPath(pages, pageSettingsDefaultValues.name)
-      : defaultPath(pages, card.page)
+      : starterDefaultPath(pages, card.page)
   );
   const problem = pathProblem(pages, path);
   const canCreate =
@@ -269,6 +260,9 @@ const CreateView = ({
         </Flex>
       )}
       <form
+        // the fields stay a form's width when the screen is wide (plan C2,
+        // ruling 9)
+        style={{ maxWidth: 400 }}
         onSubmit={(event) => {
           event.preventDefault();
           if (canCreate) {

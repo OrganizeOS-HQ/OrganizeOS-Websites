@@ -56,6 +56,7 @@ import {
   findStarterInsertRefusal,
   insertStarterPage,
   insertStarterPageMutable,
+  starterDefaultPath,
   starterLook,
 } from "./insert-starter-page";
 
@@ -592,6 +593,42 @@ describe("insertStarterPageMutable", () => {
     expect(
       childrenOf(data, newBodyId(data)).map((child) => child.label)
     ).toEqual(["Nav", "Page header", "Sign-up", "Call to action band"]);
+  });
+
+  test("stores the trimmed name", async () => {
+    const data = await appliedSite();
+    expect(insert(data, { name: "  Our events  " }).status).toBe("added");
+    expect(data.pages.pages.get("new-page")?.name).toBe("Our events");
+  });
+
+  test("a Home nav holding a legacy Form is skipped, the page still added", async () => {
+    const data = await appliedSite();
+    const homeNavId = childrenOf(data, homeBodyId(data))[0].id;
+    data.instances.set("legacy-form", {
+      type: "instance",
+      id: "legacy-form",
+      component: "Form",
+      children: [],
+    });
+    data.instances.get(homeNavId)!.children.push({
+      type: "id",
+      value: "legacy-form",
+    });
+
+    expect(insert(data).status).toBe("added");
+
+    const children = childrenOf(data, newBodyId(data));
+    expect(children[0].label).toBe("Page header");
+    expect(children.at(-1)).toMatchObject({ tag: "footer", label: "Footer" });
+  });
+
+  test("starterDefaultPath takes the next free path", async () => {
+    const data = await blankSite();
+    expect(starterDefaultPath(data.pages, { path: "/events" })).toBe("/events");
+    expect(insert(data, { path: "/events" }).status).toBe("added");
+    expect(starterDefaultPath(data.pages, { path: "/events" })).toBe(
+      "/events1"
+    );
   });
 
   test("stores the row", async () => {

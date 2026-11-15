@@ -568,6 +568,15 @@ describe("the create view", () => {
     }
   });
 
+  test("the create view's form is no wider than 400px", async () => {
+    render();
+    await open();
+    await clickCard("events");
+    const form = dialog()?.querySelector("form");
+    expect(form).not.toBeNull();
+    expect(form!.getBoundingClientRect().width).toBeLessThanOrEqual(400);
+  });
+
   test("builder shortcuts do not fire behind it", async () => {
     const listener = vi.fn();
     document.addEventListener("keydown", listener);

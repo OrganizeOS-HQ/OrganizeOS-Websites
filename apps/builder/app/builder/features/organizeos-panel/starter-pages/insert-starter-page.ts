@@ -2,6 +2,7 @@ import { nanoid } from "nanoid";
 import { current, isDraft } from "immer";
 import {
   type Instance,
+  type Pages,
   type StyleDecl,
   type WebstudioData,
   type WebstudioFragment,
@@ -17,6 +18,7 @@ import {
   getSlotFragmentId,
   insertWebstudioFragmentCopy,
   isPathAvailable,
+  nameToPath,
   validatePathnamePattern,
 } from "@webstudio-is/project-build/runtime";
 import {
@@ -55,6 +57,23 @@ import {
  * footer around it and Home's body styles on it, in one staged write, one
  * undo step. Its blocks are bound as a site template's are.
  */
+
+/**
+ * A page template's default path, or the next free one after it in the root
+ * folder (`/events` taken gives `/events1`): the New page screen's prefill,
+ * and the preview tool's path.
+ */
+export const starterDefaultPath = (
+  pages: Pages,
+  page: Pick<StarterPage, "path">
+): string =>
+  isPathAvailable({
+    pages,
+    path: page.path,
+    parentFolderId: pages.rootFolderId,
+  })
+    ? page.path
+    : nameToPath(pages, page.path.slice(1));
 
 export type StarterRefusalReason =
   | "invalid"
@@ -154,6 +173,12 @@ const copyPieceMutable = (
   at: "start" | "end"
 ) => {
   const extracted = extractWebstudioFragment(data, pieceId);
+  // A legacy Form (one a load did not migrate) is a fragment upstream's copy
+  // refuses outright; the page is added without this piece rather than not
+  // at all (plan C2, rulings 9 and 10).
+  if (extracted.instances.some((instance) => instance.component === "Form")) {
+    return;
+  }
   const shared = new Set<Instance["id"]>();
   for (const instance of extracted.instances) {
     const fragmentId = getSlotFragmentId(instance);
@@ -320,7 +345,7 @@ export const insertStarterPageMutable = (
 
   data.pages.pages.set(rendered.pageId, {
     id: rendered.pageId,
-    name,
+    name: name.trim(),
     path,
     title: JSON.stringify(rendered.title),
     rootInstanceId: bodyId,
