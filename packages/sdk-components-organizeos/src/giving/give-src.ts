@@ -107,7 +107,7 @@ export const readSiteTheme = (el: Element): Record<string, string> => {
   const probe = el.ownerDocument.createElement("span");
   probe.hidden = true;
   probe.setAttribute("aria-hidden", "true");
-  el.append(probe);
+  el.appendChild(probe);
   try {
     for (const name of CANONICAL_COLOR_NAMES) {
       if (trimmed(style.getPropertyValue(`--${name}`)) === undefined) {
