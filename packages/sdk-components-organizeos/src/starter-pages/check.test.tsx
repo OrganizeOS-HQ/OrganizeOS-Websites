@@ -204,6 +204,22 @@ describe("checkStarterPage", () => {
     );
   });
 
+  // The kit keeps a placeholder's spaces no-break, so a long one cannot wrap
+  // and runs past a phone's width: a bracket holds a short name, and an
+  // instruction is written without one.
+  test("a placeholder over 24 characters is refused", () => {
+    const page = withBody(() => (
+      <ws.element ws:tag="section" ws:label="FAQ">
+        <ws.element ws:tag="p">
+          {"Is it free? [Say whether there is a cost.] [A question people ask]"}
+        </ws.element>
+      </ws.element>
+    ));
+    expect(checkStarterPage(page)).toEqual([
+      `Page "sample": the placeholder "[Say whether there is a cost.]" is over 24 characters, too long to keep on one line on a phone; bracket a short name, and write an instruction without brackets`,
+    ]);
+  });
+
   test("a look without headingWeight fails", () => {
     const { headingWeight: _, ...rest } = NEUTRAL_LOOK;
     const look = rest as unknown as CompleteKitStyle;

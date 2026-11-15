@@ -35,20 +35,12 @@ export const donateStarterPage: StarterPage = {
         look,
         heading: "What a gift does",
         values: [
-          [
-            "[$25]",
-            "[What it pays for]",
-            "[Say what this gift makes possible.]",
-          ],
-          [
-            "[$50]",
-            "[What it pays for]",
-            "[Say what this gift makes possible.]",
-          ],
+          ["[$25]", "[What it pays for]", "Say what this gift makes possible."],
+          ["[$50]", "[What it pays for]", "Say what this gift makes possible."],
           [
             "[$100]",
             "[What it pays for]",
-            "[Say what this gift makes possible.]",
+            "Say what this gift makes possible.",
           ],
         ],
       })}
@@ -64,13 +56,13 @@ export const donateStarterPage: StarterPage = {
         questions: [
           [
             "Is my gift tax-deductible?",
-            "[Say whether, and what your tax status is.]",
+            "Say whether, and what your tax status is.",
           ],
-          ["Can I give every month?", "[Say how to set up a monthly gift.]"],
-          ["How is my gift used?", "[Say where the money goes.]"],
+          ["Can I give every month?", "Say how to set up a monthly gift."],
+          ["How is my gift used?", "Say where the money goes."],
           [
             "Can I give another way?",
-            "[List checks, transfers or other ways to give.]",
+            "List checks, transfers or other ways to give.",
           ],
         ],
       })}

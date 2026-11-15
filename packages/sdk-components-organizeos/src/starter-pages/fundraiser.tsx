@@ -33,9 +33,9 @@ export const fundraiserStarterPage: StarterPage = {
         look,
         heading: "Where the money goes",
         values: [
-          ["01", "[First use]", "[Say what this part of the money pays for.]"],
-          ["02", "[Second use]", "[Say what this part of the money pays for.]"],
-          ["03", "[Third use]", "[Say what this part of the money pays for.]"],
+          ["01", "[First use]", "Say what this part of the money pays for."],
+          ["02", "[Second use]", "Say what this part of the money pays for."],
+          ["03", "[Third use]", "Say what this part of the money pays for."],
         ],
       })}
       {ctaBandSplit({
@@ -49,15 +49,12 @@ export const fundraiserStarterPage: StarterPage = {
         heading: "About this campaign",
         questions: [
           ["When does it end?", "[Give the end date.]"],
-          ["What if you pass the goal?", "[Say what happens to the extra.]"],
+          ["What if you pass the goal?", "Say what happens to the extra."],
           [
             "Is my gift tax-deductible?",
-            "[Say whether, and what your tax status is.]",
+            "Say whether, and what your tax status is.",
           ],
-          [
-            "How else can I help?",
-            "[Suggest sharing, volunteering or hosting.]",
-          ],
+          ["How else can I help?", "Suggest sharing, volunteering or hosting."],
         ],
       })}
     </ws.element>

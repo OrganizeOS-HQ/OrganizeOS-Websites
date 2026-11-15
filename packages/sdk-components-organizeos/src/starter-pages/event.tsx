@@ -50,15 +50,15 @@ export const eventStarterPage: StarterPage = {
         look,
         heading: "Before you come",
         questions: [
-          ["Is it free?", "[Say whether there is a cost, and how to pay it.]"],
+          ["Is it free?", "Say whether there is a cost, and how to pay it."],
           [
             "Is the venue accessible?",
-            "[Describe step-free access, seating and restrooms.]",
+            "Describe step-free access, seating and restrooms.",
           ],
-          ["Can I bring someone?", "[Say whether guests are welcome.]"],
+          ["Can I bring someone?", "Say whether guests are welcome."],
           [
             "Who do I ask if I have a question?",
-            "[Name a person and how to reach them.]",
+            "Name a person and how to reach them.",
           ],
         ],
       })}

@@ -44,9 +44,9 @@ export const aboutStarterPage: StarterPage = {
         look,
         heading: "What we believe",
         values: [
-          ["01", "[A value]", "[Say what this value means in practice.]"],
-          ["02", "[A value]", "[Say what this value means in practice.]"],
-          ["03", "[A value]", "[Say what this value means in practice.]"],
+          ["01", "[A value]", "Say what this value means in practice."],
+          ["02", "[A value]", "Say what this value means in practice."],
+          ["03", "[A value]", "Say what this value means in practice."],
         ],
       })}
       {teamCompact({

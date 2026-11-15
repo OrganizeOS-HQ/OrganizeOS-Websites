@@ -34,13 +34,9 @@ export const volunteerStarterPage: StarterPage = {
         heading: "Ways to help",
         intro: "Find one that fits your time and your skills.",
         opportunities: [
-          [
-            "[A few hours a month]",
-            "[A role]",
-            "[Say what the role involves.]",
-          ],
-          ["[One weekend]", "[A role]", "[Say what the role involves.]"],
-          ["[From home]", "[A role]", "[Say what the role involves.]"],
+          ["[A few hours a month]", "[A role]", "Say what the role involves."],
+          ["[One weekend]", "[A role]", "Say what the role involves."],
+          ["[From home]", "[A role]", "Say what the role involves."],
         ],
       })}
       {signUpSideBySide({
@@ -55,16 +51,10 @@ export const volunteerStarterPage: StarterPage = {
         look,
         heading: "About volunteering",
         questions: [
-          ["Do I need experience?", "[Say what training you give.]"],
-          [
-            "How much time does it take?",
-            "[Say what a typical commitment is.]",
-          ],
+          ["Do I need experience?", "Say what training you give."],
+          ["How much time does it take?", "Say what a typical commitment is."],
           ["Is there an age limit?", "[Say who can volunteer.]"],
-          [
-            "Can I volunteer with friends?",
-            "[Say whether groups are welcome.]",
-          ],
+          ["Can I volunteer with friends?", "Say whether groups are welcome."],
         ],
       })}
     </ws.element>

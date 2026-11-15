@@ -34,9 +34,9 @@ export const joinStarterPage: StarterPage = {
         look,
         heading: "What members get",
         values: [
-          ["01", "[A benefit]", "[Say what members get and why it matters.]"],
-          ["02", "[A benefit]", "[Say what members get and why it matters.]"],
-          ["03", "[A benefit]", "[Say what members get and why it matters.]"],
+          ["01", "[A benefit]", "Say what members get and why it matters."],
+          ["02", "[A benefit]", "Say what members get and why it matters."],
+          ["03", "[A benefit]", "Say what members get and why it matters."],
         ],
       })}
       {ctaBandCentered({
@@ -49,10 +49,10 @@ export const joinStarterPage: StarterPage = {
         look,
         heading: "About membership",
         questions: [
-          ["How much does it cost?", "[Give the dues, and any reduced rates.]"],
+          ["How much does it cost?", "Give the dues, and any reduced rates."],
           ["Who can join?", "[Say who is eligible.]"],
-          ["How do I renew?", "[Say when and how membership renews.]"],
-          ["Can I cancel?", "[Say how to cancel, and what happens then.]"],
+          ["How do I renew?", "Say when and how membership renews."],
+          ["Can I cancel?", "Say how to cancel, and what happens then."],
         ],
       })}
     </ws.element>

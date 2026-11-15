@@ -30,6 +30,34 @@ const isNavOrFooter = (label: string) =>
     (name) => label === name || label.startsWith(`${name}:`)
   );
 
+/**
+ * The longest bracketed placeholder, brackets included. The kit's `sample`
+ * makes a placeholder's spaces no-break, so it never wraps: 24 characters
+ * keep a name ("[Organization name]", "[A question people ask]") on one line
+ * of a 320px phone, and the preview tool measures the rest.
+ */
+const PLACEHOLDER_MAX_LENGTH = 24;
+
+const longPlaceholders = (
+  fragment: RenderedPage["fragment"],
+  name: string
+): string[] =>
+  fragment.instances.flatMap((instance) =>
+    instance.children.flatMap((child) =>
+      child.type === "text"
+        ? (child.value.match(/\[[^\]]*\]/g) ?? [])
+            .map((placeholder) => placeholder.replaceAll("\u00A0", " "))
+            .filter(
+              (placeholder) => placeholder.length > PLACEHOLDER_MAX_LENGTH
+            )
+            .map(
+              (placeholder) =>
+                `${name}: the placeholder "${placeholder}" is over ${PLACEHOLDER_MAX_LENGTH} characters, too long to keep on one line on a phone; bracket a short name, and write an instruction without brackets`
+            )
+        : []
+    )
+  );
+
 const checkLookFields = (look: CompleteKitStyle): string[] =>
   LOOK_FIELDS.flatMap((field) =>
     look[field] === undefined ? [`Look: ${field} is not set`] : []
@@ -129,6 +157,7 @@ const checkRendered = (page: StarterPage, rendered: RenderedPage): string[] => {
     ...[...findPageAssetIds([rendered])].map(
       (id) => `${name}: holds the asset "${id}"; a page template holds none`
     ),
+    ...longPlaceholders(fragment, name),
   ];
 };
 

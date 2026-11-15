@@ -36,7 +36,7 @@ export const contactStarterPage: StarterPage = {
           heading: "Visit us",
           lines: [
             "[Street address]",
-            "[City, region and postal code]",
+            "[City and postal code]",
             "[Opening hours]",
           ],
         },
@@ -45,15 +45,15 @@ export const contactStarterPage: StarterPage = {
         look,
         heading: "Before you write",
         questions: [
-          ["How soon will I hear back?", "[Say how long a reply takes.]"],
+          ["How soon will I hear back?", "Say how long a reply takes."],
           [
             "Who do I contact for the press?",
-            "[Name a person and how to reach them.]",
+            "Name a person and how to reach them.",
           ],
           ["Can I visit without an appointment?", "[Say whether, and when.]"],
           [
             "Where else can I find you?",
-            "[List the other places people can reach you.]",
+            "List the other places people can reach you.",
           ],
         ],
       })}
