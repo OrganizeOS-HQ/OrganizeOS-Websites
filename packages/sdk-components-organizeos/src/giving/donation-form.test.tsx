@@ -32,7 +32,9 @@ class StubIntersectionObserver {
 }
 const comeIntoView = () =>
   act(() => {
-    for (const callback of observers) callback([{ isIntersecting: true }]);
+    for (const callback of observers) {
+      callback([{ isIntersecting: true }]);
+    }
   });
 
 const withRenderer = (renderer: Renderer, children: ReactNode) => (
