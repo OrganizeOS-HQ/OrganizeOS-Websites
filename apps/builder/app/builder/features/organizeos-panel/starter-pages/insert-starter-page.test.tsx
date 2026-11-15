@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { enableMapSet } from "immer";
 import type { Project } from "@webstudio-is/project";
 import type { ProjectSettings } from "@webstudio-is/project-build";
@@ -23,6 +23,7 @@ import {
 } from "@organizeos/site-components/site-templates";
 import {
   NEUTRAL_LOOK,
+  STARTER_PAGES,
   neutralBodyStyles,
   renderStarterPage,
 } from "@organizeos/site-components/starter-pages";
@@ -43,14 +44,17 @@ import {
   $styles,
 } from "~/shared/sync/data-stores";
 import { $selectedPageId } from "~/shared/nano-states/pages";
+import { $organizeosSite } from "~/shared/nano-states";
 import { $authPermit, $builderMode } from "~/shared/nano-states/misc";
 import { getWebstudioData } from "~/shared/instance-utils/data";
 import { getOrganizeosPresetIds } from "../insert-organizeos-block";
 import { createProvisionedProject } from "../site-templates/provisioned-project";
 import {
   applySiteTemplateMutable,
+  siteFormPlacementKey,
   startBlankMutable,
 } from "../site-templates/apply-site-template";
+import { addToFolderMutable, updateWebstudioDataStaged } from "../staged-data";
 import { unboundBlocksMessage } from "../unbound-blocks";
 import {
   findStarterInsertRefusal,
@@ -59,6 +63,9 @@ import {
   starterDefaultPath,
   starterLook,
 } from "./insert-starter-page";
+
+const { createSiteForm } = vi.hoisted(() => ({ createSiteForm: vi.fn() }));
+vi.mock("../forms-api", () => ({ createSiteForm, getFormsAccess: vi.fn() }));
 
 // The db half of project-build builds a tRPC router as it loads, which a
 // browser refuses; provisioning's signup page imports only its page helpers
@@ -714,7 +721,9 @@ describe("insertStarterPage", () => {
     setStores(await appliedSite());
     const before = getWebstudioData();
 
-    const result = await insertStarterPage(sampleStarterPage, fields);
+    const result = await insertStarterPage(sampleStarterPage, fields, {
+      attemptToken: "t1",
+    });
 
     expect(result).toMatchObject({ status: "added", unboundBlocks: [] });
     if (result.status !== "added") {
@@ -758,7 +767,9 @@ describe("insertStarterPage", () => {
     const before = getWebstudioData();
     vi.spyOn(console, "error").mockImplementation(() => {});
 
-    expect(await insertStarterPage(sampleStarterPage, fields)).toEqual({
+    expect(
+      await insertStarterPage(sampleStarterPage, fields, { attemptToken: "t1" })
+    ).toEqual({
       status: "refused",
       reason: "runtime",
       message:
@@ -772,7 +783,9 @@ describe("insertStarterPage", () => {
     setStores(await appliedSite());
     $project.set(undefined);
 
-    expect(await insertStarterPage(sampleStarterPage, fields)).toEqual({
+    expect(
+      await insertStarterPage(sampleStarterPage, fields, { attemptToken: "t1" })
+    ).toEqual({
       status: "refused",
       reason: "no-project",
     });
@@ -812,5 +825,414 @@ describe("unboundBlocksMessage", () => {
     ).toMatch(
       /^Not linked to your organization's data: Signup Form, Event List\. Contact .+ support to restore the link\.$/
     );
+  });
+});
+
+const FORM = "51000000-0000-4000-8000-000000000001";
+const resolved = [
+  { name: "email", label: "Email", type: "email", required: true },
+  { name: "first_name", label: "First name", type: "text", required: false },
+];
+const SignupFormKey = "@organizeos/site-components:SignupForm";
+const page = (id: string) => STARTER_PAGES.find((item) => item.id === id)!;
+const formPropOf = (data: WebstudioData, instanceId: string, name: string) =>
+  [...data.props.values()].find(
+    (prop) => prop.instanceId === instanceId && prop.name === name
+  )?.value;
+const rootsOf = (data: WebstudioData, component: string) =>
+  [...data.instances.values()].filter(
+    (instance) => instance.component === component
+  );
+const formsFor = (rendered: ReturnType<typeof renderStarterPage>) =>
+  new Map(
+    rendered.placements
+      .filter(({ key }) => key === SignupFormKey)
+      .map(({ rootId }) => [
+        siteFormPlacementKey(rendered, rootId),
+        { id: FORM, kind: "contact-signup" as const, fields: resolved },
+      ])
+  );
+
+describe("a page template's sign-up forms", () => {
+  beforeEach(() => {
+    createSiteForm.mockReset();
+    createSiteForm.mockResolvedValue({
+      ok: true,
+      value: { id: FORM, fields: resolved },
+    });
+  });
+
+  afterEach(() => {
+    $organizeosSite.set(undefined);
+  });
+
+  const setSite = (siteFormsEnabled: boolean) =>
+    $organizeosSite.set({
+      organizationId: "org-1",
+      manageUrl: "https://app.example.org/dashboard",
+      platformUrl: "https://app.example.org",
+      blocksEnabled: true,
+      siteFormsEnabled,
+    });
+
+  const setStores = (data: WebstudioData) => {
+    $pages.set(data.pages);
+    $instances.set(data.instances);
+    $props.set(data.props);
+    $dataSources.set(data.dataSources);
+    $resources.set(data.resources);
+    $breakpoints.set(data.breakpoints);
+    $styleSourceSelections.set(data.styleSourceSelections);
+    $styleSources.set(data.styleSources);
+    $styles.set(data.styles);
+    $assets.set(data.assets);
+    $projectSettings.set({ meta: {}, compiler: {} });
+    $selectedPageId.set(data.pages.homePageId);
+    $builderMode.set("design");
+    $authPermit.set("build");
+    $project.set({ id: projectId } as Project);
+    serverSyncStore.transactionManager.currentStack = [];
+    serverSyncStore.transactionManager.undoneStack = [];
+  };
+
+  const renderEvents = () =>
+    renderStarterPage(page("events"), {
+      look: NEUTRAL_LOOK,
+      generatePageId: () => "new-page",
+    });
+
+  test("the mutable marks a sign-up form with its site form", async () => {
+    const data = await blankSite();
+    const rendered = renderEvents();
+    expect(
+      insertStarterPageMutable(data, rendered, {
+        projectId,
+        presetIds,
+        name: "Events",
+        path: "/events",
+        siteForms: formsFor(rendered),
+      }).status
+    ).toBe("added");
+    const [root] = rootsOf(data, SignupFormKey);
+    expect(formPropOf(data, root.id, "record")).toBe(FORM);
+    expect(formPropOf(data, root.id, "siteForm")).toBe("contact-signup");
+    const fields = [...findTreeInstanceIds(data.instances, root.id)]
+      .map((id) => data.instances.get(id)!)
+      .filter(
+        (instance) => instance.component === "@organizeos/site-components:Field"
+      );
+    expect(
+      fields.map((field) => formPropOf(data, field.id, "fieldType"))
+    ).toEqual(["email", "text"]);
+
+    // unbound (no Events Resource): never marked
+    const unbound = await blankSite();
+    unbound.resources.delete(presetIds.events.resourceId);
+    const again = renderEvents();
+    insertStarterPageMutable(unbound, again, {
+      projectId,
+      presetIds,
+      name: "Events",
+      path: "/events",
+      siteForms: formsFor(again),
+    });
+    expect(
+      formPropOf(unbound, rootsOf(unbound, SignupFormKey)[0].id, "record")
+    ).toBeUndefined();
+
+    // without siteForms: nothing marked
+    const plain = await blankSite();
+    insertStarterPageMutable(plain, renderEvents(), {
+      projectId,
+      presetIds,
+      name: "Events",
+      path: "/events",
+    });
+    expect(
+      formPropOf(plain, rootsOf(plain, SignupFormKey)[0].id, "siteForm")
+    ).toBeUndefined();
+  });
+
+  test("creates the forms before the write, then marks them, in one undo step", async () => {
+    setStores(await blankSite());
+    setSite(true);
+    let pagesAtCreate = 0;
+    createSiteForm.mockImplementationOnce(async () => {
+      pagesAtCreate = $pages.get()?.pages.size ?? 0;
+      return { ok: true, value: { id: FORM, fields: resolved } };
+    });
+    const before = $pages.get()?.pages.size ?? 0;
+
+    const result = await insertStarterPage(
+      page("events"),
+      { name: "Events", path: "/events" },
+      { attemptToken: "t1" }
+    );
+
+    expect(result.status).toBe("added");
+    expect(createSiteForm).toHaveBeenCalledTimes(1);
+    expect(createSiteForm.mock.calls[0][1]).toMatchObject({
+      kind: "contact-signup",
+      title: "Events: Signup Form",
+    });
+    expect(pagesAtCreate).toBe(before);
+    const data = getWebstudioData();
+    expect(formPropOf(data, rootsOf(data, SignupFormKey)[0].id, "record")).toBe(
+      FORM
+    );
+    expect(serverSyncStore.transactionManager.currentStack).toHaveLength(1);
+  });
+
+  test("a failed form refuses the add, writing nothing", async () => {
+    setStores(await blankSite());
+    setSite(true);
+    createSiteForm.mockResolvedValueOnce({ ok: false, error: "forbidden" });
+    const before = getWebstudioData();
+    expect(
+      await insertStarterPage(
+        page("events"),
+        { name: "Events", path: "/events" },
+        { attemptToken: "t1" }
+      )
+    ).toEqual({ status: "refused", reason: "form" });
+    expect(getWebstudioData()).toEqual(before);
+  });
+
+  test("every refusal comes before any form is made", async () => {
+    const provisioned = await blankSite();
+    setSite(true);
+    for (const fields of [
+      { name: "Events", path: "" },
+      { name: "Events", path: "/join" },
+      { name: "  ", path: "/events" },
+    ]) {
+      setStores(provisioned);
+      setSite(true);
+      expect(
+        (await insertStarterPage(page("events"), fields, { attemptToken: "t" }))
+          .status
+      ).toBe("refused");
+    }
+    // a taken path
+    setStores(provisioned);
+    setSite(true);
+    const home = provisioned.pages.pages.get(provisioned.pages.homePageId)!;
+    $pages.set({
+      ...provisioned.pages,
+      pages: new Map(provisioned.pages.pages).set("taken", {
+        ...home,
+        id: "taken",
+        name: "Taken",
+        path: "/events",
+      }),
+      folders: new Map(provisioned.pages.folders).set(
+        provisioned.pages.rootFolderId,
+        {
+          ...provisioned.pages.folders.get(provisioned.pages.rootFolderId)!,
+          children: [
+            ...provisioned.pages.folders.get(provisioned.pages.rootFolderId)!
+              .children,
+            "taken",
+          ],
+        }
+      ),
+    });
+    expect(
+      await insertStarterPage(
+        page("events"),
+        { name: "Events", path: "/events" },
+        { attemptToken: "t" }
+      )
+    ).toEqual({ status: "refused", reason: "path-taken" });
+    // no project
+    setStores(provisioned);
+    setSite(true);
+    $project.set(undefined);
+    expect(
+      (
+        await insertStarterPage(
+          page("events"),
+          { name: "Events", path: "/events" },
+          { attemptToken: "t" }
+        )
+      ).status
+    ).toBe("refused");
+    // the runtime refuses: a page template selected without build access
+    setStores(provisioned);
+    setSite(true);
+    $pages.set({
+      ...provisioned.pages,
+      pageTemplates: new Map([
+        [
+          "template",
+          {
+            id: "template",
+            name: "Template",
+            title: "Template",
+            rootInstanceId: home.rootInstanceId,
+            meta: {},
+          },
+        ],
+      ]),
+    });
+    $selectedPageId.set("template");
+    $authPermit.set("view");
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(
+      (
+        await insertStarterPage(
+          page("events"),
+          { name: "Events", path: "/events" },
+          { attemptToken: "t" }
+        )
+      ).status
+    ).toBe("refused");
+    expect(createSiteForm).not.toHaveBeenCalled();
+  });
+
+  test("a retry in the same open reuses the site form", async () => {
+    setStores(await blankSite());
+    setSite(true);
+    createSiteForm.mockImplementationOnce(async () => {
+      // another admin takes the path while the form is made
+      await updateWebstudioDataStaged((data) => {
+        const home = data.pages.pages.get(data.pages.homePageId)!;
+        data.pages.pages.set("other", {
+          ...home,
+          id: "other",
+          name: "Other",
+          path: "/events",
+          meta: {},
+        });
+        addToFolderMutable(data.pages, "other");
+      });
+      return { ok: true, value: { id: FORM, fields: resolved } };
+    });
+
+    expect(
+      await insertStarterPage(
+        page("events"),
+        { name: "Events", path: "/events" },
+        { attemptToken: "t1" }
+      )
+    ).toEqual({ status: "refused", reason: "path-taken" });
+    expect(
+      (
+        await insertStarterPage(
+          page("events"),
+          { name: "Events", path: "/our-events" },
+          { attemptToken: "t1" }
+        )
+      ).status
+    ).toBe("added");
+    expect(createSiteForm).toHaveBeenCalledTimes(2);
+    expect(createSiteForm.mock.calls[1][1].clientId).toBe(
+      createSiteForm.mock.calls[0][1].clientId
+    );
+  });
+
+  test("each open gets its own forms", async () => {
+    setStores(await blankSite());
+    setSite(true);
+    await insertStarterPage(
+      page("events"),
+      { name: "Events", path: "/events" },
+      { attemptToken: "t1" }
+    );
+    await insertStarterPage(
+      page("events"),
+      { name: "Events", path: "/events1" },
+      { attemptToken: "t2" }
+    );
+    expect(createSiteForm).toHaveBeenCalledTimes(2);
+    expect(createSiteForm.mock.calls[1][1].clientId).not.toBe(
+      createSiteForm.mock.calls[0][1].clientId
+    );
+  });
+
+  test("with the switch off, no form is made or marked", async () => {
+    setStores(await blankSite());
+    setSite(false);
+    expect(
+      (
+        await insertStarterPage(
+          page("events"),
+          { name: "Events", path: "/events" },
+          { attemptToken: "t1" }
+        )
+      ).status
+    ).toBe("added");
+    expect(createSiteForm).not.toHaveBeenCalled();
+    const data = getWebstudioData();
+    expect(
+      formPropOf(data, rootsOf(data, SignupFormKey)[0].id, "siteForm")
+    ).toBeUndefined();
+  });
+
+  test("a page placing no sign-up form makes none", async () => {
+    setStores(await blankSite());
+    setSite(true);
+    expect(
+      (
+        await insertStarterPage(
+          page("event"),
+          { name: "Event", path: "/event" },
+          { attemptToken: "t1" }
+        )
+      ).status
+    ).toBe("added");
+    expect(createSiteForm).not.toHaveBeenCalled();
+  });
+
+  test("no form is made when every block would be left unbound", async () => {
+    const data = await blankSite();
+    data.resources.delete(presetIds.events.resourceId);
+    setStores(data);
+    setSite(true);
+    await insertStarterPage(
+      page("events"),
+      { name: "Events", path: "/events" },
+      { attemptToken: "t1" }
+    );
+    expect(createSiteForm).not.toHaveBeenCalled();
+  });
+
+  test("every catalog page adds cleanly", async () => {
+    const workwear = SITE_TEMPLATES.find((item) => item.id === "workwear")!;
+    for (const look of [NEUTRAL_LOOK, workwear.look]) {
+      for (const starter of STARTER_PAGES) {
+        const data = await blankSite();
+        const rendered = renderStarterPage(starter, {
+          look,
+          generatePageId: () => "new-page",
+        });
+        const path = starterDefaultPath(data.pages, starter);
+        const result = insertStarterPageMutable(data, rendered, {
+          projectId,
+          presetIds,
+          name: starter.pageName,
+          path,
+          siteForms: formsFor(rendered),
+        });
+        expect(result, starter.id).toEqual({
+          status: "added",
+          pageId: "new-page",
+          unboundBlocks: [],
+        });
+        expect(data.pages.pages.get("new-page")?.path).toBe(path);
+        for (const root of rootsOf(data, SignupFormKey)) {
+          expect(formPropOf(data, root.id, "record"), starter.id).toBe(FORM);
+        }
+        for (const root of rootsOf(
+          data,
+          "@organizeos/site-components:RsvpForm"
+        )) {
+          expect(
+            formPropOf(data, root.id, "siteForm"),
+            starter.id
+          ).toBeUndefined();
+        }
+      }
+    }
   });
 });

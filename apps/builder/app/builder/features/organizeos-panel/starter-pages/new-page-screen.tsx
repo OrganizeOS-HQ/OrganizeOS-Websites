@@ -38,6 +38,7 @@ import { builderApi } from "~/shared/builder-api";
 import { executeRuntimeMutation } from "~/shared/instance-utils/data";
 import { TruncatedText } from "../../cms-panel/native/truncated-text";
 import { unboundBlocksMessage } from "../unbound-blocks";
+import { SITE_FORM_CREATE_FAILED } from "../site-form-insert";
 import { useDialogBoundarySize } from "../site-templates/use-dialog-boundary";
 import {
   $isTemplatesScreenOffered,
@@ -129,6 +130,8 @@ const refusalMessages: Record<
   "platform-path": "The platform uses this path.",
   resources: "This page template cannot be added.",
   "no-project": "This page template cannot be added.",
+  // a sign-up form's site form (the forms insert's wording)
+  form: SITE_FORM_CREATE_FAILED,
 };
 
 /**
@@ -186,11 +189,12 @@ const createBlank = ({ name, path }: Fields): boolean => {
 /** A page template added (and selected), or why not, toasted. */
 const addPageTemplate = async (
   card: Card & { page: StarterPage },
-  fields: Fields
+  fields: Fields,
+  attemptToken: string
 ): Promise<boolean> => {
   let outcome: StarterInsertOutcome;
   try {
-    outcome = await insertStarterPage(card.page, fields);
+    outcome = await insertStarterPage(card.page, fields, { attemptToken });
   } catch (error) {
     console.error(error);
     builderApi.toast.error(`Cannot add ${card.name}.`);
@@ -333,6 +337,9 @@ export const NewPageScreen = () => {
   const cardRefs = useRef(new Map<string, HTMLButtonElement>());
   // the card to give the focus back to, once its create view is left
   const returnFocusId = useRef<string | undefined>(undefined);
+  // the page template's forms identity: one per open, so a retry in the same
+  // open gets the same forms back and a later open makes its own
+  const attemptToken = useRef("");
 
   const canOpen =
     isDesignMode && isTemplatesScreenOffered === false && pages !== undefined;
@@ -346,10 +353,12 @@ export const NewPageScreen = () => {
   }, [requested, canOpen]);
 
   useEffect(() => {
-    if (isOpen === false) {
-      setOpenId(undefined);
-      returnFocusId.current = undefined;
+    if (isOpen) {
+      attemptToken.current = crypto.randomUUID();
+      return;
     }
+    setOpenId(undefined);
+    returnFocusId.current = undefined;
   }, [isOpen]);
 
   // back at the grid, the focus goes to the card that was open
@@ -401,8 +410,14 @@ export const NewPageScreen = () => {
       const done =
         card.page === undefined
           ? createBlank(fields)
-          : await addPageTemplate({ ...card, page: card.page }, fields);
+          : await addPageTemplate(
+              { ...card, page: card.page },
+              fields,
+              attemptToken.current
+            );
       if (done) {
+        // the next add, even before the screen closes, makes its own forms
+        attemptToken.current = crypto.randomUUID();
         $newPageScreenOpen.set(false);
       }
     } finally {

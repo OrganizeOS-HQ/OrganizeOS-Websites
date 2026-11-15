@@ -734,10 +734,11 @@ describe("creating", () => {
     await clickCard("events");
     await setValue(field("Name"), " Our events ");
     await submit();
-    expect(insertStarterPage).toHaveBeenCalledWith(events, {
-      name: "Our events",
-      path: "/events1",
-    });
+    expect(insertStarterPage).toHaveBeenCalledWith(
+      events,
+      { name: "Our events", path: "/events1" },
+      { attemptToken: expect.any(String) }
+    );
     expect(dialog()).toBeNull();
     expect(toastError).not.toHaveBeenCalled();
   });
@@ -766,6 +767,7 @@ describe("creating", () => {
     [{ reason: "platform-path" as const }, "The platform uses this path."],
     [{ reason: "resources" as const }, "This page template cannot be added."],
     [{ reason: "no-project" as const }, "This page template cannot be added."],
+    [{ reason: "form" as const }, "Couldn't create the form. Try again."],
     [
       { reason: "runtime" as const, message: "The runtime says no." },
       "The runtime says no.",
@@ -786,6 +788,49 @@ describe("creating", () => {
       expect(isDisabled(createButton())).toBe(false);
     }
   );
+
+  test("a retry in one open passes the same token, a new open a new one", async () => {
+    vi.mocked(insertStarterPage).mockResolvedValueOnce({
+      status: "refused",
+      reason: "path-taken",
+    });
+    render();
+    await open();
+    await clickCard("events");
+    await submit();
+    await setValue(field("Path"), "/our-events");
+    await submit();
+    const tokens = () =>
+      vi
+        .mocked(insertStarterPage)
+        .mock.calls.map(([, , options]) => options.attemptToken);
+    expect(tokens()).toHaveLength(2);
+    expect(tokens()[0]).toBe(tokens()[1]);
+    expect(dialog()).toBeNull();
+
+    await open();
+    await clickCard("events");
+    await submit();
+    expect(tokens()[2]).not.toBe(tokens()[0]);
+  });
+
+  test("a successful add mints a new token", async () => {
+    render();
+    await open();
+    await clickCard("events");
+    await submit();
+    // reopened in the same render as the close
+    await act(async () => {
+      $newPageScreenOpen.set(true);
+    });
+    await settle();
+    await clickCard("events");
+    await submit();
+    const [first, second] = vi
+      .mocked(insertStarterPage)
+      .mock.calls.map(([, , options]) => options.attemptToken);
+    expect(first).not.toBe(second);
+  });
 
   test("an error adding a page template toasts and keeps the screen open", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
