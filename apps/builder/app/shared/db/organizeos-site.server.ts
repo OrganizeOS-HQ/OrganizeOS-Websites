@@ -217,6 +217,7 @@ export const resolveOrganizeosSite = ({
   cmsNative,
   cmsSecretSet,
   siteForms,
+  givingBlocks,
 }: {
   owner: { provider: string | null; email: string | null };
   projectDomain: string;
@@ -233,6 +234,8 @@ export const resolveOrganizeosSite = ({
   cmsSecretSet?: boolean;
   /** The raw `ORGANIZEOS_SITE_FORMS`: only `true` turns the site forms UI on. */
   siteForms?: string;
+  /** The raw `ORGANIZEOS_GIVING_BLOCKS`: only `true` offers the Giving blocks. */
+  givingBlocks?: string;
 }): OrganizeosSite | undefined => {
   if (owner.provider !== ORGANIZEOS_SERVICE_PROVIDER || owner.email === null) {
     return undefined;
@@ -267,6 +270,7 @@ export const resolveOrganizeosSite = ({
     // The forms relay signs with the builder door secret, so the UI needs it.
     siteFormsEnabled:
       blocksEnabled && siteForms === "true" && cmsSecretSet === true,
+    givingBlocksEnabled: givingBlocks === "true",
   };
 };
 

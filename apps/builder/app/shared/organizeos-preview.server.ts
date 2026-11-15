@@ -33,7 +33,9 @@ import { createContext } from "./context.server";
  * 1. `WEBSITES2_PREVIEW_SECRET` is set;
  * 2. the fetch URL, parsed, has the origin of `ORGANIZEOS_APP_URL`, no
  *    userinfo, no encoded slash, backslash or dot, and a pathname under
- *    `/api/public/v1/collections/`;
+ *    `/api/public/v1/collections/`, or exactly `/api/public/v1/fundraisers`
+ *    (the Giving blocks' read, which lists draft campaigns under a preview:
+ *    builder donations spec 6.2);
  * 3. the request carries a builder session with an OrganizeOS binding that is
  *    live (`readBuilderSession` and `checkOrganizeosBinding`);
  * 4. that session's user may view the project in the `p-{projectId}` host
@@ -58,6 +60,8 @@ export const PREVIEW_HEADER = "X-OOS-Preview";
 export const PREVIEW_LIFETIME_SECONDS = 60;
 
 const COLLECTIONS_PATH_PREFIX = "/api/public/v1/collections/";
+
+const FUNDRAISERS_PATH = "/api/public/v1/fundraisers";
 
 const ORG_CACHE_TTL_MS = 60_000;
 
@@ -120,7 +124,10 @@ export const isPreviewableUrl = (href: string, appUrl: string): boolean => {
   if (ODD_ENCODING.test(url.pathname)) {
     return false;
   }
-  return url.pathname.startsWith(COLLECTIONS_PATH_PREFIX);
+  return (
+    url.pathname.startsWith(COLLECTIONS_PATH_PREFIX) ||
+    url.pathname === FUNDRAISERS_PATH
+  );
 };
 
 type ProjectOwner = { provider: string | null; email: string | null };

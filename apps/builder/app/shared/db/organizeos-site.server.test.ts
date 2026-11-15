@@ -201,6 +201,7 @@ describe("resolveOrganizeosSite", () => {
       shopBlocksEnabled: false,
       cmsNativeEnabled: false,
       siteFormsEnabled: false,
+      givingBlocksEnabled: false,
     });
   });
 
@@ -222,6 +223,29 @@ describe("resolveOrganizeosSite", () => {
           projectDomain: "acme",
           shopBlocks,
         })?.shopBlocksEnabled
+      ).toBe(expected);
+    }
+  );
+
+  // builder donations F1, F-D17: off until the pilot acceptance passes
+  test.each([
+    [undefined, false],
+    ["", false],
+    ["false", false],
+    ["TRUE", false],
+    ["1", false],
+    [" true", false],
+    ["true", true],
+  ])(
+    "offers the Giving blocks when ORGANIZEOS_GIVING_BLOCKS is %j: %s",
+    (givingBlocks, expected) => {
+      expect(
+        resolveOrganizeosSite({
+          ...base,
+          owner: SERVICE_OWNER,
+          projectDomain: "acme",
+          givingBlocks,
+        })?.givingBlocksEnabled
       ).toBe(expected);
     }
   );

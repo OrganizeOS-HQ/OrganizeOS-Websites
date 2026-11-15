@@ -22,3 +22,11 @@ export { meta as RichText } from "./rich-text/rich-text.ws";
 export { meta as Price } from "./shop/price.ws";
 export { meta as ProductGrid } from "./shop/product-grid.ws";
 export { meta as ProductCard } from "./shop/product-card.ws";
+export {
+  meta as DonationForm,
+  frameMeta as DonationFrame,
+} from "./giving/donation-form.ws";
+export {
+  meta as GoalProgress,
+  figureMeta as GoalProgressFigure,
+} from "./giving/goal-progress.ws";

@@ -90,6 +90,17 @@ import {
   productCardComponent,
   productGridComponent,
 } from "~/builder/features/organizeos-panel/product-blocks";
+// the Giving blocks' rows (builder donations F1, F-D15)
+import {
+  donationFormComponent,
+  goalProgressComponent,
+} from "~/builder/features/organizeos-panel/giving-blocks";
+import {
+  DonationAfterGiftControl,
+  DonationStateControl,
+  DonationTargetControl,
+  GivingRecordControl,
+} from "./organizeos-giving-controls";
 
 /**
  * The OrganizeOS blocks' own Settings rows (fork doc section 9, "In the
@@ -110,6 +121,10 @@ export type OrganizeosControlKind =
   | "field-name"
   | "product-show"
   | "product-card"
+  | "giving-target"
+  | "giving-state"
+  | "giving-after-gift"
+  | "giving-record"
   | "hidden";
 
 /**
@@ -153,6 +168,31 @@ export const getOrganizeosControl = ({
       propName === "required")
   ) {
     return "hidden";
+  }
+  if (component === donationFormComponent) {
+    switch (propName) {
+      case "target":
+        return "giving-target";
+      case "state":
+        return "giving-state";
+      case "afterGift":
+        return "giving-after-gift";
+      // written at insert, or drawn by After the gift
+      case "organizationId":
+      case "platformOrigin":
+      case "afterGiftPage":
+        return "hidden";
+    }
+    return;
+  }
+  if (component === goalProgressComponent) {
+    switch (propName) {
+      case "record":
+        return "giving-record";
+      case "data":
+        return "hidden";
+    }
+    return;
   }
   if (component === productGridComponent && propName === "show") {
     return "product-show";
@@ -238,6 +278,19 @@ const renderKind = (
       return <ProductShowControl {...textProps} />;
     case "product-card":
       return <ProductCardControl {...textProps} />;
+    case "giving-target":
+      return <DonationTargetControl {...textProps} />;
+    case "giving-state":
+      return <DonationStateControl {...textProps} />;
+    case "giving-after-gift":
+      return (
+        <DonationAfterGiftControl
+          {...textProps}
+          onChangeByPropName={onChangeByPropName}
+        />
+      );
+    case "giving-record":
+      return <GivingRecordControl {...textProps} />;
     case "hidden":
       return;
   }

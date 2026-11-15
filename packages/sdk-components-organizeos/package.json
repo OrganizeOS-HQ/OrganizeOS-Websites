@@ -62,6 +62,11 @@
       "types": "./lib/types/shop/products-data.d.ts",
       "import": "./lib/shop/products-data.js"
     },
+    "./fundraisers-data": {
+      "webstudio": "./src/giving/fundraisers-data.ts",
+      "types": "./lib/types/giving/fundraisers-data.d.ts",
+      "import": "./lib/giving/fundraisers-data.js"
+    },
     "./field-template": {
       "webstudio": "./src/signup/field.template.tsx",
       "types": "./lib/types/signup/field.template.d.ts",

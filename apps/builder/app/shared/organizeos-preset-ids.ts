@@ -71,6 +71,14 @@ export const STATIC_PRESET_KEYS = ["events", "fundraisers", "stats"] as const;
 export const FORMS_PRESET_KEY = "forms";
 
 /**
+ * The key of the Fundraisers catalog Resource (`GET /v1/fundraisers`), one of
+ * the static presets provisioning always writes, and the name of Goal
+ * Progress's binding to it (builder donations spec 7.3).
+ */
+export const FUNDRAISERS_PRESET_KEY = "fundraisers";
+export const FUNDRAISERS_BINDING_NAME = "OrganizeOS Fundraisers";
+
+/**
  * The key of the Upcoming Events catalog Resource, seeded and created like
  * Forms.
  */

@@ -278,6 +278,7 @@ export const loader = async (loaderArgs: LoaderFunctionArgs) => {
             cmsNative: env.ORGANIZEOS_CMS_NATIVE,
             cmsSecretSet: env.WEBSITES2_CMS_SECRET !== undefined,
             siteForms: env.ORGANIZEOS_SITE_FORMS,
+            givingBlocks: env.ORGANIZEOS_GIVING_BLOCKS,
           });
 
     const headers = createPrivateNoStoreHeaders();

@@ -271,7 +271,7 @@ How an org admin's session is wired end to end, and which side owns each step. T
 
 **Old session cookies.** The platform's session used to be `sb-<ref>-auth-token` (and its `.0`, `.1`, ... chunks and `-code-verifier`) with `Domain=.organizeos.org`, so it reached `builder.organizeos.org` and every `p-{projectId}.builder.organizeos.org` canvas, where an org's script could read it. It is now `__Host-oos-auth`, host-only on `app.organizeos.org`, but an old copy can stay in a browser for up to 400 days. With `ORGANIZEOS_EXPIRE_LEGACY_SESSION=true`, every document response the builder serves on `organizeos.org` or a host under it expires each cookie the request carried whose name matches `^sb-[a-z0-9]+-auth-token(?:-code-verifier)?(?:\.(?:0|[1-9]\d*))?$`: two raw `Set-Cookie` appends per name, `<name>=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Max-Age=0; SameSite=Lax; Secure; Domain=.organizeos.org` and the same without `Domain`, after the routes' own headers and before any page script runs. The builder sets no `sb-*` cookie of its own, so the pattern is not narrowed to a project ref. `__Host-oos-auth` and `oos-auth` are never set, read or deleted. Resource routes (assets, `rest.*`, tRPC) and static files are left alone: they never reach the document entry. The code is `services/organizeos-legacy-session.server.ts`, called from `entry.server.tsx` (Remix's default Node entry, which the builder used while it had none, with one marked call; its other differences are for this repository's lint and isbot 5 and change no behaviour). On Vercel the global `Headers` is Remix's polyfill (`@vercel/remix` calls `installGlobals()`), which has `raw()` and no `getSetCookie()`, so the module reads existing cookies through either. Tests in `services/organizeos-legacy-session.server.test.tsx` and `organizeos-legacy-session.polyfill.server.test.tsx` (under the polyfill globals) drive that entry through Remix's request handler, with the server build in `organizeos-legacy-session.fixture.tsx`, including a document Remix renders a second time after an error. Order (OrganizeOS plan `docs/superpowers/plans/2026-11-03-org-sites-d-session-cookie.md`, sections 8 and 10): the flag goes on only after the app host's switch to the host-only cookie is verified in production; before that the domain cookie is the live session and the delete would sign people out of the app. To roll the app back to the domain cookie, turn the flag off first.
 
-**Draft preview on the canvas.** The canvas shows a collection's drafts as well as its published items (OrganizeOS design `docs/superpowers/specs/2026-10-26-cms-in-the-builder-design.md`, 4.5). Every canvas Resource fetch runs on the builder's server, in `routes/rest.resources-loader.ts`, and one marked change there, inside upstream's `customFetch` and before `safeResourceFetch` (upstream's check of where a fetch may go), passes each outgoing fetch through `createPreviewAssertion` (`shared/organizeos-preview.server.ts`). It adds `X-OOS-Preview: v1.{payload}.{mac}` only when all of these hold, and otherwise the fetch goes out unchanged: `WEBSITES2_PREVIEW_SECRET` is set; the fetch URL, parsed with `new URL` (never a string prefix), has the origin of `ORGANIZEOS_APP_URL`, no userinfo, no encoded slash, backslash or dot, and a pathname under `/api/public/v1/collections/`; the request carries a builder session whose OrganizeOS binding is `live` (`readBuilderSession`, then `checkOrganizeosBinding`, both cached); that user, signed in as a user and not through a share link's token, has upstream's `view` permit or above on the project of the `p-{projectId}` host (`authorizeProject.hasProjectPermit`); and the project's owner is an org's service account, the organization id resolved as the builder loader resolves it and cached per project for 60 s in-process. The session, permit and org are resolved once per loader request, on its first qualifying fetch; each fetch gets its own assertion. `payload` is base64url (unpadded) of the UTF-8 JSON `{ org, sub, sid, iat, exp }` in that key order: the org id, `organizeosUserId`, `organizeosSid`, and Unix seconds with `exp = iat + 60`. `mac` is base64url (unpadded) of HMAC-SHA256, keyed by `WEBSITES2_PREVIEW_SECRET`, over the ASCII payload segment, and the segment sent is the one signed. The header replaces any stored `X-OOS-Preview` in any casing (`Headers.set`), never appends: a duplicated header arrives comma-joined and the platform refuses it. It is added after the client computed the Resource's cache key (`getResourceKey`), which is unchanged, and never enters build data. A fetch that carries it goes out with `redirect: "manual"`: a redirect is answered, never followed, so the header never reaches the host a redirect names (a collections read the app answers with a redirect reaches the canvas as that 3xx). The byte format is pinned by the platform's `client/tests/fixtures/site-components/preview-assertion.json`, copied to `apps/builder/app/shared/__fixtures__/` (its README names the source commit; `diff` it before a PR that touches the assertion). The platform verifies the MAC, the time window, the org against the read token's, the session's liveness and the user's `pages.view`, and on any failure serves published items as if the header were absent. A published site never carries the header: prebuild fails when any Resource's stored headers name it, in any casing (`packages/cli/src/organizeos-preview-header.ts`, one marked call in `prebuild.ts`). The builder's Form Preview (`routes/rest.preview-form.ts`, upstream's) carries no assertion. It also denies a form's fetch the publisher's registrable domain, so a Signup Form, the starter signup page's included, cannot submit to `app.organizeos.org` from the builder's Preview (owner decisions D11 and D15); it submits on the published site (§8).
+**Draft preview on the canvas.** The canvas shows a collection's drafts as well as its published items (OrganizeOS design `docs/superpowers/specs/2026-10-26-cms-in-the-builder-design.md`, 4.5). Every canvas Resource fetch runs on the builder's server, in `routes/rest.resources-loader.ts`, and one marked change there, inside upstream's `customFetch` and before `safeResourceFetch` (upstream's check of where a fetch may go), passes each outgoing fetch through `createPreviewAssertion` (`shared/organizeos-preview.server.ts`). It adds `X-OOS-Preview: v1.{payload}.{mac}` only when all of these hold, and otherwise the fetch goes out unchanged: `WEBSITES2_PREVIEW_SECRET` is set; the fetch URL, parsed with `new URL` (never a string prefix), has the origin of `ORGANIZEOS_APP_URL`, no userinfo, no encoded slash, backslash or dot, and a pathname under `/api/public/v1/collections/`, or exactly `/api/public/v1/fundraisers` (the Giving blocks' read, §9, "Giving blocks"); the request carries a builder session whose OrganizeOS binding is `live` (`readBuilderSession`, then `checkOrganizeosBinding`, both cached); that user, signed in as a user and not through a share link's token, has upstream's `view` permit or above on the project of the `p-{projectId}` host (`authorizeProject.hasProjectPermit`); and the project's owner is an org's service account, the organization id resolved as the builder loader resolves it and cached per project for 60 s in-process. The session, permit and org are resolved once per loader request, on its first qualifying fetch; each fetch gets its own assertion. `payload` is base64url (unpadded) of the UTF-8 JSON `{ org, sub, sid, iat, exp }` in that key order: the org id, `organizeosUserId`, `organizeosSid`, and Unix seconds with `exp = iat + 60`. `mac` is base64url (unpadded) of HMAC-SHA256, keyed by `WEBSITES2_PREVIEW_SECRET`, over the ASCII payload segment, and the segment sent is the one signed. The header replaces any stored `X-OOS-Preview` in any casing (`Headers.set`), never appends: a duplicated header arrives comma-joined and the platform refuses it. It is added after the client computed the Resource's cache key (`getResourceKey`), which is unchanged, and never enters build data. A fetch that carries it goes out with `redirect: "manual"`: a redirect is answered, never followed, so the header never reaches the host a redirect names (a collections read the app answers with a redirect reaches the canvas as that 3xx). The byte format is pinned by the platform's `client/tests/fixtures/site-components/preview-assertion.json`, copied to `apps/builder/app/shared/__fixtures__/` (its README names the source commit; `diff` it before a PR that touches the assertion). The platform verifies the MAC, the time window, the org against the read token's, the session's liveness and the user's `pages.view`, and on any failure serves published items as if the header were absent. A published site never carries the header: prebuild fails when any Resource's stored headers name it, in any casing (`packages/cli/src/organizeos-preview-header.ts`, one marked call in `prebuild.ts`). The builder's Form Preview (`routes/rest.preview-form.ts`, upstream's) carries no assertion. It also denies a form's fetch the publisher's registrable domain, so a Signup Form, the starter signup page's included, cannot submit to `app.organizeos.org` from the builder's Preview (owner decisions D11 and D15); it submits on the published site (§8).
 
 **The forms door.** The Settings panel's forms calls reach OrganizeOS's forms door (builder forms spec `docs/superpowers/specs/2026-11-11-builder-forms-design.md` 7.1 and 7.3, in the OrganizeOS repo) through `/rest/organizeos-forms/{projectId}/...` (`routes/rest.organizeos-forms.$projectId.$.ts`, the config in `services/organizeos-forms-route.server.ts`). The CMS door's steps are shared, in `services/organizeos-door-route.server.ts`, as a door config: its audience, its platform base path, its fixed endpoints, its JSON body cap and its log tag, so the two doors cannot drift; `services/organizeos-cms-route.server.ts` is the CMS door's config over them, unchanged in behaviour. The forms door differs only in these: the assertion's `aud` is `forms` (pinned by the platform's `forms-actor-assertion.json`, copied to `shared/__fixtures__/`), so neither door's assertion passes the other; the base path is `/api/internal/websites2/forms`; the endpoints are F0 `GET access`, F1 `GET catalog?kind=`, F2 `GET forms?kind=`, F3 `POST forms` and F4 `PUT forms/{formId}/settings`, `kind` one of `contact-signup`, `contact-form` and `membership`; a JSON body is at most 64 KB; logs are `[organizeos-forms] code`; and the whole route answers 404 `not_found`, reading nothing, unless `ORGANIZEOS_SITE_FORMS` is exactly `true`. F5 (`PUT builds/{buildId}/fields`) is never relayed: only the publish route stages a build's forms.
 
@@ -873,6 +873,27 @@ can be merged with minimal conflict.
     (passed by the loader in `routes/_ui.(builder).tsx` and by
     `routes/internal.provision.tsx`), and the Products preset in
     `shared/organizeos-preset-ids.ts` and `shared/db/resource-presets.server.ts`.
+  - **The Giving blocks (§9, "Giving blocks").** In the blocks package,
+    `src/giving/` (the Donation Form and its frame part, Goal Progress and its
+    figure part, the give embed's contract, the frame's address and messages,
+    the fundraisers reader, the progress tokens, their metas, templates and
+    tests), the fixtures `fundraisers.json`, `give-embed-messages.json` and
+    `give-embed-fonts.json` in `src/__fixtures__/`, the `./fundraisers-data`
+    export in its `package.json`, and Goal Progress in `recordDataComponents`
+    (`src/org-script.ts`); in the builder, `features/organizeos-panel/`
+    `giving-blocks.ts` and `giving-insert.ts` with their tests, the rows in
+    `settings-panel/controls/organizeos-giving-controls.tsx` with its test,
+    one entry each in `organizeos-controls.tsx` (the four kinds),
+    `organizeos-record.tsx` (Goal Progress's picker), `components-section.tsx`
+    (the Giving section and its switch) and `insert-organizeos-block.ts` (the
+    `fundraisers` catalog, the Goal Progress entry, the switch and the
+    Donation Form's insert step), `ORGANIZEOS_GIVING_BLOCKS` in
+    `env/env.server.ts`, `givingBlocksEnabled` in
+    `shared/db/organizeos-site.server.ts` and `shared/organizeos-site.ts`
+    (passed by the loader in `routes/_ui.(builder).tsx`), the Fundraisers key
+    and binding name in `shared/organizeos-preset-ids.ts`, and the exact
+    `/api/public/v1/fundraisers` path in `shared/organizeos-preview.server.ts`
+    (§9, "Giving blocks").
   - The CMS page templates (§9): `collection-schema.ts`,
     `collection-layout.ts`, `collection-pages.ts`, `collection-list.ts` and
     `collection-row-menu.tsx`, with their tests, the collection rows in
@@ -1562,6 +1583,11 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
   than failing. The Event Card is the Event List's template under its own label
   and shows the next upcoming event (one item, see Insert completion); picking
   a specific event waits for the events virtual collection.
+- **Donation Form** and **Goal Progress**, the Giving blocks (see Giving
+  blocks below). The Donation Form's root holds its settings and its Donation
+  Frame part frames the platform's give embed; Goal Progress's root holds the
+  Fundraisers body and its Goal Progress Figure parts render the raised, goal
+  and donors figures.
 - **Product Grid** and **Product Card**, the Shop blocks (see Shop blocks
   below), are templates over native elements and a collection, each under a
   root of its own, `ProductGrid` and `ProductCard`, and **Price**, the one part
@@ -3407,6 +3433,73 @@ there.
   binding and a card its own Resource; a page with no shop block makes no
   products request. A Newest card and a grid on one page send the same
   request, which the site's resource cache keeps once.
+
+**Giving blocks**, `src/giving/` in the package (OrganizeOS spec
+`docs/superpowers/specs/2026-11-13-builder-donations-design.md` section 7 and
+plan `docs/superpowers/plans/2026-11-14-builder-donations-f1-giving-blocks.md`):
+the Donation Form takes a gift where it sits by framing the platform's give
+embed, `{platformOrigin}/embed/give/{orgId}`, and Goal Progress shows a
+fundraiser's raised and goal figures.
+
+- **Offered only while `ORGANIZEOS_GIVING_BLOCKS` is exactly `true`** (§4),
+  resolved into `organizeosSite.givingBlocksEnabled`, as the Shop blocks are:
+  off, neither block is listed or found, and `insertOrganizeosBlock` refuses
+  either. Off until the pilot acceptance passes.
+- **The frame's contract** is frozen and pinned by
+  `src/__fixtures__/give-embed-messages.json` (copied from the platform): the
+  address, the query names in order (`to`, `path`, `parent`, `r`, `preview`,
+  `state`), the fragment key `t`, and the two messages `oos-give-height` and
+  `oos-give-done`. A published block keeps building it, so it only changes
+  additively.
+- **The Donation Form** (`src/giving/donation-form.tsx`). Its root holds
+  `target` (`general` or a campaign id), `organizationId` and
+  `platformOrigin` (both written at insert from the site record,
+  `giving-insert.ts`), `afterGift` (`message` or `page`), `afterGiftPage` and
+  `state` (canvas only), and keeps them off the DOM. The Donation Frame part
+  renders a 640px placeholder on the server and builds the address in the
+  browser after hydration: the page's path (when the platform's page-path rule
+  takes it), origin and share code, `preview=1` on the canvas and in the
+  builder's preview (with `state=unavailable` on the canvas when State says
+  so), and the site's six canonical variables as `#t=` (colours resolved
+  through a hidden probe's computed `color`, so the builder's
+  `rgb(r g b / a)`, `hsl()` and keywords reach the frame as `rgb(r, g, b)`).
+  The iframe is keyed on the address without its fragment and carries
+  `title="Donation form"`, `loading="lazy"`, `allow="payment"`, the sandbox
+  `allow-scripts allow-same-origin allow-forms allow-popups
+  allow-popups-to-escape-sandbox` and `referrerpolicy="strict-origin-when-cross-origin"`.
+  It takes a message only from `platformOrigin` and from its own frame's
+  window. A height (finite, above 0, at most 10,000) sizes the frame.
+  **Unavailable**: a bad `platformOrigin`, org id or target renders "This
+  form isn't available." with no frame (the canvas check: "Re-insert this
+  block." or "Pick what this form gives to."); and with no height 10 seconds
+  after the frame loads or first comes into view (the owner's ruling,
+  2026-11-15), the frame is hidden, not removed, behind the same line, and a
+  later height brings it back. A published block cannot know the site's own
+  org: a copied block is refused by the frame's `frame-ancestors` and ends on
+  that line, and the builder warns "Re-insert this block". After the gift,
+  with `afterGift = page` and outside the builder, the page goes to the
+  after-gift page only on its own origin.
+- **Goal Progress** (`src/giving/goal-progress.tsx`). Its insert binds the
+  Fundraisers catalog Resource at the root (`data`, never created or
+  rewritten), and the root finds its fundraiser by `record` in plain JS. It
+  sets `--os-progress` (floored, at most 100%) for the fill, and the figures
+  read "$6,420.50 raised", "of $25,000" (whole dollars without cents) and "48
+  donors" (only with Show donors). On a published page the root renders
+  nothing for no record, an unknown one, a draft or no goal; on the canvas it
+  stays, with "Pick a fundraiser", "Fundraiser not found" or "This fundraiser
+  has no goal", and a draft's note. Its root is in `recordDataComponents`, so
+  its data survives while org script is paused.
+- **The rows** (`organizeos-giving-controls.tsx`). Donation Form: Give to
+  (General giving, then the fundraisers read live through the catalog
+  Resource, drafts marked; an icon link opens Fundraising in a new tab),
+  State (Ready, Not taking gifts) and After the gift (Message, Page with the
+  page picker); one warning line, "Re-insert this block" (another org or
+  platform) or "Fundraiser not found". Goal Progress: Give to, the shared
+  record control over its bound data with the same link, and upstream's Show
+  donors switch.
+- **Canvas preview.** The builder mints `X-OOS-Preview` for exactly
+  `/api/public/v1/fundraisers` too, so both rows and Goal Progress see draft
+  campaigns on the canvas; the published site never does.
 
 **Site templates**, `src/site-templates/` in the package and
 `features/organizeos-panel/site-templates/` in the builder (OrganizeOS design

@@ -299,6 +299,19 @@ describe("getOrganizeosControl", () => {
     expect(kind(`${ns}:Price`, "cents")).toBeUndefined();
   });
 
+  // builder donations spec 7.4; plan F1, F-D15
+  test("the Giving blocks' rows, and the props written at insert hidden", () => {
+    expect(kind(`${ns}:DonationForm`, "target")).toBe("giving-target");
+    expect(kind(`${ns}:DonationForm`, "state")).toBe("giving-state");
+    expect(kind(`${ns}:DonationForm`, "afterGift")).toBe("giving-after-gift");
+    for (const prop of ["organizationId", "platformOrigin", "afterGiftPage"]) {
+      expect(kind(`${ns}:DonationForm`, prop), prop).toBe("hidden");
+    }
+    expect(kind(`${ns}:GoalProgress`, "record")).toBe("giving-record");
+    expect(kind(`${ns}:GoalProgress`, "data")).toBe("hidden");
+    expect(kind(`${ns}:GoalProgress`, "showDonors")).toBeUndefined();
+  });
+
   test("anything else is upstream's", () => {
     expect(kind("Box", "record")).toBeUndefined();
     expect(kind(undefined, "data")).toBeUndefined();

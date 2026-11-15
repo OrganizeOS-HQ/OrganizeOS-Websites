@@ -2752,7 +2752,7 @@ describe("propMayShip", () => {
     ).toBe(false);
   });
 
-  test("ships data of any type and shape on Collection, Signup Form, RSVP Form and a ws:element that is not an object, and judges it on an object, a Box and a Radix trigger", () => {
+  test("ships data of any type and shape on Collection, Signup Form, RSVP Form, Goal Progress and a ws:element that is not an object, and judges it on an object, a Box and a Radix trigger", () => {
     const shapes: Prop[] = [
       staticProp("data", "javascript:alert(1)"),
       staticProp("data", "x", "expression"),
@@ -2782,6 +2782,7 @@ describe("propMayShip", () => {
       { component: "ws:collection" },
       { component: "@organizeos/site-components:SignupForm" },
       { component: "@organizeos/site-components:RsvpForm" },
+      { component: "@organizeos/site-components:GoalProgress" },
       { component: elementComponent, tag: "div" },
       { component: elementComponent },
     ]) {
@@ -3109,7 +3110,7 @@ describe("withoutPausedProps", () => {
     ).toEqual({ id: "a" });
   });
 
-  test("keeps functions and safe addresses, and data of any value on a Collection, a Signup Form and a ws:element div", () => {
+  test("keeps functions and safe addresses, and data of any value on a Collection, a Signup Form, a Goal Progress and a ws:element div", () => {
     const onClick = () => {};
     const props = {
       href: "https://example.org",
@@ -3125,6 +3126,7 @@ describe("withoutPausedProps", () => {
     for (const instance of [
       { component: "ws:collection" },
       { component: "@organizeos/site-components:SignupForm" },
+      { component: "@organizeos/site-components:GoalProgress" },
       { component: elementComponent, tag: "div" },
     ]) {
       const records = { data: ["javascript:alert(1)"] };
