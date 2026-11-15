@@ -3162,7 +3162,7 @@ describe("what the registered components declare", () => {
   // data is an address on an object. A new component with a data prop gets a
   // decision: one that holds records joins recordDataComponents, or publishing
   // holds its data to the rule.
-  test("only Collection, Signup Form and RSVP Form declare a data prop", () => {
+  test("only Collection, Signup Form, RSVP Form and Goal Progress declare a data prop", () => {
     expect(declaring((name) => name.toLowerCase() === "data")).toEqual(
       [...recordDataComponents].sort()
     );
