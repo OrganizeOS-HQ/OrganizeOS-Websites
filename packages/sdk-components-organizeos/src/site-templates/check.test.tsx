@@ -2371,3 +2371,19 @@ describe("the per-page rules, shared with the starter pages", () => {
     expect(findPagePathProblem("x", "/about")).toBeUndefined();
   });
 });
+
+describe("/join, a platform path", () => {
+  test("a template links to /join as a document navigation", () => {
+    const join = (reload: boolean) =>
+      checkAbout(() => (
+        <$.Link href="/join" {...(reload ? { reloadDocument: true } : {})}>
+          {"Become a member"}
+        </$.Link>
+      ));
+    expect(join(true)).toEqual([]);
+    expectOneViolation(
+      join(false),
+      `links to the platform's "/join" without reloadDocument`
+    );
+  });
+});

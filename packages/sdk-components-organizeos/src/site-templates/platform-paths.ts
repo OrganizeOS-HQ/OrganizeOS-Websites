@@ -5,7 +5,7 @@
 // (`reloadDocument`), as the Event Card's link to `/events/{slug}` is; any
 // other page is linked by its key. More join as a template needs them.
 
-export const PLATFORM_PATHS = ["/donate"] as const;
+export const PLATFORM_PATHS = ["/donate", "/join"] as const;
 
 export type PlatformPath = (typeof PLATFORM_PATHS)[number];
 

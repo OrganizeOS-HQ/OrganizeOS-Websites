@@ -5,6 +5,7 @@ import {
   checkPageRules,
   componentName,
   describeInstance,
+  isUploadableUrl,
   describePropOwner,
   findPagePathProblem,
   findPageTextProblems,
@@ -34,6 +35,22 @@ const checkLookFields = (look: CompleteKitStyle): string[] =>
     look[field] === undefined ? [`Look: ${field} is not set`] : []
   );
 
+/** The picture's entry, held as a site template's images are. */
+const pictureEntryProblems = (page: StarterPage): string[] => {
+  const entry = page.images[page.picture];
+  if (entry === undefined) {
+    return [];
+  }
+  const where = `${pageName(page.id)}: the picture "${page.picture}"`;
+  return [
+    ...(isUploadableUrl(entry.url)
+      ? []
+      : [`${where} has a URL that is not root-relative or http(s)`]),
+    ...(entry.sourceUrl.trim() === "" ? [`${where} has no source URL`] : []),
+    ...(entry.alt.trim() === "" ? [`${where} has no alt text`] : []),
+  ];
+};
+
 const checkEntry = (page: StarterPage): string[] => {
   const name = pageName(page.id);
   const pathProblem =
@@ -48,6 +65,7 @@ const checkEntry = (page: StarterPage): string[] => {
     ...(Object.keys(page.images).some((file) => file !== page.picture)
       ? [`${name}: images holds more than the picture`]
       : []),
+    ...pictureEntryProblems(page),
     ...findPageTextProblems({
       key: page.id,
       title: page.title,

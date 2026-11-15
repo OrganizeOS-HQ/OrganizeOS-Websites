@@ -185,6 +185,25 @@ describe("checkStarterPage", () => {
     ).toBe(true);
   });
 
+  test("a picture entry needs an uploadable url, a source and alt", () => {
+    const entry = sampleStarterPage.images[sampleStarterPage.picture];
+    const withEntry = (change: Partial<typeof entry>): StarterPage => ({
+      ...sampleStarterPage,
+      images: { [sampleStarterPage.picture]: { ...entry, ...change } },
+    });
+    expect(
+      checkStarterPage(withEntry({ url: "data:image/jpeg;base64,x" }))
+    ).toContain(
+      `Page "sample": the picture "picture.jpg" has a URL that is not root-relative or http(s)`
+    );
+    expect(checkStarterPage(withEntry({ sourceUrl: " " }))).toContain(
+      `Page "sample": the picture "picture.jpg" has no source URL`
+    );
+    expect(checkStarterPage(withEntry({ alt: "" }))).toContain(
+      `Page "sample": the picture "picture.jpg" has no alt text`
+    );
+  });
+
   test("a look without headingWeight fails", () => {
     const { headingWeight: _, ...rest } = NEUTRAL_LOOK;
     const look = rest as unknown as CompleteKitStyle;

@@ -1,3 +1,6 @@
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 import { SITE_TEMPLATES } from "../site-templates/catalog";
 import { STARTER_PAGES, listedStarterPages } from "./catalog";
@@ -16,6 +19,24 @@ describe("the starter-page catalog", () => {
   test("every catalog page passes, under every look", () => {
     for (const page of STARTER_PAGES) {
       expect(checkStarterPage(page, looks), page.id).toEqual([]);
+    }
+  });
+
+  // A picture OrganizeOS generated records the script that made it, by its
+  // path from this folder, so the picture can be made again.
+  test("a generated picture's source names its script, which exists", () => {
+    const folder = dirname(fileURLToPath(import.meta.url));
+    for (const page of STARTER_PAGES) {
+      for (const [file, { sourceUrl }] of Object.entries(page.images)) {
+        if (sourceUrl.startsWith("organizeos:generated/") === false) {
+          continue;
+        }
+        const script = sourceUrl.slice("organizeos:generated/".length);
+        expect(
+          existsSync(join(folder, script)),
+          `${page.id}/${file}: ${script}`
+        ).toBe(true);
+      }
     }
   });
 
