@@ -17,7 +17,7 @@ export const volunteerStarterPage: StarterPage = {
   path: "/volunteer",
   title: "Volunteer",
   description: "Give some time. Here are the ways you can help.",
-  status: "draft",
+  status: "listed",
   picture: "volunteer.jpg",
   images: { "volunteer.jpg": pictureEntry("Volunteer", pictureUrl) },
   blocks: ["@organizeos/site-components:SignupForm"],

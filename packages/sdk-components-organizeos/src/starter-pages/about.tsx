@@ -18,7 +18,7 @@ export const aboutStarterPage: StarterPage = {
   title: "About",
   description:
     "Who we are, what we care about, and the people behind our work.",
-  status: "draft",
+  status: "listed",
   picture: "about.jpg",
   images: { "about.jpg": pictureEntry("About", pictureUrl) },
   blocks: [],

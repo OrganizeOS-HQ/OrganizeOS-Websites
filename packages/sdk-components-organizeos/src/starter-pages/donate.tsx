@@ -18,7 +18,7 @@ export const donateStarterPage: StarterPage = {
   path: "/give",
   title: "Donate",
   description: "Your gift keeps our work going. Here's what it makes possible.",
-  status: "draft",
+  status: "listed",
   picture: "donate.jpg",
   images: { "donate.jpg": pictureEntry("Donate", pictureUrl) },
   blocks: [],

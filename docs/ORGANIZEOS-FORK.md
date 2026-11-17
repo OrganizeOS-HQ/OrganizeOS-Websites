@@ -4039,9 +4039,9 @@ section 6; plan `docs/superpowers/plans/2026-11-14-builder-templates-c1-new-page
 one page, written as code, that New page adds to a site with content. The
 catalog (`STARTER_PAGES`, plan
 `docs/superpowers/plans/2026-11-15-builder-templates-c2-page-templates.md`)
-holds eight, in this order, all drafts until the owner has seen their
-pictures: Events (`/events`: an Event List of cards and a Signup Form), Event
-(`/event`: an RSVP Form), Donate (`/give`, its button to the platform's
+holds eight, in this order, all listed since the owner saw their pictures
+(2026-11-17; drafts before): Events (`/events`: an Event List of cards and a
+Signup Form), Event (`/event`: an RSVP Form), Donate (`/give`, its button to the platform's
 `/donate`), Fundraiser (`/campaign`), Join (`/join-us`, its button to the
 platform's `/join`), Volunteer (`/volunteer`: a Signup Form), About (`/about`)
 and Contact (`/contact`, with no form).

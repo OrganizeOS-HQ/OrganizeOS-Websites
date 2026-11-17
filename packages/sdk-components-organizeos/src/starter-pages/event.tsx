@@ -19,7 +19,7 @@ export const eventStarterPage: StarterPage = {
   path: "/event",
   title: "Event",
   description: "Everything you need to know, and a place to say you're coming.",
-  status: "draft",
+  status: "listed",
   picture: "event.jpg",
   images: { "event.jpg": pictureEntry("Event", pictureUrl) },
   blocks: ["@organizeos/site-components:RsvpForm"],

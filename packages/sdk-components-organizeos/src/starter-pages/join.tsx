@@ -18,7 +18,7 @@ export const joinStarterPage: StarterPage = {
   path: "/join-us",
   title: "Join",
   description: "Become a member, and here's what you get when you do.",
-  status: "draft",
+  status: "listed",
   picture: "join.jpg",
   images: { "join.jpg": pictureEntry("Join", pictureUrl) },
   blocks: [],

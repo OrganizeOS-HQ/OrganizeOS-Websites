@@ -13,7 +13,7 @@ export const contactStarterPage: StarterPage = {
   path: "/contact",
   title: "Contact",
   description: "How to reach us, and where to find us.",
-  status: "draft",
+  status: "listed",
   picture: "contact.jpg",
   images: { "contact.jpg": pictureEntry("Contact", pictureUrl) },
   blocks: [],
