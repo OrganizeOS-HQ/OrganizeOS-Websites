@@ -49,16 +49,17 @@ describe("the starter-page catalog", () => {
     }
   );
 
-  test("the catalog holds the eight in order, all drafts", () => {
+  // Listed on the owner's review of their pictures (2026-11-17).
+  test("the catalog holds the eight in order, all listed", () => {
     expect(STARTER_PAGES.map((page) => [page.id, page.status])).toEqual([
-      ["events", "draft"],
-      ["event", "draft"],
-      ["donate", "draft"],
-      ["fundraiser", "draft"],
-      ["join", "draft"],
-      ["volunteer", "draft"],
-      ["about", "draft"],
-      ["contact", "draft"],
+      ["events", "listed"],
+      ["event", "listed"],
+      ["donate", "listed"],
+      ["fundraiser", "listed"],
+      ["join", "listed"],
+      ["volunteer", "listed"],
+      ["about", "listed"],
+      ["contact", "listed"],
     ]);
   });
 

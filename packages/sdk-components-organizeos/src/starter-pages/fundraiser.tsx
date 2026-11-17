@@ -15,7 +15,7 @@ export const fundraiserStarterPage: StarterPage = {
   title: "Fundraiser",
   description:
     "Help us reach our goal. Here's the story, and where the money goes.",
-  status: "draft",
+  status: "listed",
   picture: "fundraiser.jpg",
   images: { "fundraiser.jpg": pictureEntry("Fundraiser", pictureUrl) },
   blocks: [],

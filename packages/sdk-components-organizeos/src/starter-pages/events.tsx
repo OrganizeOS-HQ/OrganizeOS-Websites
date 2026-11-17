@@ -13,7 +13,7 @@ export const eventsStarterPage: StarterPage = {
   path: "/events",
   title: "Events",
   description: "See what's coming up, and come along.",
-  status: "draft",
+  status: "listed",
   picture: "events.jpg",
   images: { "events.jpg": pictureEntry("Events", pictureUrl) },
   blocks: [
