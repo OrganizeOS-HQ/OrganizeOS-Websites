@@ -1147,3 +1147,29 @@ describe("a list of the other type pasted into a nested item keeps its nesting a
     expectFixedPoint(written);
   });
 });
+
+describe("dropped HTML gets the paste's list passes (H3)", () => {
+  test("an item's quote after its nested list, dropped after a paragraph", async () => {
+    const onChange = await mountAt("<p>pp</p><p>after</p>", "pp");
+    const dataTransfer = new DataTransfer();
+    dataTransfer.setData(
+      "text/html",
+      "<ul><li>A<ul><li>X</li></ul><blockquote><p>Z</p></blockquote></li><li>B</li></ul>"
+    );
+    dataTransfer.setData("text/plain", "x");
+    await act(async () => {
+      editable()!.dispatchEvent(
+        new InputEvent("beforeinput", {
+          bubbles: true,
+          cancelable: true,
+          inputType: "insertFromDrop",
+          dataTransfer,
+        })
+      );
+    });
+    await settle();
+    const written = lastHtml(onChange);
+    expect(readingOrder(written)).toBe("pp|A|X|Z|B|after");
+    expectFixedPoint(written);
+  });
+});
