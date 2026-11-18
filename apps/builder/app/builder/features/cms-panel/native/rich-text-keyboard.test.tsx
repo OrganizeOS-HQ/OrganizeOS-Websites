@@ -872,3 +872,50 @@ describe("a Shift+multi-click from right after a line break (H11)", () => {
     expect(written).toContain("here");
   });
 });
+
+describe("a list toggled from an element caret keeps the caret (H12)", () => {
+  const toolbarButton = (label: string) =>
+    document.querySelector<HTMLElement>(`[aria-label="${label}"]`);
+
+  test("Shift+Enter at a paragraph's end, Bulleted list, then typing", async () => {
+    const onChange = mountField("<p>aa</p><p>tail</p>");
+    await settle();
+    await clickInText("aa", 2);
+    await type("{Shift>}{Enter}{/Shift}");
+    const errors = vi.spyOn(console, "error");
+    await click(toolbarButton("Bulleted list"));
+    await type("z");
+    expect(errors).not.toHaveBeenCalled();
+    expect(lastHtml(onChange)).toMatch(
+      /<ul[^>]*><li[^>]*>(<[^>]+>)*aa(<[^>]+>)*<br>(<[^>]+>)*z(<[^>]+>)*<\/li><\/ul>/
+    );
+  });
+
+  test("End after an image in a quote, Bulleted list, then typing", async () => {
+    const onChange = mountField(
+      `<blockquote><p>a1</p><p>b1${A}</p></blockquote>`
+    );
+    await settle();
+    await clickInText("b1", 1);
+    await type("{End}");
+    const errors = vi.spyOn(console, "error");
+    await click(toolbarButton("Bulleted list"));
+    await type("z");
+    expect(errors).not.toHaveBeenCalled();
+    const written = lastHtml(onChange);
+    expect(written).toMatch(/a\.png[^>]*>(<[^>]+>)*z/);
+    expect(written).not.toMatch(/a1(<[^>]+>)*z/);
+  });
+
+  test("Bulleted list off from right after a line break, then typing", async () => {
+    const onChange = mountField("<ul><li>aa</li><li>bb</li></ul>");
+    await settle();
+    await clickInText("aa", 2);
+    await type("{Shift>}{Enter}{/Shift}");
+    const errors = vi.spyOn(console, "error");
+    await click(toolbarButton("Bulleted list"));
+    await type("z");
+    expect(errors).not.toHaveBeenCalled();
+    expect(lastHtml(onChange)).toMatch(/aa(<[^>]+>)*<br>(<[^>]+>)*z/);
+  });
+});
