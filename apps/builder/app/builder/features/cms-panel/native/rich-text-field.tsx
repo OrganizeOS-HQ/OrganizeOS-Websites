@@ -2588,8 +2588,10 @@ const splitItemsAfterNestedList = (body: HTMLElement) => {
         last = next;
         split = true;
       }
-      for (const node of next === undefined ? [] : run) {
-        next?.appendChild(node);
+      if (next !== undefined) {
+        for (const node of run) {
+          next.appendChild(node);
+        }
       }
     }
   }
