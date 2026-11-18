@@ -475,6 +475,7 @@ const $liftBlocksAfterNestedList = (item: ListItemNode) => {
       );
   let anchor: LexicalNode = item;
   let lifted: LexicalNode | undefined;
+  let inlineRun: ParagraphNode | undefined;
   // once a block has left the lists: the tail's levels, innermost first,
   // each held in an item at the start of the level around it
   let levels: ListNode[] = [];
@@ -498,6 +499,17 @@ const $liftBlocksAfterNestedList = (item: ListItemNode) => {
         }
         continue;
       }
+      // inline content at the top level stands in a paragraph
+      if (isBlock(child) === false && $isRootNode(lifted.getParent())) {
+        if (inlineRun === undefined) {
+          inlineRun = $createParagraphNode();
+          lifted.insertAfter(inlineRun);
+          lifted = inlineRun;
+        }
+        inlineRun.append(child);
+        continue;
+      }
+      inlineRun = undefined;
       lifted.insertAfter(child);
       lifted = child;
       continue;
