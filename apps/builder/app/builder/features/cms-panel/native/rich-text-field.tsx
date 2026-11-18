@@ -1908,9 +1908,6 @@ const ImageEditingPlugin = () => {
         unpin();
         return;
       }
-      if (pinnedAnchor.current !== undefined) {
-        return;
-      }
       pinnedAnchor.current = editor.getEditorState().read(() => {
         const selection = $getSelection();
         if (
@@ -1922,6 +1919,12 @@ const ImageEditingPlugin = () => {
         const { anchor } = selection;
         return { key: anchor.key, offset: anchor.offset, type: anchor.type };
       });
+    };
+    // a triple click selects its block whatever the anchor
+    const unpinOnTripleClick = (event: MouseEvent) => {
+      if (event.detail >= 3) {
+        unpin();
+      }
     };
     // a held anchor never outlives the editor's focus
     const unpinOnFocusOut = (event: FocusEvent) => {
@@ -2364,6 +2367,8 @@ const ImageEditingPlugin = () => {
         rootElement?.addEventListener("pointerdown", pinOnShiftPointer);
         previous?.removeEventListener("focusout", unpinOnFocusOut);
         rootElement?.addEventListener("focusout", unpinOnFocusOut);
+        previous?.removeEventListener("mousedown", unpinOnTripleClick);
+        rootElement?.addEventListener("mousedown", unpinOnTripleClick);
       }),
       // a copy or cut marks its selection, for the code block's export
       editor.registerCommand(

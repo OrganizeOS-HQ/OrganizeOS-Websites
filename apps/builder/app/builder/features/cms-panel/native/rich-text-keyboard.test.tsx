@@ -854,18 +854,21 @@ describe("a Shift+multi-click from right after a line break (H11)", () => {
     await settle();
     await type("{Backspace}");
     const written = lastHtml(onChange);
-    console.log("DBG3", written);
     expect(written).toContain("cc dd ee ff");
     expect(written).not.toContain("second");
   });
 
-  test("Shift+double-click", async () => {
+  test("Shift+double-click extends the selection from the anchor", async () => {
     const onChange = await caretBy(LINES, afterBreak);
     await userEvent.dblClick(spanOf("second para here"), {
       modifiers: ["Shift"],
     } as never);
     await settle();
     await type("{Backspace}");
-    console.log("DBG2", lastHtml(onChange));
+    const written = lastHtml(onChange);
+    expect(written).toMatch(/a\.png[^>]*>(<[^>]+>)*<br>/);
+    expect(written).not.toContain("b.png");
+    expect(written).not.toContain("cc");
+    expect(written).toContain("here");
   });
 });
