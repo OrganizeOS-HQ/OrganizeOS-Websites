@@ -1159,21 +1159,58 @@ const Toolbar = ({
   const inCode = state.block === "code";
   const marksDisabled = disabled || inCode;
   const toggleList = (type: "bullet" | "number") => {
-    if (state.list === type) {
-      editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
-      return;
-    }
-    // a quote holding paragraphs gives up the ones the list covers first,
-    // so each becomes its own item: one item holding several paragraphs is
-    // no list the editor can write back. One update: one undo step
+    // one update: one undo step
     editor.update(() => {
-      $unwrapQuotedBlocks();
-      editor.dispatchCommand(
-        type === "bullet"
-          ? INSERT_UNORDERED_LIST_COMMAND
-          : INSERT_ORDERED_LIST_COMMAND,
-        undefined
-      );
+      // an element caret is kept by the node beside it, as the list
+      // commands replace the block it points into
+      const selection = $getSelection();
+      const kept = $isRangeSelection(selection)
+        ? [selection.anchor, selection.focus].map((point) => {
+            if (point.type !== "element") {
+              return;
+            }
+            const block = point.getNode();
+            if ($isElementNode(block) === false) {
+              return;
+            }
+            const before = block.getChildAtIndex(point.offset - 1);
+            if (point.offset > 0 && before !== null) {
+              return { node: before, after: true };
+            }
+            const next = block.getChildAtIndex(point.offset);
+            return next === null ? undefined : { node: next, after: false };
+          })
+        : [];
+      if (state.list === type) {
+        editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
+      } else {
+        // a quote holding paragraphs gives up the ones the list covers
+        // first, so each becomes its own item: one item holding several
+        // paragraphs is no list the editor can write back
+        $unwrapQuotedBlocks();
+        editor.dispatchCommand(
+          type === "bullet"
+            ? INSERT_UNORDERED_LIST_COMMAND
+            : INSERT_ORDERED_LIST_COMMAND,
+          undefined
+        );
+      }
+      const next = $getSelection();
+      if ($isRangeSelection(next) === false || kept.length === 0) {
+        return;
+      }
+      for (const [index, point] of [next.anchor, next.focus].entries()) {
+        const at = kept[index];
+        const parent = at?.node.getParent();
+        if (at === undefined || at.node.isAttached() === false || !parent) {
+          continue;
+        }
+        point.set(
+          parent.getKey(),
+          at.node.getIndexWithinParent() + (at.after ? 1 : 0),
+          "element"
+        );
+      }
     });
   };
   return (
