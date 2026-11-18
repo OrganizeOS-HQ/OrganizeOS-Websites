@@ -752,3 +752,77 @@ describe("a Shift+click from right after a line break keeps its anchor (K24)", (
     expect(written).not.toContain("cc");
   });
 });
+
+/** A real click at `offset` in the text `text`, with `modifiers` held. */
+const clickInText = async (
+  text: string,
+  offset: number,
+  modifiers: string[] = []
+) => {
+  const span = [
+    ...editable()!.querySelectorAll<HTMLElement>("[data-lexical-text]"),
+  ].find((element) => element.textContent === text)!;
+  const range = document.createRange();
+  const node = span.firstChild!;
+  range.setStart(node, offset);
+  range.setEnd(node, offset);
+  const at = range.getBoundingClientRect();
+  const box = span.getBoundingClientRect();
+  await userEvent.click(span, {
+    position: {
+      x: Math.min(Math.max(at.left - box.left, 1), box.width - 1),
+      y: box.height / 2,
+    },
+    modifiers,
+  } as never);
+  await settle();
+};
+
+describe("a held anchor ends when the focus leaves the field (H10)", () => {
+  const PARAS = "<p>first line</p><p>second para here</p>";
+  const expectOnlyTyped = (before: string) => {
+    const after = editable()!.textContent ?? "";
+    expect(after.length).toBe(before.length + 1);
+    expect(after.replace("x", "")).toBe(before);
+  };
+
+  test("a Shift+click after a line break, then Save, Shift+Tab and typing", async () => {
+    mountField(PARAS);
+    await settle();
+    await clickInText("second para here", 16);
+    await type("{Shift>}{Enter}{/Shift}");
+    await clickInText("second para here", 7, ["Shift"]);
+    await click(buttonByText("Save"));
+    await type("{Shift>}{Tab}{/Shift}");
+    expect(inEditor()).toBe(true);
+    const before = editable()!.textContent ?? "";
+    await type("x");
+    expectOnlyTyped(before);
+  });
+
+  test("a Shift+End, then Save, Shift+Tab and typing", async () => {
+    mountField(PARAS);
+    await settle();
+    await clickInText("second para here", 7);
+    await type("{Shift>}{End}{/Shift}");
+    await click(buttonByText("Save"));
+    await type("{Shift>}{Tab}{/Shift}");
+    expect(inEditor()).toBe(true);
+    const before = editable()!.textContent ?? "";
+    await type("x");
+    expectOnlyTyped(before);
+  });
+
+  test("a Shift+click after a line break, then the Title, then a click back", async () => {
+    mountField(PARAS);
+    await settle();
+    await clickInText("second para here", 16);
+    await type("{Shift>}{Enter}{/Shift}");
+    await clickInText("second para here", 7, ["Shift"]);
+    await click(title());
+    await clickInText("first line", 5);
+    const before = editable()!.textContent ?? "";
+    await type("x");
+    expectOnlyTyped(before);
+  });
+});

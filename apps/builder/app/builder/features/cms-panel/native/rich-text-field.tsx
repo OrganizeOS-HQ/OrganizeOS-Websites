@@ -1867,6 +1867,17 @@ const ImageEditingPlugin = () => {
         return { key: anchor.key, offset: anchor.offset, type: anchor.type };
       });
     };
+    // a held anchor never outlives the editor's focus
+    const unpinOnFocusOut = (event: FocusEvent) => {
+      const root = event.currentTarget as HTMLElement;
+      if (
+        event.relatedTarget instanceof Node &&
+        root.contains(event.relatedTarget)
+      ) {
+        return;
+      }
+      unpin();
+    };
     // text input with an image selected, or at an element caret right
     // after a line break (where the browser's target range is the line
     // above), is inserted at Lexical's own selection
@@ -2295,6 +2306,8 @@ const ImageEditingPlugin = () => {
       editor.registerRootListener((rootElement, previous) => {
         previous?.removeEventListener("pointerdown", pinOnShiftPointer);
         rootElement?.addEventListener("pointerdown", pinOnShiftPointer);
+        previous?.removeEventListener("focusout", unpinOnFocusOut);
+        rootElement?.addEventListener("focusout", unpinOnFocusOut);
       }),
       // a copy or cut marks its selection, for the code block's export
       editor.registerCommand(
