@@ -632,7 +632,19 @@ const $nestingOf = (node: LexicalNode) => {
 const $liftQuoteOutOfItem = (quote: QuoteNode, item: ListItemNode) => {
   const rest = quote.getNextSiblings();
   let at: LexicalNode = item;
-  for (const child of quote.getChildren()) {
+  // a quote inside gives way to its blocks too, in order
+  const children: LexicalNode[] = [];
+  const collect = (from: QuoteNode) => {
+    for (const child of from.getChildren()) {
+      if ($isQuoteNode(child)) {
+        collect(child);
+      } else {
+        children.push(child);
+      }
+    }
+  };
+  collect(quote);
+  for (const child of children) {
     if ($isListNode(child)) {
       for (const entry of child.getChildren()) {
         at.insertAfter(entry);
