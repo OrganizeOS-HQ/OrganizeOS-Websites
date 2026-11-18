@@ -856,3 +856,53 @@ describe("quotes pasted into a nested item keep their levels at the top (K19)", 
     expectFixedPoint(written);
   });
 });
+
+describe("what follows a pasted item's nested list and imports to nothing adds no item (H1)", () => {
+  const steps = (after: string) =>
+    `<ol><li>Open the settings:<ul><li>Click the gear</li></ul>${after}</li><li>Save.</li></ol>`;
+  test.each([
+    ["an image", '<img src="https://example.org/shot.png" alt="Screenshot">'],
+    ["a line break", "<br>"],
+    ["an empty span", "<span></span>"],
+    ["an empty paragraph", "<p></p>"],
+    ["a paragraph holding a line break", "<p><br></p>"],
+    ["a space in a span", "<span> </span>"],
+    [
+      "a figure",
+      '<figure><img src="https://example.org/shot.png" alt="Shot"></figure>',
+    ],
+  ])("%s after the nested list", async (_name, after) => {
+    const onChange = await mountAt("<p></p>", "");
+    paste({ "text/html": steps(after), "text/plain": "x" });
+    await settle();
+    const written = plain(lastHtml(onChange));
+    expect(written).toBe(
+      "<ol><li>Open the settings:<ul><li>Click the gear</li></ul></li><li>Save.</li></ol>"
+    );
+    expectFixedPoint(written);
+  });
+
+  test("a rule after the nested list stands in its own item", async () => {
+    const onChange = await mountAt("<p></p>", "");
+    paste({ "text/html": steps("<hr>"), "text/plain": "x" });
+    await settle();
+    expect(plain(lastHtml(onChange))).toBe(
+      "<ol><li>Open the settings:<ul><li>Click the gear</li></ul></li><li><hr /></li><li>Save.</li></ol>"
+    );
+  });
+
+  test("an image after the last pasted item's nested list: typing lands after the list's text", async () => {
+    const onChange = await mountAt("<p></p>", "");
+    paste({
+      "text/html":
+        '<ul><li>Open<ul><li>Click</li></ul><img src="https://example.org/shot.png" alt="Shot"></li></ul>',
+      "text/plain": "x",
+    });
+    await settle();
+    await userEvent.keyboard("z");
+    await settle();
+    const written = plain(lastHtml(onChange));
+    expect(written).not.toMatch(/<li[^>]*><\/li>/);
+    expect(written).toContain("Clickz");
+  });
+});

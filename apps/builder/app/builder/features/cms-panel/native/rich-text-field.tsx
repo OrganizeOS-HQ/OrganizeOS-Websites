@@ -2430,11 +2430,14 @@ const splitItemsAfterNestedList = (body: HTMLElement) => {
     for (let at = list?.nextSibling; at; at = at.nextSibling) {
       rest.push(at);
     }
+    // only what imports to content: text or a rule (a pasted image does not)
     const kept = rest.some(
       (node) =>
-        node.nodeType === Node.ELEMENT_NODE ||
-        (node.nodeType === Node.TEXT_NODE &&
-          (node.textContent ?? "").trim() !== "")
+        (node.nodeType === Node.ELEMENT_NODE ||
+          node.nodeType === Node.TEXT_NODE) &&
+        ((node.textContent ?? "").trim() !== "" ||
+          (node instanceof Element &&
+            (node.tagName === "HR" || node.querySelector("hr") !== null)))
     );
     if (kept === false) {
       continue;
