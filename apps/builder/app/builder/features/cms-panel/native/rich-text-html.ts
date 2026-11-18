@@ -1107,7 +1107,7 @@ const isInlineNode = (node: LexicalNode) =>
 
 const PASTE_BLOCKS =
   "p, h1, h2, h3, h4, h5, h6, ul, ol, li, blockquote, pre, hr, figure, figcaption, div";
-const PASTE_MARKS = "a, b, strong, i, em, u, s, code, span";
+export const PASTE_MARKS = "a, b, strong, i, em, u, s, code, span";
 
 /**
  * A link or mark around blocks moves inside them: each run of its inline

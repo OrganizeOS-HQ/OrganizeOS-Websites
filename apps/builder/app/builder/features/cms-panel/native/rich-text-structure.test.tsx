@@ -1193,3 +1193,525 @@ describe("a nested list in a wrapper in a pasted item keeps what follows after i
     expectFixedPoint(written);
   });
 });
+
+/** Whether each text reads with the mark or link `kind` in the field. */
+const marked = (kind: string, words: string[]) =>
+  editorOf()!
+    .getEditorState()
+    .read(() =>
+      words.map((word) => {
+        const node = $getRoot()
+          .getAllTextNodes()
+          .find((text) => text.getTextContent() === word);
+        if (node === undefined) {
+          return `${word}: missing`;
+        }
+        const has =
+          kind === "link"
+            ? $findMatchingParent(node, $isLinkNode) !== null
+            : node.hasFormat(kind as "bold");
+        return `${word}: ${has}`;
+      })
+    );
+
+describe("marks and links around a pasted item's nested list stay (R1)", () => {
+  const MARKS = [
+    ["b", "<b>", "</b>", "bold"],
+    ["strong", "<strong>", "</strong>", "bold"],
+    ["i", "<i>", "</i>", "italic"],
+    ["em", "<em>", "</em>", "italic"],
+    ["u", "<u>", "</u>", "underline"],
+    ["s", "<s>", "</s>", "strikethrough"],
+    ["code", "<code>", "</code>", "code"],
+    ["a", '<a href="https://example.org/a">', "</a>", "link"],
+    ["bold span", '<span style="font-weight:700">', "</span>", "bold"],
+    ["b in a div", "<div><b>", "</b></div>", "bold"],
+  ];
+  const SHAPES = [
+    {
+      shape: "around the item's content",
+      html: (open: string, close: string) =>
+        `<ul><li>${open}A<ul><li>X</li></ul>Z${close}</li><li>B</li></ul>`,
+      words: ["A", "X", "Z"],
+      order: "A|X|Z|B",
+    },
+    {
+      shape: "around the list alone",
+      html: (open: string, close: string) =>
+        `<ul><li>A${open}<ul><li>X</li></ul>${close}Z</li><li>B</li></ul>`,
+      words: ["X"],
+      order: "A|X|Z|B",
+    },
+    {
+      shape: "around an item with nothing after its list",
+      html: (open: string, close: string) =>
+        `<ul><li>${open}A<ul><li>X</li></ul>${close}</li><li>B<ul><li>Y</li></ul>Z</li></ul>`,
+      words: ["A", "X"],
+      order: "A|X|B|Y|Z",
+    },
+  ];
+  test.each(
+    MARKS.flatMap(([name, open, close, kind]) =>
+      SHAPES.map((shape) => ({ name, open, close, kind, ...shape }))
+    )
+  )("$name $shape", async ({ open, close, kind, html, words, order }) => {
+    const onChange = await mountAt("<p></p>", "");
+    paste({ "text/html": html(open, close), "text/plain": "x" });
+    await settle();
+    expect(marked(kind, words)).toEqual(words.map((word) => `${word}: true`));
+    expect(readingOrder(lastHtml(onChange))).toBe(order);
+  });
+
+  test("bold around a step's text and its nested list", async () => {
+    await mountAt("<p></p>", "");
+    paste({
+      "text/html":
+        "<ol><li><strong>Step one<ul><li>detail</li></ul></strong></li><li>Step two<ul><li>detail</li></ul>note</li></ol>",
+      "text/plain": "x",
+    });
+    await settle();
+    expect(marked("bold", ["Step one"])).toEqual(["Step one: true"]);
+    const details = editorOf()!
+      .getEditorState()
+      .read(() =>
+        $getRoot()
+          .getAllTextNodes()
+          .filter((text) => text.getTextContent() === "detail")
+          .map((text) => text.hasFormat("bold"))
+      );
+    expect(details).toEqual([true, false]);
+  });
+
+  test("a link around a heading, a list and a span", async () => {
+    await mountAt("<p></p>", "");
+    paste({
+      "text/html":
+        '<ul><li><a href="https://example.org/a"><h3>Title A</h3><ul><li>tag1</li></ul><span>Read more</span></a></li></ul>',
+      "text/plain": "x",
+    });
+    await settle();
+    expect(marked("link", ["Title A", "tag1", "Read more"])).toEqual([
+      "Title A: true",
+      "tag1: true",
+      "Read more: true",
+    ]);
+  });
+});
+
+/** The deepest nesting of lists and quotes in a value. */
+const deepest = (html: string) => {
+  const template = document.createElement("template");
+  template.innerHTML = html;
+  let most = 0;
+  for (const element of template.content.querySelectorAll("*")) {
+    let depth = 0;
+    for (let at: Element | null = element; at; at = at.parentElement) {
+      if (/^(UL|OL|BLOCKQUOTE)$/.test(at.tagName)) {
+        depth += 1;
+      }
+    }
+    most = Math.max(most, depth);
+  }
+  return most;
+};
+
+describe("a list pasted after a block into a nested item keeps the depth limit (R2)", () => {
+  const cases = [
+    {
+      name: "a rule and a 7-level list into a depth-2 item",
+      html: "<ul><li>a<ul><li>b</li></ul></li></ul>",
+      at: "b",
+      lead: "<hr>",
+      levels: 7,
+    },
+    {
+      name: "a paragraph, a heading and a 5-level list into a depth-4 item",
+      html: nestedList(4, "s"),
+      at: "s4",
+      lead: "<p>one.</p><h2>two.</h2>",
+      levels: 5,
+    },
+  ];
+  for (const depth of [2, 3, 5, 6, 7]) {
+    for (const lead of [
+      "<hr>",
+      "<p>p.</p><hr>",
+      "<p>p.</p><blockquote><p>q.</p></blockquote>",
+      "<p>p.</p><pre><code>c.</code></pre>",
+      "<h2>h.</h2><h3>i.</h3>",
+      "<p>p.</p><ol><li>o.</li></ol>",
+    ]) {
+      cases.push({
+        name: `${lead} and a 7-level list into a depth-${depth} item`,
+        html: nestedList(depth, "s"),
+        at: `s${depth}`,
+        lead,
+        levels: 7,
+      });
+    }
+  }
+  test.each(cases)("$name", async ({ html, at, lead, levels }) => {
+    const onChange = await mountAt(html, at);
+    paste({
+      "text/html": `${lead}${nestedList(levels, "k")}`,
+      "text/plain": "x",
+    });
+    await settle();
+    const written = sanitizeRichTextHtml(lastHtml(onChange));
+    expect(deepest(written)).toBeLessThanOrEqual(7);
+    expectFixedPoint(written);
+    expect(readingOrder(written)).toContain(
+      Array.from({ length: levels }, (_, index) => `k${index + 1}`).join("|")
+    );
+  });
+});
+
+describe("Enter and paste in an item starting with a block (R3)", () => {
+  const H2_PASTE =
+    "<ul><li>A<ul><li>X</li></ul><blockquote><p>Z1</p></blockquote>Z2</li></ul>";
+  /** Runs `step`, which must finish in under two seconds. */
+  const quickly = async (step: () => Promise<void>) => {
+    const start = performance.now();
+    await step();
+    expect(performance.now() - start).toBeLessThan(2000);
+  };
+  const enterAndType = () =>
+    quickly(async () => {
+      await userEvent.keyboard("{Enter}e");
+      await settle();
+    });
+  /** A real click in the text `word` at `offset` (its end when left out). */
+  const clickText = async (word: string, offset?: number) => {
+    const span = [
+      ...editable()!.querySelectorAll<HTMLElement>("[data-lexical-text]"),
+    ].find((element) => element.textContent === word)!;
+    const range = document.createRange();
+    const at = offset ?? word.length;
+    range.setStart(span.firstChild!, at);
+    range.setEnd(span.firstChild!, at);
+    const rect = range.getBoundingClientRect();
+    const box = span.getBoundingClientRect();
+    await userEvent.click(span, {
+      position: {
+        x: Math.min(Math.max(rect.left - box.left, 1), box.width - 1),
+        y: box.height / 2,
+      },
+    } as never);
+    await settle();
+  };
+
+  test("Enter after the pasted item's text makes an item", async () => {
+    const onChange = await mountAt("<ul><li>s1</li><li>t1</li></ul>", "s1");
+    paste({ "text/html": H2_PASTE, "text/plain": "x" });
+    await settle();
+    await enterAndType();
+    const written = plain(lastHtml(onChange));
+    expect(written).toMatch(/Z2<\/li><li>e<\/li><li>t1<\/li>/);
+    expectFixedPoint(written);
+  }, 60000);
+
+  test("a second paste after the pasted item's text lands", async () => {
+    const onChange = await mountAt("<ul><li>s1</li><li>t1</li></ul>", "s1");
+    paste({ "text/html": H2_PASTE, "text/plain": "x" });
+    await settle();
+    await quickly(async () => {
+      paste({ "text/html": "<p>more</p><p>again</p>", "text/plain": "x" });
+      await settle();
+    });
+    const written = plain(lastHtml(onChange));
+    expect(readingOrder(written)).toBe("s1|A|X|Z1|Z2more|again|t1");
+  }, 60000);
+
+  test("Enter in an item holding a pasted rule makes an item", async () => {
+    const onChange = await mountAt("<p></p>", "");
+    paste({
+      "text/html": "<ul><li>Open<ul><li>Click</li></ul><hr></li></ul>",
+      "text/plain": "x",
+    });
+    await settle();
+    await enterAndType();
+    const written = plain(lastHtml(onChange));
+    expect(written).toMatch(/<li><hr \/><\/li><li>e<\/li>/);
+  }, 60000);
+
+  test.each([
+    ["at its end", undefined, "q2xy</li><li>e</li><li>t1"],
+    ["in its middle", 3, "q2x</li><li>ey</li><li>t1"],
+  ])(
+    "Enter %s in a stored item starting with a quote",
+    async (_name, offset, expected) => {
+      const onChange = await mountAt(
+        "<ul><li><blockquote><p>q1</p></blockquote>q2xy</li><li>t1</li></ul>",
+        "q1"
+      );
+      await clickText("q2xy", offset);
+      await enterAndType();
+      expect(plain(lastHtml(onChange))).toContain(expected);
+    },
+    60000
+  );
+
+  test("Enter at the end of a stored item starting with a quote, as the last item", async () => {
+    const onChange = await mountAt(
+      "<ul><li><blockquote><p>q1</p></blockquote>q2</li></ul>",
+      "q1"
+    );
+    await clickText("q2");
+    await enterAndType();
+    expect(plain(lastHtml(onChange))).toBe(
+      "<ul><li><blockquote><p>q1</p></blockquote>q2</li><li>e</li></ul>"
+    );
+  }, 60000);
+
+  test.each([
+    [
+      "an ordinary item",
+      "<ul><li>aa</li><li>bb</li></ul>",
+      "aa",
+      "<ul><li>aa</li><li>e</li><li>bb</li></ul>",
+    ],
+    [
+      "the quote's own paragraph",
+      "<ul><li><blockquote><p>q1</p></blockquote>q2</li></ul>",
+      "q1",
+      "<ul><li><blockquote><p>q1</p><p>e</p></blockquote>q2</li></ul>",
+    ],
+  ])(
+    "Enter in %s is the editor's own",
+    async (_name, html, word, expected) => {
+      const onChange = await mountAt(html, word);
+      await clickText(word);
+      await enterAndType();
+      expect(plain(lastHtml(onChange))).toBe(expected);
+    },
+    60000
+  );
+});
+
+describe("a paste over a backward selection from a list item leaves no empty item (R7)", () => {
+  test("from a paragraph's end back to an item's end", async () => {
+    const onChange = await mountAt(
+      "<ul><li>r1</li><li>s1</li></ul><p>p9</p>",
+      "p9",
+      undefined,
+      "s1"
+    );
+    paste({
+      "text/html":
+        "<ul><li>A<ul><li>X</li></ul><blockquote><p>Z1</p></blockquote>Z2</li></ul>",
+      "text/plain": "x",
+    });
+    await settle();
+    const written = plain(lastHtml(onChange));
+    expect(written).not.toMatch(/<li[^>]*><\/li>/);
+    expect(readingOrder(written)).toBe("r1|s1|A|X|Z1|Z2");
+  });
+});
+
+describe("nothing stays after a lifted list in its item (H7, R8)", () => {
+  test.each([
+    ["two line breaks", "<br><br>", "a.|x."],
+    ["three line breaks", "<br><br><br>", "a.|x."],
+    ["bold line breaks", "<b><br><br></b>", "a.|x."],
+    [
+      "a link around line breaks",
+      '<a href="https://example.org/a"><br><br></a>',
+      "a.|x.",
+    ],
+    [
+      "two spans each holding a line break",
+      "<span><br></span><span><br></span>",
+      "a.|x.",
+    ],
+    ["an italic space and line breaks", "<i> </i><br><br>", "a.|x."],
+    ["a non-breaking space", "&nbsp;", "a.|x."],
+    ["line breaks around text", "<br><br>t.<br>", "a.|x.|t."],
+  ])(
+    "%s after a quote holding a list, at the end of a 6-level list",
+    async (_name, after, order) => {
+      const onChange = await mountAt(nestedList(6, "s"), "s6");
+      paste({
+        "text/html": `<ul><li>a.<blockquote><ul><li>x.</li></ul></blockquote>${after}</li></ul>`,
+        "text/plain": "x",
+      });
+      await settle();
+      const written = lastHtml(onChange);
+      expect(readingOrder(written)).toBe([...DEEP, order].join("|"));
+      expect(sanitizeRichTextHtml(written)).not.toMatch(/<\/(ul|ol)><br/);
+      expectFixedPoint(written);
+    }
+  );
+});
+
+describe("what imports to nothing after a pasted nested list adds no item (R6)", () => {
+  test.each([
+    [
+      "a style",
+      "<ul><li>A<ul><li>X</li></ul><style>p{color:red}</style></li><li>B</li></ul>",
+      2,
+    ],
+    [
+      "a script",
+      "<ul><li>A<ul><li>X</li></ul><script>var a = 1;</script></li><li>B</li></ul>",
+      2,
+    ],
+    [
+      "a zero-width space",
+      "<ul><li>A<ul><li>X</li></ul>&#8203;</li><li>B</li></ul>",
+      2,
+    ],
+    [
+      "a line break between two lists",
+      "<ul><li>A<ul><li>X1</li></ul><br><ul><li>X2</li></ul></li><li>B</li></ul>",
+      2,
+    ],
+    [
+      "a space between two lists",
+      "<ul><li>A<ul><li>X1</li></ul>&nbsp;<ul><li>X2</li></ul></li><li>B</li></ul>",
+      2,
+    ],
+  ])("%s", async (_name, html, items) => {
+    const onChange = await mountAt("<p></p>", "");
+    paste({ "text/html": html, "text/plain": "x" });
+    await settle();
+    const written = plain(lastHtml(onChange));
+    expect(written).not.toMatch(/<li[^>]*><\/li>/);
+    expect(written).not.toMatch(/<li><br/);
+    const template = document.createElement("template");
+    template.innerHTML = written;
+    expect(template.content.firstElementChild!.children).toHaveLength(items);
+  });
+
+  test("a line break, then text after the list: the new item starts with the text", async () => {
+    const onChange = await mountAt("<p></p>", "");
+    paste({
+      "text/html": "<ul><li>A<ul><li>X</li></ul><br>Z</li><li>B</li></ul>",
+      "text/plain": "x",
+    });
+    await settle();
+    const written = plain(lastHtml(onChange));
+    expect(written).toBe(
+      "<ul><li>A<ul><li>X</li></ul></li><li>Z</li><li>B</li></ul>"
+    );
+  });
+});
+
+describe("inline content after a lifted block keeps to its own runs (R4)", () => {
+  test.each([
+    ["two line breaks", "<br><br>", "a.|x.|y."],
+    ["line breaks around a heading", "<br><h2>h.</h2><br>", "a.|x.|y.|h."],
+    ["a rule, then a paragraph", "<hr><p>t.</p>", "a.|x.|y.|t."],
+  ])("%s after the second quote", async (_name, after, order) => {
+    const onChange = await mountAt(nestedList(6, "s"), "s6");
+    paste({
+      "text/html": `<ul><li>a.<blockquote><ul><li>x.</li></ul></blockquote><blockquote><p>y.</p></blockquote>${after}</li></ul>`,
+      "text/plain": "x",
+    });
+    await settle();
+    const written = sanitizeRichTextHtml(lastHtml(onChange));
+    expect(written).not.toMatch(/<p><br \/>|<br \/><\/p>|<p><\/p>/);
+    expect(readingOrder(written)).toBe([...DEEP, order].join("|"));
+    expectFixedPoint(written);
+  });
+
+  const text = (value: string) => ({
+    type: "text",
+    text: value,
+    format: 0,
+    style: "",
+    mode: "normal",
+    detail: 0,
+    version: 1,
+  });
+  const block = { direction: null, format: "", indent: 0, version: 1 };
+  const list = (...children: unknown[]) => ({
+    ...block,
+    type: "list",
+    listType: "bullet",
+    start: 1,
+    tag: "ul",
+    children,
+  });
+  const item = (...children: unknown[]) => ({
+    ...block,
+    type: "listitem",
+    value: 1,
+    children,
+  });
+  const quote = (value: string) => ({
+    ...block,
+    type: "quote",
+    children: [
+      {
+        ...block,
+        type: "paragraph",
+        textFormat: 0,
+        textStyle: "",
+        children: [text(value)],
+      },
+    ],
+  });
+  test.each([
+    ["white space", [text("  ")], "a.|x.|y."],
+    [
+      "text, a list and text",
+      [text("t."), list(item(text("k."))), text("u.")],
+      undefined,
+    ],
+  ])(
+    "the field's own item with %s after a lifted quote",
+    async (_name, tail, order) => {
+      const onChange = await mountAt(nestedList(6, "s"), "s6");
+      paste({
+        "application/x-lexical-editor": JSON.stringify({
+          namespace: editorOf()!._config.namespace,
+          nodes: [
+            list(
+              item(text("a."), list(item(text("x."))), quote("y."), ...tail)
+            ),
+          ],
+        }),
+        "text/plain": "x",
+      });
+      await settle();
+      const written = sanitizeRichTextHtml(lastHtml(onChange));
+      expect(written).not.toMatch(/<p><\/p>|t\.u\./);
+      if (order === undefined) {
+        expect(written).toMatch(/<p>t\.<\/p>/);
+        expect(written).toMatch(/<p>u\.<\/p>/);
+        expect(written).toContain("k.");
+      } else {
+        expect(readingOrder(written)).toBe([...DEEP, order].join("|"));
+      }
+    }
+  );
+});
+
+describe("a wrapper that gives way in a pasted item keeps its lines (R5)", () => {
+  test("text before and after a wrapper holding a nested list", async () => {
+    const onChange = await mountAt("<p></p>", "");
+    paste({
+      "text/html":
+        "<ul><li>P<div>A<ul><li>X</li></ul>Z</div>Q</li><li>B</li></ul>",
+      "text/plain": "x",
+    });
+    await settle();
+    const written = plain(lastHtml(onChange));
+    expect(written).toBe(
+      "<ul><li>P<br />A<ul><li>X</li></ul></li><li>Z<br />Q</li><li>B</li></ul>"
+    );
+    expectFixedPoint(written);
+  });
+
+  test("a table around a nested list keeps its cells apart", async () => {
+    const onChange = await mountAt("<p></p>", "");
+    paste({
+      "text/html":
+        "<ul><li>A<table><tbody><tr><td>C1</td><td><ul><li>X</li></ul></td><td>C3</td></tr><tr><td>D1</td><td>D2</td></tr></tbody></table>Z</li><li>B</li></ul>",
+      "text/plain": "x",
+    });
+    await settle();
+    const written = plain(lastHtml(onChange));
+    expect(written).not.toMatch(/AC1|C3D1|D1D2|D2Z/);
+  });
+});
