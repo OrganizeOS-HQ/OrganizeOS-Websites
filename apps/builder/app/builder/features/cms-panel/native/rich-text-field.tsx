@@ -455,6 +455,16 @@ const $liftBlocksAfterNestedList = (item: ListItemNode) => {
     ($isElementNode(node) || $isDecoratorNode(node)) &&
     node.isInline() === false;
   if (after.some(isBlock) === false) {
+    // inline content after the list stands in an item after this one
+    if (
+      after.some(
+        (node) => node.getTextContent().trim() !== "" || $isDecoratorNode(node)
+      )
+    ) {
+      const next = $createListItemNode();
+      next.append(...after);
+      item.insertAfter(next);
+    }
     return;
   }
   const isEmptyList = (node: ListNode) =>

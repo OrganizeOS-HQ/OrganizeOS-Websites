@@ -982,3 +982,65 @@ describe("an item's run of nested lists splits in one pass (H5)", () => {
     expectFixedPoint(written);
   });
 });
+
+/** `item` nested in `levels` lists, each around it named `${name}${level}`. */
+const aroundItem = (levels: number, item: string, name = "w") => {
+  let html = `<ul><li>${item}</li></ul>`;
+  for (let level = levels; level >= 1; level -= 1) {
+    html = `<ul><li>${name}${level}${html}</li></ul>`;
+  }
+  return html;
+};
+
+const DEEP = Array.from({ length: 6 }, (_, index) => `s${index + 1}`);
+const AROUND = Array.from({ length: 5 }, (_, index) => `w${index + 1}`);
+
+/** The value's texts in reading order. */
+const readingOrder = (html: string) =>
+  sanitizeRichTextHtml(html)
+    .split(/<[^>]+>/)
+    .filter((text) => text.trim() !== "")
+    .join("|");
+
+describe("text after a lifted list moves to its own item (H7)", () => {
+  test.each([
+    {
+      name: "text after a quote holding a list",
+      item: "a.<blockquote><ul><li>x.</li></ul></blockquote>t.",
+    },
+    {
+      name: "a paragraph after a quote holding a list",
+      item: "a.<blockquote><ul><li>x.</li></ul></blockquote><p>t.</p>",
+    },
+    {
+      name: "bold text after a quote holding a list",
+      item: "a.<blockquote><ul><li>x.</li></ul></blockquote><b>t.</b>",
+    },
+    {
+      name: "text after two quotes holding a list",
+      item: "a.<blockquote><blockquote><ul><li>x.</li></ul></blockquote></blockquote>t.",
+    },
+  ])("$name, at the end of a 6-level list", async ({ item }) => {
+    const onChange = await mountAt(nestedList(6, "s"), "s6");
+    paste({ "text/html": `<ul><li>${item}</li></ul>`, "text/plain": "x" });
+    await settle();
+    const written = lastHtml(onChange);
+    expect(readingOrder(written)).toBe([...DEEP, "a.", "x.", "t."].join("|"));
+    expectFixedPoint(written);
+  });
+
+  test("text after a quote holding a list, in 5 levels, into an empty field", async () => {
+    const onChange = await mountAt("<p></p>", "");
+    paste({
+      "text/html": aroundItem(
+        5,
+        "a.<blockquote><ul><li>x.</li></ul></blockquote>t."
+      ),
+      "text/plain": "x",
+    });
+    await settle();
+    const written = lastHtml(onChange);
+    expect(readingOrder(written)).toBe([...AROUND, "a.", "x.", "t."].join("|"));
+    expectFixedPoint(written);
+  });
+});
