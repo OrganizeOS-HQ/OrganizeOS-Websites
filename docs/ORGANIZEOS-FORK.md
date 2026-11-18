@@ -93,7 +93,7 @@ OrganizeOS integration (all optional; each feature ships dark until its variable
 - `ORGANIZEOS_BLOCKS_DENY_ORG_IDS` — the orgs denied the OrganizeOS blocks and the rest of the OrganizeOS builder UI (§9, In the builder): comma-separated organization ids, each trimmed and matched in any case. Every other org, new ones included, is offered them; unset, empty or only separators denies none. An entry that is not an organization id denies every org (a malformed value fails closed), and the builder loader logs that once per instance, without the value. Read by the builder loader, which resolves the project's org from its owner's service email (`org+<organizationId>@svc.organizeos.internal`) and hands the result to the builder as `organizeosSite.blocksEnabled`. Set it in Vercel before the deploy that should read it: an env change reaches functions only on a new deployment, and an unset value offers the blocks to every org. It replaced `ORGANIZEOS_BLOCKS_ORG_IDS`, the rollout allowlist, which the builder no longer reads: delete it from every deployment, and never reuse the name.
 - `WEBSITES2_PREVIEW_SECRET` — shared with OrganizeOS (the same value on both sides): the key that signs the canvas's draft-preview assertion, `X-OOS-Preview` (§5, "Draft preview on the canvas"). Unset or blank: no assertion is minted, and the canvas shows published items only. Rotate it on both sides together; a mismatch only turns preview off.
 - `WEBSITES2_SITE_ACTION_SECRET` — shared with OrganizeOS (the same value on both sides; set in Production only): the key that signs the Publish dialog's Unpublish assertion, `X-OOS-Site-Action` (§5, item 4). Unset or blank: the dialog offers no Unpublish, nothing is minted, and the action route answers 404. Rotate it on both sides together; a mismatch only turns Unpublish off (OrganizeOS refuses the assertion).
-- `ORGANIZEOS_CMS_PANEL` — builder only: the CMS's switch (§9, "The CMS overlay"). Only the exact value `true` offers the CMS rail button; anything else leaves the rail without it. The OrganizeOS data tab does not depend on it.
+- `ORGANIZEOS_CMS_PANEL` — builder only: the CMS's switch (§9, "The CMS overlay"). Only the exact value `true` offers the CMS rail button; anything else leaves the rail without it.
 - `WEBSITES2_CMS_SECRET` — shared with OrganizeOS (the same value on both sides; never the preview's or the site action's value): the key that signs the CMS door's actor assertion, `X-OOS-Actor` (§5, "The CMS door"). Unset or blank: the native CMS screen is off (the framed CMS shows) and the door's route answers 503 `unavailable`, minting nothing. Rotate it on both sides together; a mismatch makes OrganizeOS refuse every door call.
 - `ORGANIZEOS_CMS_NATIVE` — builder only. Only the exact value `true`, with `ORGANIZEOS_CMS_PANEL=true` and `WEBSITES2_CMS_SECRET` set, shows the native CMS screen in the overlay (§9, "The CMS overlay") to every org; anything else shows the framed CMS. Unset it and redeploy to roll back, for every org at once.
 - `ORGANIZEOS_SHOP_BLOCKS` — builder only: the Shop blocks' switch (§9, "Shop blocks"). Only the exact value `true` lists the Product Grid and the Product Card in the Components panel and lets them be inserted, and makes a token provision write the Products catalog Resource; anything else (unset, empty, `TRUE`, `1`) lists neither, refuses their insert and only rewrites a Products Resource a build already has. Placed blocks keep working when it is turned off. To turn it on or off, set or unset it on the builder's Production scope and redeploy.
@@ -259,7 +259,7 @@ How an org admin's session is wired end to end, and which side owns each step. T
    **Inputs reach scripts through `env:`.** No `run:` script holds a `${{ }}` substitution: inputs, variables, secrets and step outputs reach each script through its step's `env:`, and the callback's and the two status reports' JSON bodies are built with `node` from there, so a dispatch input cannot break out of the shell or a body. A step output is written only after its value is checked: the targets' JSON array, the switch's `false`, the level's integer, the deployment's `https://` host. The callback step checks `orgScript`, `guardLevel` and `targets` again before it sends anything, and keeps its 2xx check. On success it logs only the answer's `live` and `launchable`, as `live=<value>` and `launchable=<value>`, each only when it is a boolean, and `live_targets=<count>`, never the answer itself; on failure it prints the answer. The Vercel CLI is installed in a step of its own, with no secret in its environment, at a pinned version and with `--ignore-scripts`, so no install script runs; bump the pin on purpose, to a release at least two weeks old. The deploy step passes the token only in its environment, as `VERCEL_TOKEN`, which the CLI reads, and never on a command line. The token is still in that step's environment while the pinned CLI deploys. `packages/cli/src/organizeos-publish-workflow.test.ts` runs the steps' scripts against a fake `curl`, `npm` and `vercel`.
 
 6. **Status.** The dialog polls the project while a build is pending and treats a build as failed only after the executor's 25 minute timeout (`organizeos-publish-status.ts`; upstream assumes 3 minutes). Its status row reads "Publishing, started {when}", "Published {when}", "Publish failed {when}" or "Publishing did not finish {when}", and nothing before the first publish; there are no toasts (the dialog unmounts when it closes). After the route answers (success, refusal, error or the client's timeout) the dialog refreshes the project and reads the addresses again, and it reads them again when a pending build settles, a timeout included, so the rows always show what OrganizeOS reports, never the route's or the callback's answer; a read that finishes after a newer one is dropped. Publishes can overlap: the dialog disables Publish to selected while a build is pending, but another admin's publish (another tab or person) is not blocked. The workflow runs one publish per org, and a newer one cancels the older run, which reports FAILED when it is cancelled before the flip and PUBLISHED after it. The status row follows `latestBuildVirtual`, so it shows the newest build, and the next read shows what OrganizeOS made live.
-7. **Collections** (OrganizeOS → builder, `POST /internal/collections-sync`, `ORGANIZEOS_PROVISION_TOKEN`, authenticated like provision). Sent by an Inngest job (debounced 30 s per org) whenever the org's public CMS collections change: `{ organizationId, collections }`, every public collection as a full snapshot (`slug` and `name`; `singularName`, `kind`, `id`, `contentUrl` and `fields` are optional, and unknown keys are ignored). The builder adds one catalog Resource per collection to the org's dev build (`shared/db/collections-sync.server.ts`): a GET Resource for `<api base>/collections/<slug>/items`. For an org `ORGANIZEOS_CATALOG_ROOT_BINDINGS` wants (§4), the same write gives each catalog Resource its `:root` binding (§9, "The catalog in provisioning"), so a new collection is bindable from every element after the reload the CMS overlay asks for; for any other org it adds none and removes the unreferenced ones. The OrganizeOS data tab lists it too (§9: data loads only where it is used). Ids derive from the project and the slug, so a rename only updates the name; a platform collection that a static Resource already covers (`events`, `fundraisers`, `stats`) is skipped. Existing entries are replaced where they stand and new ones appended, so the build keeps its order. A sync also removes, where nothing references them, the bindings with a preset's deterministic id: the unscoped ones older syncs wrote next to each Resource and the `:root` Forms binding of the pre-deploy branches (§9). It keeps the rest, and never touches a binding with a fresh id, which is what every use brings now, whatever its scope.
+7. **Collections** (OrganizeOS → builder, `POST /internal/collections-sync`, `ORGANIZEOS_PROVISION_TOKEN`, authenticated like provision). Sent by an Inngest job (debounced 30 s per org) whenever the org's public CMS collections change: `{ organizationId, collections }`, every public collection as a full snapshot (`slug` and `name`; `singularName`, `kind`, `id`, `contentUrl` and `fields` are optional, and unknown keys are ignored). The builder adds one catalog Resource per collection to the org's dev build (`shared/db/collections-sync.server.ts`): a GET Resource for `<api base>/collections/<slug>/items`. For an org `ORGANIZEOS_CATALOG_ROOT_BINDINGS` wants (§4), the same write gives each catalog Resource its `:root` binding (§9, "The catalog in provisioning"), so a new collection is bindable from every element after the reload the CMS overlay asks for; for any other org it adds none and removes the unreferenced ones. Ids derive from the project and the slug, so a rename only updates the name; a platform collection that a static Resource already covers (`events`, `fundraisers`, `stats`) is skipped. Existing entries are replaced where they stand and new ones appended, so the build keeps its order. A sync also removes, where nothing references them, the bindings with a preset's deterministic id: the unscoped ones older syncs wrote next to each Resource and the `:root` Forms binding of the pre-deploy branches (§9). It keeps the rest, and never touches a binding with a fresh id, which is what every use brings now, whatever its scope.
 
    The request carries no token: the API base and the `Authorization` header are copied from the static Resources that provisioning seeded. A re-provision rotates the token in every collection Resource itself (new `Authorization` and API base, same name and position), so the old token can be revoked after the next publish without a sync in between. OrganizeOS sends a sync only when a collection changes (its `manage-collection` action fires the Inngest event); it does not fire one after provisioning or at SSO entry, where the membership re-sync (item 1) is the entry-time writer. Idempotent: an unchanged snapshot writes nothing. A write is a compare-and-swap on the build's `version` and `updatedAt`, which sets `updatedAt` and never bumps the version (that would make every open builder reload); if a builder save, the entry re-sync or a provision wins the race it re-reads and tries again, three attempts in all. The entry re-sync keeps the version too, so matching on the version alone would let the two overwrite each other's change.
 
@@ -835,18 +835,25 @@ can be merged with minimal conflict.
     `features/organizeos-panel/overlay.wiring.node.test.ts` pins the marked
     lines.
   - **The staged writes**, `features/organizeos-panel/staged-data.ts`: the
-    panels' own writes (a block's insert, the CMS page templates, the data
-    tab, a site template's apply) go through `executeStagedRuntimeMutation`
+    panels' own writes (a block's insert, the CMS page templates, a site
+    template's apply) go through `executeStagedRuntimeMutation`
     (below), each as one commit, and it refuses a write that changes or
     deletes a catalog Resource or a catalog `:root` binding. Its binding
     rule, predicate and message are the runtime lock's own, imported from
     `runtime/organizeos-catalog.ts` (`assertCatalogRootBindingsKept`,
     `catalogChangeMessage`; below).
+  - **Stored panel widths.** `builder/shared/client-settings/settings.ts`:
+    one marked import and the marked call in `read()` pass the stored
+    settings through `dropUnknownPanelWidths`
+    (`builder/shared/client-settings/organizeos-panel-widths.ts`, with
+    `settings.organizeos.test.ts`) before the parse. A stored width of a
+    panel that is no longer a panel name, such as the removed OrganizeOS data
+    tab's `organizeos`, is dropped; it would otherwise fail the parse, which
+    falls back to every default. `sidebar-left/types.ts` is upstream's again.
+    `overlay.wiring.node.test.ts` pins the marked lines.
   - The Motion tab, by marked lines in `builder/inspector.tsx`, with
     `$activeInspectorPanel` widened to
-    take `"motion"` in `builder/shared/nano-states.ts`; the OrganizeOS data
-    tab in `sidebar-left/sidebar-left.tsx` (shown only for an org the deny
-    list does not deny) and `sidebar-left/types.ts`; the panel's controls,
+    take `"motion"` in `builder/shared/nano-states.ts`; the panel's controls,
     `settings-panel/controls/organizeos-controls.tsx`,
     `organizeos-field-control.tsx`, `organizeos-product-control.tsx` and
     `organizeos-record.tsx`, with `organizeos-controls.test.tsx`,
@@ -896,12 +903,10 @@ can be merged with minimal conflict.
     (§9, "Giving blocks").
   - The CMS page templates (§9): `collection-schema.ts`,
     `collection-layout.ts`, `collection-pages.ts`, `collection-list.ts` and
-    `collection-row-menu.tsx`, with their tests, the collection rows in
-    `organizeos-data.ts` and `organizeos-panel.tsx`, `collection-catalog.ts`
-    (the catalog helpers moved out of `organizeos-panel.tsx`, and the CMS
-    column's join) with its test, the `collection-row-menu.tsx` split
-    (`CollectionActionsMenu`, `StaleItemPageLine` and `OrphanRow`'s menu
-    variant) with the native screen as its second mount, and cases in
+    `collection-row-menu.tsx` (`CollectionActionsMenu`, `StaleItemPageLine`
+    and `OrphanRow`, mounted by the native CMS screen), with their tests,
+    `organizeos-data.ts` (the item-page helpers), `collection-catalog.ts`
+    (the catalog helpers and the CMS column's join) with its test, and cases in
     `shared/db/resource-presets.server.test.ts` and
     `shared/organizeos-preview.server.test.ts`.
   - **The site templates (§9, "Site templates").** In the blocks package, the
@@ -1737,8 +1742,9 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
 **In the builder**, `apps/builder/app/builder/features/organizeos-panel/`:
 
 - **Offered to every org not on `ORGANIZEOS_BLOCKS_DENY_ORG_IDS`** (§4): the
-  Components panel's OrganizeOS section (the blocks), the Inspector's Motion
-  tab and the OrganizeOS data tab. The builder
+  Components panel's OrganizeOS section (the blocks) and the Inspector's
+  Motion tab, and on the server the catalog's `:root` bindings
+  (`catalogRootBindingsWanted`, below, "The catalog in provisioning"). The builder
   loader resolves the project's org and sets `organizeosSite.blocksEnabled`;
   for a denied org none is offered and `insertOrganizeosBlock` refuses with a
   toast ("OrganizeOS blocks are not available for this site yet") and writes
@@ -1921,14 +1927,6 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
     whose Field Label has no text) gets the new field's label as text;
     otherwise the Field Label's text is the designer's and is never touched.
     A Field under an RSVP Form or outside any form keeps the text box.
-- **The OrganizeOS data tab** (`organizeos-panel.tsx`), a left-sidebar tab
-  after Components with upstream's `ResourceIcon` and the tooltip "OrganizeOS
-  data", hidden in content mode and disabled on text pages, as Components is.
-  It is titled "OrganizeOS data", with the data list (below) under the title
-  and no line of its own. Once the catalog has resolved and is empty, it reads
-  "No data connected"; with no selected page there is nothing below the
-  title. The CMS does not change it: the CMS is a rail button, not a panel
-  (below).
 - **The CMS overlay** (`features/cms-panel/`, OrganizeOS designs
   `docs/superpowers/specs/2026-10-26-cms-in-the-builder-design.md`, 4.4, and
   `2026-10-27-cms-overlay-and-staged-edits-design.md`, 3.1, which replaces
@@ -2194,48 +2192,35 @@ collection }` invalidates, through `invalidateResource`, every current
   (the canvas, and `:root`'s reach into a Slot's content) and the CLI's
   `prebuild.test.ts` ("OrganizeOS catalog: a page loads only what it uses")
   fail if an upstream merge loads by scope again.
-- **The data tab's list** (`organizeos-data.ts`): one row per catalog Resource,
-  in that order (collections in the build's order, then Forms, then Upcoming
-  Events), found by id, never by name. "Add to this page" gives the selected
-  page a binding of the Resource, scoped to the page's root, unless the page
-  already has one there or at `:root`; the row then reads "On this page". The
-  binding is named like its Resource, or `<name> 2` (and so on) when that name
-  is taken on the page root or at `:root` (an unscoped variable, such as an
-  older provision's binding, counts as `:root` for the name, though not as the
-  page having the Resource, since it never loads), because expressions resolve
-  variables by name: a page-root binding masks a `:root` variable of the same
-  name, and the re-resolution that follows the add would point the expressions
-  that read it at the Resource. The data panel lists it on every element of the
-  page except inside a Slot's content, which reaches `:root` variables only:
-  there the panel does not list it and the canvas evaluates it as undefined.
-  Nothing loads, and the data panel shows no value for it, until an element of
-  the page binds it; then the builder loads it while the page is open, and a
-  published site loads it on that page alone. A block's own binding does not
-  count: it is visible inside the block only. Without build access (a page
-  template outside design mode) the add is refused with the runtime's own
-  message, in a toast, and nothing is written.
+- **No "add" step.** The OrganizeOS data tab, a left-sidebar tab whose "Add
+  to this page" gave a page its own binding of a catalog Resource, is gone
+  (the data-automatic plan's PR B): every element can bind the catalog
+  through its `:root` bindings. Page-root bindings the tab wrote stay where
+  they are: on their page they mask the `:root` binding of the same name and
+  read the same Resource, and load only where an expression reads them.
 - **CMS page templates** (OrganizeOS design
   `docs/superpowers/specs/2026-10-27-cms-page-templates-design.md` and its
   plan `docs/superpowers/plans/2026-10-27-cms-page-templates.md`): a
-  collection's item page, its list block and the sitemap, made from the data
-  tab. Every part is upstream instances, Resources and page meta that
+  collection's item page, its list block and the sitemap, made from the
+  collection's "..." menu in the CMS overlay. Every part is upstream instances, Resources and page meta that
   published sites already render: no runtime package changes.
 
-  - **The menu** (`collection-row-menu.tsx`). A collection's row (a catalog
-    Resource whose id is its collection's derived id) has a "..." menu in place
-    of its button: Create item page (Open item page once the collection has
-    one), Add list, Add to this page and, only when the sitemap lists a
-    collection with no item page, Remove from sitemap. Other catalog rows keep
-    their button. The menu holds options only: no help text, the row's name in
-    a tooltip. The CMS column is the menu's second mount (Design mode,
-    `blocksEnabled`, a collection with a catalog Resource), without Add to this
-    page; there Create item page, Open item page and Add list hide the
-    overlay, Remove from sitemap toasts "Removed from sitemap", and an
-    orphan's Remove from sitemap is in its "..." menu.
+  - **The menu** (`collection-row-menu.tsx`, `CollectionActionsMenu`). The
+    native CMS column mounts it on each public collection's "..." menu (Design
+    mode, `blocksEnabled`; a collection with no catalog Resource gets one on
+    first use): Create item page (Open item page once the collection has
+    one), Add list and, only when the sitemap lists a collection with no item
+    page, Remove from sitemap. It holds options only: no help text. Create
+    item page, Open item page and Add list hide the overlay, Remove from
+    sitemap toasts "Removed from sitemap", and an orphan at the column's foot
+    (`OrphanRow`) has its Remove from sitemap in its own "..." menu. With the
+    native screen off (`ORGANIZEOS_CMS_NATIVE`), nothing mounts it; the
+    generators remain, and existing item pages, lists and sitemaps keep
+    working.
   - **The plan gate.** Create item page and Add list are disabled, with a plain
     label (a `Chip` reading `planBadgeLabel`, as every plan badge is, §7), when
-    `$permissions` lacks `allowDynamicData`. Open item page, Add to this page
-    and Remove from sitemap are not gated. The gate is in the builder's UI only.
+    `$permissions` lacks `allowDynamicData`. Open item page and Remove from
+    sitemap are not gated. The gate is in the builder's UI only.
   - **The schema read** (`collection-schema.ts`). The builder stores no field
     schema, so each click reads `GET {base}/collections` live with the
     collection catalog Resource's `Authorization`, posted as one
@@ -2350,10 +2335,11 @@ collection }` invalidates, through `invalidateResource`, every current
     (`organizeos-data.ts`) reads the slug from the first string literal of an
     item Resource's url, which `parseCollectionUrl` cannot (it parses only a
     literal ending in `/items`), and `findStaleItemPages` finds the item
-    pages whose slug no catalog Resource has. Such a page's collection row,
-    matched by the page name Create item page gave it, reads "Item page uses
-    an old address"; with no row of that name, the page gets a row of its
-    own with the line. Nothing is rewritten.
+    pages whose slug no catalog Resource has. Such a page's collection row in
+    the CMS column, matched by the page name Create item page gave it, reads
+    "Item page uses an old address"; with no row of that name, the page gets
+    a row of its own at the column's foot with the line. Nothing is
+    rewritten.
   - **Token rotation covers the new Resources.** Each copies the catalog's
     `Authorization` value, so provisioning's rotation rewrites it on the
     `previousAuth` branch of `seedProjectResourcePresets` (the item page's
@@ -2559,7 +2545,7 @@ collection }` invalidates, through `invalidateResource`, every current
 - **Staged writes.** The OrganizeOS panels write through
   `executeStagedRuntimeMutation` (`shared/instance-utils/data.ts`): it stages
   the runtime's operations (an insert, a wrap, a props update) and the panels'
-  own patches (an insert's completion, Create item page, Add to this page, a
+  own patches (an insert's completion, Create item page, Add list, a
   site template's apply), each seeing what was staged before it, then commits
   them once, as one transaction and one undo step, through upstream's commit
   checks. It rejects without build access (a page template outside design mode),
@@ -4361,13 +4347,6 @@ options, and the limits found since in review):
   data panel. Those branches were never deployed, so only dev and test
   projects written on them can carry such a block; no production site does,
   and this is not a production migration.
-- Two builder tabs that click "Add to this page" for the same Resource at once
-  both pass `isCatalogResourceOnPage` against their own state, but
-  single-player sync refuses the second tab's save as a version mismatch and
-  asks it to reload, so one binding is saved. Only with multiplayer on (off by
-  default, and it needs `PUBLIC_COLLAB_RELAY_URL`) could both be saved as two
-  page-root bindings (the designer deletes the extra one in the data panel;
-  the catalog Resource stays). Not fixed.
 - Copies rebind by name. Upstream re-resolves expressions by variable name when
   a block is duplicated, copied, pasted or moved, and when an admin saves a
   variable (`rebindTreeVariablesMutable`). A new block's own binding is scoped
@@ -4867,7 +4846,7 @@ as paused, so reversal is the switch.
   feature, since the platform provides the catalog, so an org whose plan has
   no `allowDynamicData` sees "Resource variable" only for a Resource of its
   own (decided in the 0.309.0 merge). The collections entitlement shows in
-  the data tab's row menu instead.
+  the collection menu's plan badge instead (Create item page, Add list).
 - **Prebuild.** `dropOrgScript` (`packages/cli/src/organizeos-org-script.ts`) runs
   in one short marked hook in `prebuild.ts`, where the project bundle is read and
   before props are normalized, pages are walked, resources are collected and CSS
