@@ -2435,16 +2435,9 @@ const wrapStrayListItems = (body: HTMLElement) => {
  * item, so it keeps its place after the list; true when any did.
  */
 const splitItemsAfterNestedList = (body: HTMLElement) => {
-  let split = false;
-  for (const item of Array.from(body.querySelectorAll("li")).reverse()) {
-    const list = Array.from(item.children).find((child) =>
-      /^(UL|OL)$/.test(child.tagName)
-    );
-    const rest: ChildNode[] = [];
-    for (let at = list?.nextSibling; at; at = at.nextSibling) {
-      rest.push(at);
-    }
-    const kept = rest.some(
+  // only what imports to content: text or a rule (a pasted image does not)
+  const hasContent = (nodes: ChildNode[]) =>
+    nodes.some(
       (node) =>
         (node.nodeType === Node.ELEMENT_NODE ||
           node.nodeType === Node.TEXT_NODE) &&
@@ -2452,15 +2445,37 @@ const splitItemsAfterNestedList = (body: HTMLElement) => {
           (node instanceof Element &&
             (node.tagName === "HR" || node.querySelector("hr") !== null)))
     );
-    if (kept === false) {
-      continue;
+  const isList = (node: ChildNode) =>
+    node instanceof Element && /^(UL|OL)$/.test(node.tagName);
+  let split = false;
+  for (const item of Array.from(body.querySelectorAll("li")).reverse()) {
+    const list = Array.from(item.children).find(isList);
+    // what follows each nested list, up to and including the next one: the
+    // new items, made in one pass
+    const runs: ChildNode[][] = [[]];
+    for (let at = list?.nextSibling; at; at = at.nextSibling) {
+      runs[runs.length - 1].push(at);
+      if (isList(at)) {
+        runs.push([]);
+      }
     }
-    const next = body.ownerDocument.createElement("li");
-    for (const node of rest) {
-      next.appendChild(node);
+    const keptFrom: boolean[] = [];
+    for (let index = runs.length - 1; index >= 0; index -= 1) {
+      keptFrom[index] = keptFrom[index + 1] === true || hasContent(runs[index]);
     }
-    item.parentNode?.insertBefore(next, item.nextSibling);
-    split = true;
+    let last: Element = item;
+    let next: Element | undefined;
+    for (const [index, run] of runs.entries()) {
+      if (keptFrom[index]) {
+        next = body.ownerDocument.createElement("li");
+        last.parentNode?.insertBefore(next, last.nextSibling);
+        last = next;
+        split = true;
+      }
+      if (next !== undefined) {
+        next.append(...run);
+      }
+    }
   }
   return split;
 };
