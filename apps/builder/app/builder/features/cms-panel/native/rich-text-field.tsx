@@ -558,15 +558,15 @@ const $liftBlocksAfterNestedList = (item: ListItemNode) => {
     lifted = child;
     lifted.insertAfter(levels[levels.length - 1]);
   }
-  // levels left empty go, with the items that hold them
+  // levels left empty go, innermost first, each with the item that holds it
   for (const [index, level] of levels.entries()) {
     if (level.getChildrenSize() > 0) {
       break;
     }
     const holder = level.getParent();
-    level.remove();
+    level.remove(true);
     if (index < levels.length - 1 && $isListItemNode(holder)) {
-      holder.remove();
+      holder.remove(true);
     }
   }
 };
@@ -2381,7 +2381,41 @@ const wrapStrayListItems = (body: HTMLElement) => {
   return strays.length > 0;
 };
 
-/** The pasted data with its list items in lists; undefined when none needs it. */
+/**
+ * What follows a pasted item's nested list moves to a new item after that
+ * item, so it keeps its place after the list; true when any did.
+ */
+const splitItemsAfterNestedList = (body: HTMLElement) => {
+  let split = false;
+  for (const item of Array.from(body.querySelectorAll("li")).reverse()) {
+    const list = Array.from(item.children).find((child) =>
+      /^(UL|OL)$/.test(child.tagName)
+    );
+    const rest: ChildNode[] = [];
+    for (let at = list?.nextSibling; at; at = at.nextSibling) {
+      rest.push(at);
+    }
+    const kept = rest.some(
+      (node) =>
+        node.nodeType === Node.ELEMENT_NODE ||
+        (node.nodeType === Node.TEXT_NODE &&
+          (node.textContent ?? "").trim() !== "")
+    );
+    if (kept === false) {
+      continue;
+    }
+    const next = body.ownerDocument.createElement("li");
+    next.append(...rest);
+    item.after(next);
+    split = true;
+  }
+  return split;
+};
+
+/**
+ * The pasted data with its list items in lists, and nothing after an item's
+ * nested list; undefined when none needs it.
+ */
 const withStrayListItemsWrapped = (
   data: DataTransfer
 ): DataTransfer | undefined => {
@@ -2390,7 +2424,8 @@ const withStrayListItemsWrapped = (
     return;
   }
   const dom = new DOMParser().parseFromString(html, "text/html");
-  if (wrapStrayListItems(dom.body) === false) {
+  const wrapped = wrapStrayListItems(dom.body);
+  if (splitItemsAfterNestedList(dom.body) === false && wrapped === false) {
     return;
   }
   const next = new DataTransfer();

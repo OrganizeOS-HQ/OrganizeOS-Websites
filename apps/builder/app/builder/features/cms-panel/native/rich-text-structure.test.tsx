@@ -773,3 +773,86 @@ describe("a list's type changes in place inside a quote (K8)", () => {
     );
   });
 });
+
+describe("what follows a pasted item's nested list stays after it (K5)", () => {
+  test("an item's quote after its nested list, pasted at the end of a 7-level list", async () => {
+    const onChange = await mountAt(nestedList(7), "L7");
+    paste({
+      "text/html":
+        "<ul><li>a<ul><li>x</li></ul><blockquote><p>z</p></blockquote></li></ul>",
+      "text/plain": "x",
+    });
+    await settle();
+    const written = lastHtml(onChange);
+    expect(texts(sanitizeRichTextHtml(written)).join("|")).toBe(
+      "L1|L2|L3|L4|L5|L6|L7|a|x|z"
+    );
+    expectFixedPoint(written);
+  });
+});
+
+describe("a block pasted at the end of a deep list's last item leaves no empty item (K18)", () => {
+  test.each([
+    {
+      name: "depth 4, nothing after",
+      html: nestedList(4),
+      at: "L4",
+      paste: "<p>one</p><hr><p>two</p>",
+      order: "L1|L2|L3|L4one|---|two",
+    },
+    {
+      name: "depth 7, nothing after",
+      html: nestedList(7),
+      at: "L7",
+      paste: "<p>one</p><hr><p>two</p>",
+      order: "L1|L2|L3|L4|L5|L6|L7one|---|two",
+    },
+    {
+      name: "depth 7, a quote, nothing after",
+      html: nestedList(7),
+      at: "L7",
+      paste: "<p>one</p><blockquote><p>q</p></blockquote>",
+      order: "L1|L2|L3|L4|L5|L6|L7one|q",
+    },
+    {
+      name: "depth 4, a top-level item after",
+      html: "<ul><li>a1<ul><li>a2<ul><li>a3<ul><li>a4</li></ul></li></ul></li></ul></li><li>top2</li></ul>",
+      at: "a4",
+      paste: "<p>one</p><hr><p>two</p>",
+      order: "a1|a2|a3|a4one|---|two|top2",
+    },
+  ])("$name", async ({ html, at, paste: pasted, order }) => {
+    const onChange = await mountAt(html, at);
+    paste({ "text/html": pasted, "text/plain": "x" });
+    await settle();
+    const written = sanitizeRichTextHtml(lastHtml(onChange));
+    expect(written).not.toMatch(/<li[^>]*><\/li>/);
+    expect(
+      outline(written)
+        .map((line) => line.slice(line.indexOf(":") + 1))
+        .join("|")
+    ).toBe(order);
+    expectFixedPoint(written);
+  });
+});
+
+describe("quotes pasted into a nested item keep their levels at the top (K19)", () => {
+  test("7 nested quotes at the end of a level-3 item", async () => {
+    const onChange = await mountAt(
+      "<ul><li>s1<ul><li>s2<ul><li>s3</li></ul></li></ul></li></ul>",
+      "s3"
+    );
+    let quotes = "";
+    for (let level = 7; level >= 1; level -= 1) {
+      quotes = `<blockquote><p>q${level}</p>${quotes}</blockquote>`;
+    }
+    paste({ "text/html": quotes, "text/plain": "x" });
+    await settle();
+    const written = sanitizeRichTextHtml(lastHtml(onChange));
+    const lines = outline(written);
+    expect(lines.filter((line) => /:q\d$/.test(line))).toEqual(
+      Array.from({ length: 7 }, (_, index) => `${index + 1}:q${index + 1}`)
+    );
+    expectFixedPoint(written);
+  });
+});
