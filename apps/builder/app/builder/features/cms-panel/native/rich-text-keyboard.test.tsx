@@ -729,3 +729,26 @@ describe("text input and arrows beside line breaks and images (K23, K25, K26)", 
     expect(written).not.toContain("a.png");
   });
 });
+
+describe("a Shift+click from right after a line break keeps its anchor (K24)", () => {
+  test("Shift+click at the line's end, then Backspace, keeps the line break", async () => {
+    const onChange = await caretBy(`<p>${A}<br>${B} cc dd</p>`, () => {
+      textNode(" cc dd").select(0, 0);
+    });
+    await type("{ArrowLeft}{ArrowLeft}");
+    const text = [
+      ...editable()!.querySelectorAll<HTMLElement>("[data-lexical-text]"),
+    ].find((span) => span.textContent === " cc dd")!;
+    const box = text.getBoundingClientRect();
+    await userEvent.click(text, {
+      position: { x: box.width - 1, y: box.height / 2 },
+      modifiers: ["Shift"],
+    } as never);
+    await settle();
+    await type("{Backspace}");
+    const written = lastHtml(onChange);
+    expect(written).toMatch(/a\.png[^>]*>(<[^>]+>)*<br>/);
+    expect(written).not.toContain("b.png");
+    expect(written).not.toContain("cc");
+  });
+});

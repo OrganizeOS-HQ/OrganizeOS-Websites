@@ -571,17 +571,30 @@ const $liftBlocksAfterNestedList = (item: ListItemNode) => {
   }
 };
 
-/** How many lists and quotes hold a node. */
+/**
+ * How many lists and quotes hold a node, once a quote after an item's nested
+ * list has left every list around it (`$liftBlocksAfterNestedList`).
+ */
 const $nestingOf = (node: LexicalNode) => {
   let around = 0;
-  for (
-    let parent = node.getParent();
-    parent !== null;
-    parent = parent.getParent()
-  ) {
+  let child = node;
+  let parent = node.getParent();
+  while (parent !== null) {
+    if (
+      $isListItemNode(parent) &&
+      $isQuoteNode(child) &&
+      child.getPreviousSiblings().some($isListNode)
+    ) {
+      while ($isListItemNode(parent) || $isListNode(parent)) {
+        parent = parent.getParent();
+      }
+      continue;
+    }
     if ($isListNode(parent) || $isQuoteNode(parent)) {
       around += 1;
     }
+    child = parent;
+    parent = parent.getParent();
   }
   return around;
 };
@@ -1832,6 +1845,28 @@ const ImageEditingPlugin = () => {
     const unpin = () => {
       pinnedAnchor.current = undefined;
     };
+    // a Shift+click extends the selection from its anchor, as Shift with
+    // an arrow does; any other click ends the extension
+    const pinOnShiftPointer = (event: PointerEvent) => {
+      if (event.shiftKey === false) {
+        unpin();
+        return;
+      }
+      if (pinnedAnchor.current !== undefined) {
+        return;
+      }
+      pinnedAnchor.current = editor.getEditorState().read(() => {
+        const selection = $getSelection();
+        if (
+          $isRangeSelection(selection) === false ||
+          $isAfterLineBreak(selection.anchor) === false
+        ) {
+          return;
+        }
+        const { anchor } = selection;
+        return { key: anchor.key, offset: anchor.offset, type: anchor.type };
+      });
+    };
     // text input with an image selected, or at an element caret right
     // after a line break (where the browser's target range is the line
     // above), is inserted at Lexical's own selection
@@ -2258,8 +2293,8 @@ const ImageEditingPlugin = () => {
         }
       }),
       editor.registerRootListener((rootElement, previous) => {
-        previous?.removeEventListener("pointerdown", unpin);
-        rootElement?.addEventListener("pointerdown", unpin);
+        previous?.removeEventListener("pointerdown", pinOnShiftPointer);
+        rootElement?.addEventListener("pointerdown", pinOnShiftPointer);
       }),
       // a copy or cut marks its selection, for the code block's export
       editor.registerCommand(
@@ -2405,8 +2440,10 @@ const splitItemsAfterNestedList = (body: HTMLElement) => {
       continue;
     }
     const next = body.ownerDocument.createElement("li");
-    next.append(...rest);
-    item.after(next);
+    for (const node of rest) {
+      next.appendChild(node);
+    }
+    item.parentNode?.insertBefore(next, item.nextSibling);
     split = true;
   }
   return split;
