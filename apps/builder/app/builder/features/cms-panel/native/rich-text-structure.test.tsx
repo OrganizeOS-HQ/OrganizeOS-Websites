@@ -1097,3 +1097,37 @@ describe("text after a block lifted out of the lists lands (H8)", () => {
     expectFixedPoint(written);
   });
 });
+
+describe("a list in two quotes at the depth limit keeps the reading order (H6)", () => {
+  const DEEP7 = Array.from({ length: 7 }, (_, index) => `s${index + 1}`);
+  test.each([
+    {
+      name: "a list, then a paragraph",
+      inner: "<ul><li>x.</li></ul><p>z.</p>",
+      after: "",
+      order: ["a.", "x.", "z."],
+    },
+    {
+      name: "a list and a quote, then a paragraph after the quotes",
+      inner: "<ol><li>x.</li></ol><blockquote><p>y.</p></blockquote>",
+      after: "<p>z.</p>",
+      order: ["a.", "x.", "y.", "z."],
+    },
+    {
+      name: "a paragraph, a list and a paragraph",
+      inner: "<p>w.</p><ul><li>x.</li></ul><p>z.</p>",
+      after: "",
+      order: ["a.", "w.", "x.", "z."],
+    },
+  ])("$name", async ({ inner, after, order }) => {
+    const onChange = await mountAt(nestedList(7, "s"), "s7");
+    paste({
+      "text/html": `<ul><li>a.<blockquote><blockquote>${inner}</blockquote></blockquote>${after}</li></ul>`,
+      "text/plain": "x",
+    });
+    await settle();
+    const written = lastHtml(onChange);
+    expect(readingOrder(written)).toBe([...DEEP7, ...order].join("|"));
+    expectFixedPoint(written);
+  });
+});
