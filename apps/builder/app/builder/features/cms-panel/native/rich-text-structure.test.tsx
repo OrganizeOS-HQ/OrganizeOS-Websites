@@ -1131,3 +1131,19 @@ describe("a list in two quotes at the depth limit keeps the reading order (H6)",
     expectFixedPoint(written);
   });
 });
+
+describe("a list of the other type pasted into a nested item keeps its nesting at the top (H9)", () => {
+  test("a numbered list with a nested item, at the end of a 7-level list", async () => {
+    const onChange = await mountAt(nestedList(7, "s"), "s7");
+    paste({
+      "text/html": "<ol><li>A<ul><li>X</li></ul>Z</li><li>B</li></ol>",
+      "text/plain": "x",
+    });
+    await settle();
+    const written = plain(lastHtml(onChange));
+    expect(written).toContain(
+      "<ol><li>A<ul><li>X</li></ul></li><li>Z</li><li>B</li></ol>"
+    );
+    expectFixedPoint(written);
+  });
+});
