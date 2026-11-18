@@ -786,44 +786,32 @@ describe("a held anchor ends when the focus leaves the field (H10)", () => {
     expect(after.replace("x", "")).toBe(before);
   };
 
-  test("a Shift+click after a line break, then Save, Shift+Tab and typing", async () => {
+  // the Title takes the selection; Shift+Tab from Save enters the field
+  const leaveAndTabBack = async () => {
+    await click(title());
+    act(() => buttonByText("Save")!.focus());
+    await type("{Shift>}{Tab}{/Shift}");
+  };
+
+  test("a Shift+click after a line break, then the Title, Shift+Tab back and typing", async () => {
     mountField(PARAS);
     await settle();
     await clickInText("second para here", 16);
     await type("{Shift>}{Enter}{/Shift}");
     await clickInText("second para here", 7, ["Shift"]);
-    await click(buttonByText("Save"));
-    await type("{Shift>}{Tab}{/Shift}");
+    await leaveAndTabBack();
     expect(inEditor()).toBe(true);
     const before = editable()!.textContent ?? "";
     await type("x");
     expectOnlyTyped(before);
   });
 
-  test("a Shift+End, then Save, Shift+Tab and typing", async () => {
+  test("a Shift+Home after a line break, then the Title, Shift+Tab back and typing", async () => {
     mountField(PARAS);
     await settle();
-    await clickInText("second para here", 7);
-    await type("{Shift>}{End}{/Shift}");
-    const dump = (label: string) => {
-      const s = getSelection()!;
-      console.log(
-        label,
-        document.activeElement?.tagName,
-        s.anchorNode?.nodeName,
-        s.anchorOffset,
-        s.focusNode?.nodeName,
-        s.focusOffset,
-        editorOf()!
-          .getEditorState()
-          .read(() => JSON.stringify($getSelection()))
-      );
-    };
-    dump("after end");
-    await click(buttonByText("Save"));
-    dump("after save");
-    await type("{Shift>}{Tab}{/Shift}");
-    dump("after tab");
+    await clickInText("second para here", 16);
+    await type("{Shift>}{Enter}{/Shift}{Shift>}{Home}{/Shift}");
+    await leaveAndTabBack();
     expect(inEditor()).toBe(true);
     const before = editable()!.textContent ?? "";
     await type("x");
