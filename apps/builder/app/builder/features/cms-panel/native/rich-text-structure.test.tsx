@@ -935,6 +935,18 @@ describe("a pasted item starting with a block leaves no empty item (H2)", () => 
     const onChange = await mountAt(html, "s1");
     paste({ "text/html": pasted, "text/plain": "x" });
     await settle();
+    console.log(
+      "DBG",
+      lastHtml(onChange),
+      editorOf()!
+        .getEditorState()
+        .read(() => {
+          const x = $getSelection();
+          return $isRangeSelection(x)
+            ? `${x.anchor.getNode().getType()}:${x.anchor.getNode().getTextContent()}:${x.anchor.offset}:${x.anchor.type}`
+            : String(x);
+        })
+    );
     await userEvent.keyboard("q");
     await settle();
     const written = plain(lastHtml(onChange));
