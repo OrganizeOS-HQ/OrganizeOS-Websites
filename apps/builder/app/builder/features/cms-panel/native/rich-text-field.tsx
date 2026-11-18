@@ -1195,22 +1195,29 @@ const Toolbar = ({
           undefined
         );
       }
-      const next = $getSelection();
-      if ($isRangeSelection(next) === false || kept.length === 0) {
-        return;
-      }
-      for (const [index, point] of [next.anchor, next.focus].entries()) {
-        const at = kept[index];
-        const parent = at?.node.getParent();
-        if (at === undefined || at.node.isAttached() === false || !parent) {
-          continue;
+      // the list commands update after this; the caret is set after them
+      editor.update(() => {
+        const next = $getSelection();
+        if ($isRangeSelection(next) === false) {
+          return;
         }
-        point.set(
-          parent.getKey(),
-          at.node.getIndexWithinParent() + (at.after ? 1 : 0),
-          "element"
-        );
-      }
+        for (const [index, point] of [next.anchor, next.focus].entries()) {
+          const at = kept[index];
+          const parent = at?.node.getParent();
+          if (
+            at === undefined ||
+            at.node.isAttached() === false ||
+            $isElementNode(parent) === false
+          ) {
+            continue;
+          }
+          point.set(
+            parent.getKey(),
+            at.node.getIndexWithinParent() + (at.after ? 1 : 0),
+            "element"
+          );
+        }
+      });
     });
   };
   return (

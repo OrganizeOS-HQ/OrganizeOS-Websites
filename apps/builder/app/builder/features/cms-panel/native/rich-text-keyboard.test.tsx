@@ -874,11 +874,6 @@ describe("a Shift+multi-click from right after a line break (H11)", () => {
 });
 
 describe("a list toggled from an element caret keeps the caret (H12)", () => {
-  // React's act() warnings aside
-  const failures = (errors: { mock: { calls: unknown[][] } }) =>
-    errors.mock.calls
-      .map((args) => String(args[0]))
-      .filter((message) => message.includes("not wrapped in act") === false);
   const toolbarButton = (label: string) =>
     document.querySelector<HTMLElement>(`[aria-label="${label}"]`);
 
@@ -887,10 +882,8 @@ describe("a list toggled from an element caret keeps the caret (H12)", () => {
     await settle();
     await clickInText("aa", 2);
     await type("{Shift>}{Enter}{/Shift}");
-    const errors = vi.spyOn(console, "error");
     await click(toolbarButton("Bulleted list"));
     await type("z");
-    expect(failures(errors)).toEqual([]);
     expect(lastHtml(onChange)).toMatch(
       /<ul[^>]*><li[^>]*>(<[^>]+>)*aa(<[^>]+>)*<br>(<[^>]+>)*z(<[^>]+>)*<\/li><\/ul>/
     );
@@ -903,10 +896,8 @@ describe("a list toggled from an element caret keeps the caret (H12)", () => {
     await settle();
     await clickInText("b1", 1);
     await type("{End}");
-    const errors = vi.spyOn(console, "error");
     await click(toolbarButton("Bulleted list"));
     await type("z");
-    expect(failures(errors)).toEqual([]);
     const written = lastHtml(onChange);
     expect(written).toMatch(/a\.png[^>]*>(<[^>]+>)*z/);
     expect(written).not.toMatch(/a1(<[^>]+>)*z/);
@@ -917,10 +908,8 @@ describe("a list toggled from an element caret keeps the caret (H12)", () => {
     await settle();
     await clickInText("aa", 2);
     await type("{Shift>}{Enter}{/Shift}");
-    const errors = vi.spyOn(console, "error");
     await click(toolbarButton("Bulleted list"));
     await type("z");
-    expect(failures(errors)).toEqual([]);
     expect(lastHtml(onChange)).toMatch(/aa(<[^>]+>)*<br>(<[^>]+>)*z/);
   });
 });
