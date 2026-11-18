@@ -94,6 +94,7 @@ import {
 import { $createCodeNode, $isCodeNode } from "@lexical/code";
 import { $setBlocksType } from "@lexical/selection";
 import {
+  $dfs,
   $findMatchingParent,
   mergeRegister,
   objectKlassEquals,
@@ -2617,6 +2618,52 @@ const $placeAfterCode = (code: LexicalNode, images: LexicalNode[]) => {
 };
 
 /**
+ * Nodes inserted in a list item: the item split at the selection leaves no
+ * empty item when the last inserted item starts with a block (its content
+ * cannot join the split-off rest). Items empty before, or inserted empty,
+ * stay.
+ */
+const $insertIntoListItem = (
+  nodes: LexicalNode[],
+  selection: RangeSelection
+) => {
+  if (
+    $findMatchingParent(selection.anchor.getNode(), $isListItemNode) === null
+  ) {
+    return false;
+  }
+  const emptyItems = () =>
+    $dfs()
+      .map(({ node }) => node)
+      .filter(
+        (node): node is ListItemNode =>
+          $isListItemNode(node) && node.getChildrenSize() === 0
+      );
+  const kept = new Set(emptyItems().map((item) => item.getKey()));
+  for (const node of nodes) {
+    for (const { node: inner } of $dfs(node)) {
+      kept.add(inner.getKey());
+    }
+  }
+  selection.insertNodes(nodes);
+  const caret = $getSelection();
+  const caretItem = $isRangeSelection(caret)
+    ? $findMatchingParent(caret.anchor.getNode(), $isListItemNode)
+    : null;
+  for (const item of emptyItems()) {
+    if (kept.has(item.getKey()) || item.is(caretItem)) {
+      continue;
+    }
+    const list = item.getParent();
+    item.remove();
+    if ($isListNode(list) && list.getChildrenSize() === 0) {
+      list.remove();
+    }
+  }
+  return true;
+};
+
+/**
  * Nodes a paste or drop inserts (`SELECTION_INSERT_CLIPBOARD_NODES_COMMAND`)
  * where the selection starts in a code block: the selected content goes,
  * the nodes' text goes into the block, and their images and figures after
@@ -2655,7 +2702,7 @@ const $insertClipboardNodes = (
         node.isInline() === false
     ) === false
   ) {
-    return false;
+    return $insertIntoListItem(nodes, selection);
   }
   selection.removeText();
   const target = $findMatchingParent(

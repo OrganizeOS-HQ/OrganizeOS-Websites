@@ -927,6 +927,12 @@ describe("a pasted item starting with a block leaves no empty item (H2)", () => 
       paste: "<ul><li>A<ul><li>X</li></ul><h2>Z1</h2><b>Z2</b></li></ul>",
     },
     {
+      name: "the rest after a nested list, at depth 3",
+      html: "<ul><li>a<ul><li>b<ul><li>s1</li><li>t1</li></ul></li></ul></li></ul>",
+      paste:
+        "<ul><li>A<ul><li>X</li></ul><blockquote><p>Z1</p></blockquote>Z2</li></ul>",
+    },
+    {
       name: "an item holding a quote, then text",
       html: "<ul><li>s1</li><li>t1</li></ul>",
       paste: "<ul><li><blockquote><p>Z1</p></blockquote>Z2</li></ul>",
@@ -935,23 +941,11 @@ describe("a pasted item starting with a block leaves no empty item (H2)", () => 
     const onChange = await mountAt(html, "s1");
     paste({ "text/html": pasted, "text/plain": "x" });
     await settle();
-    console.log(
-      "DBG",
-      lastHtml(onChange),
-      editorOf()!
-        .getEditorState()
-        .read(() => {
-          const x = $getSelection();
-          return $isRangeSelection(x)
-            ? `${x.anchor.getNode().getType()}:${x.anchor.getNode().getTextContent()}:${x.anchor.offset}:${x.anchor.type}`
-            : String(x);
-        })
-    );
     await userEvent.keyboard("q");
     await settle();
     const written = plain(lastHtml(onChange));
     expect(written).not.toMatch(/<li[^>]*><\/li>/);
-    expect(written).toContain("Z2q");
+    expect(written).toMatch(/Z2(<[^>]+>)*q/);
     expectFixedPoint(written);
   });
 });
