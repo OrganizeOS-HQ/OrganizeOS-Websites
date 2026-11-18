@@ -805,8 +805,25 @@ describe("a held anchor ends when the focus leaves the field (H10)", () => {
     await settle();
     await clickInText("second para here", 7);
     await type("{Shift>}{End}{/Shift}");
+    const dump = (label: string) => {
+      const s = getSelection()!;
+      console.log(
+        label,
+        document.activeElement?.tagName,
+        s.anchorNode?.nodeName,
+        s.anchorOffset,
+        s.focusNode?.nodeName,
+        s.focusOffset,
+        editorOf()!
+          .getEditorState()
+          .read(() => JSON.stringify($getSelection()))
+      );
+    };
+    dump("after end");
     await click(buttonByText("Save"));
+    dump("after save");
     await type("{Shift>}{Tab}{/Shift}");
+    dump("after tab");
     expect(inEditor()).toBe(true);
     const before = editable()!.textContent ?? "";
     await type("x");
