@@ -117,7 +117,8 @@ const environment = z.object({
 
   // The Giving blocks' switch (OrganizeOS builder donations F1, F-D17): only
   // the exact value `true` lists the Donation Form and Goal Progress and lets
-  // them be inserted. Off until the pilot acceptance passes.
+  // them be inserted. Unset until a QSA confirms the give embed's PCI
+  // posture (docs/ORGANIZEOS-FORK.md section 4).
   ORGANIZEOS_GIVING_BLOCKS: z.string().optional(),
 
   // The site forms' switch (docs/ORGANIZEOS-FORK.md section 9, "Site forms"):
