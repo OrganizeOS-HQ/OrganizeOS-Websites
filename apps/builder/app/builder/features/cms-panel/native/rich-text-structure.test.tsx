@@ -952,6 +952,41 @@ describe("a pasted item starting with a block leaves no empty item (H2)", () => 
   });
 });
 
+describe("a paste into a list item keeps the empty items that were already there (H2)", () => {
+  const emptyItems = (html: string) =>
+    (plain(html).match(/<li[^>]*><\/li>/g) ?? []).length;
+
+  test.each([
+    {
+      name: "an empty item before the caret's item",
+      html: "<ul><li>a</li><li></li><li>s1</li><li>t1</li></ul>",
+      paste: "<p>word</p>",
+      texts: "a|s1word|t1",
+    },
+    {
+      name: "an empty item in another list",
+      html: "<ul><li>k</li><li></li></ul><p>mid</p><ul><li>s1</li><li>t1</li></ul>",
+      paste: "<b>bold</b>",
+      texts: null,
+    },
+    {
+      name: "an empty item inside the pasted list",
+      html: "<ul><li>s1</li><li>t1</li></ul>",
+      paste: "<ul><li>A</li><li></li><li>B</li></ul>",
+      texts: null,
+    },
+  ])("$name", async ({ html, paste: pasted, texts: expected }) => {
+    const onChange = await mountAt(html, "s1");
+    paste({ "text/html": pasted, "text/plain": "x" });
+    await settle();
+    const written = lastHtml(onChange);
+    expect(emptyItems(written)).toBe(1);
+    if (expected !== null) {
+      expect(texts(sanitizeRichTextHtml(written)).join("|")).toBe(expected);
+    }
+  });
+});
+
 describe("an item's run of nested lists splits in one pass (H5)", () => {
   test("40 nested lists, then text: one more paste dispatch at most", async () => {
     const onChange = await mountAt("<p></p>", "");
