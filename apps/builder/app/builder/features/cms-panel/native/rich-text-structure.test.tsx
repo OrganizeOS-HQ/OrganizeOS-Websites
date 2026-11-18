@@ -14,6 +14,8 @@ import {
   $getSelection,
   $isRangeSelection,
   $setSelection,
+  COMMAND_PRIORITY_CRITICAL,
+  PASTE_COMMAND,
   type LexicalEditor,
 } from "lexical";
 import { $isLinkNode } from "@lexical/link";
@@ -946,6 +948,37 @@ describe("a pasted item starting with a block leaves no empty item (H2)", () => 
     const written = plain(lastHtml(onChange));
     expect(written).not.toMatch(/<li[^>]*><\/li>/);
     expect(written).toMatch(/Z2(<[^>]+>)*q/);
+    expectFixedPoint(written);
+  });
+});
+
+describe("an item's run of nested lists splits in one pass (H5)", () => {
+  test("40 nested lists, then text: one more paste dispatch at most", async () => {
+    const onChange = await mountAt("<p></p>", "");
+    let dispatches = 0;
+    const unregister = editorOf()!.registerCommand(
+      PASTE_COMMAND,
+      () => {
+        dispatches += 1;
+        return false;
+      },
+      COMMAND_PRIORITY_CRITICAL
+    );
+    const lists = Array.from(
+      { length: 40 },
+      (_, index) => `<ul><li>y${index}</li></ul>`
+    ).join("");
+    paste({ "text/html": `<ul><li>A${lists}Z</li></ul>`, "text/plain": "x" });
+    await settle();
+    unregister();
+    expect(dispatches).toBeLessThanOrEqual(2);
+    const written = lastHtml(onChange);
+    expect(texts(sanitizeRichTextHtml(written)).join("|")).toBe(
+      ["A", ...Array.from({ length: 40 }, (_, index) => `y${index}`), "Z"].join(
+        "|"
+      )
+    );
+    expect(sanitizeRichTextHtml(written)).not.toMatch(/<li[^>]*><\/li>/);
     expectFixedPoint(written);
   });
 });
