@@ -906,3 +906,40 @@ describe("what follows a pasted item's nested list and imports to nothing adds n
     expect(written).toContain("Clickz");
   });
 });
+
+describe("a pasted item starting with a block leaves no empty item (H2)", () => {
+  test.each([
+    {
+      name: "the rest after a nested list: a quote, then text",
+      html: "<ul><li>s1</li><li>t1</li></ul>",
+      paste:
+        "<ul><li>A<ul><li>X</li></ul><blockquote><p>Z1</p></blockquote>Z2</li></ul>",
+    },
+    {
+      name: "the rest after a nested list, into a numbered list",
+      html: "<ol><li>r1</li><li>s1</li></ol>",
+      paste:
+        "<ul><li>A<ul><li>X</li></ul><blockquote><p>Z1</p></blockquote>Z2</li></ul>",
+    },
+    {
+      name: "a heading, then bold text",
+      html: "<ul><li>s1</li><li>t1</li></ul>",
+      paste: "<ul><li>A<ul><li>X</li></ul><h2>Z1</h2><b>Z2</b></li></ul>",
+    },
+    {
+      name: "an item holding a quote, then text",
+      html: "<ul><li>s1</li><li>t1</li></ul>",
+      paste: "<ul><li><blockquote><p>Z1</p></blockquote>Z2</li></ul>",
+    },
+  ])("$name", async ({ html, paste: pasted }) => {
+    const onChange = await mountAt(html, "s1");
+    paste({ "text/html": pasted, "text/plain": "x" });
+    await settle();
+    await userEvent.keyboard("q");
+    await settle();
+    const written = plain(lastHtml(onChange));
+    expect(written).not.toMatch(/<li[^>]*><\/li>/);
+    expect(written).toContain("Z2q");
+    expectFixedPoint(written);
+  });
+});
