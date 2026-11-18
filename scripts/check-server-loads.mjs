@@ -1,9 +1,9 @@
 // OrganizeOS fork: the builder's server build must load the way production
 // loads it, where Node does not load an ES module through require(). Imports
 // each server bundle of `apps/builder/build/server` (made by
-// `VERCEL=1 pnpm --filter @webstudio-is/builder build`) in a fresh Node
-// process with require of ES modules turned off and NODE_ENV=production, and
-// fails when there is no bundle or any bundle fails to load.
+// `pnpm --filter @webstudio-is/builder build`) in a fresh Node process with
+// require of ES modules turned off and NODE_ENV=production, and fails when
+// there is no bundle or any bundle fails to load.
 import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -20,7 +20,7 @@ const bundles = existsSync(serverDir)
 
 if (bundles.length === 0) {
   console.error(
-    `No server bundle in ${serverDir}. Build first: VERCEL=1 pnpm --filter @webstudio-is/builder build`
+    `No server bundle in ${serverDir}. Build first: pnpm --filter @webstudio-is/builder build`
   );
   process.exit(1);
 }

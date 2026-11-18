@@ -97,7 +97,7 @@ jobs:
 
       - name: Builder server build loads as production loads it
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        # Builds the builder's server for Vercel, then imports each server
+        # Builds the builder's server, then imports each server
         # bundle in Node with require of ES modules turned off, as the
         # production runtime runs it.
         run: pnpm check:server-loads

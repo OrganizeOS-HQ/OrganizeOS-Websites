@@ -15,7 +15,7 @@
     "check:runtime-upstream": "bash ./scripts/check-runtime-upstream.sh",
     "check:every-test-runs": "node scripts/check-every-test-runs.mjs",
     "check:package-boundaries": "node scripts/check-package-boundaries.mjs",
-    "check:server-loads": "VERCEL=1 pnpm --filter @webstudio-is/builder build && node scripts/check-server-loads.mjs",
+    "check:server-loads": "pnpm --filter @webstudio-is/builder build && node scripts/check-server-loads.mjs",
     "check:generated-api": "pnpm --filter @webstudio-is/project-build generate-runtime-operation-contracts && pnpm --filter @webstudio-is/builder generate-server-only-api-metadata && node scripts/check-clean-files.mjs packages/project-build/src/contracts/__generated__/runtime-operation-contracts.ts packages/protocol/src/builder-api/__generated__/server-only-router-operation-metadata.ts",
     "check:generated-docs": "pnpm --filter @webstudio-is/project-build generate-docs && pnpm --filter webstudio generate-docs && pnpm docs:mcp:typecheck && pnpm docs:content-engine:test && pnpm docs:mcp:check && pnpm docs:content-engine:check && node scripts/check-clean-files.mjs packages/project-build/src/docs.generated.ts packages/cli/src/docs.generated.ts",
     "check:fixture-sizes": "tsx scripts/check-fixture-sizes.ts",
