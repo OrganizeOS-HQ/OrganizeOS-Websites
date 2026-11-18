@@ -2549,7 +2549,7 @@ const splitItemsAfterNestedList = (body: HTMLElement) => {
           (node instanceof Element &&
             (node.tagName === "HR" || node.querySelector("hr") !== null)))
     );
-  const isList = (node: ChildNode) =>
+  const isList = (node: Node) =>
     node instanceof Element && /^(UL|OL)$/.test(node.tagName);
   let split = false;
   for (const item of Array.from(body.querySelectorAll("li")).reverse()) {
@@ -2588,8 +2588,8 @@ const splitItemsAfterNestedList = (body: HTMLElement) => {
         last = next;
         split = true;
       }
-      if (next !== undefined) {
-        next.append(...run);
+      for (const node of next === undefined ? [] : run) {
+        next?.appendChild(node);
       }
     }
   }
