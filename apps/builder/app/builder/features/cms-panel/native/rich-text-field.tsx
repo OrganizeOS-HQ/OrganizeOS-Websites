@@ -2557,7 +2557,7 @@ const splitItemsAfterNestedList = (body: HTMLElement) => {
     for (;;) {
       const wrapper = Array.from(item.children).find(
         (child) =>
-          /^(UL|OL|LI|BLOCKQUOTE)$/.test(child.tagName) === false &&
+          /^(UL|OL|LI|BLOCKQUOTE|H[1-6]|PRE)$/.test(child.tagName) === false &&
           child.querySelector("ul, ol") !== null
       );
       if (wrapper === undefined) {
