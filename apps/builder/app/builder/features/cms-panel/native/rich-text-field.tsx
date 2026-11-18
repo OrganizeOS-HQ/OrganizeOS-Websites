@@ -23,6 +23,7 @@ import {
   $isDecoratorNode,
   $isElementNode,
   $isParagraphNode,
+  $isRootNode,
   $isLineBreakNode,
   COMMAND_PRIORITY_CRITICAL,
   DELETE_CHARACTER_COMMAND,
