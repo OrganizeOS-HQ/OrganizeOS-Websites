@@ -600,15 +600,34 @@ const $liftBlocksAfterNestedList = (item: ListItemNode) => {
  * list has left every list around it (`$liftBlocksAfterNestedList`).
  */
 const $nestingOf = (node: LexicalNode) => {
+  // a quote, or a list joining no list before it, after an item's nested
+  // list (the rest of a split list joins one of its own type)
+  const $leavesTheLists = (child: LexicalNode) => {
+    const before = child.getPreviousSiblings();
+    const listAt = before.findIndex($isListNode);
+    if (listAt === -1) {
+      return false;
+    }
+    if ($isQuoteNode(child)) {
+      return true;
+    }
+    if (
+      $isListNode(child) === false ||
+      before.slice(listAt + 1).some($isParagraphNode)
+    ) {
+      return false;
+    }
+    const previous = child.getPreviousSibling();
+    return (
+      $isListNode(previous) === false ||
+      previous.getListType() !== child.getListType()
+    );
+  };
   let around = 0;
   let child = node;
   let parent = node.getParent();
   while (parent !== null) {
-    if (
-      $isListItemNode(parent) &&
-      $isQuoteNode(child) &&
-      child.getPreviousSiblings().some($isListNode)
-    ) {
+    if ($isListItemNode(parent) && $leavesTheLists(child)) {
       while ($isListItemNode(parent) || $isListNode(parent)) {
         parent = parent.getParent();
       }
