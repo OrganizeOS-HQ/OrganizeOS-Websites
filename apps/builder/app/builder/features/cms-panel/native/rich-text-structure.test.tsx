@@ -1173,3 +1173,23 @@ describe("dropped HTML gets the paste's list passes (H3)", () => {
     expectFixedPoint(written);
   });
 });
+
+describe("a nested list in a wrapper in a pasted item keeps what follows after it (H4)", () => {
+  test.each([
+    [
+      "the list in a wrapper",
+      "<ul><li>A<div><ul><li>X</li></ul></div>Z</li><li>B</li></ul>",
+    ],
+    [
+      "the item's content in a wrapper",
+      "<ul><li><div>A<ul><li>X</li></ul>Z</div></li><li>B</li></ul>",
+    ],
+  ])("%s", async (_name, html) => {
+    const onChange = await mountAt("<p></p>", "");
+    paste({ "text/html": html, "text/plain": "x" });
+    await settle();
+    const written = lastHtml(onChange);
+    expect(readingOrder(written)).toBe("A|X|Z|B");
+    expectFixedPoint(written);
+  });
+});

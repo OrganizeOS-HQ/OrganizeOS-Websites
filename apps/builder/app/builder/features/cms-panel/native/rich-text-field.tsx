@@ -2553,6 +2553,18 @@ const splitItemsAfterNestedList = (body: HTMLElement) => {
     node instanceof Element && /^(UL|OL)$/.test(node.tagName);
   let split = false;
   for (const item of Array.from(body.querySelectorAll("li")).reverse()) {
+    // a wrapper holding a nested list gives way to its content first
+    for (;;) {
+      const wrapper = Array.from(item.children).find(
+        (child) =>
+          /^(UL|OL|LI|BLOCKQUOTE)$/.test(child.tagName) === false &&
+          child.querySelector("ul, ol") !== null
+      );
+      if (wrapper === undefined) {
+        break;
+      }
+      wrapper.replaceWith(...wrapper.childNodes);
+    }
     const list = Array.from(item.children).find(isList);
     // what follows each nested list, up to and including the next one: the
     // new items, made in one pass
@@ -3071,6 +3083,29 @@ const PasteRulesPlugin = () => {
         editor.registerCommand(
           SELECTION_INSERT_CLIPBOARD_NODES_COMMAND,
           ({ nodes, selection }) => $insertClipboardNodes(nodes, selection),
+          COMMAND_PRIORITY_NORMAL
+        ),
+        // a drop gets the paste's list passes, above LinkRulePlugin's own
+        editor.registerCommand(
+          CONTROLLED_TEXT_INSERTION_COMMAND,
+          (payload) => {
+            if (typeof payload === "string" || payload.dataTransfer === null) {
+              return false;
+            }
+            const wrapped = withStrayListItemsWrapped(payload.dataTransfer);
+            if (wrapped === undefined) {
+              return false;
+            }
+            payload.preventDefault();
+            editor.dispatchCommand(
+              CONTROLLED_TEXT_INSERTION_COMMAND,
+              new InputEvent(payload.type, {
+                inputType: payload.inputType,
+                dataTransfer: wrapped,
+              })
+            );
+            return true;
+          },
           COMMAND_PRIORITY_NORMAL
         ),
         // above LinkRulePlugin's paste handler
