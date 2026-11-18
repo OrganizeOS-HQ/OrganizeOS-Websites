@@ -15,8 +15,8 @@ import {
 } from "./collection-pages";
 
 /**
- * The org's catalog in a build and its join with the build's pages, shared by
- * the OrganizeOS data tab and the CMS column.
+ * The org's catalog in a build and its join with the build's pages, for the
+ * CMS column.
  */
 
 /**

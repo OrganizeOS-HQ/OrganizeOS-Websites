@@ -356,7 +356,7 @@ export type InsertCollectionListResult =
   | { error: string };
 
 /**
- * Add list, from the data tab's popover: reads the collection's schema, then
+ * Add list, from the collection menu's popover: reads the collection's schema, then
  * inserts the block at the selection, else at the end of the page, the way
  * the Components panel inserts, and builds it under its wrapper in the same
  * transaction (staged-data.ts). `{ error }` when the schema cannot be read;

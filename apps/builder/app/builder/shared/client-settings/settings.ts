@@ -6,6 +6,8 @@ import {
   colorSchemePreferences,
   parseColorSchemeCookie,
 } from "~/shared/color-scheme";
+// OrganizeOS fork: a stored width of a panel that is gone (the OrganizeOS data tab) is dropped before the parse.
+import { dropUnknownPanelWidths } from "./organizeos-panel-widths";
 
 const userSettings = z.object({
   navigatorLayout: z.enum(["docked", "undocked"]).default("undocked"),
@@ -34,7 +36,9 @@ const read = (): Settings => {
 
   if (settingsString != null) {
     try {
-      settings = userSettings.parse(JSON.parse(settingsString));
+      settings = userSettings.parse(
+        dropUnknownPanelWidths(JSON.parse(settingsString))
+      );
     } catch (error) {
       if (error instanceof Error) {
         console.error({

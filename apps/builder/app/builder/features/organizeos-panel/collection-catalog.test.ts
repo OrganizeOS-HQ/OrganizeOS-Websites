@@ -17,7 +17,6 @@ import {
   joinCatalog,
   joinCmsCatalog,
 } from "./collection-catalog";
-import organizeosPanelSource from "./organizeos-panel.tsx?raw";
 
 enableMapSet();
 
@@ -112,7 +111,7 @@ const resourceNamed = (name: string) =>
   newsAndEvents.find((resource) => resource.name === name) as Resource;
 
 describe("joinCatalog", () => {
-  test("joinCatalog: the tab's join", async () => {
+  test("joinCatalog: the join the CMS column builds on", async () => {
     const data = buildData();
     const catalog = await loadCatalog(data);
     // the org's presets are in the catalog, products among them
@@ -243,22 +242,5 @@ describe("joinCmsCatalog", () => {
       ["Events", false],
       ["News", true],
     ]);
-  });
-});
-
-describe("the move", () => {
-  test("organizeos-panel.tsx imports the helpers from collection-catalog.ts and defines none of them", () => {
-    const imports =
-      /import\s*\{([^}]*)\}\s*from\s*"\.\/collection-catalog"/.exec(
-        organizeosPanelSource
-      );
-    expect(imports).not.toBeNull();
-    const names = imports![1].split(",").map((name) => name.trim());
-    for (const name of ["useCatalog", "getCollectionSlug", "joinCatalog"]) {
-      expect(names, name).toContain(name);
-      expect(organizeosPanelSource, name).not.toMatch(
-        new RegExp(`(const|function|let)\\s+${name}\\b`)
-      );
-    }
   });
 });

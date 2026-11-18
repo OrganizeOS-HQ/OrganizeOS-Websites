@@ -28,7 +28,7 @@ import {
   ListViewIcon,
   RepeatGridIcon,
 } from "@webstudio-is/icons";
-import type { Page, Resource } from "@webstudio-is/sdk";
+import type { Page } from "@webstudio-is/sdk";
 import { $permissions, selectPage } from "~/shared/nano-states";
 import { planBadgeLabel } from "~/shared/branding";
 import {
@@ -41,16 +41,16 @@ import {
   type ListSort,
   insertCollectionList,
 } from "./collection-list";
-import { addCatalogResourceToPage } from "./organizeos-data";
 
 /**
- * A collection's row in the OrganizeOS data tab (design
- * `2026-10-27-cms-page-templates-design.md` section 2.1): its name and a "..."
- * menu with Create item page (Open item page once the collection has one),
- * Add list, Add to this page and, when the sitemap still lists a collection
- * whose item page is gone, Remove from sitemap. Add list opens a small
- * popover of options. Create item page and Add list need dynamic data, so a
- * plan without it shows them disabled with upstream's plan badge.
+ * A collection's actions (design `2026-10-27-cms-page-templates-design.md`
+ * section 2.1), mounted by the native CMS column on each collection's "..."
+ * menu (`cms-panel/native/cms-native-screen.tsx`): Create item page (Open
+ * item page once the collection has one), Add list and, when the sitemap
+ * still lists a collection whose item page is gone, Remove from sitemap. Add
+ * list opens a small popover of options. Create item page and Add list need
+ * dynamic data, so a plan without it shows them disabled with upstream's
+ * plan badge.
  */
 
 export const itemPageCreated = "Item page created";
@@ -354,52 +354,6 @@ export const CollectionActionsMenu = ({
         />
       </PopoverContent>
     </Popover>
-  );
-};
-
-export const CollectionRow = ({
-  resource,
-  slug,
-  itemPage,
-  isOnPage,
-  isStale,
-  isSitemapOrphan,
-}: {
-  resource: Resource;
-  slug: string;
-  itemPage: undefined | Page;
-  isOnPage: boolean;
-  /** An item page of this collection reads an old address. */
-  isStale: boolean;
-  /** The sitemap lists the collection, which has no item page. */
-  isSitemapOrphan: boolean;
-}) => {
-  return (
-    <Flex direction="column" data-organizeos-collection={slug}>
-      <Flex align="center" justify="between" gap="2">
-        <Tooltip content={resource.name} delayDuration={600}>
-          <Text truncate>{resource.name}</Text>
-        </Tooltip>
-        <Flex align="center" gap="2" css={{ flexShrink: 0 }}>
-          {isOnPage && <Text color="subtle">On this page</Text>}
-          <CollectionActionsMenu
-            slug={slug}
-            name={resource.name}
-            itemPage={itemPage}
-            isSitemapOrphan={isSitemapOrphan}
-            trailingItems={
-              <DropdownMenuItem
-                disabled={isOnPage}
-                onSelect={() => void addCatalogResourceToPage(resource.id)}
-              >
-                Add to this page
-              </DropdownMenuItem>
-            }
-          />
-        </Flex>
-      </Flex>
-      {isStale && <StaleItemPageLine />}
-    </Flex>
   );
 };
 

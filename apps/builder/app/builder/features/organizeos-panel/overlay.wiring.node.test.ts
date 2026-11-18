@@ -25,6 +25,8 @@ const builder = read("../../builder.tsx");
 const insertBlock = read("./insert-organizeos-block.ts");
 const contextServer = read("../../../shared/context.server.ts");
 const propsSection = read("../settings-panel/props-section/props-section.tsx");
+const sidebarPanelTypes = read("../../sidebar-left/types.ts");
+const clientSettings = read("../../shared/client-settings/settings.ts");
 
 describe("the Components panel's OrganizeOS section", () => {
   test("components.tsx imports both OrganizeOS modules", () => {
@@ -175,12 +177,27 @@ describe("the Templates screen", () => {
 });
 
 describe("the left sidebar", () => {
-  test("sidebar-left.tsx still offers the OrganizeOS tab only to an org not denied the blocks", () => {
+  test("sidebar-left.tsx has no OrganizeOS data tab, and finds the active panel as upstream does", () => {
+    expect(sidebarLeft).not.toMatch(/name: "organizeos"/);
+    expect(sidebarLeft).not.toMatch(/\$isOrganizeosPanelAvailable/);
+    expect(sidebarLeft).not.toMatch(/getAvailablePanels/);
+    expect(sidebarLeft).not.toMatch(/OrganizeosPanel/);
+    expect(sidebarLeft).not.toMatch(/\bResourceIcon\b/);
     expect(sidebarLeft).toMatch(
-      /panel\.name !== "organizeos" \|\| isOrganizeosPanelAvailable/
+      /const activePanelConfig = panels\.find\(\s*\(item\) => item\.name === activePanel\s*\);/
     );
-    expect(sidebarLeft).toMatch(
-      /getAvailablePanels\(\s*useStore\(\$isOrganizeosPanelAvailable\)\s*\)/
+  });
+
+  test("sidebar-left/types.ts names no organizeos panel", () => {
+    expect(sidebarPanelTypes).not.toMatch(/organizeos/);
+  });
+
+  test("client-settings/settings.ts drops stored widths of panels that are gone before the parse", () => {
+    expect(clientSettings).toMatch(
+      /import\s*\{\s*dropUnknownPanelWidths,?\s*\}\s*from\s*"\.\/organizeos-panel-widths";/
+    );
+    expect(clientSettings).toMatch(
+      /settings = userSettings\.parse\(\s*dropUnknownPanelWidths\(JSON\.parse\(settingsString\)\)\s*\);/
     );
   });
 
@@ -232,15 +249,6 @@ describe("the left sidebar", () => {
     );
     expect(sidebarLeft).toMatch(
       /getSidebarPanelWidth\(\s*activePanel,\s*activePanelConfig\?\.defaultWidth\s*\)/
-    );
-  });
-
-  test("sidebar-left.tsx labels the tab OrganizeOS data with ResourceIcon", () => {
-    expect(sidebarLeft).toMatch(
-      /name: "organizeos",\s*label: "OrganizeOS data",\s*Icon: ResourceIcon,\s*Panel: OrganizeosPanel,/
-    );
-    expect(sidebarLeft).toMatch(
-      /import\s*\{[^}]*\bResourceIcon\b[^}]*\}\s*from\s*"@webstudio-is\/icons"/
     );
   });
 });
