@@ -596,12 +596,13 @@ const $liftBlocksAfterNestedList = (item: ListItemNode) => {
 };
 
 /**
- * How many lists and quotes hold a node, once a quote after an item's nested
- * list has left every list around it (`$liftBlocksAfterNestedList`).
+ * How many lists and quotes hold a node, once a quote or a list of another
+ * type after an item's nested list has left every list around it
+ * (`$liftBlocksAfterNestedList`).
  */
 const $nestingOf = (node: LexicalNode) => {
   // a quote, or a list joining no list before it, after an item's nested
-  // list (the rest of a split list joins one of its own type)
+  // list
   const $leavesTheLists = (child: LexicalNode) => {
     const before = child.getPreviousSiblings();
     const listAt = before.findIndex($isListNode);

@@ -831,3 +831,41 @@ describe("a held anchor ends when the focus leaves the field (H10)", () => {
     expectOnlyTyped(before);
   });
 });
+
+describe("a Shift+multi-click from right after a line break (H11)", () => {
+  const LINES = `<p>xx yy ${A}<br>${B} cc dd ee ff</p><p>second para here</p>`;
+  const afterBreak = () => {
+    const block = paragraph();
+    const index = block
+      .getChildren()
+      .findIndex((child) => child.getType() === "linebreak");
+    block.select(index + 1, index + 1);
+  };
+  const spanOf = (text: string) =>
+    [...editable()!.querySelectorAll<HTMLElement>("[data-lexical-text]")].find(
+      (element) => element.textContent === text
+    )!;
+
+  test("Shift+triple-click selects only the clicked paragraph", async () => {
+    const onChange = await caretBy(LINES, afterBreak);
+    await userEvent.tripleClick(spanOf("second para here"), {
+      modifiers: ["Shift"],
+    } as never);
+    await settle();
+    await type("{Backspace}");
+    const written = lastHtml(onChange);
+    console.log("DBG3", written);
+    expect(written).toContain("cc dd ee ff");
+    expect(written).not.toContain("second");
+  });
+
+  test("Shift+double-click", async () => {
+    const onChange = await caretBy(LINES, afterBreak);
+    await userEvent.dblClick(spanOf("second para here"), {
+      modifiers: ["Shift"],
+    } as never);
+    await settle();
+    await type("{Backspace}");
+    console.log("DBG2", lastHtml(onChange));
+  });
+});
