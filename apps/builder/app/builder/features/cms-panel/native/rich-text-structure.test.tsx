@@ -1044,3 +1044,56 @@ describe("text after a lifted list moves to its own item (H7)", () => {
     expectFixedPoint(written);
   });
 });
+
+describe("text after a block lifted out of the lists lands (H8)", () => {
+  test.each([
+    {
+      name: "a quote, then text",
+      second: "<blockquote><p>y.</p></blockquote>",
+      tail: "t.",
+    },
+    {
+      name: "a heading, then bold text",
+      second: "<h2>y.</h2>",
+      tail: "<b>t.</b>",
+    },
+    {
+      name: "code, then a paragraph",
+      second: "<pre><code>y.</code></pre>",
+      tail: "<p>t.</p>",
+    },
+  ])("$name, at the end of a 6-level list", async ({ second, tail }) => {
+    const onChange = await mountAt(nestedList(6, "s"), "s6");
+    const errors = vi.spyOn(console, "error");
+    paste({
+      "text/html": `<ul><li>a.<blockquote><ul><li>x.</li></ul></blockquote>${second}${tail}</li></ul>`,
+      "text/plain": "x",
+    });
+    await settle();
+    expect(errors).not.toHaveBeenCalled();
+    const written = lastHtml(onChange);
+    expect(readingOrder(written)).toBe(
+      [...DEEP, "a.", "x.", "y.", "t."].join("|")
+    );
+    expectFixedPoint(written);
+  });
+
+  test("a quote, then text, in 5 levels, into an empty field", async () => {
+    const onChange = await mountAt("<p></p>", "");
+    const errors = vi.spyOn(console, "error");
+    paste({
+      "text/html": aroundItem(
+        5,
+        "a.<blockquote><ul><li>x.</li></ul></blockquote><blockquote><p>y.</p></blockquote>t."
+      ),
+      "text/plain": "x",
+    });
+    await settle();
+    expect(errors).not.toHaveBeenCalled();
+    const written = lastHtml(onChange);
+    expect(readingOrder(written)).toBe(
+      [...AROUND, "a.", "x.", "y.", "t."].join("|")
+    );
+    expectFixedPoint(written);
+  });
+});
