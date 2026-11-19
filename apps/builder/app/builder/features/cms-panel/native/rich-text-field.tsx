@@ -2798,12 +2798,10 @@ const splitItemsAfterNestedList = (body: HTMLElement) => {
     // a rule stays in the item only after inline content of the item's own
     // before its list, else behind the content of the run it follows; an
     // item with no content before such a rule stays as it is
-    const ownBefore = Array.from(item.childNodes)
-      .slice(
-        0,
-        list === undefined ? 0 : Array.from(item.childNodes).indexOf(list)
-      )
-      .some(isContent);
+    let ownBefore = false;
+    for (let at = list?.previousSibling; at; at = at.previousSibling) {
+      ownBefore ||= isContent(at);
+    }
     if (ownBefore === false && list !== undefined) {
       let ruleFirst = false;
       for (let at = list.nextSibling; at; at = at.nextSibling) {
