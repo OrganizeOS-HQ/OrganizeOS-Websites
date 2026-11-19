@@ -348,8 +348,11 @@ can be merged with minimal conflict.
   nano-staged's `oxfmt --no-error-on-unmatched-pattern`, so a commit that stages
   only files the formatter ignores (this doc, under `docs/**`) passes the hook.
   `.github/workflows/main.yml`: one workflow, a `checks` job and a `tests` job
-  of ten legs (the packages, the CLI, and one per builder Vitest project, the
-  CMS panels' `core-browser-builder-cms` among them), with
+  of twelve legs (the packages, the CLI, and one per builder Vitest project;
+  the CMS panels have three: `core-browser-builder-cms`,
+  `core-browser-builder-cms-rich-text` for the rich-text field's tests, and
+  `core-browser-builder-cms-rich-text-sweeps` for its three generated sweeps,
+  the two toolbar-over-corpus files and the fuzz file), with
   no secret, environment or checkout ref, and checkouts that keep no token in
   the clone (`persist-credentials: false`); only its cli leg builds the blocks
   package. The typecheck covers every package and fixture but two fixtures the
@@ -359,8 +362,10 @@ can be merged with minimal conflict.
   a 10-minute limit of its own and runs with `DEBUG=vitest:browser:pool`, which
   logs the files of every browser session Vitest opens, so a run that stalls
   fails inside the job's limit and its log names the files in flight; nothing
-  is retried. The visual-regression step runs when the package tests fail
-  too. `patches/@vitest__browser@3.1.1.patch` (marked, and registered in the
+  is retried. The CMS panels' tests were split into three projects when
+  their one step reached 441 s of its 600 s limit on CI. The
+  visual-regression step runs when the package tests fail too.
+  `patches/@vitest__browser@3.1.1.patch` (marked, and registered in the
   root `package.json`'s `pnpm.patchedDependencies`) backports Vitest 3.2.0's
   per-session keying of the Playwright provider's mock routes. Keyed by module
   URL alone, two browser sessions that mock the same module at once overwrite
@@ -378,7 +383,8 @@ can be merged with minimal conflict.
   the next file's iframe sends while it turns off never completes, which
   stalls the session.
   `scripts/check-every-test-runs.mjs` fails when a tracked test file runs
-  in no leg; it exempts upstream's three builder e2e harness suites, since the
+  in no leg, or when two builder projects collect the same file; it exempts
+  upstream's three builder e2e harness suites, since the
   fork does not run upstream's e2e suite (owner decision D14). Two of that
   suite's files follow the fork all the same:
   `apps/builder/e2e/flows/builder.ts` dismisses no blocking alert (§6), and
