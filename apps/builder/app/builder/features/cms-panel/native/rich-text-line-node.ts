@@ -311,13 +311,9 @@ export const $normaliseLines = (container: ElementNode) => {
       }
     }
   }
-  const previousMap = $getEditor().getEditorState()._nodeMap;
   for (const child of container.getChildren()) {
     if (
-      ($isCmsLineNode(child) ||
-        ($isQuoteNode(container) &&
-          $isParagraphNode(child) &&
-          previousMap.has(child.getKey()) === false)) &&
+      $isCmsLineNode(child) &&
       child.isEmpty() &&
       holdsSelection(child) === false
     ) {

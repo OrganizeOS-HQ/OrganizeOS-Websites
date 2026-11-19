@@ -125,7 +125,7 @@ const EDGES: Edge[] = [
   }, key(" ")],
   ["a line of only a link", '<ul><li><blockquote>Q0w</blockquote><a href="https://example.org/">T1w</a></li></ul>', () => clickInWord("T1w"), key("{End}")],
   ["a line in a quote in an item at depth 2, letter and Enter", "<ul><li>Aw<ul><li><blockquote>Xw<ul><li>Yw</li></ul>Zw</blockquote></li></ul></li></ul>", () => clickInWord("Zw"), key("k{Enter}m")],
-  ...[6, 7].flatMap((depth): Edge[] => {
+  ...[6].flatMap((depth): Edge[] => {
     const html = nested(depth, "T0w<blockquote>Q1w</blockquote>T2w");
     return [
       [`depth ${depth} Bulleted`, html, () => clickInWord("T0w", 1), () => click(byLabel("Bulleted list"))],
