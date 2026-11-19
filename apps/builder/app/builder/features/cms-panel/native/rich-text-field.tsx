@@ -446,10 +446,18 @@ const setBlockType = (editor: LexicalEditor, block: BlockType) => {
       $isCmsLineNode(point.getNode())
         ? point.getNode()
         : $findMatchingParent(point.getNode(), $isCmsLineNode);
+    // Block type that changes nothing writes nothing (D19): Paragraph on
+    // a line or on a paragraph
+    const isParagraphish = (point: PointType) =>
+      lineOf(point) !== null ||
+      ($findMatchingParent(point.getNode(), $isParagraphNode) !== null &&
+        $findMatchingParent(point.getNode(), (node) =>
+          isLinedContainer(node)
+        ) !== null);
     if (
       block === "paragraph" &&
-      lineOf(selection.anchor) !== null &&
-      lineOf(selection.focus) !== null
+      isParagraphish(selection.anchor) &&
+      isParagraphish(selection.focus)
     ) {
       return;
     }
@@ -2638,10 +2646,11 @@ const ImageEditingPlugin = () => {
             const mapped = $mapLineEdges(selection);
             markRichTextCopy(mapped);
             event.preventDefault();
-            setLexicalClipboardDataTransfer(
-              event.clipboardData,
-              $getClipboardDataFromSelection(mapped)
-            );
+            const data = $getClipboardDataFromSelection(mapped);
+            if (selection.getNodes().some((node) => $isCmsLineNode(node))) {
+              data["text/plain"] = data["text/plain"].replace(/\n{3,}/g, "\n\n");
+            }
+            setLexicalClipboardDataTransfer(event.clipboardData, data);
             if (command === CUT_COMMAND) {
               $tagRemoval();
               if ($isRangeSelection(selection)) {

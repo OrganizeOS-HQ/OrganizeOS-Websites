@@ -24,6 +24,7 @@ import {
   $setSelection,
   COMMAND_PRIORITY_CRITICAL,
   COMMAND_PRIORITY_LOW,
+  COMMAND_PRIORITY_NORMAL,
   CONTROLLED_TEXT_INSERTION_COMMAND,
   CUT_COMMAND,
   DELETE_CHARACTER_COMMAND,
@@ -200,6 +201,19 @@ export class CmsLineNode extends ElementNode {
       }
       const line = $createCmsLineNode();
       item.append(line, ...rest);
+      return line;
+    }
+    // at the line's start in a quote: an empty line (one line break)
+    // stays before, and the text stays a line (D2, D19)
+    const point = selection.anchor;
+    const first = this.getFirstDescendant();
+    const atStart =
+      (point.key === this.getKey() && point.offset === 0) ||
+      (first !== null && point.key === first.getKey() && point.offset === 0);
+    if (atStart && this.isEmpty() === false) {
+      const line = $createCmsLineNode();
+      this.insertAfter(line, restoreSelection);
+      this.append($createLineBreakNode());
       return line;
     }
     const paragraph = $createParagraphNode();
@@ -391,9 +405,11 @@ const $linesNeedingBreak = (container: ElementNode, children: LexicalNode[]) => 
       }));
     const now = first.getTextContent();
     const grown = now.startsWith(before.line) ? now.slice(before.line.length) : "";
+    const endedIn = between.some((key) => $hasUpdateTag(`${REMOVAL_END_TAG}${key}`));
     if (
-      grown !== "" &&
-      before.blocks.some((text) => text !== "" && text.endsWith(grown))
+      (grown !== "" &&
+        before.blocks.some((text) => text !== "" && text.endsWith(grown))) ||
+      (endedIn && now !== before.line)
     ) {
       result.add(child.getKey());
     }
@@ -627,6 +643,7 @@ export const lineRuleViolations: string[] = [];
 const HEAD_PATH_TAG = "cms-head-path";
 
 const REMOVAL_START_TAG = "cms-removal-start:";
+const REMOVAL_END_TAG = "cms-removal-end:";
 
 /**
  * This update removes content (a range, a node selection, a delete, a
@@ -636,7 +653,19 @@ const REMOVAL_START_TAG = "cms-removal-start:";
 export const $tagRemoval = () => {
   $addUpdateTag(REMOVAL_TAG);
   const selection = $getSelection();
-  if ($isRangeSelection(selection) === false || selection.isCollapsed()) {
+  if ($isRangeSelection(selection) === false) {
+    return;
+  }
+  // the block the removal ends in: its rest joins what is before (D3)
+  const end = selection.isBackward() ? selection.anchor : selection.focus;
+  for (
+    let node: LexicalNode | null = end.getNode();
+    node !== null;
+    node = node.getParent()
+  ) {
+    $addUpdateTag(`${REMOVAL_END_TAG}${node.getKey()}`);
+  }
+  if (selection.isCollapsed()) {
     return;
   }
   const start = selection.isBackward() ? selection.focus : selection.anchor;
@@ -1139,6 +1168,60 @@ export const registerLineCommands = (editor: LexicalEditor) =>
         COMMAND_PRIORITY_LOW
       )
     ),
+    // an arrow from a block's edge into a line that starts (going right) or
+    // ends (going left) with a line break steps past the break: the point
+    // before or after it is the block's edge at the head (V10)
+    ...([
+      [KEY_ARROW_LEFT_COMMAND, true],
+      [KEY_ARROW_RIGHT_COMMAND, false],
+    ] as const).map(([command, isBackward]) =>
+      editor.registerCommand(
+        command,
+        (event: KeyboardEvent) => {
+          if (event.altKey || event.ctrlKey || event.metaKey) {
+            return false;
+          }
+          const selection = $getSelection();
+          if ($isRangeSelection(selection) === false) {
+            return false;
+          }
+          const focus = selection.focus;
+          const node = focus.getNode();
+          let child: LexicalNode | null = node;
+          while (child !== null && isLinedContainer(child.getParent()) === false) {
+            child = child.getParent();
+          }
+          if (child === null || $isCmsLineNode(child) || $isElementNode(child) === false) {
+            return false;
+          }
+          const edge = isBackward ? child.getFirstDescendant() : child.getLastDescendant();
+          const atEdge =
+            focus.type === "text" &&
+            edge !== null &&
+            edge.is(node) &&
+            focus.offset === (isBackward ? 0 : node.getTextContentSize());
+          if (atEdge === false) {
+            return false;
+          }
+          const line = isBackward ? child.getPreviousSibling() : child.getNextSibling();
+          if ($isCmsLineNode(line) === false) {
+            return false;
+          }
+          const brk = isBackward ? line.getLastChild() : line.getFirstChild();
+          if (isLineBreak(brk) === false) {
+            return false;
+          }
+          event.preventDefault();
+          const offset = isBackward ? line.getChildrenSize() - 1 : 1;
+          focus.set(line.getKey(), offset, "element");
+          if (event.shiftKey === false) {
+            selection.anchor.set(line.getKey(), offset, "element");
+          }
+          return true;
+        },
+        COMMAND_PRIORITY_NORMAL
+      )
+    ),
     // the rule holds in every committed state (5.3, 5.5)
     editor.registerUpdateListener(({ editorState }) => {
       const broken = editorState.read($pointRuleBroken);
@@ -1232,6 +1315,23 @@ export const registerLineCommands = (editor: LexicalEditor) =>
               const container = line?.getParent() ?? null;
               if (line !== null && container !== null) {
                 $unwrapLines(container.getChildren());
+              } else {
+                // at a block's first text start or last text end, Divider
+                // acts beside the block, at the element point there
+                const start = $childAtEdge(true);
+                const end = start === null ? $childAtEdge(false) : null;
+                const edge = start ?? end;
+                if (edge !== null && $isCmsLineNode(edge.child) === false) {
+                  const block = edge.child;
+                  const holder = edge.container;
+                  $unwrapLines(holder.getChildren());
+                  const at = block.getIndexWithinParent() + (start !== null ? 0 : 1);
+                  const range = $getSelection();
+                  if ($isRangeSelection(range)) {
+                    range.anchor.set(holder.getKey(), at, "element");
+                    range.focus.set(holder.getKey(), at, "element");
+                  }
+                }
               }
             }
             return false;
@@ -1269,6 +1369,37 @@ export const registerLineCommands = (editor: LexicalEditor) =>
           return true;
         },
         COMMAND_PRIORITY_LOW
+      )
+    ),
+    // in an empty line beside rules: Backspace removes the rule directly
+    // before, Delete the one directly after, and nothing else; with no rule
+    // that way, the edit runs from the element point, as at the head
+    ...[DELETE_CHARACTER_COMMAND, DELETE_WORD_COMMAND, DELETE_LINE_COMMAND].map((command) =>
+      editor.registerCommand(
+        command as LexicalCommand<boolean>,
+        (isBackward: boolean) => {
+          const selection = $getSelection();
+          if ($isRangeSelection(selection) === false || selection.isCollapsed() === false) {
+            return false;
+          }
+          const line = selection.anchor.getNode();
+          const container = line.getParent();
+          if ($isCmsLineNode(line) === false || line.isEmpty() === false || isLinedContainer(container) === false) {
+            return false;
+          }
+          const beside = isBackward ? line.getPreviousSibling() : line.getNextSibling();
+          if (isBlockDecorator(beside)) {
+            beside.remove();
+            return true;
+          }
+          const at = line.getIndexWithinParent();
+          line.remove();
+          $unwrapLines(container.getChildren());
+          selection.anchor.set(container.getKey(), Math.min(at, container.getChildrenSize()), "element");
+          selection.focus.set(container.getKey(), Math.min(at, container.getChildrenSize()), "element");
+          return false;
+        },
+        COMMAND_PRIORITY_NORMAL
       )
     ),
     // D3's fourth case: Backspace at a block's start removes a line break
