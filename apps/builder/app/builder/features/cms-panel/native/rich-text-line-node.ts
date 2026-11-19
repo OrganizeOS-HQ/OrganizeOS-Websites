@@ -32,6 +32,8 @@ import {
   ElementNode,
   INSERT_LINE_BREAK_COMMAND,
   INSERT_PARAGRAPH_COMMAND,
+  KEY_ARROW_LEFT_COMMAND,
+  KEY_ARROW_RIGHT_COMMAND,
   KEY_BACKSPACE_COMMAND,
   KEY_DELETE_COMMAND,
   PASTE_COMMAND,
@@ -40,6 +42,7 @@ import {
   SELECTION_INSERT_CLIPBOARD_NODES_COMMAND,
   type BaseSelection,
   type LexicalCommand,
+  type PointType,
   ParagraphNode,
   type DOMConversionMap,
   type DOMExportOutput,
@@ -775,15 +778,10 @@ export const $liftPointsIntoLines = (create: boolean): boolean => {
     if (isLinedContainer(container) === false) {
       continue;
     }
-    const after = container.getChildAtIndex(point.offset);
-    const before =
-      point.offset > 0 ? container.getChildAtIndex(point.offset - 1) : null;
-    if ($isCmsLineNode(after)) {
-      point.set(after.getKey(), 0, "element");
-      continue;
-    }
-    if ($isCmsLineNode(before)) {
-      point.set(before.getKey(), before.getChildrenSize(), "element");
+    // the head's resolver (PR #116's `$pointIntoAdjacentBlock`), with a
+    // line counting as a block: the start of the block at the point, else
+    // the end of the block before it (D18)
+    if ($pointIntoBlockBeside(point)) {
       continue;
     }
     if (create === false) {
@@ -809,6 +807,46 @@ export const $liftPointsIntoLines = (create: boolean): boolean => {
     point.set(line.getKey(), 0, "element");
   }
   return made.size > 0;
+};
+
+/**
+ * An element point on a list item or quote moves into the block at it
+ * (its start), else the block directly before it (its end); a block is
+ * any non-inline element, a line included. True when it moved.
+ */
+export const $pointIntoBlockBeside = (point: PointType) => {
+  if (point.type !== "element") {
+    return false;
+  }
+  const parent = point.getNode();
+  if ($isQuoteNode(parent) === false && $isListItemNode(parent) === false) {
+    return false;
+  }
+  const isBlock = (node: LexicalNode | null): node is ElementNode =>
+    $isElementNode(node) && node.isInline() === false;
+  const at = parent.getChildAtIndex(point.offset);
+  const before =
+    point.offset > 0 ? parent.getChildAtIndex(point.offset - 1) : null;
+  const atEnd = isBlock(at) === false;
+  let block = isBlock(at) ? at : isBlock(before) ? before : undefined;
+  if (block === undefined) {
+    return false;
+  }
+  for (;;) {
+    const child: LexicalNode | null = atEnd
+      ? block.getLastChild()
+      : block.getFirstChild();
+    if ($isElementNode(child)) {
+      block = child;
+      continue;
+    }
+    if ($isTextNode(child)) {
+      point.set(child.getKey(), atEnd ? child.getTextContentSize() : 0, "text");
+      return true;
+    }
+    point.set(block.getKey(), atEnd ? block.getChildrenSize() : 0, "element");
+    return true;
+  }
 };
 
 /** Empty lines that hold no point of the selection go. True when any did. */
@@ -971,6 +1009,42 @@ export const registerLineCommands = (editor: LexicalEditor) =>
         return false;
       },
       COMMAND_PRIORITY_CRITICAL
+    ),
+    // an arrow off a node-selected rule in a lined container steps beside
+    // it and resolves the point there (5.3)
+    ...([
+      [KEY_ARROW_LEFT_COMMAND, true],
+      [KEY_ARROW_RIGHT_COMMAND, false],
+    ] as const).map(([command, isBackward]) =>
+      editor.registerCommand(
+        command,
+        (event: KeyboardEvent) => {
+          if (event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) {
+            return false;
+          }
+          const selection = $getSelection();
+          if ($isNodeSelection(selection) === false) {
+            return false;
+          }
+          const node = selection.getNodes().at(isBackward ? 0 : -1);
+          if (
+            node === undefined ||
+            isBlockDecorator(node) === false ||
+            isLinedContainer(node.getParent()) === false
+          ) {
+            return false;
+          }
+          event.preventDefault();
+          if (isBackward) {
+            node.selectPrevious();
+          } else {
+            node.selectNext();
+          }
+          $liftPointsIntoLines(true);
+          return true;
+        },
+        COMMAND_PRIORITY_LOW
+      )
     ),
     // the rule holds in every committed state (5.3, 5.5)
     editor.registerUpdateListener(({ editorState }) => {

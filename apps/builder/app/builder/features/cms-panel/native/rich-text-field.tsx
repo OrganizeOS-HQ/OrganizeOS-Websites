@@ -3640,10 +3640,6 @@ const $pointIntoAdjacentBlock = (point: PointType) => {
   if ($isQuoteNode(parent) === false && $isListItemNode(parent) === false) {
     return;
   }
-  // a lined container's points are the line rule's (5.3)
-  if (lineSpike.on && isLinedContainer(parent as LexicalNode)) {
-    return;
-  }
   const isBlock = (node: LexicalNode | null): node is ElementNode =>
     $isElementNode(node) && node.isInline() === false;
   const at = parent.getChildAtIndex(point.offset);

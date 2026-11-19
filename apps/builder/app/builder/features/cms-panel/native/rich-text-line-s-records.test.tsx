@@ -410,6 +410,136 @@ const RECORDS: Rec[] = [
 ];
 
 // Q1: Enter and Block type at every element point of these item shapes.
+/** An element point on the list's `item`-th item (0-based) at `offset`. */
+const itemPoint = (item: number, offset: number): Step => async () => {
+  await click(editable());
+  await act(async () => {
+    editorOf()!.update(() => {
+      const items = $getRoot()
+        .getFirstChildOrThrow<import("lexical").ElementNode>()
+        .getChildren();
+      const target = items[item];
+      if ($isElementNode(target) === false) return;
+      const selection = $createRangeSelection();
+      const index = Math.min(offset, target.getChildrenSize());
+      selection.anchor.set(target.getKey(), index, "element");
+      selection.focus.set(target.getKey(), index, "element");
+      $setSelection(selection);
+      announce();
+    });
+  });
+  await settle();
+};
+const then = (...steps: Step[]): Step => async () => {
+  for (const step of steps) await step();
+};
+const LI = (x: string) => `<ul><li>Pw</li><li>${x}</li><li>Nw</li></ul>`;
+const V_RECORDS: Rec[] = [
+  ["V1 TR T0w end Divider", LI("T0w<hr>"), at("T0w"), button("Divider")],
+  ["V1 xq-hr-yq el1 Divider", "<ul><li>xq<hr>yq</li></ul>", itemPoint(0, 1), button("Divider")],
+  ["V1 TQ T0w end Divider", LI("T0w<blockquote><p>Q1w</p></blockquote>"), at("T0w"), button("Divider")],
+  ["V1 TC T0w end Divider", LI("T0w<pre><code>C1w</code></pre>"), at("T0w"), button("Divider")],
+  ["V1 TH T0w end Divider", LI("T0w<h3>H1w</h3>"), at("T0w"), button("Divider")],
+  ["V1 QT T1w end Divider", LI("<blockquote><p>Q0w</p></blockquote>T1w"), at("T1w"), button("Divider")],
+  ["V2 list over s1q@2-t1q@1", "<ul><li>s1q<blockquote><p>b1q</p></blockquote><ul><li>n1q</li></ul></li><li>t1q</li></ul>", ["s1q", 2, "t1q", 1], pasteHtml("<ul><li>Aq</li><li><hr>T1q</li></ul>")],
+  ["V2 two paragraphs over xxq@1-yyq@1", "<ul><li>xxq<blockquote><p>qq</p></blockquote>yyq</li><li>nq</li></ul>", ["xxq", 1, "yyq", 1], pasteHtml("<p>Aq</p><p>Bq</p>")],
+  ["V3 ol over p1q@2-s1q@2", "<ul><li>p1q</li><li>s1q<blockquote><p>b1q</p></blockquote><ul><li>n1q</li></ul></li><li>t1q</li></ul>", ["p1q", 2, "s1q", 2], pasteHtml("<ol><li>Aq</li><li>T1q</li></ol>")],
+  ["V4 quote yq@0 paragraph", "<blockquote>xq<ul><li>l1q</li></ul>yq</blockquote>", at("yq", 0), pasteHtml("<p>Aq</p>")],
+  ["V4 quote yq@0 heading", "<blockquote>xq<ul><li>l1q</li></ul>yq</blockquote>", at("yq", 0), pasteHtml("<h2>Aq</h2>")],
+  ["V4 quote yq@0 code", "<blockquote>xq<ul><li>l1q</li></ul>yq</blockquote>", at("yq", 0), pasteHtml("<pre><code>Aq</code></pre>")],
+  ["V5 BR item, Nw@0 Ctrl+Backspace", LI("<br><hr>"), at("Nw", 0), keys("{Control>}{Backspace}{/Control}")],
+  ["V5 QRT Q0w end Ctrl+Delete", LI("<blockquote><p>Q0w</p></blockquote><hr>T2w"), at("Q0w"), keys("{Control>}{Delete}{/Control}")],
+  ["V5 TRQ T0w end Ctrl+Delete", LI("T0w<hr><blockquote><p>Q2w</p></blockquote>"), at("T0w"), keys("{Control>}{Delete}{/Control}")],
+  ["V5 TRQ Q2w@0 Ctrl+Backspace", LI("T0w<hr><blockquote><p>Q2w</p></blockquote>"), at("Q2w", 0), keys("{Control>}{Backspace}{/Control}")],
+  ["V6 RBQ Q2w@0 Backspace", LI("<hr><br><blockquote><p>Q2w</p></blockquote>"), at("Q2w", 0), keys("{Backspace}")],
+  ["V6 QBQ Q2w@0 Backspace", LI("<blockquote><p>Q0w</p></blockquote><br><blockquote><p>Q2w</p></blockquote>"), at("Q2w", 0), keys("{Backspace}")],
+  ["V6 BQB Q1w@0 Backspace", LI("<br><blockquote><p>Q1w</p></blockquote><br>"), at("Q1w", 0), keys("{Backspace}")],
+  ["V6 QB Q0w end Delete", LI("<blockquote><p>Q0w</p></blockquote><br>"), at("Q0w"), keys("{Delete}")],
+  ["V6 QBT Q0w end Delete", LI("<blockquote><p>Q0w</p></blockquote><br>T2w"), at("Q0w"), keys("{Delete}")],
+  ["V6 HB H0w end Delete", LI("<h3>H0w</h3><br>"), at("H0w"), keys("{Delete}")],
+  ["V7 HT H0w@0 Enter", LI("<h3>H0w</h3>T1w"), at("H0w", 0), keys("{Enter}")],
+  ["V7 QT Q0w@0 Enter", LI("<blockquote><p>Q0w</p></blockquote>T1w"), at("Q0w", 0), keys("{Enter}")],
+  ["V7 CT C0w@0 Enter", LI("<pre><code>C0w</code></pre>T1w"), at("C0w", 0), keys("{Enter}")],
+  ["V7 HT el0 Enter", LI("<h3>H0w</h3>T1w"), itemPoint(1, 0), keys("{Enter}")],
+  ["V7 RT el0 Enter", LI("<hr>T1w"), itemPoint(1, 0), keys("{Enter}")],
+  ["V7 root quote line after a paragraph, X2w@0 Enter", "<blockquote><p>X1w</p>X2w</blockquote>", at("X2w", 0), keys("{Enter}")],
+  ["V7 root quote line after a rule, X2w@0 Enter", "<blockquote><hr>X2w<ul><li>Yw</li></ul></blockquote>", at("X2w", 0), keys("{Enter}")],
+  ["V8 T0w@1-Q1w@2 Enter", LI("T0w<blockquote><p>Q1w</p></blockquote>"), ["T0w", 1, "Q1w", 2], keys("{Enter}")],
+  ["V8 T0w@1-Q1w@2 cut", LI("T0w<blockquote><p>Q1w</p></blockquote>"), ["T0w", 1, "Q1w", 2], () => clipboardEvent("cut")],
+  ["V8 xq@1-qq@1 cut", "<ul><li>xq<blockquote><p>qq</p></blockquote>yq</li></ul>", ["xq", 1, "qq", 1], () => clipboardEvent("cut")],
+  ["V8 RT Pw@1-T1w@2 Enter", LI("<hr>T1w"), ["Pw", 1, "T1w", 2], keys("{Enter}")],
+  ["V8 TRT Pw@1-T0w@2 Enter", LI("T0w<hr>T2w"), ["Pw", 1, "T0w", 2], keys("{Enter}")],
+  ["V9 image line click Escape Delete", `<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>${IMGTAG}</li><li>Nw</li></ul>`, async () => {
+    await clickInWord("Pw");
+    await userEvent.click(editable()!.querySelector<HTMLElement>("img")!);
+    await settle();
+    await userEvent.keyboard("{Escape}");
+    await settle();
+  }, keys("{Delete}")],
+  ["V10 BQ ArrowLeft x1 then k", LI("<br><blockquote><p>Q1w</p></blockquote>"), at("Nw", 0), keys("{ArrowLeft}k")],
+  ["V10 BQ ArrowLeft x2 then k", LI("<br><blockquote><p>Q1w</p></blockquote>"), at("Nw", 0), keys("{ArrowLeft}{ArrowLeft}k")],
+  ["V10 BQ ArrowLeft x5 then k", LI("<br><blockquote><p>Q1w</p></blockquote>"), at("Nw", 0), keys("{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}k")],
+  ["V10 CB ArrowRight x5 then k", LI("<pre><code>C0w</code></pre><br>"), at("C0w", 2), keys("{ArrowRight}{ArrowRight}{ArrowRight}k")],
+  ["V10 TBQ ArrowLeft x3 then k", LI("T0w<br><blockquote><p>Q2w</p></blockquote>"), at("Q2w", 0), keys("{ArrowLeft}{ArrowLeft}k")],
+  ["V11 BRR click first rule Backspace k", LI("<br><hr><hr>"), async () => {
+    await clickInWord("Pw");
+    const hr = editable()!.querySelectorAll("hr")[0] as HTMLElement;
+    await userEvent.click(hr, { position: { x: 1, y: 1 } } as never);
+    await settle();
+  }, keys("{Backspace}k")],
+  ["V12 quote ends in a rule, Nw@0 Backspace", "<ul><li>X0w<blockquote><p>X1w</p><hr></blockquote></li><li>Nw</li></ul>", at("Nw", 0), keys("{Backspace}")],
+  ["V13 cut a whole mixed item", LI("T0w<hr><blockquote><p>Q2w</p></blockquote>"), ["T0w", 0, "Q2w", 3], () => clipboardEvent("cut")],
+  ["V13 copy a whole mixed item", LI("T0w<hr><blockquote><p>Q2w</p></blockquote>"), ["T0w", 0, "Q2w", 3], () => clipboardEvent("copy")],
+  ["V14 BQT el0 paste two paragraphs", LI("<br><blockquote><p>Q1w</p></blockquote>T2w"), itemPoint(1, 0), pasteHtml("<p>H1</p><p>H2</p>")],
+  ["V15 QBR click bottom right Link", LI("<blockquote><p>Q0w</p></blockquote><br><hr>"), async () => {
+    await clickInWord("Pw");
+    const item = editable()!.querySelectorAll("li")[1] as HTMLElement;
+    const box = item.getBoundingClientRect();
+    await userEvent.click(item, { position: { x: box.width - 2, y: box.height - 2 } } as never);
+    await settle();
+  }, linkButton],
+  ["V15 TR T0w@1-Nw@1 Link", LI("T0w<hr>"), ["T0w", 1, "Nw", 1], linkButton],
+  ["V15 TR item end Link", LI("T0w<hr>"), itemPoint(1, 2), linkButton],
+  ["V15 rule node-selected Link", "<ul><li>xq<hr>yq</li></ul>", nodeSelectAfter("xq"), linkButton],
+  ["V16 TR item end Bulleted then k", LI("T0w<hr>"), itemPoint(1, 2), then(button("Bulleted list"), keys("k"))],
+  ["V17 root quote line break by beforeinput", "<blockquote><p>X1w</p>X2w<br></blockquote>", async () => {
+    await clickInWord("X2w");
+    await userEvent.keyboard("{ArrowRight}");
+    await settle();
+  }, async () => {
+    await act(async () => {
+      editable()!.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, cancelable: true, inputType: "insertLineBreak" }));
+    });
+    await settle();
+  }],
+  ["V17 root quote Shift+Enter", "<blockquote><p>X1w</p>X2w<br></blockquote>", async () => {
+    await clickInWord("X2w");
+    await userEvent.keyboard("{ArrowRight}");
+    await settle();
+  }, keys("{Shift>}{Enter}{/Shift}")],
+  ["R6 TQT el1 letter", LI("T0w<blockquote><p>Q1w</p></blockquote>T2w"), itemPoint(1, 1), keys("k")],
+  ["R6 TQT T0w end Enter then k", LI("T0w<blockquote><p>Q1w</p></blockquote>T2w"), at("T0w"), keys("{Enter}k")],
+  ["R6 image node-selected after a quote, Backspace then k", `<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>${IMGTAG}</li><li>Nw</li></ul>`, nodeSelect("cms-image"), keys("{Backspace}k")],
+  ["R6 composition at TR item end", LI("T0w<hr>"), itemPoint(1, 2), async () => {
+    const target = editable()!;
+    await act(async () => {
+      target.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true, data: "" }));
+      target.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, cancelable: true, inputType: "insertCompositionText", data: "a" }));
+      target.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "a" }));
+    });
+    await settle();
+  }],
+  ["R6 composition over a selected rule", "<ul><li>xq<hr>yq</li></ul>", nodeSelectAfter("xq"), async () => {
+    const target = editable()!;
+    await act(async () => {
+      target.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true, data: "" }));
+      target.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, cancelable: true, inputType: "insertCompositionText", data: "a" }));
+      target.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "a" }));
+    });
+    await settle();
+  }],
+];
+RECORDS.push(...V_RECORDS);
 const Q1_COMMANDS: Array<[string, Step]> = [
   ["Backspace", keys("{Backspace}")],
   ["Delete", keys("{Delete}")],
@@ -637,6 +767,7 @@ describe("S records", () => {
           violations: lineRuleViolations.splice(0),
           lines: JSON.stringify(editorOf()!.getEditorState().toJSON()).split('"cms-line"').length - 1,
           clipHtml: clip?.getData("text/html"),
+          clipText: clip?.getData("text/plain"),
           clipHasLine: (clip?.getData("application/x-lexical-editor") ?? "").includes("cms-line"),
         })}`
       );
