@@ -2796,25 +2796,18 @@ const splitItemsAfterNestedList = (body: HTMLElement) => {
     }
     const list = Array.from(item.children).find(isList);
     // a rule stays in the item only after inline content of the item's own
-    // before its list, else behind the content of the run it follows; an
-    // item with no content before such a rule stays as it is
+    // before its list, else behind the content of the run it follows, or
+    // with the next content when none precedes it
     let ownBefore = false;
     for (let at = list?.previousSibling; at; at = at.previousSibling) {
       ownBefore ||= isContent(at);
     }
-    if (ownBefore === false && list !== undefined) {
-      let ruleFirst = false;
-      for (let at = list.nextSibling; at; at = at.nextSibling) {
+    const pending: ChildNode[] = [];
+    if (ownBefore === false) {
+      for (let at = list?.previousSibling; at; at = at.previousSibling) {
         if (isRule(at)) {
-          ruleFirst = true;
-          break;
+          pending.unshift(at);
         }
-        if (isContent(at)) {
-          break;
-        }
-      }
-      if (ruleFirst) {
-        continue;
       }
     }
     // what follows each nested list, up to and including the next one: a
@@ -2837,6 +2830,9 @@ const splitItemsAfterNestedList = (body: HTMLElement) => {
       target.parentNode?.insertBefore(next, target.nextSibling);
       target = next;
       split = true;
+      for (const rule of pending.splice(0)) {
+        next.appendChild(rule);
+      }
       return next;
     };
     const keep = (node: Node) => {
@@ -2844,9 +2840,14 @@ const splitItemsAfterNestedList = (body: HTMLElement) => {
         target.appendChild(node);
       }
     };
-    const keepRule = (node: Node) => {
-      if (ownBefore === false) {
-        keep(node);
+    const keepRule = (node: ChildNode) => {
+      if (ownBefore) {
+        return;
+      }
+      if (target === item) {
+        pending.push(node);
+      } else {
+        target.appendChild(node);
       }
     };
     for (const run of runs) {

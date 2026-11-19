@@ -3123,12 +3123,12 @@ describe("a rule after an item's leading nested list stays behind content (Y2)",
     [
       "a rule before the paragraph",
       "<ul><li><ul><li>Xq</li></ul><hr><p>Tq</p><ul><li>Yq</li></ul></li><li>Bq</li></ul>",
-      "<ul><li><hr /><br />Tq<ul><li>Xq</li></ul><ul><li>Yq</li></ul></li><li>Bq</li></ul>",
+      "<ul><li><ul><li>Xq</li></ul></li><li><hr /><br />Tq<ul><li>Yq</li></ul></li><li>Bq</li></ul>",
     ],
     [
       "a rule on each side of the paragraph",
       "<ul><li><ul><li>Xq</li></ul><hr><p>Tq</p><hr></li><li>Bq</li></ul>",
-      "<ul><li><hr /><br />Tq<br /><hr /><ul><li>Xq</li></ul></li><li>Bq</li></ul>",
+      "<ul><li><ul><li>Xq</li></ul></li><li><hr /><br />Tq<br /><hr /></li><li>Bq</li></ul>",
     ],
     [
       "text of the item's own before its list",
@@ -3295,4 +3295,101 @@ describe("edits after a pasted item's quote ending in a rule finish at once (Y5)
       "<ul><li>A<ul><li>X</li></ul></li><li><blockquote><p>Z1</p><hr /><p>L1</p><p>L2<br /></p></blockquote></li></ul>"
     );
   }, 60000);
+});
+
+describe("an item with no content before its nested list leaves no item holding only rules (Z1)", () => {
+  const PARTS: Record<string, (index: number) => string> = {
+    L: (index) => `<ul><li>L${index}q</li></ul>`,
+    O: (index) => `<ol><li>O${index}q</li></ol>`,
+    R: () => "<hr>",
+    T: (index) => `T${index}q`,
+    Q: (index) => `<blockquote><p>Q${index}q</p></blockquote>`,
+    B: () => "<br>",
+    D: (index) => `<div><hr>D${index}q</div>`,
+  };
+  const KEYS = Object.keys(PARTS);
+  /** Shapes with a list, a rule and text, none before the first list. */
+  const isShape = (shape: string[]) =>
+    /[LO]/.test(shape.join("")) &&
+    /[RD]/.test(shape.join("")) &&
+    /[TQD]/.test(shape.join("")) &&
+    shape
+      .slice(
+        0,
+        shape.findIndex((part) => /[LO]/.test(part))
+      )
+      .every((part) => /[TQD]/.test(part) === false);
+  const shapesOf = (length: number): string[][] =>
+    length === 0
+      ? [[]]
+      : shapesOf(length - 1).flatMap((shape) =>
+          KEYS.map((key) => [...shape, key])
+        );
+  const SHORT = [1, 2, 3].flatMap(shapesOf).filter(isShape);
+  // a fixed sample of the longer shapes
+  let seed = 7;
+  const random = () => {
+    seed = (seed * 1103515245 + 12345) % 2147483648;
+    return seed / 2147483648;
+  };
+  const sample = (all: string[][], count: number) => {
+    const picked: string[][] = [];
+    const pool = [...all];
+    while (picked.length < count && pool.length > 0) {
+      picked.push(pool.splice(Math.floor(random() * pool.length), 1)[0]);
+    }
+    return picked;
+  };
+  const LONG = sample([4, 5].flatMap(shapesOf).filter(isShape), 240);
+  const htmlOf = (shape: string[]) =>
+    `<ul><li>${shape.map((part, index) => PARTS[part](index + 1)).join("")}</li><li>Bq</li></ul>`;
+  const onlyRules = (html: string) => {
+    const template = document.createElement("template");
+    template.innerHTML = html;
+    return [...template.content.querySelectorAll("li")]
+      .filter((item) => {
+        const own = [...item.childNodes].filter(
+          (node) =>
+            (node instanceof Element && /^(UL|OL)$/.test(node.tagName)) ===
+            false
+        );
+        return (
+          own.some(
+            (node) =>
+              node instanceof Element &&
+              (node.tagName === "HR" || node.querySelector("hr") !== null)
+          ) && own.every((node) => (node.textContent ?? "").trim() === "")
+        );
+      })
+      .map((item) => item.outerHTML);
+  };
+  const check = async (shape: string[], how: "paste" | "drop") => {
+    const html = htmlOf(shape);
+    const onChange = await mountAt("<p></p>", "");
+    if (how === "paste") {
+      paste({ "text/html": html, "text/plain": "x" });
+      await settle();
+    } else {
+      await dropHtml(html);
+    }
+    const written = plain(lastHtml(onChange));
+    expect(onlyRules(written), written).toEqual([]);
+    expect(written.match(/<hr/g)?.length ?? 0, written).toBe(
+      html.match(/<hr/g)?.length ?? 0
+    );
+    const order = (value: string) => readingOrder(value).replace(/\|/g, "");
+    expect(order(written), written).toBe(order(html));
+  };
+  test.each(SHORT.map((shape) => shape.join(" ")))(
+    "paste of %s",
+    async (shape) => check(shape.split(" "), "paste")
+  );
+  test.each(LONG.map((shape) => shape.join(" ")))(
+    "paste of %s",
+    async (shape) => check(shape.split(" "), "paste")
+  );
+  test.each(sample([...SHORT, ...LONG], 40).map((shape) => shape.join(" ")))(
+    "drop of %s",
+    async (shape) => check(shape.split(" "), "drop")
+  );
 });
