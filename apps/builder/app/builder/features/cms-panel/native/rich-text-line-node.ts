@@ -19,6 +19,7 @@ import {
   $isNodeSelection,
   $isParagraphNode,
   $isRangeSelection,
+  $isTextNode,
   $setSelection,
   COMMAND_PRIORITY_CRITICAL,
   COMMAND_PRIORITY_LOW,
@@ -299,6 +300,45 @@ const $paragraphToLine = (paragraph: ParagraphNode) => {
 };
 
 /**
+ * Two lines meet because a node-selected block between them went (a cut,
+ * a delete): the caret goes to the join, as the head's caret lands between
+ * the two texts it joins.
+ */
+const $caretAtJoinOfRemovedNode = (line: CmsLineNode) => {
+  const last = line.getLastChild();
+  $caretAfterRemovedNode(last ?? line, last === null);
+};
+
+const $caretAfterRemovedNode = (node: LexicalNode, inside: boolean) => {
+  // the state before this update held a node selection whose nodes are gone
+  const before = $getEditor().getEditorState()._selection;
+  if ($isNodeSelection(before) === false) {
+    return;
+  }
+  const gone = [...before._nodes].every((key) => {
+    const now = $getNodeByKey(key);
+    return now === null || now.isAttached() === false;
+  });
+  if (gone === false) {
+    return;
+  }
+  const range = $createRangeSelection();
+  if ($isTextNode(node)) {
+    range.anchor.set(node.getKey(), node.getTextContentSize(), "text");
+    range.focus.set(node.getKey(), node.getTextContentSize(), "text");
+  } else if (inside && $isElementNode(node)) {
+    range.anchor.set(node.getKey(), node.getChildrenSize(), "element");
+    range.focus.set(node.getKey(), node.getChildrenSize(), "element");
+  } else {
+    const parent = node.getParentOrThrow();
+    const index = node.getIndexWithinParent() + 1;
+    range.anchor.set(parent.getKey(), index, "element");
+    range.focus.set(parent.getKey(), index, "element");
+  }
+  $setSelection(range);
+};
+
+/**
  * The container's inline runs each in one line when it holds a block, and
  * no line when it holds none. Lines that meet join as the texts would join
  * with no line between them: no line break is added. An empty line holding
@@ -349,6 +389,10 @@ export const $normaliseLines = (container: ElementNode) => {
     for (const child of children) {
       containerMap.push({ key: containerKey, offset: index });
       if ($isCmsLineNode(child)) {
+        const before = child.getPreviousSibling();
+        if (before !== null) {
+          $caretAfterRemovedNode(before, false);
+        }
         moved.set(child.getKey(), { key: containerKey, base: index });
         const inner = child.getChildren();
         for (const each of inner) {
@@ -371,6 +415,7 @@ export const $normaliseLines = (container: ElementNode) => {
           containerMap.push({ key: child.getKey(), offset: 0 });
           blockIndex += 1;
         } else {
+          $caretAtJoinOfRemovedNode(line);
           containerMap.push({
             key: line.getKey(),
             offset: line.getChildrenSize(),
@@ -497,18 +542,27 @@ const $joinRestOfItem = (item: ElementNode) => {
     return false;
   }
   // the removal reached the item's start: its first child is gone, and
-  // what stays is the rest of what it held
+  // what stays is the rest of what it held. A line of it went too: the
+  // head read that text as the item's own, and joined the item whole
   const first = $getNodeByKey(previous.__first);
   if (first !== null && first.isAttached()) {
     return false;
   }
   const held = new Set<string>();
+  let lineWent = false;
   for (
     let key: string | null = previous.__first;
     key !== null;
     key = previousMap.get(key)?.__next ?? null
   ) {
     held.add(key);
+    const now = $getNodeByKey(key);
+    if ($isCmsLineNode(previousMap.get(key)) && (now === null || now.isAttached() === false)) {
+      lineWent = true;
+    }
+  }
+  if (lineWent === false) {
+    return false;
   }
   if (item.getChildren().some((child) => held.has(child.getKey()) === false)) {
     return false;
@@ -819,7 +873,10 @@ export const registerLineCommands = (editor: LexicalEditor) =>
       editor.registerCommand(
         command,
         () => {
-          if ($hasUpdateTag(HEAD_PATH_TAG) || $headPathOverNodeSelection()) {
+          if (
+            $hasUpdateTag(HEAD_PATH_TAG) ||
+            (command !== CUT_COMMAND && $headPathOverNodeSelection())
+          ) {
             return false;
           }
           $addUpdateTag(REMOVAL_TAG);

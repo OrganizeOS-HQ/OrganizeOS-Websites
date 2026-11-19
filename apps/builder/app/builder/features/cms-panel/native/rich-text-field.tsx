@@ -434,6 +434,20 @@ const setBlockType = (editor: LexicalEditor, block: BlockType) => {
     }
     // Paragraph at a place with no line writes nothing
     $liftPointsIntoLines(block !== "paragraph");
+    // a code block holds no image: Code on a line holding one changes nothing
+    if (block === "code") {
+      const line = $findMatchingParent(
+        selection.anchor.getNode(),
+        $isCmsLineNode
+      );
+      if (
+        line !== null &&
+        $isCmsLineNode(line) &&
+        line.getChildren().some($isDecoratorNode)
+      ) {
+        return;
+      }
+    }
     const before = new Set(
       $dfs().map(({ node }) => node.getKey())
     );
