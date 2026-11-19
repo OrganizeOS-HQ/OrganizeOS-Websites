@@ -163,6 +163,26 @@ describe("the lines at a block wrapper's edges when it gives way (Z2, Z3)", () =
       }))
     )
   );
+  // the other block wrappers, with a few neighbours each
+  const OTHER_WRAPPERS = [
+    "figure",
+    "figcaption",
+    "canvas",
+    "noscript",
+    "video",
+  ];
+  const OTHER_END_CASES = OTHER_WRAPPERS.flatMap((wrapper) =>
+    ["Qq", "<br>Qq", "<div>Qq</div>"].map((follows) => ({
+      name: `${wrapper} ending "Zq", then ${JSON.stringify(follows)}`,
+      html: `<ul><li><${wrapper}>Aq<ul><li>Xq</li></ul>Zq</${wrapper}>${follows}</li><li>Bq</li></ul>`,
+    }))
+  );
+  const OTHER_START_CASES = OTHER_WRAPPERS.flatMap((wrapper) =>
+    ["Pq", "Pq<br>"].map((precedes) => ({
+      name: `${JSON.stringify(precedes)}, then ${wrapper} starting "Aq"`,
+      html: `<ul><li>${precedes}<${wrapper}>Aq<ul><li>Xq</li></ul>Zq</${wrapper}></li><li>Bq</li></ul>`,
+    }))
+  );
   const atEnd = (lines: string) => {
     const from = lines.indexOf("Zq");
     return lines.slice(from, lines.indexOf("|", from) + 1);
@@ -173,6 +193,31 @@ describe("the lines at a block wrapper's edges when it gives way (Z2, Z3)", () =
   };
   /** What the import wrote at each edge before a wrapper gave way. */
   const BASE: Record<string, string> = {
+    '"Pq", then canvas starting "Aq"': "|Pq<br />Aq",
+    '"Pq", then figcaption starting "Aq"': "|Pq<br />Aq",
+    '"Pq", then figure starting "Aq"': "|Pq<br />Aq",
+    '"Pq", then noscript starting "Aq"': "|Pq<br />Aq",
+    '"Pq", then video starting "Aq"': "|Pq<br />Aq",
+    '"Pq<br>", then canvas starting "Aq"': "|Pq<br /><br />Aq",
+    '"Pq<br>", then figcaption starting "Aq"': "|Pq<br /><br />Aq",
+    '"Pq<br>", then figure starting "Aq"': "|Pq<br /><br />Aq",
+    '"Pq<br>", then noscript starting "Aq"': "|Pq<br /><br />Aq",
+    '"Pq<br>", then video starting "Aq"': "|Pq<br /><br />Aq",
+    'canvas ending "Zq", then "<br>Qq"': "Zq<br /><br />Qq|",
+    'canvas ending "Zq", then "<div>Qq</div>"': "Zq<br />Qq|",
+    'canvas ending "Zq", then "Qq"': "Zq<br />Qq|",
+    'figcaption ending "Zq", then "<br>Qq"': "Zq<br /><br />Qq|",
+    'figcaption ending "Zq", then "<div>Qq</div>"': "Zq<br />Qq|",
+    'figcaption ending "Zq", then "Qq"': "Zq<br />Qq|",
+    'figure ending "Zq", then "<br>Qq"': "Zq<br /><br />Qq|",
+    'figure ending "Zq", then "<div>Qq</div>"': "Zq<br />Qq|",
+    'figure ending "Zq", then "Qq"': "Zq<br />Qq|",
+    'noscript ending "Zq", then "<br>Qq"': "Zq<br /><br />Qq|",
+    'noscript ending "Zq", then "<div>Qq</div>"': "Zq<br />Qq|",
+    'noscript ending "Zq", then "Qq"': "Zq<br />Qq|",
+    'video ending "Zq", then "<br>Qq"': "Zq<br /><br />Qq|",
+    'video ending "Zq", then "<div>Qq</div>"': "Zq<br />Qq|",
+    'video ending "Zq", then "Qq"': "Zq<br />Qq|",
     '"", then div starting "<br>Aq"': "|<br />Aq",
     '"", then div starting "Aq"': "|Aq",
     '"", then section starting "<br>Aq"': "|<br />Aq",
@@ -458,6 +503,14 @@ describe("the lines at a block wrapper's edges when it gives way (Z2, Z3)", () =
     await settle();
     return linesOf(lastHtml(onChange));
   };
+  test.each(OTHER_END_CASES)("$name", async ({ name, html }) => {
+    const lines = atEnd(await written(html));
+    expect(lines).toBe(CHOSEN[name] ?? BASE[name]);
+  });
+  test.each(OTHER_START_CASES)("$name", async ({ name, html }) => {
+    const lines = atStart(await written(html));
+    expect(lines).toBe(CHOSEN[name] ?? BASE[name]);
+  });
   test.each(END_CASES)("$name", async ({ name, html }) => {
     const lines = atEnd(await written(html));
     expect(lines).toBe(CHOSEN[name] ?? BASE[name]);
