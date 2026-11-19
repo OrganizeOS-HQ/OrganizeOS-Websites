@@ -3141,3 +3141,48 @@ describe("a rule after an item's leading nested list stays behind content (Y2)",
     expect(plain(lastHtml(onChange))).toBe(expected);
   });
 });
+
+describe("a block wrapper that gives way keeps its own last line break only before line content (Y3)", () => {
+  test.each([
+    [
+      "a div, then a div",
+      "<ul><li><div>Aq<ul><li>Xq</li></ul>Zq<br></div><div>Qq</div></li><li>Bq</li></ul>",
+      "<ul><li>Aq<ul><li>Xq</li></ul></li><li>Zq<br />Qq</li><li>Bq</li></ul>",
+    ],
+    [
+      "a div after a quote, then a div",
+      "<ul><li><div>Aq<ul><li>Xq</li></ul><blockquote><p>Z1q</p></blockquote>Z2q<br></div><div>Qq</div></li><li>Bq</li></ul>",
+      "<ul><li>Aq<ul><li>Xq</li></ul></li><li><blockquote><p>Z1q</p></blockquote></li><li>Z2q<br />Qq</li><li>Bq</li></ul>",
+    ],
+    [
+      "an inner div holding a quote, then a div",
+      "<ul><li><div>Aq<ul><li>Xq</li></ul><div><blockquote><p>Z1q</p></blockquote>Z2q<br></div><div>Qq</div></div></li><li>Bq</li></ul>",
+      "<ul><li>Aq<ul><li>Xq</li></ul></li><li><blockquote><p>Z1q</p></blockquote></li><li>Z2q<br />Qq</li><li>Bq</li></ul>",
+    ],
+    [
+      "a section ending in white space and a comment, then a paragraph",
+      "<ul><li><section>Aq<ul><li>Xq</li></ul>Zq<br> <!-- c --> </section><p>Qq</p></li><li>Bq</li></ul>",
+      "<ul><li>Aq<ul><li>Xq</li></ul></li><li>Zq<br />Qq</li><li>Bq</li></ul>",
+    ],
+    [
+      "a figure, then a div",
+      "<ul><li><figure>Aq<ul><li>Xq</li></ul>Zq<br></figure><div>Qq</div></li><li>Bq</li></ul>",
+      "<ul><li>Aq<ul><li>Xq</li></ul></li><li>Zq<br />Qq</li><li>Bq</li></ul>",
+    ],
+    [
+      "a div ending in two line breaks, then a div",
+      "<ul><li><div>Aq<ul><li>Xq</li></ul>Zq<br><br></div><div>Qq</div></li><li>Bq</li></ul>",
+      "<ul><li>Aq<ul><li>Xq</li></ul></li><li>Zq<br /><br />Qq</li><li>Bq</li></ul>",
+    ],
+    [
+      "a div, then text",
+      "<ul><li><div>Aq<ul><li>Xq</li></ul>Zq<br></div>Qq</li><li>Bq</li></ul>",
+      "<ul><li>Aq<ul><li>Xq</li></ul></li><li>Zq<br />Qq</li><li>Bq</li></ul>",
+    ],
+  ])("%s writes", async (_name, html, expected) => {
+    const onChange = await mountAt("<p></p>", "");
+    paste({ "text/html": html, "text/plain": "x" });
+    await settle();
+    expect(plain(lastHtml(onChange))).toBe(expected);
+  });
+});

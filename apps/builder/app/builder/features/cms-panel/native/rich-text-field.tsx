@@ -2764,6 +2764,20 @@ const splitItemsAfterNestedList = (body: HTMLElement) => {
         if (after) {
           wrapper.appendChild(body.ownerDocument.createElement("br"));
         }
+        // with no line content after it, its own last line break goes
+        if (lineContentFrom(wrapper.nextSibling, true) === false) {
+          let last = wrapper.lastChild;
+          while (
+            last !== null &&
+            (last.nodeType === Node.COMMENT_NODE ||
+              (last.nodeType === Node.TEXT_NODE && isContent(last) === false))
+          ) {
+            last = last.previousSibling;
+          }
+          if (last instanceof Element && last.tagName === "BR") {
+            last.remove();
+          }
+        }
       }
       wrapper.replaceWith(...wrapper.childNodes);
     }
