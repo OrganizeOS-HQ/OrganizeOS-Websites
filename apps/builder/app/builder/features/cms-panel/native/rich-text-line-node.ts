@@ -306,21 +306,26 @@ const $paragraphToLine = (paragraph: ParagraphNode) => {
  */
 const $caretAtJoinOfRemovedNode = (line: CmsLineNode) => {
   const last = line.getLastChild();
-  $caretAfterRemovedNode(last ?? line, last === null);
+  return $caretAfterRemovedNode(last ?? line, last === null);
 };
 
+/**
+ * True when it set the caret: the element points the line rules carry
+ * across their moves then stay as set here, since the removal already
+ * turned the node selection into a point on the container.
+ */
 const $caretAfterRemovedNode = (node: LexicalNode, inside: boolean) => {
   // the state before this update held a node selection whose nodes are gone
   const before = $getEditor().getEditorState()._selection;
   if ($isNodeSelection(before) === false) {
-    return;
+    return false;
   }
   const gone = [...before._nodes].every((key) => {
     const now = $getNodeByKey(key);
     return now === null || now.isAttached() === false;
   });
   if (gone === false) {
-    return;
+    return false;
   }
   const range = $createRangeSelection();
   if ($isTextNode(node)) {
@@ -336,6 +341,7 @@ const $caretAfterRemovedNode = (node: LexicalNode, inside: boolean) => {
     range.focus.set(parent.getKey(), index, "element");
   }
   $setSelection(range);
+  return true;
 };
 
 /**
@@ -380,6 +386,7 @@ export const $normaliseLines = (container: ElementNode) => {
     return;
   }
   const points = elementPoints();
+  let caretSet = false;
   const moved = new Map<string, { key: string; base: number }>();
   const containerKey = container.getKey();
   // where each old child position of the container lands
@@ -391,7 +398,7 @@ export const $normaliseLines = (container: ElementNode) => {
       if ($isCmsLineNode(child)) {
         const before = child.getPreviousSibling();
         if (before !== null) {
-          $caretAfterRemovedNode(before, false);
+          caretSet = $caretAfterRemovedNode(before, false) || caretSet;
         }
         moved.set(child.getKey(), { key: containerKey, base: index });
         const inner = child.getChildren();
@@ -415,7 +422,7 @@ export const $normaliseLines = (container: ElementNode) => {
           containerMap.push({ key: child.getKey(), offset: 0 });
           blockIndex += 1;
         } else {
-          $caretAtJoinOfRemovedNode(line);
+          caretSet = $caretAtJoinOfRemovedNode(line) || caretSet;
           containerMap.push({
             key: line.getKey(),
             offset: line.getChildrenSize(),
@@ -447,6 +454,9 @@ export const $normaliseLines = (container: ElementNode) => {
       line = undefined;
     }
     containerMap.push({ key: containerKey, offset: blockIndex });
+  }
+  if (caretSet) {
+    return;
   }
   for (const point of points) {
     if (point.key === containerKey) {
