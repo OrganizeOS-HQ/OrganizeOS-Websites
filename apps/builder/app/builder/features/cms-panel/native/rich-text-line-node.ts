@@ -9,6 +9,7 @@ import {
   $createParagraphNode,
   $createRangeSelection,
   $addUpdateTag,
+  $copyNode,
   $getEditor,
   $hasUpdateTag,
   $getNodeByKey,
@@ -61,6 +62,7 @@ import {
 import { $isQuoteNode, HeadingNode, QuoteNode } from "@lexical/rich-text";
 import { CodeNode } from "@lexical/code";
 import { $dfs, $findMatchingParent, mergeRegister } from "@lexical/utils";
+import { LinkNode } from "@lexical/link";
 import { INSERT_HORIZONTAL_RULE_COMMAND } from "@lexical/react/LexicalHorizontalRuleNode";
 
 /** SPIKE: VITE_LINES_OFF turns every line rule off (the head's behaviour). */
@@ -165,7 +167,7 @@ export class CmsLineNode extends ElementNode {
    * follows the line.
    */
   insertNewAfter(
-    _selection: RangeSelection,
+    selection: RangeSelection,
     restoreSelection = true
   ): ElementNode {
     const parent = this.getParent();
@@ -175,6 +177,25 @@ export class CmsLineNode extends ElementNode {
       parent.insertAfter(item);
       if (this.isEmpty() && rest.length === 0) {
         this.remove();
+        return item;
+      }
+      // at the line's end, before a block: the new item starts with that
+      // block and the caret goes to its start, as at the head
+      const point = selection.anchor;
+      const last = this.getLastDescendant();
+      const atEnd =
+        (point.key === this.getKey() &&
+          point.offset === this.getChildrenSize()) ||
+        (last !== null &&
+          point.key === last.getKey() &&
+          point.offset === last.getTextContentSize());
+      if (
+        atEnd &&
+        rest.length > 0 &&
+        $isElementNode(rest[0]) &&
+        rest[0].isInline() === false
+      ) {
+        item.append(...rest);
         return item;
       }
       const line = $createCmsLineNode();
@@ -280,6 +301,19 @@ const holdsSelection = (node: ElementNode) => {
  * beside it, unless a line break already stands at that edge.
  */
 const $paragraphToLine = (paragraph: ParagraphNode) => {
+  if (paragraph.isEmpty()) {
+    const points = elementPoints().filter(
+      (point) => point.key === paragraph.getKey()
+    );
+    const line = $createCmsLineNode();
+    paragraph.insertBefore(line, false);
+    line.append($createLineBreakNode());
+    paragraph.remove();
+    for (const point of points) {
+      setPoint(point.which, line.getKey(), 0);
+    }
+    return;
+  }
   const before = paragraph.getPreviousSibling();
   const after = paragraph.getNextSibling();
   const children = paragraph.getChildren();
@@ -721,9 +755,30 @@ export const registerLineTransforms = (editor: LexicalEditor) =>
     editor.registerNodeTransform(CmsLineNode, $keepLineInPlace),
     editor.registerNodeTransform(ListItemNode, $keepContainer),
     editor.registerNodeTransform(QuoteNode, $keepContainer),
+    editor.registerNodeTransform(LinkNode, $linkGivesUpRules),
     editor.registerNodeTransform(HeadingNode, $dropEmptiedBlockInContainer),
     editor.registerNodeTransform(CodeNode, $dropEmptiedBlockInContainer)
   );
+
+/** A rule is never inside a link (D10): the link gives it up, split around it. */
+const $linkGivesUpRules = (link: LinkNode) => {
+  const children = link.getChildren();
+  const at = children.findIndex((child) => isBlockDecorator(child));
+  if (at === -1) {
+    return;
+  }
+  const rule = children[at];
+  const rest = children.slice(at + 1);
+  link.insertAfter(rule);
+  if (rest.length > 0) {
+    const tail = $copyNode(link);
+    rule.insertAfter(tail);
+    tail.append(...rest);
+  }
+  if (link.getChildrenSize() === 0) {
+    link.remove();
+  }
+};
 
 /**
  * A heading or code block in an item or quote whose children a removal
@@ -930,7 +985,8 @@ export const $headPathOverNodeSelection = () => {
   if ($isNodeSelection(selection) === false) {
     return false;
   }
-  const container = selection.getNodes().at(-1)?.getParent() ?? null;
+  const parent = selection.getNodes().at(-1)?.getParent() ?? null;
+  const container = $isCmsLineNode(parent) ? parent.getParent() : parent;
   if (isLinedContainer(container) === false) {
     return false;
   }
@@ -963,25 +1019,44 @@ const removeCommands: LexicalCommand<never>[] = [
   KEY_DELETE_COMMAND,
 ] as LexicalCommand<never>[];
 
-/** The line a collapsed caret is at the start of, with no text before it. */
-const $lineAtStart = () => {
+/**
+ * The direct child of a lined container that holds a collapsed caret at
+ * its start (backward) or end (forward), with the container.
+ */
+const $childAtEdge = (isBackward: boolean) => {
   const selection = $getSelection();
   if ($isRangeSelection(selection) === false || selection.isCollapsed() === false) {
     return null;
   }
-  const { anchor } = selection;
-  if (anchor.offset !== 0) {
+  const point = selection.anchor;
+  const node = point.getNode();
+  let child: LexicalNode | null = node;
+  while (child !== null && isLinedContainer(child.getParent()) === false) {
+    child = child.getParent();
+  }
+  if (child === null || $isElementNode(child) === false) {
     return null;
   }
-  const node = anchor.getNode();
-  const line = $isCmsLineNode(node)
-    ? node
-    : $findMatchingParent(node, $isCmsLineNode);
-  if (line === null) {
+  const edge = isBackward ? child.getFirstDescendant() : child.getLastDescendant();
+  const atEdge =
+    point.type === "element"
+      ? node.is(child) && point.offset === (isBackward ? 0 : child.getChildrenSize())
+      : edge !== null &&
+        edge.is(node) &&
+        point.offset === (isBackward ? 0 : node.getTextContentSize());
+  return atEdge ? { child, container: child.getParentOrThrow() } : null;
+};
+
+/** The rule beside the caret's child of a lined container, in a direction. */
+const $ruleAtEdge = (isBackward: boolean) => {
+  const edge = $childAtEdge(isBackward);
+  if (edge === null) {
     return null;
   }
-  const first = line.getFirstDescendant();
-  return first === null || first.is(node) || line.is(node) ? line : null;
+  const beside = isBackward
+    ? edge.child.getPreviousSibling()
+    : edge.child.getNextSibling();
+  return isBlockDecorator(beside) ? beside : null;
 };
 
 const isBlockDecorator = (node: LexicalNode | null): node is DecoratorNode<unknown> =>
@@ -1132,6 +1207,15 @@ export const registerLineCommands = (editor: LexicalEditor) =>
             if ($isRangeSelection(selection) && selection.isCollapsed() === false) {
               $tagRemoval();
             }
+            // Divider in a line splits as at the head: the container's
+            // lines give way to their text for this update (V1)
+            if (command === INSERT_HORIZONTAL_RULE_COMMAND && $isRangeSelection(selection)) {
+              const line = $findMatchingParent(selection.anchor.getNode(), $isCmsLineNode);
+              const container = line?.getParent() ?? null;
+              if (line !== null && container !== null) {
+                $unwrapLines(container.getChildren());
+              }
+            }
             return false;
           },
           COMMAND_PRIORITY_CRITICAL
@@ -1153,15 +1237,68 @@ export const registerLineCommands = (editor: LexicalEditor) =>
         COMMAND_PRIORITY_CRITICAL
       )
     ),
+    // a word or line delete that meets a rule first, in its direction,
+    // inside one lined container removes the rule only (D5)
+    ...[DELETE_WORD_COMMAND, DELETE_LINE_COMMAND].map((command) =>
+      editor.registerCommand(
+        command as LexicalCommand<boolean>,
+        (isBackward: boolean) => {
+          const beside = $ruleAtEdge(isBackward);
+          if (beside === null) {
+            return false;
+          }
+          beside.remove();
+          return true;
+        },
+        COMMAND_PRIORITY_LOW
+      )
+    ),
+    // D3's fourth case: Backspace at a block's start removes a line break
+    // directly before the block; Delete at its end, one directly after
     editor.registerCommand(
-      DELETE_WORD_COMMAND,
+      DELETE_CHARACTER_COMMAND,
       (isBackward: boolean) => {
-        const line = $lineAtStart();
-        const before = line?.getPreviousSibling() ?? null;
-        if (isBackward === false || line === null || isBlockDecorator(before) === false) {
+        const edge = $childAtEdge(isBackward);
+        if (edge === null || $isCmsLineNode(edge.child)) {
           return false;
         }
-        before.remove();
+        const line = isBackward
+          ? edge.child.getPreviousSibling()
+          : edge.child.getNextSibling();
+        if ($isCmsLineNode(line) === false) {
+          return false;
+        }
+        const brk = isBackward ? line.getLastChild() : line.getFirstChild();
+        if (isLineBreak(brk) === false || brk === null) {
+          return false;
+        }
+        brk.remove();
+        return true;
+      },
+      COMMAND_PRIORITY_LOW
+    ),
+    // V9: Delete just after an image that ends a line removes the image only
+    editor.registerCommand(
+      DELETE_CHARACTER_COMMAND,
+      (isBackward: boolean) => {
+        const selection = $getSelection();
+        if (isBackward || $isRangeSelection(selection) === false || selection.isCollapsed() === false) {
+          return false;
+        }
+        const { anchor } = selection;
+        const line = anchor.getNode();
+        if (
+          anchor.type !== "element" ||
+          $isCmsLineNode(line) === false ||
+          anchor.offset !== line.getChildrenSize()
+        ) {
+          return false;
+        }
+        const last = line.getLastChild();
+        if ($isDecoratorNode(last) === false || line.getNextSibling() !== null) {
+          return false;
+        }
+        last.remove();
         return true;
       },
       COMMAND_PRIORITY_LOW
@@ -1192,7 +1329,11 @@ export const registerLineCommands = (editor: LexicalEditor) =>
         if ($isListItemNode(previous) === false || isLinedContainer(previous) === false) {
           return false;
         }
-        const rule = previous.getLastChild();
+        const lastChild = previous.getLastChild();
+        const rule =
+          $isQuoteNode(lastChild) && isBlockDecorator(lastChild.getLastChild())
+            ? lastChild.getLastChild()
+            : lastChild;
         if (isBlockDecorator(rule) === false) {
           return false;
         }
@@ -1222,13 +1363,30 @@ export const $unwrapLines = (nodes: LexicalNode[]): LexicalNode[] =>
     if ($isCmsLineNode(node) === false) {
       return [node];
     }
+    const container = node.getParent();
+    const base = node.getIndexWithinParent();
+    const onLine = elementPoints().filter((point) => point.key === node.getKey());
     const children = node.getChildren();
+    queueLinePoints.push(
+      ...onLine.map((point) => ({
+        which: point.which,
+        key: container?.getKey() ?? "",
+        offset: base + point.offset,
+      }))
+    );
     for (const child of children) {
       node.insertBefore(child);
     }
     node.remove();
+    for (const point of queueLinePoints.splice(0)) {
+      if (point.key !== "") {
+        setPoint(point.which, point.key, point.offset);
+      }
+    }
     return children;
   });
+
+const queueLinePoints: ElementPoint[] = [];
 
 /**
  * The selection a copy, a cut or a drag writes from: a point at the edge

@@ -3440,9 +3440,21 @@ const $insertIntoListItem = (
  */
 const $intoLine = (nodes: LexicalNode[], selection: RangeSelection) => {
   const start = selection.isBackward() ? selection.focus : selection.anchor;
+  const end = selection.isBackward() ? selection.anchor : selection.focus;
   const line = $findMatchingParent(start.getNode(), $isCmsLineNode);
   const item = line?.getParent() ?? null;
-  if (line === null || $isListItemNode(item) === false) {
+  if (line === null || item === null) {
+    return nodes;
+  }
+  // a line in a quote, or a range: the head's path over the containers'
+  // own text (D4, D14)
+  if ($isListItemNode(item) === false || selection.isCollapsed() === false) {
+    const endLine = $findMatchingParent(end.getNode(), $isCmsLineNode);
+    $unwrapLines(item.getChildren());
+    const endContainer = endLine?.getParent() ?? null;
+    if (endContainer !== null && endContainer.is(item) === false) {
+      $unwrapLines(endContainer.getChildren());
+    }
     return nodes;
   }
   if (nodes.length === 1 && $isParagraphNode(nodes[0])) {
@@ -3456,15 +3468,8 @@ const $intoLine = (nodes: LexicalNode[], selection: RangeSelection) => {
   const isBlock = (node: LexicalNode) =>
     ($isElementNode(node) || $isDecoratorNode(node)) &&
     node.isInline() === false;
-  if (selection.isCollapsed() && nodes.some(isBlock)) {
-    for (const child of item.getChildren()) {
-      if ($isCmsLineNode(child)) {
-        for (const inner of child.getChildren()) {
-          child.insertBefore(inner, false);
-        }
-        child.remove();
-      }
-    }
+  if (nodes.some(isBlock)) {
+    $unwrapLines(item.getChildren());
   }
   return nodes;
 };
