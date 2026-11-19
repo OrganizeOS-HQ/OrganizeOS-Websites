@@ -542,7 +542,9 @@ const stateOf = () =>
   JSON.stringify(editorOf()!.getEditorState().toJSON().root);
 
 describe("S records", () => {
+  const skip = String((import.meta as { env?: Record<string, string> }).env?.VITE_SKIP ?? "");
   for (const [id, html, place, action] of RECORDS) {
+    if (skip !== "" && new RegExp(skip).test(id)) continue;
     test(id, async () => {
       clearRichTextReadOnlyMemo();
       const stored = sanitizeRichTextHtml(html);
