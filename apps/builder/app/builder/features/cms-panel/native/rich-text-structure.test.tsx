@@ -2485,3 +2485,180 @@ describe("edits after a pasted item's quote ending in a rule finish at once (Y5)
     );
   }, 60000);
 });
+
+describe("the text after the caret joins a pasted item that starts with a rule (Z6)", () => {
+  const PARTS: Record<string, (index: number) => string> = {
+    L: (index) => `<ul><li>X${index}q</li></ul>`,
+    H: () => "<hr>",
+    T: (index) => `T${index}q`,
+    B: () => "<br>",
+    D: (index) => `<div><hr>D${index}q</div>`,
+  };
+  const itemOf = (shape: string) =>
+    [...shape].map((part, index) => PARTS[part](index + 1)).join("");
+  const STORED = {
+    "depth 1": "<ul><li>s1q</li><li>t1q</li></ul>",
+    "depth 3":
+      "<ul><li>a1<ul><li>b1<ul><li>s1q</li><li>t1q</li></ul></li></ul></li></ul>",
+  } as const;
+  const errorsOf = (errors: ReturnType<typeof vi.spyOn>) =>
+    errors.mock.calls
+      .map((args) => String(args[0]))
+      .filter((message) => message.includes("not wrapped in act") === false);
+  /** Runs `step`, which must finish in under two seconds. */
+  const quickly = async (step: () => Promise<void>) => {
+    const start = performance.now();
+    await step();
+    expect(performance.now() - start).toBeLessThan(2000);
+  };
+  const stateOf = () => JSON.stringify(editorOf()!.getEditorState().toJSON());
+  const run = async (
+    stored: string,
+    html: string,
+    how: "paste" | "drop",
+    offset = 2
+  ) => {
+    const onChange = await mountAt(stored, "s1q", offset);
+    const before = stateOf();
+    const errors = vi.spyOn(console, "error");
+    onChange.mockClear();
+    await quickly(async () => {
+      if (how === "paste") {
+        paste({ "text/html": html, "text/plain": "x" });
+        await settle();
+      } else {
+        await dropHtml(html);
+      }
+    });
+    expect(onChange).toHaveBeenCalledTimes(1);
+    const pasted = plain(lastHtml(onChange));
+    await quickly(undo);
+    expect(stateOf()).toBe(before);
+    await quickly(async () => {
+      await userEvent.keyboard("{Control>}y{/Control}");
+      await settle();
+    });
+    await quickly(async () => {
+      await userEvent.keyboard("Z");
+      await settle();
+    });
+    expect(errorsOf(errors)).toEqual([]);
+    return { pasted, typed: plain(lastHtml(onChange)) };
+  };
+  const SHAPES = [
+    "HLT",
+    "LHT",
+    "LLHT",
+    "HLLT",
+    "HLHT",
+    "HHLT",
+    "LHBT",
+    "LLHD",
+    "HLD",
+    "HT",
+  ];
+  test.each(
+    SHAPES.flatMap((shape) =>
+      (["depth 1", "depth 3"] as const).flatMap((depth) =>
+        (["paste", "drop"] as const).map((how) => ({ shape, depth, how }))
+      )
+    )
+  )(
+    "$how of a last item $shape at $depth",
+    async ({ shape, depth, how }) => {
+      const html = `<ul><li>Aq</li><li>${itemOf(shape)}</li></ul>`;
+      const { pasted, typed } = await run(STORED[depth], html, how);
+      expect(pasted).toMatch(/<li>(<hr \/>)+[TD]\dqq<\/li><li>t1q<\/li>/);
+      expect(pasted).not.toContain("<li>q</li>");
+      expect(typed).toMatch(/<li>(<hr \/>)+[TD]\dqZq<\/li><li>t1q<\/li>/);
+    },
+    60000
+  );
+
+  test.each([
+    [
+      "HLT at depth 1, by paste",
+      STORED["depth 1"],
+      "HLT",
+      "paste",
+      "<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr />T3qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr />T3qZq</li><li>t1q</li></ul>",
+    ],
+    [
+      "HT at depth 3, by drop",
+      STORED["depth 3"],
+      "HT",
+      "drop",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq</li><li><hr />T2qq</li><li>t1q</li></ul></li></ul></li></ul>",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq</li><li><hr />T2qZq</li><li>t1q</li></ul></li></ul></li></ul>",
+    ],
+  ] as const)(
+    "%s writes",
+    async (_name, stored, shape, how, pastedWrite, typedWrite) => {
+      const html = `<ul><li>Aq</li><li>${itemOf(shape)}</li></ul>`;
+      const { pasted, typed } = await run(stored, html, how);
+      expect(pasted).toBe(pastedWrite);
+      expect(typed).toBe(typedWrite);
+    },
+    60000
+  );
+
+  test.each([
+    [
+      "the tail's nested list follows the joined text",
+      "<ul><li>s1q<ul><li>n1</li></ul></li><li>t1q</li></ul>",
+      "<ul><li>Aq</li><li><hr>T2q</li></ul>",
+      2,
+      "<ul><li>s1</li><li>Aq</li><li><hr />T2qq<ul><li>n1</li></ul></li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq</li><li><hr />T2qZq<ul><li>n1</li></ul></li><li>t1q</li></ul>",
+    ],
+    [
+      "a last item LT is unchanged",
+      STORED["depth 1"],
+      "<ul><li>Aq</li><li><ul><li>X1q</li></ul>T2q</li></ul>",
+      2,
+      "<ul><li>s1</li><li>Aq<ul><li>X1q</li></ul></li><li>T2qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq<ul><li>X1q</li></ul></li><li>T2qZq</li><li>t1q</li></ul>",
+    ],
+    [
+      "a last item TLT is unchanged",
+      STORED["depth 1"],
+      "<ul><li>Aq</li><li>T1q<ul><li>X2q</li></ul>T3q</li></ul>",
+      2,
+      "<ul><li>s1</li><li>Aq</li><li>T1q<ul><li>X2q</li></ul></li><li>T3qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq</li><li>T1q<ul><li>X2q</li></ul></li><li>T3qZq</li><li>t1q</li></ul>",
+    ],
+    [
+      "a paste at the end of the text leaves no empty item",
+      STORED["depth 1"],
+      "<ul><li>Aq</li><li><hr>T2q</li></ul>",
+      3,
+      "<ul><li>s1q</li><li>Aq</li><li><hr />T2q</li><li>t1q</li></ul>",
+      "<ul><li>s1q</li><li>Aq</li><li><hr />T2qZ</li><li>t1q</li></ul>",
+    ],
+    [
+      "a last item holding only a rule is unchanged",
+      STORED["depth 1"],
+      "<ul><li>Aq</li><li><hr></li></ul>",
+      2,
+      "<ul><li>s1</li><li>Aq</li><li><hr /></li><li>q</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq</li><li><hr />Z</li><li>q</li><li>t1q</li></ul>",
+    ],
+    [
+      "a last item ending in a quote is unchanged",
+      STORED["depth 1"],
+      "<ul><li>Aq</li><li><hr><blockquote><p>Q2q</p></blockquote></li></ul>",
+      2,
+      "<ul><li>s1</li><li>Aq</li><li><hr /><blockquote><p>Q2qq</p></blockquote></li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq</li><li><hr /><blockquote><p>Q2qZq</p></blockquote></li><li>t1q</li></ul>",
+    ],
+  ] as const)(
+    "%s",
+    async (_name, stored, html, offset, pastedWrite, typedWrite) => {
+      const { pasted, typed } = await run(stored, html, "paste", offset);
+      expect(pasted).toBe(pastedWrite);
+      expect(typed).toBe(typedWrite);
+    },
+    60000
+  );
+});

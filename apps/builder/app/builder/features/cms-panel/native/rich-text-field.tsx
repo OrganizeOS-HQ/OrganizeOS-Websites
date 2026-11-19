@@ -3217,7 +3217,30 @@ const $insertIntoListItem = (
       kept.add(inner.getKey());
     }
   }
+  // the last pasted item, when it starts with a block and ends in inline
+  // content of its own, is led by an empty text meanwhile: the rest of the
+  // split item joins it as it joins any other item
+  const isBlock = (node: LexicalNode | null) =>
+    ($isElementNode(node) || $isDecoratorNode(node)) &&
+    node.isInline() === false;
+  const tail = nodes.at(-1) ?? null;
+  const last = $isElementNode(tail) ? (tail.getLastDescendant() ?? tail) : tail;
+  const lastItem =
+    last === null ? null : $findMatchingParent(last, $isListItemNode);
+  let lead: TextNode | undefined;
+  if (
+    $isListItemNode(lastItem) &&
+    isBlock(lastItem.getFirstChild()) &&
+    lastItem.getLastChild() !== null &&
+    isBlock(lastItem.getLastChild()) === false
+  ) {
+    lead = $createTextNode("");
+    lastItem.splice(0, 0, [lead]);
+  }
   $editInBlockLedItem(selection, () => selection.insertNodes(nodes));
+  if (lead?.isAttached() === true && lead.getTextContentSize() === 0) {
+    lead.remove();
+  }
   const caret = $getSelection();
   const caretItem = $isRangeSelection(caret)
     ? $findMatchingParent(caret.anchor.getNode(), $isListItemNode)
