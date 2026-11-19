@@ -1314,7 +1314,7 @@ const Toolbar = ({
   const toggleList = (type: "bullet" | "number") => {
     // one update: one undo step
     editor.update(() => {
-      $liftPointsIntoLines(true);
+      $liftPointsIntoLines(false);
       // an element caret is kept by the node beside it, as the list
       // commands replace the block it points into
       const selection = $getSelection();

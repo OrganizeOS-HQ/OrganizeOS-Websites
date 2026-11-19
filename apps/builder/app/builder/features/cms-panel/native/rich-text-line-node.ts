@@ -749,7 +749,6 @@ const insertCommands: LexicalCommand<never>[] = [
   INSERT_PARAGRAPH_COMMAND,
   INSERT_LINE_BREAK_COMMAND,
   CONTROLLED_TEXT_INSERTION_COMMAND,
-  FORMAT_TEXT_COMMAND,
 ] as LexicalCommand<never>[];
 
 /** A paste or drop at a point with no line beside it goes the head's way. */
@@ -762,6 +761,11 @@ const replacingCommands = new Set<LexicalCommand<never>>([
   CONTROLLED_TEXT_INSERTION_COMMAND,
   PASTE_COMMAND,
 ] as LexicalCommand<never>[]);
+
+/** A mark at a point with no line beside it changes nothing: no line is made. */
+const moveOnlyCommands: LexicalCommand<never>[] = [
+  FORMAT_TEXT_COMMAND,
+] as LexicalCommand<never>[];
 
 const removeCommands: LexicalCommand<never>[] = [
   DELETE_CHARACTER_COMMAND,
@@ -863,6 +867,16 @@ export const registerLineCommands = (editor: LexicalEditor) =>
             return false;
           }
           $nodeSelectionIntoLine(true, false);
+          $liftPointsIntoLines(false);
+          return false;
+        },
+        COMMAND_PRIORITY_CRITICAL
+      )
+    ),
+    ...moveOnlyCommands.map((command) =>
+      editor.registerCommand(
+        command,
+        () => {
           $liftPointsIntoLines(false);
           return false;
         },
