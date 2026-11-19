@@ -3,10 +3,8 @@
 // a nested item keeps the untouched items where they were, and a list over
 // part of a quote takes only the covered blocks out of it.
 import "@webstudio-is/design-system/global.css";
-import { createElement } from "react";
-import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { userEvent } from "@vitest/browser/context";
 import {
   $createRangeSelection,
@@ -14,155 +12,29 @@ import {
   $getSelection,
   $isRangeSelection,
   $setSelection,
-  type LexicalEditor,
+  COMMAND_PRIORITY_CRITICAL,
+  PASTE_COMMAND,
 } from "lexical";
 import { $isLinkNode } from "@lexical/link";
 import { $findMatchingParent } from "@lexical/utils";
 import { $generateJSONFromSelectedNodes } from "@lexical/clipboard";
-import { TooltipProvider } from "@webstudio-is/design-system";
-import { RichTextField, type RichTextFieldProps } from "./rich-text-field";
 import { sanitizeRichTextHtml } from "./rich-text-sanitize";
 import {
-  getRichTextReadOnlyReason,
-  writeRichTextHeadless,
-} from "./rich-text-html";
-
-(
-  globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
-).IS_REACT_ACT_ENVIRONMENT = true;
-
-let root: Root | undefined;
-let container: HTMLElement | undefined;
-
-afterEach(() => {
-  act(() => {
-    root?.unmount();
-  });
-  container?.remove();
-  root = undefined;
-  container = undefined;
-  vi.restoreAllMocks();
-});
-
-const settle = async () => {
-  for (let round = 0; round < 5; round += 1) {
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-  }
-};
-
-const editable = () =>
-  document.querySelector<HTMLElement>('[contenteditable="true"]');
-
-const editorOf = () =>
-  (editable() as (HTMLElement & { __lexicalEditor?: LexicalEditor }) | null)
-    ?.__lexicalEditor;
-
-const byLabel = (label: string) =>
-  document.querySelector<HTMLElement>(`[aria-label="${label}"]`);
-
-const click = async (element: HTMLElement | null | undefined) => {
-  expect(element).toBeTruthy();
-  await userEvent.click(element!);
-  await settle();
-};
-
-/**
- * Mounts `html` and puts the selection from the text `from` at `fromOffset`
- * to the text `to` at `toOffset` (a caret when `to` is left out). An offset
- * left out is the text's end.
- */
-const mountAt = async (
-  html: string,
-  from: string,
-  fromOffset?: number,
-  to?: string,
-  toOffset?: number
-) => {
-  const onChange = vi.fn<RichTextFieldProps["onChange"]>();
-  container = document.createElement("div");
-  container.style.width = "480px";
-  document.body.appendChild(container);
-  root = createRoot(container);
-  act(() => {
-    root?.render(
-      createElement(
-        TooltipProvider,
-        null,
-        createElement(RichTextField, {
-          id: "cms-field-body",
-          labelId: "cms-field-body-label",
-          value: { html },
-          onChange,
-          onOpenClassic: vi.fn(),
-        })
-      )
-    );
-  });
-  await settle();
-  await click(editable());
-  await act(async () => {
-    editorOf()!.update(() => {
-      const texts = $getRoot().getAllTextNodes();
-      const find = (word: string) => {
-        const node = texts.find((text) => text.getTextContent() === word);
-        expect(node, word).toBeDefined();
-        return node!;
-      };
-      if (from === "") {
-        $getRoot().selectEnd();
-        return;
-      }
-      const start = find(from);
-      const end = find(to ?? from);
-      const selection = start.select(
-        fromOffset ?? start.getTextContentSize(),
-        fromOffset ?? start.getTextContentSize()
-      );
-      if (to !== undefined) {
-        selection.focus.set(
-          end.getKey(),
-          toOffset ?? end.getTextContentSize(),
-          "text"
-        );
-      }
-    });
-  });
-  await settle();
-  return onChange;
-};
-
-const lastHtml = (onChange: ReturnType<typeof vi.fn>) =>
-  (onChange.mock.lastCall?.[0] as { html: string } | null)?.html ?? "";
-
-const paste = (data: Record<string, string>) => {
-  const clipboardData = new DataTransfer();
-  for (const [format, text] of Object.entries(data)) {
-    clipboardData.setData(format, text);
-  }
-  act(() => {
-    editable()!.dispatchEvent(
-      new ClipboardEvent("paste", {
-        bubbles: true,
-        cancelable: true,
-        clipboardData,
-      })
-    );
-  });
-};
-
-const undo = async () => {
-  await userEvent.keyboard("{Control>}z{/Control}");
-  await settle();
-};
-
-/** The saved value reopens editable, and a load and save keeps it. */
-const expectFixedPoint = (html: string) => {
-  const stored = sanitizeRichTextHtml(html);
-  expect(getRichTextReadOnlyReason(stored)).toBeUndefined();
-  expect(sanitizeRichTextHtml(writeRichTextHeadless(stored))).toBe(stored);
-};
+  settle,
+  editable,
+  editorOf,
+  byLabel,
+  click,
+  mountAt,
+  lastHtml,
+  paste,
+  undo,
+  expectFixedPoint,
+  plain,
+  readingOrder,
+  clickInWord,
+  dropHtml,
+} from "./rich-text-test-harness";
 
 /** The value's items as "depth:text", in reading order. */
 const outline = (html: string) => {
@@ -381,10 +253,6 @@ describe("a paste never nests a list or quote past the depth limit", () => {
     expect(drawn()).toEqual(before);
   });
 });
-
-/** The value as the platform stores it, with the editor's own attributes gone. */
-const plain = (html: string) =>
-  sanitizeRichTextHtml(html).replace(/ value="\d+"/g, "");
 
 // B6: a list over part of a quote takes only the covered blocks out of it
 describe("a list over part of a quote", () => {
@@ -771,5 +639,2442 @@ describe("a list's type changes in place inside a quote (K8)", () => {
     expect(sanitizeRichTextHtml(lastHtml(onChange))).toBe(
       "<blockquote><p>Steps:</p><ol><li>one</li><li>two</li></ol><p>end</p></blockquote>"
     );
+  });
+});
+
+describe("what follows a pasted item's nested list stays after it (K5)", () => {
+  test("an item's quote after its nested list, pasted at the end of a 7-level list", async () => {
+    const onChange = await mountAt(nestedList(7), "L7");
+    paste({
+      "text/html":
+        "<ul><li>a<ul><li>x</li></ul><blockquote><p>z</p></blockquote></li></ul>",
+      "text/plain": "x",
+    });
+    await settle();
+    const written = lastHtml(onChange);
+    expect(texts(sanitizeRichTextHtml(written)).join("|")).toBe(
+      "L1|L2|L3|L4|L5|L6|L7|a|x|z"
+    );
+    expectFixedPoint(written);
+  });
+});
+
+describe("a block pasted at the end of a deep list's last item leaves no empty item (K18)", () => {
+  test.each([
+    {
+      name: "depth 4, nothing after",
+      html: nestedList(4),
+      at: "L4",
+      paste: "<p>one</p><hr><p>two</p>",
+      order: "L1|L2|L3|L4one|---|two",
+    },
+    {
+      name: "depth 7, nothing after",
+      html: nestedList(7),
+      at: "L7",
+      paste: "<p>one</p><hr><p>two</p>",
+      order: "L1|L2|L3|L4|L5|L6|L7one|---|two",
+    },
+    {
+      name: "depth 7, a quote, nothing after",
+      html: nestedList(7),
+      at: "L7",
+      paste: "<p>one</p><blockquote><p>q</p></blockquote>",
+      order: "L1|L2|L3|L4|L5|L6|L7one|q",
+    },
+    {
+      name: "depth 4, a top-level item after",
+      html: "<ul><li>a1<ul><li>a2<ul><li>a3<ul><li>a4</li></ul></li></ul></li></ul></li><li>top2</li></ul>",
+      at: "a4",
+      paste: "<p>one</p><hr><p>two</p>",
+      order: "a1|a2|a3|a4one|---|two|top2",
+    },
+  ])("$name", async ({ html, at, paste: pasted, order }) => {
+    const onChange = await mountAt(html, at);
+    paste({ "text/html": pasted, "text/plain": "x" });
+    await settle();
+    const written = sanitizeRichTextHtml(lastHtml(onChange));
+    expect(written).not.toMatch(/<li[^>]*><\/li>/);
+    expect(
+      outline(written)
+        .map((line) => line.slice(line.indexOf(":") + 1))
+        .join("|")
+    ).toBe(order);
+    expectFixedPoint(written);
+  });
+});
+
+describe("quotes pasted into a nested item keep their levels at the top (K19)", () => {
+  test("7 nested quotes at the end of a level-3 item", async () => {
+    const onChange = await mountAt(
+      "<ul><li>s1<ul><li>s2<ul><li>s3</li></ul></li></ul></li></ul>",
+      "s3"
+    );
+    let quotes = "";
+    for (let level = 7; level >= 1; level -= 1) {
+      quotes = `<blockquote><p>q${level}</p>${quotes}</blockquote>`;
+    }
+    paste({ "text/html": quotes, "text/plain": "x" });
+    await settle();
+    const written = sanitizeRichTextHtml(lastHtml(onChange));
+    const lines = outline(written);
+    expect(lines.filter((line) => /:q\d$/.test(line))).toEqual(
+      Array.from({ length: 7 }, (_, index) => `${index + 1}:q${index + 1}`)
+    );
+    expectFixedPoint(written);
+  });
+});
+
+describe("what follows a pasted item's nested list and imports to nothing adds no item (H1)", () => {
+  const steps = (after: string) =>
+    `<ol><li>Open the settings:<ul><li>Click the gear</li></ul>${after}</li><li>Save.</li></ol>`;
+  test.each([
+    ["an image", '<img src="https://example.org/shot.png" alt="Screenshot">'],
+    ["a line break", "<br>"],
+    ["an empty span", "<span></span>"],
+    ["an empty paragraph", "<p></p>"],
+    ["a paragraph holding a line break", "<p><br></p>"],
+    ["a space in a span", "<span> </span>"],
+    [
+      "a figure",
+      '<figure><img src="https://example.org/shot.png" alt="Shot"></figure>',
+    ],
+  ])("%s after the nested list", async (_name, after) => {
+    const onChange = await mountAt("<p></p>", "");
+    paste({ "text/html": steps(after), "text/plain": "x" });
+    await settle();
+    const written = plain(lastHtml(onChange));
+    expect(written).toBe(
+      "<ol><li>Open the settings:<ul><li>Click the gear</li></ul></li><li>Save.</li></ol>"
+    );
+    expectFixedPoint(written);
+  });
+
+  test("a rule alone after the nested list adds no item", async () => {
+    const onChange = await mountAt("<p></p>", "");
+    paste({ "text/html": steps("<hr>"), "text/plain": "x" });
+    await settle();
+    expect(plain(lastHtml(onChange))).toBe(
+      "<ol><li>Open the settings:<br /><hr /><ul><li>Click the gear</li></ul></li><li>Save.</li></ol>"
+    );
+  });
+
+  test("an image after the last pasted item's nested list: typing lands after the list's text", async () => {
+    const onChange = await mountAt("<p></p>", "");
+    paste({
+      "text/html":
+        '<ul><li>Open<ul><li>Click</li></ul><img src="https://example.org/shot.png" alt="Shot"></li></ul>',
+      "text/plain": "x",
+    });
+    await settle();
+    await userEvent.keyboard("z");
+    await settle();
+    const written = plain(lastHtml(onChange));
+    expect(written).not.toMatch(/<li[^>]*><\/li>/);
+    expect(written).toContain("Clickz");
+  });
+});
+
+describe("a pasted item starting with a block leaves no empty item (H2)", () => {
+  test.each([
+    {
+      name: "a quote, then text, into a numbered list",
+      html: "<ol><li>r1</li><li>s1</li></ol>",
+      paste: "<ul><li><blockquote><p>Z1</p></blockquote>Z2</li></ul>",
+    },
+    {
+      name: "a heading, then bold text",
+      html: "<ul><li>s1</li><li>t1</li></ul>",
+      paste: "<ul><li><h2>Z1</h2><b>Z2</b></li></ul>",
+    },
+    {
+      name: "a quote, then text, at depth 3",
+      html: "<ul><li>a<ul><li>b<ul><li>s1</li><li>t1</li></ul></li></ul></li></ul>",
+      paste: "<ul><li><blockquote><p>Z1</p></blockquote>Z2</li></ul>",
+    },
+    {
+      name: "an item holding a quote, then text",
+      html: "<ul><li>s1</li><li>t1</li></ul>",
+      paste: "<ul><li><blockquote><p>Z1</p></blockquote>Z2</li></ul>",
+    },
+  ])("$name", async ({ html, paste: pasted }) => {
+    const onChange = await mountAt(html, "s1");
+    paste({ "text/html": pasted, "text/plain": "x" });
+    await settle();
+    await userEvent.keyboard("q");
+    await settle();
+    const written = plain(lastHtml(onChange));
+    expect(written).not.toMatch(/<li[^>]*><\/li>/);
+    expect(written).toMatch(/Z2(<[^>]+>)*q/);
+    expectFixedPoint(written);
+  });
+});
+
+describe("a paste into a list item keeps the empty items that were already there (H2)", () => {
+  const emptyItems = (html: string) =>
+    (plain(html).match(/<li[^>]*><\/li>/g) ?? []).length;
+
+  test.each([
+    {
+      name: "an empty item before the caret's item",
+      html: "<ul><li>a</li><li></li><li>s1</li><li>t1</li></ul>",
+      paste: "<p>word</p>",
+      texts: "a|s1word|t1",
+    },
+    {
+      name: "an empty item in another list",
+      html: "<ul><li>k</li><li></li></ul><p>mid</p><ul><li>s1</li><li>t1</li></ul>",
+      paste: "<b>bold</b>",
+      texts: null,
+    },
+    {
+      name: "an empty item inside the pasted list",
+      html: "<ul><li>s1</li><li>t1</li></ul>",
+      paste: "<ul><li>A</li><li></li><li>B</li></ul>",
+      texts: null,
+    },
+  ])("$name", async ({ html, paste: pasted, texts: expected }) => {
+    const onChange = await mountAt(html, "s1");
+    paste({ "text/html": pasted, "text/plain": "x" });
+    await settle();
+    const written = lastHtml(onChange);
+    expect(emptyItems(written)).toBe(1);
+    if (expected !== null) {
+      expect(texts(sanitizeRichTextHtml(written)).join("|")).toBe(expected);
+    }
+  });
+});
+
+describe("an item's run of nested lists splits in one pass (H5)", () => {
+  test("40 nested lists, then text: one more paste dispatch at most", async () => {
+    const onChange = await mountAt("<p></p>", "");
+    let dispatches = 0;
+    const unregister = editorOf()!.registerCommand(
+      PASTE_COMMAND,
+      () => {
+        dispatches += 1;
+        return false;
+      },
+      COMMAND_PRIORITY_CRITICAL
+    );
+    const lists = Array.from(
+      { length: 40 },
+      (_, index) => `<ul><li>y${index}</li></ul>`
+    ).join("");
+    paste({ "text/html": `<ul><li>A${lists}Z</li></ul>`, "text/plain": "x" });
+    await settle();
+    unregister();
+    expect(dispatches).toBeLessThanOrEqual(2);
+    const written = lastHtml(onChange);
+    expect(texts(sanitizeRichTextHtml(written)).join("|")).toBe(
+      ["A", ...Array.from({ length: 40 }, (_, index) => `y${index}`), "Z"].join(
+        "|"
+      )
+    );
+    expect(sanitizeRichTextHtml(written)).not.toMatch(/<li[^>]*><\/li>/);
+    expectFixedPoint(written);
+  });
+});
+
+/** `item` nested in `levels` lists, each around it named `${name}${level}`. */
+const aroundItem = (levels: number, item: string, name = "w") => {
+  let html = `<ul><li>${item}</li></ul>`;
+  for (let level = levels; level >= 1; level -= 1) {
+    html = `<ul><li>${name}${level}${html}</li></ul>`;
+  }
+  return html;
+};
+
+const DEEP = Array.from({ length: 6 }, (_, index) => `s${index + 1}`);
+const AROUND = Array.from({ length: 5 }, (_, index) => `w${index + 1}`);
+
+describe("text after a lifted list moves to its own item (H7)", () => {
+  test.each([
+    {
+      name: "text after a quote holding a list",
+      item: "a.<blockquote><ul><li>x.</li></ul></blockquote>t.",
+    },
+    {
+      name: "a paragraph after a quote holding a list",
+      item: "a.<blockquote><ul><li>x.</li></ul></blockquote><p>t.</p>",
+    },
+    {
+      name: "bold text after a quote holding a list",
+      item: "a.<blockquote><ul><li>x.</li></ul></blockquote><b>t.</b>",
+    },
+    {
+      name: "text after two quotes holding a list",
+      item: "a.<blockquote><blockquote><ul><li>x.</li></ul></blockquote></blockquote>t.",
+    },
+  ])("$name, at the end of a 6-level list", async ({ item }) => {
+    const onChange = await mountAt(nestedList(6, "s"), "s6");
+    paste({ "text/html": `<ul><li>${item}</li></ul>`, "text/plain": "x" });
+    await settle();
+    const written = lastHtml(onChange);
+    expect(readingOrder(written)).toBe([...DEEP, "a.", "x.", "t."].join("|"));
+    expectFixedPoint(written);
+  });
+
+  test("text after a quote holding a list, in 5 levels, into an empty field", async () => {
+    const onChange = await mountAt("<p></p>", "");
+    paste({
+      "text/html": aroundItem(
+        5,
+        "a.<blockquote><ul><li>x.</li></ul></blockquote>t."
+      ),
+      "text/plain": "x",
+    });
+    await settle();
+    const written = lastHtml(onChange);
+    expect(readingOrder(written)).toBe([...AROUND, "a.", "x.", "t."].join("|"));
+    expectFixedPoint(written);
+  });
+});
+
+describe("text after a block lifted out of the lists lands (H8)", () => {
+  test.each([
+    {
+      name: "a quote, then text",
+      second: "<blockquote><p>y.</p></blockquote>",
+      tail: "t.",
+    },
+    {
+      name: "a heading, then bold text",
+      second: "<h2>y.</h2>",
+      tail: "<b>t.</b>",
+    },
+    {
+      name: "code, then a paragraph",
+      second: "<pre><code>y.</code></pre>",
+      tail: "<p>t.</p>",
+    },
+  ])("$name, at the end of a 6-level list", async ({ second, tail }) => {
+    const onChange = await mountAt(nestedList(6, "s"), "s6");
+    const errors = vi.spyOn(console, "error");
+    paste({
+      "text/html": `<ul><li>a.<blockquote><ul><li>x.</li></ul></blockquote>${second}${tail}</li></ul>`,
+      "text/plain": "x",
+    });
+    await settle();
+    expect(errors).not.toHaveBeenCalled();
+    const written = lastHtml(onChange);
+    expect(readingOrder(written)).toBe(
+      [...DEEP, "a.", "x.", "y.", "t."].join("|")
+    );
+    expectFixedPoint(written);
+  });
+
+  test("a quote, then text, in 5 levels, into an empty field", async () => {
+    const onChange = await mountAt("<p></p>", "");
+    const errors = vi.spyOn(console, "error");
+    paste({
+      "text/html": aroundItem(
+        5,
+        "a.<blockquote><ul><li>x.</li></ul></blockquote><blockquote><p>y.</p></blockquote>t."
+      ),
+      "text/plain": "x",
+    });
+    await settle();
+    expect(errors).not.toHaveBeenCalled();
+    const written = lastHtml(onChange);
+    expect(readingOrder(written)).toBe(
+      [...AROUND, "a.", "x.", "y.", "t."].join("|")
+    );
+    expectFixedPoint(written);
+  });
+});
+
+describe("a list in two quotes at the depth limit keeps the reading order (H6)", () => {
+  const DEEP7 = Array.from({ length: 7 }, (_, index) => `s${index + 1}`);
+  test.each([
+    {
+      name: "a list, then a paragraph",
+      inner: "<ul><li>x.</li></ul><p>z.</p>",
+      after: "",
+      order: ["a.", "x.", "z."],
+    },
+    {
+      name: "a list and a quote, then a paragraph after the quotes",
+      inner: "<ol><li>x.</li></ol><blockquote><p>y.</p></blockquote>",
+      after: "<p>z.</p>",
+      order: ["a.", "x.", "y.", "z."],
+    },
+    {
+      name: "a paragraph, a list and a paragraph",
+      inner: "<p>w.</p><ul><li>x.</li></ul><p>z.</p>",
+      after: "",
+      order: ["a.", "w.", "x.", "z."],
+    },
+  ])("$name", async ({ inner, after, order }) => {
+    const onChange = await mountAt(nestedList(7, "s"), "s7");
+    paste({
+      "text/html": `<ul><li>a.<blockquote><blockquote>${inner}</blockquote></blockquote>${after}</li></ul>`,
+      "text/plain": "x",
+    });
+    await settle();
+    const written = lastHtml(onChange);
+    expect(readingOrder(written)).toBe([...DEEP7, ...order].join("|"));
+    expectFixedPoint(written);
+  });
+});
+
+describe("a list of the other type pasted into a nested item keeps its nesting at the top (H9)", () => {
+  test("a numbered list with a nested item, at the end of a 7-level list", async () => {
+    const onChange = await mountAt(nestedList(7, "s"), "s7");
+    paste({
+      "text/html": "<ol><li>A<ul><li>X</li></ul>Z</li><li>B</li></ol>",
+      "text/plain": "x",
+    });
+    await settle();
+    const written = plain(lastHtml(onChange));
+    expect(written).toContain(
+      "<ol><li>A<ul><li>X</li></ul></li><li>Z</li><li>B</li></ol>"
+    );
+    expectFixedPoint(written);
+  });
+});
+
+describe("dropped HTML gets the paste's list passes (H3)", () => {
+  test("an item's quote after its nested list, dropped after a paragraph", async () => {
+    const onChange = await mountAt("<p>pp</p><p>after</p>", "pp");
+    const dataTransfer = new DataTransfer();
+    dataTransfer.setData(
+      "text/html",
+      "<ul><li>A<ul><li>X</li></ul><blockquote><p>Z</p></blockquote></li><li>B</li></ul>"
+    );
+    dataTransfer.setData("text/plain", "x");
+    await act(async () => {
+      editable()!.dispatchEvent(
+        new InputEvent("beforeinput", {
+          bubbles: true,
+          cancelable: true,
+          inputType: "insertFromDrop",
+          dataTransfer,
+        })
+      );
+    });
+    await settle();
+    const written = lastHtml(onChange);
+    expect(readingOrder(written)).toBe("pp|A|X|Z|B|after");
+    expectFixedPoint(written);
+  });
+});
+
+describe("a nested list in a wrapper in a pasted item keeps what follows after it (H4)", () => {
+  test.each([
+    [
+      "the list in a wrapper",
+      "<ul><li>A<div><ul><li>X</li></ul></div>Z</li><li>B</li></ul>",
+    ],
+    [
+      "the item's content in a wrapper",
+      "<ul><li><div>A<ul><li>X</li></ul>Z</div></li><li>B</li></ul>",
+    ],
+  ])("%s", async (_name, html) => {
+    const onChange = await mountAt("<p></p>", "");
+    paste({ "text/html": html, "text/plain": "x" });
+    await settle();
+    const written = lastHtml(onChange);
+    expect(readingOrder(written)).toBe("A|X|Z|B");
+    expectFixedPoint(written);
+  });
+});
+
+/** Whether each text reads with the mark or link `kind` in the field. */
+const marked = (kind: string, words: string[]) =>
+  editorOf()!
+    .getEditorState()
+    .read(() =>
+      words.map((word) => {
+        const node = $getRoot()
+          .getAllTextNodes()
+          .find((text) => text.getTextContent() === word);
+        if (node === undefined) {
+          return `${word}: missing`;
+        }
+        const has =
+          kind === "link"
+            ? $findMatchingParent(node, $isLinkNode) !== null
+            : node.hasFormat(kind as "bold");
+        return `${word}: ${has}`;
+      })
+    );
+
+describe("marks and links around a pasted item's nested list stay (R1)", () => {
+  const MARKS = [
+    ["b", "<b>", "</b>", "bold"],
+    ["strong", "<strong>", "</strong>", "bold"],
+    ["i", "<i>", "</i>", "italic"],
+    ["em", "<em>", "</em>", "italic"],
+    ["u", "<u>", "</u>", "underline"],
+    ["s", "<s>", "</s>", "strikethrough"],
+    ["code", "<code>", "</code>", "code"],
+    ["a", '<a href="https://example.org/a">', "</a>", "link"],
+    ["bold span", '<span style="font-weight:700">', "</span>", "bold"],
+    ["b in a div", "<div><b>", "</b></div>", "bold"],
+  ];
+  const SHAPES = [
+    {
+      shape: "around the item's content",
+      html: (open: string, close: string) =>
+        `<ul><li>${open}A<ul><li>X</li></ul>Z${close}</li><li>B</li></ul>`,
+      words: ["A", "X", "Z"],
+      order: "A|X|Z|B",
+    },
+    {
+      shape: "around the list alone",
+      html: (open: string, close: string) =>
+        `<ul><li>A${open}<ul><li>X</li></ul>${close}Z</li><li>B</li></ul>`,
+      words: ["X"],
+      order: "A|X|Z|B",
+    },
+    {
+      shape: "around an item with nothing after its list",
+      html: (open: string, close: string) =>
+        `<ul><li>${open}A<ul><li>X</li></ul>${close}</li><li>B<ul><li>Y</li></ul>Z</li></ul>`,
+      words: ["A", "X"],
+      order: "A|X|B|Y|Z",
+    },
+  ];
+  test.each(
+    MARKS.flatMap(([name, open, close, kind]) =>
+      SHAPES.map((shape) => ({ name, open, close, kind, ...shape }))
+    )
+  )("$name $shape", async ({ open, close, kind, html, words, order }) => {
+    const onChange = await mountAt("<p></p>", "");
+    paste({ "text/html": html(open, close), "text/plain": "x" });
+    await settle();
+    expect(marked(kind, words)).toEqual(words.map((word) => `${word}: true`));
+    expect(readingOrder(lastHtml(onChange))).toBe(order);
+  });
+
+  test("bold around a step's text and its nested list", async () => {
+    await mountAt("<p></p>", "");
+    paste({
+      "text/html":
+        "<ol><li><strong>Step one<ul><li>detail</li></ul></strong></li><li>Step two<ul><li>detail</li></ul>note</li></ol>",
+      "text/plain": "x",
+    });
+    await settle();
+    expect(marked("bold", ["Step one"])).toEqual(["Step one: true"]);
+    const details = editorOf()!
+      .getEditorState()
+      .read(() =>
+        $getRoot()
+          .getAllTextNodes()
+          .filter((text) => text.getTextContent() === "detail")
+          .map((text) => text.hasFormat("bold"))
+      );
+    expect(details).toEqual([true, false]);
+  });
+
+  test("a link around a heading, a list and a span", async () => {
+    await mountAt("<p></p>", "");
+    paste({
+      "text/html":
+        '<ul><li><a href="https://example.org/a"><h3>Title A</h3><ul><li>tag1</li></ul><span>Read more</span></a></li></ul>',
+      "text/plain": "x",
+    });
+    await settle();
+    expect(marked("link", ["Title A", "tag1", "Read more"])).toEqual([
+      "Title A: true",
+      "tag1: true",
+      "Read more: true",
+    ]);
+  });
+});
+
+/** The deepest nesting of lists and quotes in a value. */
+const deepest = (html: string) => {
+  const template = document.createElement("template");
+  template.innerHTML = html;
+  let most = 0;
+  for (const element of template.content.querySelectorAll("*")) {
+    let depth = 0;
+    for (let at: Element | null = element; at; at = at.parentElement) {
+      if (/^(UL|OL|BLOCKQUOTE)$/.test(at.tagName)) {
+        depth += 1;
+      }
+    }
+    most = Math.max(most, depth);
+  }
+  return most;
+};
+
+describe("a list pasted after a block into a nested item keeps the depth limit (R2)", () => {
+  const cases = [
+    {
+      name: "a rule and a 7-level list into a depth-2 item",
+      html: "<ul><li>a<ul><li>b</li></ul></li></ul>",
+      at: "b",
+      lead: "<hr>",
+      levels: 7,
+    },
+    {
+      name: "a paragraph, a heading and a 5-level list into a depth-4 item",
+      html: nestedList(4, "s"),
+      at: "s4",
+      lead: "<p>one.</p><h2>two.</h2>",
+      levels: 5,
+    },
+  ];
+  for (const depth of [2, 3, 5, 6, 7]) {
+    for (const lead of [
+      "<hr>",
+      "<p>p.</p><hr>",
+      "<p>p.</p><blockquote><p>q.</p></blockquote>",
+      "<p>p.</p><pre><code>c.</code></pre>",
+      "<h2>h.</h2><h3>i.</h3>",
+      "<p>p.</p><ol><li>o.</li></ol>",
+    ]) {
+      cases.push({
+        name: `${lead} and a 7-level list into a depth-${depth} item`,
+        html: nestedList(depth, "s"),
+        at: `s${depth}`,
+        lead,
+        levels: 7,
+      });
+    }
+  }
+  test.each(cases)("$name", async ({ html, at, lead, levels }) => {
+    const onChange = await mountAt(html, at);
+    paste({
+      "text/html": `${lead}${nestedList(levels, "k")}`,
+      "text/plain": "x",
+    });
+    await settle();
+    const written = sanitizeRichTextHtml(lastHtml(onChange));
+    expect(deepest(written)).toBeLessThanOrEqual(7);
+    expectFixedPoint(written);
+    expect(readingOrder(written)).toContain(
+      Array.from({ length: levels }, (_, index) => `k${index + 1}`).join("|")
+    );
+  });
+});
+
+describe("Enter and paste in an item starting with a block (R3)", () => {
+  const BLOCK_LED_PASTE =
+    "<ul><li><blockquote><p>Z1</p></blockquote>Z2</li></ul>";
+  /** Runs `step`, which must finish in under two seconds. */
+  const quickly = async (step: () => Promise<void>) => {
+    const start = performance.now();
+    await step();
+    expect(performance.now() - start).toBeLessThan(2000);
+  };
+  const enterAndType = () =>
+    quickly(async () => {
+      await userEvent.keyboard("{Enter}e");
+      await settle();
+    });
+
+  test("Enter after the pasted item's text makes an item", async () => {
+    const onChange = await mountAt("<ul><li>s1</li><li>t1</li></ul>", "s1");
+    paste({ "text/html": BLOCK_LED_PASTE, "text/plain": "x" });
+    await settle();
+    await enterAndType();
+    const written = plain(lastHtml(onChange));
+    expect(written).toMatch(/Z2<\/li><li>e<\/li><li>t1<\/li>/);
+    expectFixedPoint(written);
+  }, 60000);
+
+  test("a second paste after the pasted item's text lands", async () => {
+    const onChange = await mountAt("<ul><li>s1</li><li>t1</li></ul>", "s1");
+    paste({ "text/html": BLOCK_LED_PASTE, "text/plain": "x" });
+    await settle();
+    await quickly(async () => {
+      paste({ "text/html": "<p>more</p><p>again</p>", "text/plain": "x" });
+      await settle();
+    });
+    const written = plain(lastHtml(onChange));
+    expect(readingOrder(written)).toBe("s1|Z1|Z2more|again|t1");
+  }, 60000);
+
+  test.each([
+    ["two paragraphs", "<p>more</p><p>again</p>", "q1|q2more|again|t1"],
+    ["a list", "<ul><li>k1</li><li>k2</li></ul>", "q1|q2|k1|k2|t1"],
+  ])(
+    "a paste of %s at the end of a stored item starting with a quote",
+    async (_name, pasted, order) => {
+      const onChange = await mountAt(
+        "<ul><li><blockquote><p>q1</p></blockquote>q2</li><li>t1</li></ul>",
+        "q1"
+      );
+      await clickInWord("q2");
+      const errors = vi.spyOn(console, "error");
+      await quickly(async () => {
+        paste({ "text/html": pasted, "text/plain": "x" });
+        await settle();
+      });
+      expect(errors).not.toHaveBeenCalled();
+      const written = plain(lastHtml(onChange));
+      expect(written).not.toMatch(/<li[^>]*><\/li>/);
+      expect(readingOrder(written)).toBe(order);
+      expectFixedPoint(written);
+    },
+    60000
+  );
+
+  test.each([
+    ["at its end", undefined, "q2xy</li><li>e</li><li>t1"],
+    ["in its middle", 3, "q2x</li><li>ey</li><li>t1"],
+  ])(
+    "Enter %s in a stored item starting with a quote",
+    async (_name, offset, expected) => {
+      const onChange = await mountAt(
+        "<ul><li><blockquote><p>q1</p></blockquote>q2xy</li><li>t1</li></ul>",
+        "q1"
+      );
+      await clickInWord("q2xy", offset);
+      await enterAndType();
+      expect(plain(lastHtml(onChange))).toContain(expected);
+    },
+    60000
+  );
+
+  test("Enter at the end of a stored item starting with a quote, as the last item", async () => {
+    const onChange = await mountAt(
+      "<ul><li><blockquote><p>q1</p></blockquote>q2</li></ul>",
+      "q1"
+    );
+    await clickInWord("q2");
+    await enterAndType();
+    expect(plain(lastHtml(onChange))).toBe(
+      "<ul><li><blockquote><p>q1</p></blockquote>q2</li><li>e</li></ul>"
+    );
+  }, 60000);
+
+  test.each([
+    [
+      "an ordinary item",
+      "<ul><li>aa</li><li>bb</li></ul>",
+      "aa",
+      "<ul><li>aa</li><li>e</li><li>bb</li></ul>",
+    ],
+    [
+      "the quote's own paragraph",
+      "<ul><li><blockquote><p>q1</p></blockquote>q2</li></ul>",
+      "q1",
+      "<ul><li><blockquote><p>q1</p><p>e</p></blockquote>q2</li></ul>",
+    ],
+  ])(
+    "Enter in %s is the editor's own",
+    async (_name, html, word, expected) => {
+      const onChange = await mountAt(html, word);
+      await clickInWord(word);
+      await enterAndType();
+      expect(plain(lastHtml(onChange))).toBe(expected);
+    },
+    60000
+  );
+});
+
+describe("a paste over a backward selection from a list item leaves no empty item (R7)", () => {
+  test("from a paragraph's end back to an item's end", async () => {
+    const onChange = await mountAt(
+      "<ul><li>r1</li><li>s1</li></ul><p>p9</p>",
+      "p9",
+      undefined,
+      "s1"
+    );
+    paste({
+      "text/html": "<ul><li><blockquote><p>Z1</p></blockquote>Z2</li></ul>",
+      "text/plain": "x",
+    });
+    await settle();
+    const written = plain(lastHtml(onChange));
+    expect(written).not.toMatch(/<li[^>]*><\/li>/);
+    expect(readingOrder(written)).toBe("r1|s1|Z1|Z2");
+  });
+});
+
+describe("nothing stays after a lifted list in its item (H7, R8)", () => {
+  test.each([
+    ["two line breaks", "<br><br>", "a.|x."],
+    ["three line breaks", "<br><br><br>", "a.|x."],
+    ["bold line breaks", "<b><br><br></b>", "a.|x."],
+    [
+      "a link around line breaks",
+      '<a href="https://example.org/a"><br><br></a>',
+      "a.|x.",
+    ],
+    [
+      "two spans each holding a line break",
+      "<span><br></span><span><br></span>",
+      "a.|x.",
+    ],
+    ["an italic space and line breaks", "<i> </i><br><br>", "a.|x."],
+    ["a non-breaking space", "&nbsp;", "a.|x."],
+    ["line breaks around text", "<br><br>t.<br>", "a.|x.|t."],
+  ])(
+    "%s after a quote holding a list, at the end of a 6-level list",
+    async (_name, after, order) => {
+      const onChange = await mountAt(nestedList(6, "s"), "s6");
+      paste({
+        "text/html": `<ul><li>a.<blockquote><ul><li>x.</li></ul></blockquote>${after}</li></ul>`,
+        "text/plain": "x",
+      });
+      await settle();
+      const written = lastHtml(onChange);
+      expect(readingOrder(written)).toBe([...DEEP, order].join("|"));
+      expect(sanitizeRichTextHtml(written)).not.toMatch(/<\/(ul|ol)><br/);
+      expectFixedPoint(written);
+    }
+  );
+});
+
+describe("what imports to nothing after a pasted nested list adds no item (R6)", () => {
+  test.each([
+    [
+      "a style",
+      "<ul><li>A<ul><li>X</li></ul><style>p{color:red}</style></li><li>B</li></ul>",
+      2,
+    ],
+    [
+      "a script",
+      "<ul><li>A<ul><li>X</li></ul><script>var a = 1;</script></li><li>B</li></ul>",
+      2,
+    ],
+    [
+      "a zero-width space",
+      "<ul><li>A<ul><li>X</li></ul>&#8203;</li><li>B</li></ul>",
+      2,
+    ],
+    [
+      "a line break between two lists",
+      "<ul><li>A<ul><li>X1</li></ul><br><ul><li>X2</li></ul></li><li>B</li></ul>",
+      2,
+    ],
+    [
+      "a space between two lists",
+      "<ul><li>A<ul><li>X1</li></ul>&nbsp;<ul><li>X2</li></ul></li><li>B</li></ul>",
+      2,
+    ],
+  ])("%s", async (_name, html, items) => {
+    const onChange = await mountAt("<p></p>", "");
+    paste({ "text/html": html, "text/plain": "x" });
+    await settle();
+    const written = plain(lastHtml(onChange));
+    expect(written).not.toMatch(/<li[^>]*><\/li>/);
+    expect(written).not.toMatch(/<li><br/);
+    const template = document.createElement("template");
+    template.innerHTML = written;
+    expect(template.content.firstElementChild!.children).toHaveLength(items);
+  });
+
+  test("a line break, then text after the list: the new item starts with the text", async () => {
+    const onChange = await mountAt("<p></p>", "");
+    paste({
+      "text/html": "<ul><li>A<ul><li>X</li></ul><br>Z</li><li>B</li></ul>",
+      "text/plain": "x",
+    });
+    await settle();
+    const written = plain(lastHtml(onChange));
+    expect(written).toBe(
+      "<ul><li>A<ul><li>X</li></ul></li><li>Z</li><li>B</li></ul>"
+    );
+  });
+});
+
+describe("inline content after a lifted block keeps to its own runs (R4)", () => {
+  test.each([
+    ["two line breaks", "<br><br>", "a.|x.|y."],
+    ["line breaks around a heading", "<br><h2>h.</h2><br>", "a.|x.|y.|h."],
+    ["a rule, then a paragraph", "<hr><p>t.</p>", "a.|x.|y.|t."],
+    ["text, then two line breaks", "t.<br><br>", "a.|x.|y.|t."],
+  ])("%s after the second quote", async (_name, after, order) => {
+    const onChange = await mountAt(nestedList(6, "s"), "s6");
+    paste({
+      "text/html": `<ul><li>a.<blockquote><ul><li>x.</li></ul></blockquote><blockquote><p>y.</p></blockquote>${after}</li></ul>`,
+      "text/plain": "x",
+    });
+    await settle();
+    const written = sanitizeRichTextHtml(lastHtml(onChange));
+    expect(written).not.toMatch(/<p><br \/>|<br \/><\/p>|<p><\/p>/);
+    expect(readingOrder(written)).toBe([...DEEP, order].join("|"));
+    expectFixedPoint(written);
+  });
+
+  const text = (value: string) => ({
+    type: "text",
+    text: value,
+    format: 0,
+    style: "",
+    mode: "normal",
+    detail: 0,
+    version: 1,
+  });
+  const block = { direction: null, format: "", indent: 0, version: 1 };
+  const list = (...children: unknown[]) => ({
+    ...block,
+    type: "list",
+    listType: "bullet",
+    start: 1,
+    tag: "ul",
+    children,
+  });
+  const item = (...children: unknown[]) => ({
+    ...block,
+    type: "listitem",
+    value: 1,
+    children,
+  });
+  const quote = (value: string) => ({
+    ...block,
+    type: "quote",
+    children: [
+      {
+        ...block,
+        type: "paragraph",
+        textFormat: 0,
+        textStyle: "",
+        children: [text(value)],
+      },
+    ],
+  });
+  test.each([
+    ["white space", [text("  ")], "a.|x.|y."],
+    [
+      "text, a list and text",
+      [text("t."), list(item(text("k."))), text("u.")],
+      undefined,
+    ],
+  ])(
+    "the field's own item with %s after a lifted quote",
+    async (_name, tail, order) => {
+      const onChange = await mountAt(nestedList(6, "s"), "s6");
+      paste({
+        "application/x-lexical-editor": JSON.stringify({
+          namespace: editorOf()!._config.namespace,
+          nodes: [
+            list(
+              item(text("a."), list(item(text("x."))), quote("y."), ...tail)
+            ),
+          ],
+        }),
+        "text/plain": "x",
+      });
+      await settle();
+      const written = sanitizeRichTextHtml(lastHtml(onChange));
+      expect(written).not.toMatch(/<p><\/p>|t\.u\./);
+      if (order === undefined) {
+        expect(written).toMatch(/<p>t\.<\/p>/);
+        expect(written).toMatch(/<p>u\.<\/p>/);
+        expect(written).toContain("k.");
+      } else {
+        expect(readingOrder(written)).toBe([...DEEP, order].join("|"));
+      }
+    }
+  );
+});
+
+describe("a wrapper that gives way in a pasted item keeps its lines (R5)", () => {
+  test("text before and after a wrapper holding a nested list", async () => {
+    const onChange = await mountAt("<p></p>", "");
+    paste({
+      "text/html":
+        "<ul><li>P<div>A<ul><li>X</li></ul>Z</div>Q</li><li>B</li></ul>",
+      "text/plain": "x",
+    });
+    await settle();
+    const written = plain(lastHtml(onChange));
+    expect(written).toBe(
+      "<ul><li>P<br />A<ul><li>X</li></ul></li><li>Z<br />Q</li><li>B</li></ul>"
+    );
+    expectFixedPoint(written);
+  });
+
+  test("a table around a nested list keeps its cells apart", async () => {
+    const onChange = await mountAt("<p></p>", "");
+    paste({
+      "text/html":
+        "<ul><li>A<table><tbody><tr><td>C1</td><td><ul><li>X</li></ul></td><td>C3</td></tr><tr><td>D1</td><td>D2</td></tr></tbody></table>Z</li><li>B</li></ul>",
+      "text/plain": "x",
+    });
+    await settle();
+    const written = plain(lastHtml(onChange));
+    expect(written).not.toMatch(/AC1|C3D1|D1D2|D2Z/);
+  });
+});
+
+describe("an item the paste makes after a nested list stays editable (T1)", () => {
+  const pasteAfter = (behind: string) => async () => {
+    const onChange = await mountAt("<ul><li>s1</li><li>t1</li></ul>", "s1");
+    paste({
+      "text/html": `<ul><li>A<ul><li>X</li></ul>${behind}</li></ul>`,
+      "text/plain": "x",
+    });
+    await settle();
+    return onChange;
+  };
+  const SETUPS = [
+    ["a quote", pasteAfter("<blockquote><p>Z1</p></blockquote>Z2")],
+    ["a heading", pasteAfter("<h2>Z1</h2>Z2")],
+    ["a rule", pasteAfter("<hr>Z2")],
+    [
+      "nothing (an ordinary item)",
+      () => mountAt("<ul><li>s1</li><li>Z2</li><li>t1</li></ul>", "Z2"),
+    ],
+  ] as const;
+  const plainPaste = (text: string) => paste({ "text/plain": text });
+  const drop = async (text: string) => {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.setData("text/plain", text);
+    await act(async () => {
+      editable()!.dispatchEvent(
+        new InputEvent("beforeinput", {
+          bubbles: true,
+          cancelable: true,
+          inputType: "insertFromDrop",
+          dataTransfer,
+        })
+      );
+    });
+  };
+  const STEPS: [string, () => Promise<void>, RegExp][] = [
+    ["Enter", () => userEvent.keyboard("{Enter}e"), /Z2<\/li><li>e<\/li>/],
+    [
+      "Shift+Enter",
+      () => userEvent.keyboard("{Shift>}{Enter}{/Shift}e"),
+      /Z2<br \/>e/,
+    ],
+    [
+      "a two-line plain-text paste",
+      async () => plainPaste("L1\nL2"),
+      /Z2L1.*L2/,
+    ],
+    [
+      "a three-line CRLF plain-text paste",
+      async () => plainPaste("L1\r\nL2\r\nL3"),
+      /Z2L1.*L2.*L3/,
+    ],
+    ["a plain-text paste with a tab", async () => plainPaste("a\tb"), /Z2a.*b/],
+    ["a two-line plain-text drop", () => drop("L1\nL2"), /Z2L1.*L2/],
+    ["Delete at the item's end", () => userEvent.keyboard("{Delete}"), /Z2t1/],
+    [
+      "Backspace at the next item's start",
+      async () => {
+        await clickInWord("t1", 0);
+        await userEvent.keyboard("{Backspace}");
+      },
+      /Z2t1/,
+    ],
+    [
+      "Heading 2",
+      async () => {
+        await userEvent.click(byLabel("Block type")!);
+        await settle();
+        const option = [
+          ...document.querySelectorAll<HTMLElement>('[role="option"]'),
+        ].find((element) => element.textContent === "Heading 2");
+        await userEvent.click(option!);
+      },
+      /<h2>Z2<\/h2>/,
+    ],
+  ];
+  test.each(
+    SETUPS.flatMap(([setup, mount]) =>
+      STEPS.map(([step, run, written]) => ({
+        setup,
+        mount,
+        step,
+        run,
+        written,
+      }))
+    )
+  )(
+    "after $setup: $step",
+    async ({ mount, run, written }) => {
+      const onChange = await mount();
+      const errors = vi.spyOn(console, "error");
+      const start = performance.now();
+      await run();
+      await settle();
+      expect(performance.now() - start).toBeLessThan(2000);
+      expect(
+        errors.mock.calls
+          .map((args) => String(args[0]))
+          .filter((message) => message.includes("not wrapped in act") === false)
+      ).toEqual([]);
+      expect(plain(lastHtml(onChange)).replace(/\n/g, "")).toMatch(written);
+    },
+    60000
+  );
+
+  test.each([
+    [
+      "a quote, then text",
+      "<blockquote><p>Z1</p></blockquote>Z2",
+      "<ul><li>s1</li><li>A<ul><li>X</li></ul></li><li><blockquote><p>Z1</p></blockquote></li><li>Z2</li><li>t1</li></ul>",
+    ],
+    [
+      "a heading, then text",
+      "<h2>Z1</h2>Z2",
+      "<ul><li>s1</li><li>A<ul><li>X</li></ul></li><li><h2>Z1</h2></li><li>Z2</li><li>t1</li></ul>",
+    ],
+    [
+      "code, then text",
+      "<pre><code>c1</code></pre>Z2",
+      "<ul><li>s1</li><li>A<ul><li>X</li></ul></li><li><pre><code>c1</code></pre></li><li>Z2</li><li>t1</li></ul>",
+    ],
+  ])("%s after the nested list writes", async (_name, behind, expected) => {
+    const onChange = await pasteAfter(behind)();
+    expect(plain(lastHtml(onChange))).toBe(expected);
+    await userEvent.keyboard("q");
+    await settle();
+    expect(plain(lastHtml(onChange))).toContain("<li>Z2q</li>");
+  });
+
+  test("a rule, then text: the rule stays in the item, the text takes its own", async () => {
+    const onChange = await pasteAfter("<hr>Z2")();
+    const written = plain(lastHtml(onChange));
+    expect(written).toMatch(/<li>A(<br \/>)?<hr \/>/);
+    expect(written).toMatch(/<\/li><li>Z2<\/li><li>t1<\/li><\/ul>$/);
+  });
+
+  test("a rule alone after a nested list: Enter, Shift+Enter and a plain-text paste finish at once", async () => {
+    const onChange = await mountAt("<p></p>", "");
+    paste({
+      "text/html": "<ul><li>Open<ul><li>Click</li></ul><hr></li></ul>",
+      "text/plain": "x",
+    });
+    await settle();
+    expect(plain(lastHtml(onChange))).toBe(
+      "<ul><li>Open<br /><hr /><ul><li>Click</li></ul></li></ul>"
+    );
+    const start = performance.now();
+    await userEvent.keyboard("{Enter}e{Shift>}{Enter}{/Shift}f");
+    await settle();
+    paste({ "text/plain": "L1\nL2" });
+    await settle();
+    expect(performance.now() - start).toBeLessThan(3000);
+    expect(lastHtml(onChange)).toContain("L2");
+  }, 60000);
+});
+
+describe("items under marks or wrappers in a pasted list stay its items (T4)", () => {
+  const drop = async (html: string) => {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.setData("text/html", html);
+    dataTransfer.setData("text/plain", "x");
+    await act(async () => {
+      editable()!.dispatchEvent(
+        new InputEvent("beforeinput", {
+          bubbles: true,
+          cancelable: true,
+          inputType: "insertFromDrop",
+          dataTransfer,
+        })
+      );
+    });
+  };
+  const SHAPES: [string, string, string | undefined][] = [
+    [
+      "links",
+      '<ul><a href="https://example.org/a"><li>Aq</li></a><a href="https://example.org/b"><li>Bq</li></a></ul>',
+      "link",
+    ],
+    [
+      "bold in a bulleted list",
+      "<ul><b><li>Aq</li><li>Bq</li></b></ul>",
+      "bold",
+    ],
+    [
+      "bold in a numbered list",
+      "<ol><b><li>Aq</li><li>Bq</li></b></ol>",
+      "bold",
+    ],
+    ["a div", "<ul><div><li>Aq</li><li>Bq</li></div></ul>", undefined],
+    ["a span", "<ul><span><li>Aq</li><li>Bq</li></span></ul>", undefined],
+  ];
+  test.each(
+    SHAPES.flatMap(([name, html, mark]) =>
+      ["drop", "paste"].map((how) => ({ name, html, mark, how }))
+    )
+  )("$name, by $how", async ({ html, mark, how }) => {
+    const onChange = await mountAt("<p></p>", "");
+    if (how === "drop") {
+      await drop(html);
+    } else {
+      paste({ "text/html": html, "text/plain": "x" });
+    }
+    await settle();
+    const written = plain(lastHtml(onChange));
+    const template = document.createElement("template");
+    template.innerHTML = written;
+    const list = template.content.firstElementChild!;
+    expect(/^(UL|OL)$/.test(list.tagName)).toBe(true);
+    expect(list.querySelectorAll("ul, ol")).toHaveLength(0);
+    expect(list.children).toHaveLength(2);
+    expect(readingOrder(written)).toBe("Aq|Bq");
+    if (mark !== undefined) {
+      expect(marked(mark, ["Aq", "Bq"])).toEqual(["Aq: true", "Bq: true"]);
+    }
+  });
+});
+
+describe("a new item starts at its content (T3)", () => {
+  test.each([
+    ["an image", '<img src="https://example.org/a.png" alt="alt">'],
+    ["a comment", "<!-- note -->"],
+    ["an empty span", "<span></span>"],
+    ["a style", "<style>p{color:red}</style>"],
+    ["a bold line break", "<b><br></b>"],
+  ])("%s and a line break before the text", async (_name, before) => {
+    const onChange = await mountAt("<p></p>", "");
+    paste({
+      "text/html": `<ol><li>T1q<ul><li>T2q</li></ul>${before}<br>T3q</li><li>T4q</li></ol>`,
+      "text/plain": "x",
+    });
+    await settle();
+    expect(plain(lastHtml(onChange))).toBe(
+      "<ol><li>T1q<ul><li>T2q</li></ul></li><li>T3q</li><li>T4q</li></ol>"
+    );
+  });
+
+  test.each(
+    [
+      "\u200e",
+      "\u200f",
+      "\u00ad",
+      "\u061c",
+      "\u202a",
+      "\u202e",
+      "\u2066",
+      "\u2069",
+      "\u2062",
+      "\ufe0f",
+      "\u180e",
+    ].map((char) => [char.codePointAt(0)!.toString(16).padStart(4, "0"), char])
+  )("U+%s after the nested list adds no item", async (_code, char) => {
+    const onChange = await mountAt("<p></p>", "");
+    paste({
+      "text/html": `<ul><li>Aq<ul><li>Xq</li></ul>${char}</li><li>Bq</li></ul>`,
+      "text/plain": "x",
+    });
+    await settle();
+    const template = document.createElement("template");
+    template.innerHTML = plain(lastHtml(onChange));
+    expect(template.content.firstElementChild!.children).toHaveLength(2);
+  });
+});
+
+describe("a wrapper's lines follow the wrapper (T2)", () => {
+  /** The written value with only its line breaks left as tags. */
+  const lines = (html: string) => html.replace(/<(?!br\b)[^>]*>/g, "");
+  test.each([
+    [
+      "small text on either side",
+      "<ul><li><small>Pq</small><div>Aq<ul><li>Xq</li></ul>Zq</div><small>Qq</small></li></ul>",
+    ],
+    [
+      "white space between the tags",
+      "<ul><li><b>Pq</b> <div>Aq<ul><li>Xq</li></ul>Zq</div> <i>Qq</i></li></ul>",
+    ],
+    [
+      "an image and a comment beside it",
+      '<ul><li>Pq<img src="https://example.org/a.png" alt="a"><section>Aq<ul><li>Xq</li></ul>Zq</section><!-- c --><span></span>Qq</li></ul>',
+    ],
+  ])(
+    "a block wrapper with %s keeps a line break at each edge",
+    async (_name, html) => {
+      const onChange = await mountAt("<p></p>", "");
+      paste({ "text/html": html, "text/plain": "x" });
+      await settle();
+      const written = lines(plain(lastHtml(onChange)));
+      expect(written).toContain("Pq<br />Aq");
+      expect(written).toContain("Zq<br />Qq");
+    }
+  );
+
+  test.each(["font", "small", "sup", "mark", "label"])(
+    "an inline %s wrapper gives way with no line break",
+    async (tag) => {
+      const onChange = await mountAt("<p></p>", "");
+      paste({
+        "text/html": `<ul><li>Pq<${tag}>Aq<ul><li>Xq</li></ul>Zq</${tag}>Qq</li><li>Bq</li></ul>`,
+        "text/plain": "x",
+      });
+      await settle();
+      const written = lines(plain(lastHtml(onChange)));
+      expect(written).toContain("PqAq");
+      expect(written).toContain("ZqQq");
+    }
+  );
+});
+
+describe("the caret after a paste whose line breaks the lift removed (U1)", () => {
+  const THREE =
+    "<ul><li>a.<blockquote><ul><li>x1.</li><li>x2.<ul><li>x3.</li></ul></li></ul></blockquote><br><br></li></ul>";
+  const ONE =
+    "<ul><li>a.<blockquote><ul><li>x.</li></ul></blockquote><br><br></li></ul>";
+  const pasted = async (html: string) => {
+    const onChange = await mountAt(nestedList(6, "s"), "s6");
+    paste({ "text/html": html, "text/plain": "x" });
+    await settle();
+    return onChange;
+  };
+  /** Presses `keys`, which must finish in under two seconds. */
+  const press = async (keys: string) => {
+    const start = performance.now();
+    await userEvent.keyboard(keys);
+    await settle();
+    expect(performance.now() - start).toBeLessThan(2000);
+  };
+  const FORMS = [
+    ["three nested items", THREE, ["a.", "x1.", "x2."], "x3."],
+    ["one nested item", ONE, ["a."], "x."],
+  ] as const;
+  const STEPS = [
+    ["Backspace", "{Backspace}", (last: string) => [last.slice(0, -1)]],
+    ["Delete", "{Delete}", (last: string) => [last]],
+    // the word before the caret is the final full stop
+    [
+      "Ctrl+Backspace",
+      "{Control>}{Backspace}{/Control}",
+      (last: string) => [last.slice(0, -1)],
+    ],
+    ["typing", "z", (last: string) => [`${last}z`]],
+  ] as const;
+  test.each(
+    FORMS.flatMap(([form, html, before, last]) =>
+      STEPS.map(([step, keys, result]) => ({
+        form,
+        step,
+        html,
+        keys,
+        expected: [...DEEP, ...before, ...result(last)].join("|"),
+      }))
+    )
+  )(
+    "$form: $step",
+    async ({ html, keys, expected }) => {
+      const onChange = await pasted(html);
+      await press(keys);
+      expect(readingOrder(lastHtml(onChange))).toBe(expected);
+    },
+    60000
+  );
+
+  test("a second quote, then two line breaks: typing lands after its text", async () => {
+    const onChange = await pasted(
+      "<ul><li>a.<blockquote><ul><li>x.</li></ul></blockquote><blockquote><p>y.</p></blockquote><br><br></li></ul>"
+    );
+    await press("z");
+    expect(readingOrder(lastHtml(onChange))).toBe(
+      [...DEEP, "a.", "x.", "y.z"].join("|")
+    );
+  }, 60000);
+
+  test.each([
+    [
+      "one line break",
+      "<ul><li>a.<blockquote><ul><li>x.</li></ul></blockquote><br></li></ul>",
+      [...DEEP, "a.", "x.z"],
+    ],
+  ])(
+    "%s: typing lands after the nested text",
+    async (_name, html, expected) => {
+      const onChange = await pasted(html);
+      await press("z");
+      expect(readingOrder(lastHtml(onChange))).toBe(expected.join("|"));
+    },
+    60000
+  );
+
+  test("a plain-text paste keeps its caret", async () => {
+    const onChange = await mountAt(nestedList(6, "s"), "s6");
+    paste({ "text/plain": "pp" });
+    await settle();
+    await press("z");
+    expect(readingOrder(lastHtml(onChange))).toBe(
+      [...DEEP.slice(0, -1), "s6ppz"].join("|")
+    );
+  }, 60000);
+});
+
+describe("rules after a pasted nested list (V1)", () => {
+  test.each([
+    ["in a div", "<div><hr></div>Zq"],
+    ["in a font", '<font color="red"><hr></font>Zq'],
+    ["in a center", "<center><hr></center>Zq"],
+    ["in a quote", "<blockquote><hr></blockquote>Zq"],
+    [
+      "in a table cell",
+      "<table><tbody><tr><td><hr></td></tr></tbody></table>Zq",
+    ],
+    ["in a div before a div", "<div><hr></div><div>Zq</div>"],
+    [
+      "after a leading quote",
+      "<blockquote><p>Z1q</p></blockquote><div><hr></div>Zq",
+    ],
+    ["in a later run", "Mq<ul><li>Yq</li></ul><div><hr></div>Zq"],
+  ])("a rule %s is kept", async (_name, behind) => {
+    const onChange = await mountAt("<p></p>", "");
+    paste({
+      "text/html": `<ul><li>Aq<ul><li>Xq</li></ul>${behind}</li><li>Bq</li></ul>`,
+      "text/plain": "x",
+    });
+    await settle();
+    const written = sanitizeRichTextHtml(lastHtml(onChange));
+    expect(written.match(/<hr/g)).toHaveLength(1);
+    expect(written).toContain("Zq");
+  });
+
+  const SEQUENCES = [
+    [
+      "a rule and text in a div, into an item",
+      "<ul><li>s1</li><li>t1</li></ul>",
+      "s1",
+      "<ul><li>A<ul><li>X</li></ul><div><hr>Z2</div></li></ul>",
+    ],
+    [
+      "a rule and a paragraph in a section, into an item",
+      "<ul><li>s1</li><li>t1</li></ul>",
+      "s1",
+      "<ul><li>A<ul><li>X</li></ul><section><hr><p>Z2</p></section></li></ul>",
+    ],
+    [
+      "a quote, then a rule, into an empty field",
+      "<p></p>",
+      "",
+      "<ul><li>A<ul><li>X</li></ul><blockquote><p>Z1</p></blockquote><hr></li></ul>",
+    ],
+    [
+      "a heading, then a rule, into an empty field",
+      "<p></p>",
+      "",
+      "<ul><li>A<ul><li>X</li></ul><h2>Z1</h2><hr></li></ul>",
+    ],
+    [
+      "a quote and text in a div, into an empty field",
+      "<p></p>",
+      "",
+      "<ul><li>A<ul><li>X</li></ul><div><blockquote><p>Z1</p></blockquote>Z2</div></li></ul>",
+    ],
+  ];
+  test.each(
+    SEQUENCES.flatMap(([name, html, at, pasted]) =>
+      (["a two-line plain-text paste", "Shift+Enter"] as const).map((step) => ({
+        name,
+        html,
+        at,
+        pasted,
+        step,
+      }))
+    )
+  )(
+    "$name, then $step",
+    async ({ html, at, pasted, step }) => {
+      const onChange = await mountAt(html, at);
+      paste({ "text/html": pasted, "text/plain": "x" });
+      await settle();
+      expect(lastHtml(onChange)).not.toMatch(/<li[^>]*><hr/);
+      const errors = vi.spyOn(console, "error");
+      const start = performance.now();
+      if (step === "Shift+Enter") {
+        await userEvent.keyboard("{Shift>}{Enter}{/Shift}e");
+      } else {
+        paste({ "text/plain": "L1\nL2" });
+      }
+      await settle();
+      expect(performance.now() - start).toBeLessThan(2000);
+      expect(
+        errors.mock.calls
+          .map((args) => String(args[0]))
+          .filter((message) => message.includes("not wrapped in act") === false)
+      ).toEqual([]);
+      const written = plain(lastHtml(onChange));
+      expect(written).toMatch(step === "Shift+Enter" ? /<br \/>e/ : /L1.*L2/);
+    },
+    60000
+  );
+});
+
+describe("an item under a quote, code, heading or table in a list stays stray (V3)", () => {
+  const drop = async (html: string) => {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.setData("text/html", html);
+    dataTransfer.setData("text/plain", "x");
+    await act(async () => {
+      editable()!.dispatchEvent(
+        new InputEvent("beforeinput", {
+          bubbles: true,
+          cancelable: true,
+          inputType: "insertFromDrop",
+          dataTransfer,
+        })
+      );
+    });
+    await settle();
+  };
+  test("items in a quote, by drop", async () => {
+    const onChange = await mountAt("<p></p>", "");
+    await drop("<ul><blockquote><li>Aq</li><li>Bq</li></blockquote></ul>");
+    expect(plain(lastHtml(onChange))).toBe(
+      "<ul><li><blockquote><ul><li>Aq</li><li>Bq</li></ul></blockquote></li></ul>"
+    );
+  });
+  test("items in code, by drop", async () => {
+    const onChange = await mountAt("<p></p>", "");
+    await drop("<ul><pre><li>Aq</li><li>Bq</li></pre></ul>");
+    const written = plain(lastHtml(onChange));
+    expect(written).toMatch(/^<ul><li><pre/);
+    expect(written.match(/<li>/g)).toHaveLength(1);
+  });
+  test("items in table cells, by drop", async () => {
+    const onChange = await mountAt("<p></p>", "");
+    await drop(
+      "<ul><table><tbody><tr><td><li>Aq</li></td><td>Cq</td></tr><tr><td>Dq</td><td><li>Bq</li></td></tr></tbody></table></ul>"
+    );
+    expect(plain(lastHtml(onChange))).not.toContain("CqDq");
+  });
+  test("items in a heading, by paste", async () => {
+    const onChange = await mountAt("<p></p>", "");
+    paste({
+      "text/html": "<ul><h2>Tq<li>Aq</li><li>Bq</li></h2></ul>",
+      "text/plain": "x",
+    });
+    await settle();
+    expect(plain(lastHtml(onChange))).toContain("<h2>Tq");
+  });
+});
+
+describe("default-ignorable characters after a nested list add no item (V4)", () => {
+  test.each([
+    "\u3164",
+    "\u034f",
+    "\u115f",
+    "\uffa0",
+    "\u17b4",
+    "\u180b",
+    "\u{e0100}",
+  ])("%j", async (char) => {
+    const onChange = await mountAt("<p></p>", "");
+    paste({
+      "text/html": `<ul><li>Aq<ul><li>Xq</li></ul>${char}</li><li>Bq</li></ul>`,
+      "text/plain": "x",
+    });
+    await settle();
+    const template = document.createElement("template");
+    template.innerHTML = plain(lastHtml(onChange));
+    expect(template.content.firstElementChild!.children).toHaveLength(2);
+  });
+});
+
+describe("block wrapper edges beside inline elements holding blocks (V2)", () => {
+  const lines = (html: string) => html.replace(/<(?!br\b)[^>]*>/g, "");
+  test.each([
+    [
+      "a font holding the list in a div",
+      '<ul><li>Pq<div><font color="red">Aq<ul><li>Xq</li></ul>Zq</font></div>Qq</li><li>Bq</li></ul>',
+      ["Pq<br />Aq", "Zq<br />Qq"],
+    ],
+    [
+      "a font holding a list after a div",
+      '<ul><li><div>Aq<ul><li>Xq</li></ul>Zq</div><font color="red">Sq<ul><li>Vq</li></ul>Qq</font></li></ul>',
+      ["Zq<br />Sq"],
+    ],
+    [
+      "bold in a font in a section",
+      '<ul><li>Pq<section><font color="red"><b>Aq<ul><li>Xq</li></ul>Zq</b></font></section>Qq</li></ul>',
+      ["Pq<br />Aq", "Zq<br />Qq"],
+    ],
+    [
+      "a figure",
+      "<ul><li>Pq<figure>Aq<ul><li>Xq</li></ul>Zq</figure>Qq</li></ul>",
+      ["Pq<br />Aq", "Zq<br />Qq"],
+    ],
+  ])("%s keeps its lines", async (_name, html, expected) => {
+    const onChange = await mountAt("<p></p>", "");
+    paste({ "text/html": html, "text/plain": "x" });
+    await settle();
+    const written = lines(plain(lastHtml(onChange)));
+    for (const line of expected) {
+      expect(written).toContain(line);
+    }
+  });
+});
+
+describe("the caret after a paste into the middle of a nested item's text (Y1)", () => {
+  const STORED =
+    "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>t1</li></ul></li></ul></li><li>a2</li></ul>";
+  const BEFORE = "<ul><li>a1<ul><li>b1<ul><li>s</li></ul></li></ul></li></ul>";
+  const AFTER =
+    "<ul><li><ul><li><ul><li>t1</li></ul></li></ul></li><li>a2</li></ul>";
+  test.each([
+    [
+      "a numbered list",
+      "<ol><li>A</li><li>B</li></ol>",
+      `${BEFORE}<ol><li>A</li><li>B~1</li></ol>${AFTER}`,
+    ],
+    [
+      "a quote",
+      "<blockquote><p>A</p></blockquote>",
+      `${BEFORE}<blockquote><p>A~1</p></blockquote>${AFTER}`,
+    ],
+    [
+      "a quote holding a list",
+      "<blockquote><ul><li>A</li><li>B</li></ul></blockquote>",
+      `${BEFORE}<blockquote><ul><li>A</li><li>B~1</li></ul></blockquote>${AFTER}`,
+    ],
+    [
+      "two lists, one after the other",
+      "<ul><li>A</li></ul><ol><li>B</li></ol>",
+      `<ul><li>a1<ul><li>b1<ul><li>s</li><li>A</li></ul></li></ul></li></ul><ol><li>B~1</li></ol>${AFTER}`,
+    ],
+    [
+      "a nested list, then a paragraph",
+      "<ol><li>A<ul><li>X</li></ul></li><li>B</li></ol><p>C</p>",
+      `${BEFORE}<ol><li>A<ul><li>X</li></ul></li><li>B</li></ol><p>C~1</p>${AFTER}`,
+    ],
+  ])(
+    "typing after %s pasted lands right after it",
+    async (_name, html, expected) => {
+      const onChange = await mountAt(STORED, "s1", 1);
+      paste({ "text/html": html, "text/plain": "x" });
+      await settle();
+      await userEvent.keyboard("~");
+      await settle();
+      expect(plain(lastHtml(onChange))).toBe(expected);
+    },
+    60000
+  );
+
+  test("typing after a numbered list pasted in the middle of a depth-3 item's text lands right after it", async () => {
+    const onChange = await mountAt(nestedList(3, "s"), "s3", 1);
+    paste({ "text/html": "<ol><li>A</li><li>B</li></ol>", "text/plain": "x" });
+    await settle();
+    await userEvent.keyboard("~");
+    await settle();
+    expect(plain(lastHtml(onChange))).toBe(
+      "<ul><li>s1<ul><li>s2<ul><li>s</li></ul></li></ul></li></ul><ol><li>A</li><li>B~3</li></ol>"
+    );
+  }, 60000);
+
+  test("typing after a pasted tree ending in a stray item lands right after its last text", async () => {
+    const onChange = await mountAt(STORED, "s1", 1);
+    paste({
+      "text/html":
+        "<div><ol><li><p>T1q</p></li><li><ol><li>T2q <hr></li><li>T3q</li></ol>T4qT5qT6q</li></ol></div><li><div><ol><li>T7qT8q</li><li><p>T9q</p>T10q<ul><li><p>T11q</p><p>T12q</p><hr></li></ul></li></ol>T13q</div></li>",
+      "text/plain": "x",
+    });
+    await settle();
+    await userEvent.keyboard("~");
+    await settle();
+    expect(plain(lastHtml(onChange))).toBe(
+      "<ul><li>a1<ul><li>b1<ul><li>s</li></ul></li></ul></li></ul><ol><li>T1q<ol><li>T2q<hr /></li><li>T3q</li></ol></li><li>T4qT5qT6q</li></ol><ul><li><ul><li><ul><li><ol><li>T7qT8q</li><li>T9q<br />T10q<ul><li>T11q<br />T12q<br /><hr /></li></ul></li></ol></li><li>T13q~1</li><li>t1</li></ul></li></ul></li><li>a2</li></ul>"
+    );
+  }, 60000);
+
+  test("typing after a rule and a line break lifted after a pasted list lands after the rule", async () => {
+    const onChange = await mountAt(nestedList(6, "s"), "s6");
+    paste({
+      "text/html":
+        "<ul><li>a.<blockquote><ul><li>x.</li></ul></blockquote><hr><br></li></ul>",
+      "text/plain": "x",
+    });
+    await settle();
+    await userEvent.keyboard("z");
+    await settle();
+    expect(plain(lastHtml(onChange))).toBe(
+      "<ul><li>s1<ul><li>s2<ul><li>s3<ul><li>s4<ul><li>s5<ul><li>s6</li><li>a.<ul><li>x.</li></ul></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul><hr /><p>z</p>"
+    );
+  }, 60000);
+});
+
+describe("a rule after an item's leading nested list stays behind content (Y2)", () => {
+  const SHAPES = [
+    [
+      "a paragraph, a list, then a rule",
+      "<ul><li><ul><li>Xq</li></ul><p>Tq</p><ul><li>Yq</li></ul><hr></li><li>Bq</li></ul>",
+      "<ul><li><ul><li>Xq</li></ul></li><li>Tq<br /><hr /><ul><li>Yq</li></ul></li><li>Bq</li></ul>",
+    ],
+    [
+      "a paragraph, a list, then two rules",
+      "<ul><li><ul><li>Xq</li></ul><p>Tq</p><ul><li>Yq</li></ul><hr><hr></li><li>Bq</li></ul>",
+      "<ul><li><ul><li>Xq</li></ul></li><li>Tq<br /><hr /><hr /><ul><li>Yq</li></ul></li><li>Bq</li></ul>",
+    ],
+    [
+      "a quote, a list, then a rule",
+      "<ul><li><ul><li>Xq</li></ul><blockquote><p>Tq</p></blockquote><ul><li>Yq</li></ul><hr></li><li>Bq</li></ul>",
+      "<ul><li><ul><li>Xq</li></ul></li><li><blockquote><p>Tq</p></blockquote><hr /><ul><li>Yq</li></ul></li><li>Bq</li></ul>",
+    ],
+    [
+      "a quote, a rule, then a paragraph",
+      "<ul><li><ul><li>Xq</li></ul><blockquote><p>Tq</p></blockquote><hr><p>Zq</p></li><li>Bq</li></ul>",
+      "<ul><li><ul><li>Xq</li></ul></li><li><blockquote><p>Tq</p></blockquote><hr /></li><li>Zq</li><li>Bq</li></ul>",
+    ],
+    [
+      "a paragraph, a list, a rule, then a paragraph",
+      "<ul><li><ul><li>Xq</li></ul><p>Tq</p><ul><li>Yq</li></ul><hr><p>Uq</p></li><li>Bq</li></ul>",
+      "<ul><li><ul><li>Xq</li></ul></li><li>Tq<br /><hr /><ul><li>Yq</li></ul></li><li>Uq</li><li>Bq</li></ul>",
+    ],
+    [
+      "a rule before the paragraph",
+      "<ul><li><ul><li>Xq</li></ul><hr><p>Tq</p><ul><li>Yq</li></ul></li><li>Bq</li></ul>",
+      "<ul><li><ul><li>Xq</li></ul></li><li><hr /><br />Tq<ul><li>Yq</li></ul></li><li>Bq</li></ul>",
+    ],
+    [
+      "a rule on each side of the paragraph",
+      "<ul><li><ul><li>Xq</li></ul><hr><p>Tq</p><hr></li><li>Bq</li></ul>",
+      "<ul><li><ul><li>Xq</li></ul></li><li><hr /><br />Tq<br /><hr /></li><li>Bq</li></ul>",
+    ],
+    [
+      "text of the item's own before its list",
+      "<ul><li>Aq<ul><li>Xq</li></ul><p>Tq</p><ul><li>Yq</li></ul><hr></li><li>Bq</li></ul>",
+      "<ul><li>Aq<br /><hr /><ul><li>Xq</li></ul></li><li>Tq<ul><li>Yq</li></ul></li><li>Bq</li></ul>",
+    ],
+  ] as const;
+  test.each(
+    SHAPES.flatMap(([shape, html, expected]) =>
+      (["paste", "drop"] as const).map((how) => ({
+        shape,
+        how,
+        html,
+        expected,
+      }))
+    )
+  )("$how of $shape writes", async ({ how, html, expected }) => {
+    const onChange = await mountAt("<p></p>", "");
+    if (how === "paste") {
+      paste({ "text/html": html, "text/plain": "x" });
+      await settle();
+    } else {
+      await dropHtml(html);
+    }
+    expect(plain(lastHtml(onChange))).toBe(expected);
+  });
+});
+
+describe("a block wrapper that gives way keeps its own last line break only before line content (Y3)", () => {
+  test.each([
+    [
+      "a div, then a div",
+      "<ul><li><div>Aq<ul><li>Xq</li></ul>Zq<br></div><div>Qq</div></li><li>Bq</li></ul>",
+      "<ul><li>Aq<ul><li>Xq</li></ul></li><li>Zq<br />Qq</li><li>Bq</li></ul>",
+    ],
+    [
+      "a div after a quote, then a div",
+      "<ul><li><div>Aq<ul><li>Xq</li></ul><blockquote><p>Z1q</p></blockquote>Z2q<br></div><div>Qq</div></li><li>Bq</li></ul>",
+      "<ul><li>Aq<ul><li>Xq</li></ul></li><li><blockquote><p>Z1q</p></blockquote></li><li>Z2q<br />Qq</li><li>Bq</li></ul>",
+    ],
+    [
+      "an inner div holding a quote, then a div",
+      "<ul><li><div>Aq<ul><li>Xq</li></ul><div><blockquote><p>Z1q</p></blockquote>Z2q<br></div><div>Qq</div></div></li><li>Bq</li></ul>",
+      "<ul><li>Aq<ul><li>Xq</li></ul></li><li><blockquote><p>Z1q</p></blockquote></li><li>Z2q<br />Qq</li><li>Bq</li></ul>",
+    ],
+    [
+      "a section ending in white space and a comment, then a paragraph",
+      "<ul><li><section>Aq<ul><li>Xq</li></ul>Zq<br> <!-- c --> </section><p>Qq</p></li><li>Bq</li></ul>",
+      "<ul><li>Aq<ul><li>Xq</li></ul></li><li>Zq<br /><br />Qq</li><li>Bq</li></ul>",
+    ],
+    [
+      "a figure, then a div",
+      "<ul><li><figure>Aq<ul><li>Xq</li></ul>Zq<br></figure><div>Qq</div></li><li>Bq</li></ul>",
+      "<ul><li>Aq<ul><li>Xq</li></ul></li><li>Zq<br />Qq</li><li>Bq</li></ul>",
+    ],
+    [
+      "a div ending in two line breaks, then a div",
+      "<ul><li><div>Aq<ul><li>Xq</li></ul>Zq<br><br></div><div>Qq</div></li><li>Bq</li></ul>",
+      "<ul><li>Aq<ul><li>Xq</li></ul></li><li>Zq<br /><br />Qq</li><li>Bq</li></ul>",
+    ],
+    [
+      "a div, then text",
+      "<ul><li><div>Aq<ul><li>Xq</li></ul>Zq<br></div>Qq</li><li>Bq</li></ul>",
+      "<ul><li>Aq<ul><li>Xq</li></ul></li><li>Zq<br />Qq</li><li>Bq</li></ul>",
+    ],
+  ])("%s writes", async (_name, html, expected) => {
+    const onChange = await mountAt("<p></p>", "");
+    paste({ "text/html": html, "text/plain": "x" });
+    await settle();
+    expect(plain(lastHtml(onChange))).toBe(expected);
+  });
+});
+
+describe("items between a list and a quote, code or table it holds read as dropped before (Y4)", () => {
+  const SHAPES = [
+    [
+      "items in table cells",
+      "<ul><table><tbody><tr><td><li>Aq</li></td><td>Cq</td></tr><tr><td>Dq</td><td><li>Bq</li></td></tr></tbody></table></ul>",
+      "<ul><li>Aq</li><li>Cq</li><li>Dq</li><li>Bq</li></ul>",
+    ],
+    [
+      "items and text in a quote",
+      "<ul><blockquote>Tq<li>Aq</li>Uq<li>Bq</li>Vq</blockquote></ul>",
+      "<ul><li><blockquote>Tq<ul><li>Aq</li></ul>Uq<ul><li>Bq</li></ul>Vq</blockquote></li></ul>",
+    ],
+    [
+      "items and text in code",
+      "<ul><pre>Tq<li>Aq</li>Uq<li>Bq</li>Vq</pre></ul>",
+      "<ul><li><pre><code>Tq\nAq\nUq\nBq\nVq</code></pre></li></ul>",
+    ],
+    [
+      "items and text in a heading",
+      "<ul><h2>Tq<li>Aq</li>Uq<li>Bq</li>Vq</h2></ul>",
+      "<ul><li><h2>Tq</h2><ul><li>Aq</li><li>Bq</li></ul></li></ul><h2>UqVq</h2>",
+    ],
+  ] as const;
+  test.each(
+    SHAPES.flatMap(([shape, html, expected]) =>
+      (["drop", "paste"] as const).map((how) => ({
+        shape,
+        how,
+        html,
+        expected,
+      }))
+    )
+  )("$how of $shape writes", async ({ how, html, expected }) => {
+    const onChange = await mountAt("<p></p>", "");
+    const errors = vi.spyOn(console, "error");
+    if (how === "paste") {
+      paste({ "text/html": html, "text/plain": "x" });
+      await settle();
+    } else {
+      await dropHtml(html);
+    }
+    expect(
+      errors.mock.calls
+        .map((args) => String(args[0]))
+        .filter((message) => message.includes("not wrapped in act") === false)
+    ).toEqual([]);
+    expect(plain(lastHtml(onChange))).toBe(expected);
+  });
+});
+
+describe("edits after a pasted item's quote ending in a rule finish at once (Y5)", () => {
+  test("a two-line plain-text paste, then Shift+Enter", async () => {
+    const onChange = await mountAt("<p></p>", "");
+    paste({
+      "text/html":
+        "<ul><li>A<ul><li>X</li></ul><blockquote><p>Z1</p><hr></blockquote></li></ul>",
+      "text/plain": "x",
+    });
+    await settle();
+    expect(
+      editorOf()!
+        .getEditorState()
+        .read(() => {
+          const selection = $getSelection();
+          return $isRangeSelection(selection)
+            ? `${selection.anchor.type}:${selection.anchor.getNode().getType()}@${selection.anchor.offset}`
+            : "none";
+        })
+    ).toBe("element:quote@2");
+    const errors = vi.spyOn(console, "error");
+    for (const step of [
+      async () => {
+        paste({ "text/plain": "L1\nL2" });
+        await settle();
+      },
+      async () => {
+        await userEvent.keyboard("{Shift>}{Enter}{/Shift}");
+        await settle();
+      },
+    ]) {
+      const start = performance.now();
+      await step();
+      expect(performance.now() - start).toBeLessThan(2000);
+    }
+    expect(
+      errors.mock.calls
+        .map((args) => String(args[0]))
+        .filter((message) => message.includes("not wrapped in act") === false)
+    ).toEqual([]);
+    expect(plain(lastHtml(onChange))).toBe(
+      "<ul><li>A<ul><li>X</li></ul></li><li><blockquote><p>Z1</p><hr /><p>L1</p><p>L2<br /></p></blockquote></li></ul>"
+    );
+  }, 60000);
+});
+
+describe("the text after the caret joins a pasted item that starts with a rule (Z6)", () => {
+  const PARTS: Record<string, (index: number) => string> = {
+    L: (index) => `<ul><li>X${index}q</li></ul>`,
+    H: () => "<hr>",
+    T: (index) => `T${index}q`,
+    B: () => "<br>",
+    D: (index) => `<div><hr>D${index}q</div>`,
+  };
+  const itemOf = (shape: string) =>
+    [...shape].map((part, index) => PARTS[part](index + 1)).join("");
+  const STORED = {
+    "depth 1": "<ul><li>s1q</li><li>t1q</li></ul>",
+    "depth 3":
+      "<ul><li>a1<ul><li>b1<ul><li>s1q</li><li>t1q</li></ul></li></ul></li></ul>",
+  } as const;
+  const errorsOf = (errors: ReturnType<typeof vi.spyOn>) =>
+    errors.mock.calls
+      .map((args) => String(args[0]))
+      .filter((message) => message.includes("not wrapped in act") === false);
+  /** Runs `step`, which must finish in under two seconds. */
+  const quickly = async (step: () => Promise<void>) => {
+    const start = performance.now();
+    await step();
+    expect(performance.now() - start).toBeLessThan(2000);
+  };
+  const stateOf = () => JSON.stringify(editorOf()!.getEditorState().toJSON());
+  const run = async (
+    stored: string,
+    html: string,
+    how: "paste" | "drop",
+    offset = 2,
+    range?: [string, number, string, number]
+  ) => {
+    const onChange =
+      range === undefined
+        ? await mountAt(stored, "s1q", offset)
+        : await mountAt(stored, ...range);
+    const before = stateOf();
+    const errors = vi.spyOn(console, "error");
+    onChange.mockClear();
+    await quickly(async () => {
+      if (how === "paste") {
+        paste({ "text/html": html, "text/plain": "x" });
+        await settle();
+      } else {
+        await dropHtml(html);
+      }
+    });
+    expect(onChange).toHaveBeenCalledTimes(1);
+    const pasted = plain(lastHtml(onChange));
+    await quickly(undo);
+    expect(stateOf()).toBe(before);
+    await quickly(async () => {
+      await userEvent.keyboard("{Control>}y{/Control}");
+      await settle();
+    });
+    const redone = plain(lastHtml(onChange));
+    await quickly(async () => {
+      await userEvent.keyboard("Z");
+      await settle();
+    });
+    expect(errorsOf(errors)).toEqual([]);
+    return { pasted, redone, typed: plain(lastHtml(onChange)) };
+  };
+  /** What each shape writes after the paste or drop, and after a typed Z. */
+  const SHAPE_WRITES: Record<string, [string, string]> = {
+    "HHLT depth 1 drop": [
+      "<ul><li>s1</li><li>Aq<ul><li>X3q</li></ul></li><li><hr /><hr />T4qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq<ul><li>X3q</li></ul></li><li><hr /><hr />T4qZq</li><li>t1q</li></ul>",
+    ],
+    "HHLT depth 1 paste": [
+      "<ul><li>s1</li><li>Aq<ul><li>X3q</li></ul></li><li><hr /><hr />T4qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq<ul><li>X3q</li></ul></li><li><hr /><hr />T4qZq</li><li>t1q</li></ul>",
+    ],
+    "HHLT depth 3 drop": [
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X3q</li></ul></li><li><hr /><hr />T4qq</li><li>t1q</li></ul></li></ul></li></ul>",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X3q</li></ul></li><li><hr /><hr />T4qZq</li><li>t1q</li></ul></li></ul></li></ul>",
+    ],
+    "HHLT depth 3 paste": [
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X3q</li></ul></li><li><hr /><hr />T4qq</li><li>t1q</li></ul></li></ul></li></ul>",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X3q</li></ul></li><li><hr /><hr />T4qZq</li><li>t1q</li></ul></li></ul></li></ul>",
+    ],
+    "HLD depth 1 drop": [
+      "<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr /><hr />D3qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr /><hr />D3qZq</li><li>t1q</li></ul>",
+    ],
+    "HLD depth 1 paste": [
+      "<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr /><hr />D3qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr /><hr />D3qZq</li><li>t1q</li></ul>",
+    ],
+    "HLD depth 3 drop": [
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr /><hr />D3qq</li><li>t1q</li></ul></li></ul></li></ul>",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr /><hr />D3qZq</li><li>t1q</li></ul></li></ul></li></ul>",
+    ],
+    "HLD depth 3 paste": [
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr /><hr />D3qq</li><li>t1q</li></ul></li></ul></li></ul>",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr /><hr />D3qZq</li><li>t1q</li></ul></li></ul></li></ul>",
+    ],
+    "HLHT depth 1 drop": [
+      "<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr /><hr />T4qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr /><hr />T4qZq</li><li>t1q</li></ul>",
+    ],
+    "HLHT depth 1 paste": [
+      "<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr /><hr />T4qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr /><hr />T4qZq</li><li>t1q</li></ul>",
+    ],
+    "HLHT depth 3 drop": [
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr /><hr />T4qq</li><li>t1q</li></ul></li></ul></li></ul>",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr /><hr />T4qZq</li><li>t1q</li></ul></li></ul></li></ul>",
+    ],
+    "HLHT depth 3 paste": [
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr /><hr />T4qq</li><li>t1q</li></ul></li></ul></li></ul>",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr /><hr />T4qZq</li><li>t1q</li></ul></li></ul></li></ul>",
+    ],
+    "HLLT depth 1 drop": [
+      "<ul><li>s1</li><li>Aq</li><li><ul><li>X2q</li></ul><ul><li>X3q</li></ul></li><li><hr />T4qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq</li><li><ul><li>X2q</li></ul><ul><li>X3q</li></ul></li><li><hr />T4qZq</li><li>t1q</li></ul>",
+    ],
+    "HLLT depth 1 paste": [
+      "<ul><li>s1</li><li>Aq</li><li><ul><li>X2q</li></ul><ul><li>X3q</li></ul></li><li><hr />T4qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq</li><li><ul><li>X2q</li></ul><ul><li>X3q</li></ul></li><li><hr />T4qZq</li><li>t1q</li></ul>",
+    ],
+    "HLLT depth 3 drop": [
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq</li><li><ul><li>X2q</li></ul><ul><li>X3q</li></ul></li><li><hr />T4qq</li><li>t1q</li></ul></li></ul></li></ul>",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq</li><li><ul><li>X2q</li></ul><ul><li>X3q</li></ul></li><li><hr />T4qZq</li><li>t1q</li></ul></li></ul></li></ul>",
+    ],
+    "HLLT depth 3 paste": [
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq</li><li><ul><li>X2q</li></ul><ul><li>X3q</li></ul></li><li><hr />T4qq</li><li>t1q</li></ul></li></ul></li></ul>",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq</li><li><ul><li>X2q</li></ul><ul><li>X3q</li></ul></li><li><hr />T4qZq</li><li>t1q</li></ul></li></ul></li></ul>",
+    ],
+    "HLT depth 1 drop": [
+      "<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr />T3qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr />T3qZq</li><li>t1q</li></ul>",
+    ],
+    "HLT depth 1 paste": [
+      "<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr />T3qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr />T3qZq</li><li>t1q</li></ul>",
+    ],
+    "HLT depth 3 drop": [
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr />T3qq</li><li>t1q</li></ul></li></ul></li></ul>",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr />T3qZq</li><li>t1q</li></ul></li></ul></li></ul>",
+    ],
+    "HLT depth 3 paste": [
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr />T3qq</li><li>t1q</li></ul></li></ul></li></ul>",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr />T3qZq</li><li>t1q</li></ul></li></ul></li></ul>",
+    ],
+    "HT depth 1 drop": [
+      "<ul><li>s1</li><li>Aq</li><li><hr />T2qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq</li><li><hr />T2qZq</li><li>t1q</li></ul>",
+    ],
+    "HT depth 1 paste": [
+      "<ul><li>s1</li><li>Aq</li><li><hr />T2qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq</li><li><hr />T2qZq</li><li>t1q</li></ul>",
+    ],
+    "HT depth 3 drop": [
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq</li><li><hr />T2qq</li><li>t1q</li></ul></li></ul></li></ul>",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq</li><li><hr />T2qZq</li><li>t1q</li></ul></li></ul></li></ul>",
+    ],
+    "HT depth 3 paste": [
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq</li><li><hr />T2qq</li><li>t1q</li></ul></li></ul></li></ul>",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq</li><li><hr />T2qZq</li><li>t1q</li></ul></li></ul></li></ul>",
+    ],
+    "LHBT depth 1 drop": [
+      "<ul><li>s1</li><li>Aq<ul><li>X1q</li></ul></li><li><hr />T4qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq<ul><li>X1q</li></ul></li><li><hr />T4qZq</li><li>t1q</li></ul>",
+    ],
+    "LHBT depth 1 paste": [
+      "<ul><li>s1</li><li>Aq<ul><li>X1q</li></ul></li><li><hr />T4qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq<ul><li>X1q</li></ul></li><li><hr />T4qZq</li><li>t1q</li></ul>",
+    ],
+    "LHBT depth 3 drop": [
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X1q</li></ul></li><li><hr />T4qq</li><li>t1q</li></ul></li></ul></li></ul>",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X1q</li></ul></li><li><hr />T4qZq</li><li>t1q</li></ul></li></ul></li></ul>",
+    ],
+    "LHBT depth 3 paste": [
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X1q</li></ul></li><li><hr />T4qq</li><li>t1q</li></ul></li></ul></li></ul>",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X1q</li></ul></li><li><hr />T4qZq</li><li>t1q</li></ul></li></ul></li></ul>",
+    ],
+    "LHT depth 1 drop": [
+      "<ul><li>s1</li><li>Aq<ul><li>X1q</li></ul></li><li><hr />T3qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq<ul><li>X1q</li></ul></li><li><hr />T3qZq</li><li>t1q</li></ul>",
+    ],
+    "LHT depth 1 paste": [
+      "<ul><li>s1</li><li>Aq<ul><li>X1q</li></ul></li><li><hr />T3qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq<ul><li>X1q</li></ul></li><li><hr />T3qZq</li><li>t1q</li></ul>",
+    ],
+    "LHT depth 3 drop": [
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X1q</li></ul></li><li><hr />T3qq</li><li>t1q</li></ul></li></ul></li></ul>",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X1q</li></ul></li><li><hr />T3qZq</li><li>t1q</li></ul></li></ul></li></ul>",
+    ],
+    "LHT depth 3 paste": [
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X1q</li></ul></li><li><hr />T3qq</li><li>t1q</li></ul></li></ul></li></ul>",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X1q</li></ul></li><li><hr />T3qZq</li><li>t1q</li></ul></li></ul></li></ul>",
+    ],
+    "LLHD depth 1 drop": [
+      "<ul><li>s1</li><li>Aq</li><li><ul><li>X1q</li></ul><ul><li>X2q</li></ul></li><li><hr /><hr />D4qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq</li><li><ul><li>X1q</li></ul><ul><li>X2q</li></ul></li><li><hr /><hr />D4qZq</li><li>t1q</li></ul>",
+    ],
+    "LLHD depth 1 paste": [
+      "<ul><li>s1</li><li>Aq</li><li><ul><li>X1q</li></ul><ul><li>X2q</li></ul></li><li><hr /><hr />D4qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq</li><li><ul><li>X1q</li></ul><ul><li>X2q</li></ul></li><li><hr /><hr />D4qZq</li><li>t1q</li></ul>",
+    ],
+    "LLHD depth 3 drop": [
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq</li><li><ul><li>X1q</li></ul><ul><li>X2q</li></ul></li><li><hr /><hr />D4qq</li><li>t1q</li></ul></li></ul></li></ul>",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq</li><li><ul><li>X1q</li></ul><ul><li>X2q</li></ul></li><li><hr /><hr />D4qZq</li><li>t1q</li></ul></li></ul></li></ul>",
+    ],
+    "LLHD depth 3 paste": [
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq</li><li><ul><li>X1q</li></ul><ul><li>X2q</li></ul></li><li><hr /><hr />D4qq</li><li>t1q</li></ul></li></ul></li></ul>",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq</li><li><ul><li>X1q</li></ul><ul><li>X2q</li></ul></li><li><hr /><hr />D4qZq</li><li>t1q</li></ul></li></ul></li></ul>",
+    ],
+    "LLHT depth 1 drop": [
+      "<ul><li>s1</li><li>Aq</li><li><ul><li>X1q</li></ul><ul><li>X2q</li></ul></li><li><hr />T4qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq</li><li><ul><li>X1q</li></ul><ul><li>X2q</li></ul></li><li><hr />T4qZq</li><li>t1q</li></ul>",
+    ],
+    "LLHT depth 1 paste": [
+      "<ul><li>s1</li><li>Aq</li><li><ul><li>X1q</li></ul><ul><li>X2q</li></ul></li><li><hr />T4qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq</li><li><ul><li>X1q</li></ul><ul><li>X2q</li></ul></li><li><hr />T4qZq</li><li>t1q</li></ul>",
+    ],
+    "LLHT depth 3 drop": [
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq</li><li><ul><li>X1q</li></ul><ul><li>X2q</li></ul></li><li><hr />T4qq</li><li>t1q</li></ul></li></ul></li></ul>",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq</li><li><ul><li>X1q</li></ul><ul><li>X2q</li></ul></li><li><hr />T4qZq</li><li>t1q</li></ul></li></ul></li></ul>",
+    ],
+    "LLHT depth 3 paste": [
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq</li><li><ul><li>X1q</li></ul><ul><li>X2q</li></ul></li><li><hr />T4qq</li><li>t1q</li></ul></li></ul></li></ul>",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq</li><li><ul><li>X1q</li></ul><ul><li>X2q</li></ul></li><li><hr />T4qZq</li><li>t1q</li></ul></li></ul></li></ul>",
+    ],
+  };
+  const SHAPES = [
+    "HLT",
+    "LHT",
+    "LLHT",
+    "HLLT",
+    "HLHT",
+    "HHLT",
+    "LHBT",
+    "LLHD",
+    "HLD",
+    "HT",
+  ];
+  test.each(
+    SHAPES.flatMap((shape) =>
+      (["depth 1", "depth 3"] as const).flatMap((depth) =>
+        (["paste", "drop"] as const).map((how) => ({ shape, depth, how }))
+      )
+    )
+  )(
+    "$how of a last item $shape at $depth",
+    async ({ shape, depth, how }) => {
+      const html = `<ul><li>Aq</li><li>${itemOf(shape)}</li></ul>`;
+      const { pasted, redone, typed } = await run(STORED[depth], html, how);
+      const [pastedWrite, typedWrite] =
+        SHAPE_WRITES[`${shape} ${depth} ${how}`];
+      expect(pasted).toBe(pastedWrite);
+      expect(redone).toBe(pastedWrite);
+      expect(typed).toBe(typedWrite);
+    },
+    60000
+  );
+
+  test.each([
+    [
+      "HLT at depth 1, by paste",
+      STORED["depth 1"],
+      "HLT",
+      "paste",
+      "<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr />T3qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr />T3qZq</li><li>t1q</li></ul>",
+    ],
+    [
+      "HT at depth 3, by drop",
+      STORED["depth 3"],
+      "HT",
+      "drop",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq</li><li><hr />T2qq</li><li>t1q</li></ul></li></ul></li></ul>",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq</li><li><hr />T2qZq</li><li>t1q</li></ul></li></ul></li></ul>",
+    ],
+  ] as const)(
+    "%s writes",
+    async (_name, stored, shape, how, pastedWrite, typedWrite) => {
+      const html = `<ul><li>Aq</li><li>${itemOf(shape)}</li></ul>`;
+      const { pasted, typed } = await run(stored, html, how);
+      expect(pasted).toBe(pastedWrite);
+      expect(typed).toBe(typedWrite);
+    },
+    60000
+  );
+
+  test.each([
+    [
+      "the tail's nested list follows the joined text",
+      "<ul><li>s1q<ul><li>n1</li></ul></li><li>t1q</li></ul>",
+      "<ul><li>Aq</li><li><hr>T2q</li></ul>",
+      2,
+      "<ul><li>s1</li><li>Aq</li><li><hr />T2qq<ul><li>n1</li></ul></li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq</li><li><hr />T2qZq<ul><li>n1</li></ul></li><li>t1q</li></ul>",
+    ],
+    [
+      "a last item LT is unchanged",
+      STORED["depth 1"],
+      "<ul><li>Aq</li><li><ul><li>X1q</li></ul>T2q</li></ul>",
+      2,
+      "<ul><li>s1</li><li>Aq<ul><li>X1q</li></ul></li><li>T2qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq<ul><li>X1q</li></ul></li><li>T2qZq</li><li>t1q</li></ul>",
+    ],
+    [
+      "a last item TLT is unchanged",
+      STORED["depth 1"],
+      "<ul><li>Aq</li><li>T1q<ul><li>X2q</li></ul>T3q</li></ul>",
+      2,
+      "<ul><li>s1</li><li>Aq</li><li>T1q<ul><li>X2q</li></ul></li><li>T3qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq</li><li>T1q<ul><li>X2q</li></ul></li><li>T3qZq</li><li>t1q</li></ul>",
+    ],
+    [
+      "a paste at the end of the text leaves no empty item",
+      STORED["depth 1"],
+      "<ul><li>Aq</li><li><hr>T2q</li></ul>",
+      3,
+      "<ul><li>s1q</li><li>Aq</li><li><hr />T2q</li><li>t1q</li></ul>",
+      "<ul><li>s1q</li><li>Aq</li><li><hr />T2qZ</li><li>t1q</li></ul>",
+    ],
+    [
+      "a last item holding only a rule is unchanged",
+      STORED["depth 1"],
+      "<ul><li>Aq</li><li><hr></li></ul>",
+      2,
+      "<ul><li>s1</li><li>Aq</li><li><hr /></li><li>q</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq</li><li><hr />Z</li><li>q</li><li>t1q</li></ul>",
+    ],
+    [
+      "a last item ending in a quote is unchanged",
+      STORED["depth 1"],
+      "<ul><li>Aq</li><li><hr><blockquote><p>Q2q</p></blockquote></li></ul>",
+      2,
+      "<ul><li>s1</li><li>Aq</li><li><hr /><blockquote><p>Q2qq</p></blockquote></li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq</li><li><hr /><blockquote><p>Q2qZq</p></blockquote></li><li>t1q</li></ul>",
+    ],
+    [
+      "a last item ending in a quote holding a rule is unchanged",
+      STORED["depth 1"],
+      "<ul><li>Aq</li><li><hr>T2q<blockquote><hr>Q1q</blockquote></li></ul>",
+      2,
+      "<ul><li>s1</li><li>Aq</li><li><hr />T2q<blockquote><hr />Q1q</blockquote></li><li>q</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq</li><li><hr />T2q<blockquote><hr />Q1qZ</blockquote></li><li>q</li><li>t1q</li></ul>",
+    ],
+    [
+      "a last item ending in a heading holding a rule is unchanged",
+      STORED["depth 1"],
+      "<ul><li>Aq</li><li><hr>T2q<h2><hr>H1q</h2></li></ul>",
+      2,
+      "<ul><li>s1</li><li>Aq</li><li><hr />T2q<hr /><h2>H1q</h2></li><li>q</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq</li><li><hr />T2q<hr /><h2>H1qZ</h2></li><li>q</li><li>t1q</li></ul>",
+    ],
+  ] as const)(
+    "%s",
+    async (_name, stored, html, offset, pastedWrite, typedWrite) => {
+      const { pasted, redone, typed } = await run(
+        stored,
+        html,
+        "paste",
+        offset
+      );
+      expect(pasted).toBe(pastedWrite);
+      expect(redone).toBe(pastedWrite);
+      expect(typed).toBe(typedWrite);
+    },
+    60000
+  );
+
+  describe("the join leaves no nested list of the text after the caret behind (Z9)", () => {
+    const NESTED_UL = "<ul><li>s1q<ul><li>n1q</li></ul></li><li>t1q</li></ul>";
+    const NESTED_OL = "<ol><li>s1q<ol><li>n1q</li></ol></li><li>t1q</li></ol>";
+    const CASES: [string, string, string, string, string][] = [
+      [
+        "a numbered list into a bulleted item",
+        NESTED_UL,
+        "<ol><li>Aq</li><li><hr>T1q</li></ol>",
+        "<ul><li>s1</li></ul><ol><li>Aq</li><li><hr />T1q</li></ol><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+        "<ul><li>s1</li></ul><ol><li>Aq</li><li><hr />T1qZ</li></ol><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+      ],
+      [
+        "a quote holding the list",
+        NESTED_UL,
+        "<blockquote><ul><li>Aq</li><li><hr>T1q</li></ul></blockquote>",
+        "<ul><li>s1</li></ul><blockquote><ul><li>Aq</li><li><hr />T1q</li></ul></blockquote><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+        "<ul><li>s1</li></ul><blockquote><ul><li>Aq</li><li><hr />T1qZ</li></ul></blockquote><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+      ],
+      [
+        "two lists, the last numbered",
+        NESTED_UL,
+        "<ul><li>Bq</li></ul><ol><li>Aq</li><li><hr>T1q</li></ol>",
+        "<ul><li>s1</li><li>Bq</li></ul><ol><li>Aq</li><li><hr />T1q</li></ol><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+        "<ul><li>s1</li><li>Bq</li></ul><ol><li>Aq</li><li><hr />T1qZ</li></ol><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+      ],
+      [
+        "a numbered list whose last item follows a nested list",
+        NESTED_UL,
+        "<ol><li>Aq</li><li><hr><ul><li>X1q</li></ul>T1q</li></ol>",
+        "<ul><li>s1</li></ul><ol><li>Aq<ul><li>X1q</li></ul></li><li><hr />T1q</li></ol><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+        "<ul><li>s1</li></ul><ol><li>Aq<ul><li>X1q</li></ul></li><li><hr />T1qZ</li></ol><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+      ],
+      [
+        "a bulleted list into a numbered item",
+        NESTED_OL,
+        "<ul><li>Aq</li><li><hr>T1q</li></ul>",
+        "<ol><li>s1</li></ol><ul><li>Aq</li><li><hr />T1q</li></ul><ol><li>q<ol><li>n1q</li></ol></li><li>t1q</li></ol>",
+        "<ol><li>s1</li></ol><ul><li>Aq</li><li><hr />T1qZ</li></ul><ol><li>q<ol><li>n1q</li></ol></li><li>t1q</li></ol>",
+      ],
+      [
+        "a bulleted rule-led item alone into a numbered item",
+        NESTED_OL,
+        "<ul><li><hr>T1q</li></ul>",
+        "<ol><li>s1</li></ol><ul><li><hr />T1q</li></ul><ol><li>q<ol><li>n1q</li></ol></li><li>t1q</li></ol>",
+        "<ol><li>s1</li></ol><ul><li><hr />T1qZ</li></ul><ol><li>q<ol><li>n1q</li></ol></li><li>t1q</li></ol>",
+      ],
+      [
+        "a rule then a link, numbered, into a bulleted item",
+        NESTED_UL,
+        '<ol><li>Aq</li><li><hr><a href="https://example.org/">T1q</a></li></ol>',
+        '<ul><li>s1</li></ul><ol><li>Aq</li><li><hr /><a href="https://example.org/">T1q</a></li></ol><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>',
+        '<ul><li>s1</li></ul><ol><li>Aq</li><li><hr /><a href="https://example.org/">T1q</a>Z</li></ol><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>',
+      ],
+      [
+        "control: the same list type",
+        NESTED_UL,
+        "<ul><li>Aq</li><li><hr>T1q</li></ul>",
+        "<ul><li>s1</li><li>Aq</li><li><hr />T1qq<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+        "<ul><li>s1</li><li>Aq</li><li><hr />T1qZq<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+      ],
+      [
+        "control: no nested list after the caret",
+        STORED["depth 1"],
+        "<ol><li>Aq</li><li><hr>T1q</li></ol>",
+        "<ul><li>s1</li></ul><ol><li>Aq</li><li><hr />T1qq</li></ol><ul><li>t1q</li></ul>",
+        "<ul><li>s1</li></ul><ol><li>Aq</li><li><hr />T1qZq</li></ol><ul><li>t1q</li></ul>",
+      ],
+    ];
+    test.for(
+      CASES.flatMap(([name, stored, html, pastedWrite, typedWrite]) =>
+        (["paste", "drop"] as const).map(
+          (how) =>
+            [
+              `${how} of ${name} writes`,
+              stored,
+              html,
+              how,
+              pastedWrite,
+              typedWrite,
+            ] as const
+        )
+      )
+    )("%s", async ([, stored, html, how, pastedWrite, typedWrite]) => {
+      const { pasted, redone, typed } = await run(stored, html, how);
+      expect(pasted).toBe(pastedWrite);
+      expect(redone).toBe(pastedWrite);
+      expect(typed).toBe(typedWrite);
+    });
+
+    const P_S =
+      "<ul><li>p1q</li><li>s1q<ul><li>n1q</li></ul></li><li>t1q</li></ul>";
+    /** What each range writes after the paste or drop, and after a typed Z. */
+    const RANGE_WRITES: Record<string, [string, string]> = {
+      "drop of a range ending in the nested item (Z13)": [
+        "<ul><li>s1</li></ul><ol><li>Aq</li><li><hr />T1q1q</li></ol><ul><li>t1q</li></ul>",
+        "<ul><li>s1</li></ul><ol><li>Aq</li><li><hr />T1qZ1q</li></ol><ul><li>t1q</li></ul>",
+      ],
+      "drop of a range in a numbered list, bulleted paste (Z13)": [
+        "<ol><li>p1</li></ol><ul><li>Aq</li><li><hr />T1q</li></ul><ol><li>q<ol><li>n1q</li></ol></li><li>t1q</li></ol>",
+        "<ol><li>p1</li></ol><ul><li>Aq</li><li><hr />T1qZ</li></ul><ol><li>q<ol><li>n1q</li></ol></li><li>t1q</li></ol>",
+      ],
+      "drop of a range into the item before the nested list (Z13)": [
+        "<ul><li>p1</li></ul><ol><li>Aq</li><li><hr />T1q</li></ol><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+        "<ul><li>p1</li></ul><ol><li>Aq</li><li><hr />T1qZ</li></ol><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+      ],
+      "drop of a range over an item between (Z13)": [
+        "<ul><li>p1</li></ul><ol><li>Aq</li><li><hr />T1q</li></ol><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+        "<ul><li>p1</li></ul><ol><li>Aq</li><li><hr />T1qZ</li></ol><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+      ],
+      "drop of a range taking the nested list with it (Z13)": [
+        "<ul><li>s1</li></ul><ol><li>Aq</li><li><hr />T1q1q</li></ol>",
+        "<ul><li>s1</li></ul><ol><li>Aq</li><li><hr />T1qZ1q</li></ol>",
+      ],
+      "drop of a range, the list in a quote (Z13)": [
+        "<ul><li>p1</li></ul><blockquote><ul><li>Aq</li><li><hr />T1q</li></ul></blockquote><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+        "<ul><li>p1</li></ul><blockquote><ul><li>Aq</li><li><hr />T1qZ</li></ul></blockquote><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+      ],
+      "drop of control: a range with the same list type (Z13)": [
+        "<ul><li>p1</li><li>Aq</li><li><hr />T1qq<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+        "<ul><li>p1</li><li>Aq</li><li><hr />T1qZq<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+      ],
+      "drop of that range made backward (Z13)": [
+        "<ul><li>p1</li></ul><ol><li>Aq</li><li><hr />T1q</li></ol><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+        "<ul><li>p1</li></ul><ol><li>Aq</li><li><hr />T1qZ</li></ol><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+      ],
+      "paste of a range ending in the nested item (Z13)": [
+        "<ul><li>s1</li></ul><ol><li>Aq</li><li><hr />T1q1q</li></ol><ul><li>t1q</li></ul>",
+        "<ul><li>s1</li></ul><ol><li>Aq</li><li><hr />T1qZ1q</li></ol><ul><li>t1q</li></ul>",
+      ],
+      "paste of a range in a numbered list, bulleted paste (Z13)": [
+        "<ol><li>p1</li></ol><ul><li>Aq</li><li><hr />T1q</li></ul><ol><li>q<ol><li>n1q</li></ol></li><li>t1q</li></ol>",
+        "<ol><li>p1</li></ol><ul><li>Aq</li><li><hr />T1qZ</li></ul><ol><li>q<ol><li>n1q</li></ol></li><li>t1q</li></ol>",
+      ],
+      "paste of a range into the item before the nested list (Z13)": [
+        "<ul><li>p1</li></ul><ol><li>Aq</li><li><hr />T1q</li></ol><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+        "<ul><li>p1</li></ul><ol><li>Aq</li><li><hr />T1qZ</li></ol><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+      ],
+      "paste of a range over an item between (Z13)": [
+        "<ul><li>p1</li></ul><ol><li>Aq</li><li><hr />T1q</li></ol><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+        "<ul><li>p1</li></ul><ol><li>Aq</li><li><hr />T1qZ</li></ol><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+      ],
+      "paste of a range taking the nested list with it (Z13)": [
+        "<ul><li>s1</li></ul><ol><li>Aq</li><li><hr />T1q1q</li></ol>",
+        "<ul><li>s1</li></ul><ol><li>Aq</li><li><hr />T1qZ1q</li></ol>",
+      ],
+      "paste of a range, the list in a quote (Z13)": [
+        "<ul><li>p1</li></ul><blockquote><ul><li>Aq</li><li><hr />T1q</li></ul></blockquote><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+        "<ul><li>p1</li></ul><blockquote><ul><li>Aq</li><li><hr />T1qZ</li></ul></blockquote><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+      ],
+      "paste of control: a range with the same list type (Z13)": [
+        "<ul><li>p1</li><li>Aq</li><li><hr />T1qq<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+        "<ul><li>p1</li><li>Aq</li><li><hr />T1qZq<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+      ],
+      "paste of that range made backward (Z13)": [
+        "<ul><li>p1</li></ul><ol><li>Aq</li><li><hr />T1q</li></ol><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+        "<ul><li>p1</li></ul><ol><li>Aq</li><li><hr />T1qZ</li></ol><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+      ],
+    };
+    const RANGES: [string, string, string, [string, number, string, number]][] =
+      [
+        [
+          "a range into the item before the nested list (Z13)",
+          P_S,
+          "<ol><li>Aq</li><li><hr>T1q</li></ol>",
+          ["p1q", 2, "s1q", 2],
+        ],
+        [
+          "that range made backward (Z13)",
+          P_S,
+          "<ol><li>Aq</li><li><hr>T1q</li></ol>",
+          ["s1q", 2, "p1q", 2],
+        ],
+        [
+          "a range over an item between (Z13)",
+          "<ul><li>p1q</li><li>m1q</li><li>s1q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+          "<ol><li>Aq</li><li><hr>T1q</li></ol>",
+          ["p1q", 2, "s1q", 2],
+        ],
+        [
+          "a range in a numbered list, bulleted paste (Z13)",
+          "<ol><li>p1q</li><li>s1q<ol><li>n1q</li></ol></li><li>t1q</li></ol>",
+          "<ul><li>Aq</li><li><hr>T1q</li></ul>",
+          ["p1q", 2, "s1q", 2],
+        ],
+        [
+          "a range, the list in a quote (Z13)",
+          P_S,
+          "<blockquote><ul><li>Aq</li><li><hr>T1q</li></ul></blockquote>",
+          ["p1q", 2, "s1q", 2],
+        ],
+        [
+          "a range taking the nested list with it (Z13)",
+          NESTED_UL,
+          "<ol><li>Aq</li><li><hr>T1q</li></ol>",
+          ["s1q", 2, "t1q", 1],
+        ],
+        [
+          "a range ending in the nested item (Z13)",
+          NESTED_UL,
+          "<ol><li>Aq</li><li><hr>T1q</li></ol>",
+          ["s1q", 2, "n1q", 1],
+        ],
+        [
+          "control: a range with the same list type (Z13)",
+          P_S,
+          "<ul><li>Aq</li><li><hr>T1q</li></ul>",
+          ["p1q", 2, "s1q", 2],
+        ],
+      ];
+    test.for(
+      RANGES.flatMap(([name, stored, html, range]) =>
+        (["paste", "drop"] as const).map(
+          (how) => [`${how} of ${name}`, stored, html, range, how] as const
+        )
+      )
+    )("%s", async ([title, stored, html, range, how]) => {
+      const { pasted, redone, typed } = await run(stored, html, how, 2, range);
+      const [pastedWrite, typedWrite] = RANGE_WRITES[title];
+      expect(pasted).toBe(pastedWrite);
+      expect(redone).toBe(pastedWrite);
+      expect(typed).toBe(typedWrite);
+    });
   });
 });

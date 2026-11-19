@@ -729,3 +729,191 @@ describe("text input and arrows beside line breaks and images (K23, K25, K26)", 
     expect(written).not.toContain("a.png");
   });
 });
+
+describe("a Shift+click from right after a line break keeps its anchor (K24)", () => {
+  test("Shift+click at the line's end, then Backspace, keeps the line break", async () => {
+    const onChange = await caretBy(`<p>${A}<br>${B} cc dd</p>`, () => {
+      textNode(" cc dd").select(0, 0);
+    });
+    await type("{ArrowLeft}{ArrowLeft}");
+    const text = [
+      ...editable()!.querySelectorAll<HTMLElement>("[data-lexical-text]"),
+    ].find((span) => span.textContent === " cc dd")!;
+    const box = text.getBoundingClientRect();
+    await userEvent.click(text, {
+      position: { x: box.width - 1, y: box.height / 2 },
+      modifiers: ["Shift"],
+    } as never);
+    await settle();
+    await type("{Backspace}");
+    const written = lastHtml(onChange);
+    expect(written).toMatch(/a\.png[^>]*>(<[^>]+>)*<br>/);
+    expect(written).not.toContain("b.png");
+    expect(written).not.toContain("cc");
+  });
+});
+
+/** A real click at `offset` in the text `text`, with `modifiers` held. */
+const clickInText = async (
+  text: string,
+  offset: number,
+  modifiers: string[] = []
+) => {
+  const span = [
+    ...editable()!.querySelectorAll<HTMLElement>("[data-lexical-text]"),
+  ].find((element) => element.textContent === text)!;
+  // a point measured in the fallback font misses the text once the web
+  // font arrives
+  span.getBoundingClientRect();
+  await document.fonts.ready;
+  const range = document.createRange();
+  const node = span.firstChild!;
+  range.setStart(node, offset);
+  range.setEnd(node, offset);
+  const at = range.getBoundingClientRect();
+  const box = span.getBoundingClientRect();
+  await userEvent.click(span, {
+    position: {
+      x: Math.min(Math.max(at.left - box.left, 1), box.width - 1),
+      y: box.height / 2,
+    },
+    modifiers,
+  } as never);
+  await settle();
+};
+
+describe("a held anchor ends when the focus leaves the field (H10)", () => {
+  const PARAS = "<p>first line</p><p>second para here</p>";
+  const expectOnlyTyped = (before: string) => {
+    const after = editable()!.textContent ?? "";
+    expect(after.length).toBe(before.length + 1);
+    expect(after.replace("x", "")).toBe(before);
+  };
+
+  // the Title takes the selection; Shift+Tab from Save enters the field
+  const leaveAndTabBack = async () => {
+    await click(title());
+    act(() => buttonByText("Save")!.focus());
+    await type("{Shift>}{Tab}{/Shift}");
+  };
+
+  test("a Shift+click after a line break, then the Title, Shift+Tab back and typing", async () => {
+    mountField(PARAS);
+    await settle();
+    await clickInText("second para here", 16);
+    await type("{Shift>}{Enter}{/Shift}");
+    await clickInText("second para here", 7, ["Shift"]);
+    await leaveAndTabBack();
+    expect(inEditor()).toBe(true);
+    const before = editable()!.textContent ?? "";
+    await type("x");
+    expectOnlyTyped(before);
+  });
+
+  test("a Shift+Home after a line break, then the Title, Shift+Tab back and typing", async () => {
+    mountField(PARAS);
+    await settle();
+    await clickInText("second para here", 16);
+    await type("{Shift>}{Enter}{/Shift}{Shift>}{Home}{/Shift}");
+    await leaveAndTabBack();
+    expect(inEditor()).toBe(true);
+    const before = editable()!.textContent ?? "";
+    await type("x");
+    expectOnlyTyped(before);
+  });
+
+  test("a Shift+click after a line break, then the Title, then a click back", async () => {
+    mountField(PARAS);
+    await settle();
+    await clickInText("second para here", 16);
+    await type("{Shift>}{Enter}{/Shift}");
+    await clickInText("second para here", 7, ["Shift"]);
+    await click(title());
+    await clickInText("first line", 5);
+    const before = editable()!.textContent ?? "";
+    await type("x");
+    expectOnlyTyped(before);
+  });
+});
+
+describe("a Shift+multi-click from right after a line break (H11)", () => {
+  const LINES = `<p>xx yy ${A}<br>${B} cc dd ee ff</p><p>second para here</p>`;
+  const afterBreak = () => {
+    const block = paragraph();
+    const index = block
+      .getChildren()
+      .findIndex((child) => child.getType() === "linebreak");
+    block.select(index + 1, index + 1);
+  };
+  const spanOf = (text: string) =>
+    [...editable()!.querySelectorAll<HTMLElement>("[data-lexical-text]")].find(
+      (element) => element.textContent === text
+    )!;
+
+  test("Shift+triple-click selects only the clicked paragraph", async () => {
+    const onChange = await caretBy(LINES, afterBreak);
+    await userEvent.tripleClick(spanOf("second para here"), {
+      modifiers: ["Shift"],
+    } as never);
+    await settle();
+    await type("{Backspace}");
+    const written = lastHtml(onChange);
+    expect(written).toContain("cc dd ee ff");
+    expect(written).not.toContain("second");
+  });
+
+  test("Shift+double-click extends the selection from the anchor", async () => {
+    const onChange = await caretBy(LINES, afterBreak);
+    await userEvent.dblClick(spanOf("second para here"), {
+      modifiers: ["Shift"],
+    } as never);
+    await settle();
+    await type("{Backspace}");
+    const written = lastHtml(onChange);
+    expect(written).toMatch(/a\.png[^>]*>(<[^>]+>)*<br>/);
+    expect(written).not.toContain("b.png");
+    expect(written).not.toContain("cc");
+    expect(written).toContain("here");
+  });
+});
+
+describe("a list toggled from an element caret keeps the caret (H12)", () => {
+  const toolbarButton = (label: string) =>
+    document.querySelector<HTMLElement>(`[aria-label="${label}"]`);
+
+  test("Shift+Enter at a paragraph's end, Bulleted list, then typing", async () => {
+    const onChange = mountField("<p>aa</p><p>tail</p>");
+    await settle();
+    await clickInText("aa", 2);
+    await type("{Shift>}{Enter}{/Shift}");
+    await click(toolbarButton("Bulleted list"));
+    await type("z");
+    expect(lastHtml(onChange)).toMatch(
+      /<ul[^>]*><li[^>]*>(<[^>]+>)*aa(<[^>]+>)*<br>(<[^>]+>)*z(<[^>]+>)*<\/li><\/ul>/
+    );
+  });
+
+  test("End after an image in a quote, Bulleted list, then typing", async () => {
+    const onChange = mountField(
+      `<blockquote><p>a1</p><p>b1${A}</p></blockquote>`
+    );
+    await settle();
+    await clickInText("b1", 1);
+    await type("{End}");
+    await click(toolbarButton("Bulleted list"));
+    await type("z");
+    const written = lastHtml(onChange);
+    expect(written).toMatch(/a\.png[^>]*>(<[^>]+>)*z/);
+    expect(written).not.toMatch(/a1(<[^>]+>)*z/);
+  });
+
+  test("Bulleted list off from right after a line break, then typing", async () => {
+    const onChange = mountField("<ul><li>aa</li><li>bb</li></ul>");
+    await settle();
+    await clickInText("aa", 2);
+    await type("{Shift>}{Enter}{/Shift}");
+    await click(toolbarButton("Bulleted list"));
+    await type("z");
+    expect(lastHtml(onChange)).toMatch(/aa(<[^>]+>)*<br>(<[^>]+>)*z/);
+  });
+});

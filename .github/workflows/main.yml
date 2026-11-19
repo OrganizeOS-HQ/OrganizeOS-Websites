@@ -95,6 +95,13 @@ jobs:
         # does not commit.
         run: pnpm -r --filter='!./fixtures/webstudio-features' --filter='!./fixtures/react-router-vercel' typecheck
 
+      - name: Builder server build loads as production loads it
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        # Builds the builder's server, then imports each server
+        # bundle in Node with require of ES modules turned off, as the
+        # production runtime runs it.
+        run: pnpm check:server-loads
+
   tests:
     name: tests (${{ matrix.leg }})
     timeout-minutes: 20

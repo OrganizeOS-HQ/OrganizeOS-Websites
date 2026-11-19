@@ -12,6 +12,7 @@ import {
   $copyNode,
   $createNodeSelection,
   $createParagraphNode,
+  $createTextNode,
   $getAdjacentNode,
   $getRoot,
   $getNodeByKey,
@@ -23,6 +24,7 @@ import {
   $isDecoratorNode,
   $isElementNode,
   $isParagraphNode,
+  $isRootNode,
   $isLineBreakNode,
   COMMAND_PRIORITY_CRITICAL,
   DELETE_CHARACTER_COMMAND,
@@ -90,10 +92,12 @@ import {
 import {
   $generateNodesFromSerializedNodes,
   $getLexicalContent,
+  $insertDataTransferForRichText,
 } from "@lexical/clipboard";
 import { $createCodeNode, $isCodeNode } from "@lexical/code";
 import { $setBlocksType } from "@lexical/selection";
 import {
+  $dfs,
   $findMatchingParent,
   mergeRegister,
   objectKlassEquals,
@@ -162,6 +166,7 @@ import {
   richTextHasImage,
   richTextHref,
   richTextHtmlConfig,
+  PASTE_MARKS,
   pushMarksIntoBlocks,
   registerRichTextTransforms,
   richTextNodes,
@@ -453,7 +458,76 @@ const $liftBlocksAfterNestedList = (item: ListItemNode) => {
   const isBlock = (node: LexicalNode) =>
     ($isElementNode(node) || $isDecoratorNode(node)) &&
     node.isInline() === false;
+  const hasContent = (node: LexicalNode) =>
+    /[^\s]|\u00a0/.test(node.getTextContent()) ||
+    $dfs(node).some((entry) => $isDecoratorNode(entry.node));
+  // a point whose node the lift removes (line breaks and white space after
+  // the list, or the item past its list) goes to the end of the content
+  // before it; any other point stays where the edit left it
+  const selection = $getSelection();
+  const moved = (
+    $isRangeSelection(selection) ? [selection.anchor, selection.focus] : []
+  ).flatMap((point) => {
+    const node = point.getNode();
+    const onItem = point.key === item.getKey();
+    if (
+      onItem
+        ? point.type !== "element" || point.offset <= listAt
+        : after.some(
+            (entry) =>
+              entry.is(node) ||
+              ($isElementNode(entry) && entry.isParentOf(node))
+          ) === false
+    ) {
+      return [];
+    }
+    // the nodes before the point, nearest first
+    const nodes = $dfs(item).map((entry) => entry.node);
+    let at = nodes.indexOf(node);
+    if (point.type === "element" && $isElementNode(node)) {
+      const child = node.getChildAtIndex(point.offset);
+      at = child === null ? at + $dfs(node).length : nodes.indexOf(child);
+    }
+    const before = nodes
+      .slice(0, at)
+      .filter((entry) => entry.isParentOf(node) === false && entry !== item)
+      .reverse();
+    return [{ point, onItem, before }];
+  });
+  const $caretAtEnd = () => {
+    const gone = moved.find(
+      ({ point, onItem }) => onItem || point.getNode().isAttached() === false
+    );
+    const target = gone?.before.find((node) => node.isAttached());
+    if (target === undefined) {
+      return;
+    }
+    const last = $isElementNode(target) ? target.getLastDescendant() : target;
+    if ($isTextNode(last)) {
+      last.select(last.getTextContentSize(), last.getTextContentSize());
+    } else if ($isElementNode(target)) {
+      target.selectEnd();
+    } else {
+      target.selectNext(0, 0);
+    }
+  };
   if (after.some(isBlock) === false) {
+    // inline content after the list stands in an item after this one,
+    // without the line breaks and white space at its edges; with no
+    // content, nothing stays after the list
+    const first = after.findIndex(hasContent);
+    const last = after.findLastIndex(hasContent);
+    for (const [index, node] of after.entries()) {
+      if (index < first || index > last || first === -1) {
+        node.remove();
+      }
+    }
+    if (first !== -1) {
+      const next = $createListItemNode();
+      next.append(...after.slice(first, last + 1));
+      item.insertAfter(next);
+    }
+    $caretAtEnd();
     return;
   }
   const isEmptyList = (node: ListNode) =>
@@ -464,13 +538,27 @@ const $liftBlocksAfterNestedList = (item: ListItemNode) => {
       );
   let anchor: LexicalNode = item;
   let lifted: LexicalNode | undefined;
+  let inlineRun: ParagraphNode | undefined;
   // once a block has left the lists: the tail's levels, innermost first,
   // each held in an item at the start of the level around it
   let levels: ListNode[] = [];
   let remainders = 0;
+  // a run of inline content ends without its trailing line breaks and
+  // white space
+  const endRun = () => {
+    for (
+      let last = inlineRun?.getLastChild();
+      last !== null && last !== undefined && hasContent(last) === false;
+      last = inlineRun?.getLastChild()
+    ) {
+      last.remove();
+    }
+    inlineRun = undefined;
+  };
   for (const child of after) {
     if (lifted !== undefined) {
       if ($isListNode(child) && levels.length > 0) {
+        endRun();
         // the rest of a split list keeps its level, before what followed
         if (isEmptyList(child) === false) {
           const holder = $createListItemNode();
@@ -487,6 +575,22 @@ const $liftBlocksAfterNestedList = (item: ListItemNode) => {
         }
         continue;
       }
+      // inline content at the top level stands in a paragraph
+      if (isBlock(child) === false && $isRootNode(lifted.getParent())) {
+        if (inlineRun === undefined) {
+          // a run starts at content
+          if (hasContent(child) === false) {
+            child.remove();
+            continue;
+          }
+          inlineRun = $createParagraphNode();
+          lifted.insertAfter(inlineRun);
+          lifted = inlineRun;
+        }
+        inlineRun.append(child);
+        continue;
+      }
+      endRun();
       lifted.insertAfter(child);
       lifted = child;
       continue;
@@ -558,30 +662,75 @@ const $liftBlocksAfterNestedList = (item: ListItemNode) => {
     lifted = child;
     lifted.insertAfter(levels[levels.length - 1]);
   }
-  // levels left empty go, with the items that hold them
+  endRun();
+  $caretAtEnd();
+  // levels left empty go, innermost first, each with the item that holds it
   for (const [index, level] of levels.entries()) {
     if (level.getChildrenSize() > 0) {
       break;
     }
     const holder = level.getParent();
-    level.remove();
+    level.remove(true);
     if (index < levels.length - 1 && $isListItemNode(holder)) {
-      holder.remove();
+      holder.remove(true);
     }
   }
 };
 
-/** How many lists and quotes hold a node. */
+/**
+ * How many lists and quotes hold a node, once a quote or a list of another
+ * type after an item's nested list has left every list around it
+ * (`$liftBlocksAfterNestedList`).
+ */
 const $nestingOf = (node: LexicalNode) => {
+  // a quote, or a list joining no list before it, after an item's nested
+  // list
+  const $leavesTheLists = (child: LexicalNode) => {
+    const before = child.getPreviousSiblings();
+    const listAt = before.findIndex($isListNode);
+    if (listAt === -1) {
+      return false;
+    }
+    if ($isQuoteNode(child)) {
+      return true;
+    }
+    // a list after a paragraph nests under its item; one after a block
+    // that left the lists stays in the rest of the list
+    if (
+      $isListNode(child) === false ||
+      before
+        .slice(listAt + 1)
+        .some(
+          (sibling) =>
+            $isParagraphNode(sibling) ||
+            ($isElementNode(sibling) || $isDecoratorNode(sibling)
+              ? sibling.isInline() === false
+              : false)
+        )
+    ) {
+      return false;
+    }
+    const previous = child.getPreviousSibling();
+    return (
+      $isListNode(previous) === false ||
+      previous.getListType() !== child.getListType()
+    );
+  };
   let around = 0;
-  for (
-    let parent = node.getParent();
-    parent !== null;
-    parent = parent.getParent()
-  ) {
+  let child = node;
+  let parent = node.getParent();
+  while (parent !== null) {
+    if ($isListItemNode(parent) && $leavesTheLists(child)) {
+      while ($isListItemNode(parent) || $isListNode(parent)) {
+        parent = parent.getParent();
+      }
+      continue;
+    }
     if ($isListNode(parent) || $isQuoteNode(parent)) {
       around += 1;
     }
+    child = parent;
+    parent = parent.getParent();
   }
   return around;
 };
@@ -595,7 +744,19 @@ const $nestingOf = (node: LexicalNode) => {
 const $liftQuoteOutOfItem = (quote: QuoteNode, item: ListItemNode) => {
   const rest = quote.getNextSiblings();
   let at: LexicalNode = item;
-  for (const child of quote.getChildren()) {
+  // a quote inside gives way to its blocks too, in order
+  const children: LexicalNode[] = [];
+  const collect = (from: QuoteNode) => {
+    for (const child of from.getChildren()) {
+      if ($isQuoteNode(child)) {
+        collect(child);
+      } else {
+        children.push(child);
+      }
+    }
+  };
+  collect(quote);
+  for (const child of children) {
     if ($isListNode(child)) {
       for (const entry of child.getChildren()) {
         at.insertAfter(entry);
@@ -890,7 +1051,7 @@ const insertImage = (
     ) {
       const selection = caret.clone();
       $setSelection(selection);
-      selection.insertNodes([image]);
+      $editInBlockLedItem(selection, () => selection.insertNodes([image]));
       return;
     }
     const paragraph = $createParagraphNode();
@@ -1090,21 +1251,65 @@ const Toolbar = ({
   const inCode = state.block === "code";
   const marksDisabled = disabled || inCode;
   const toggleList = (type: "bullet" | "number") => {
-    if (state.list === type) {
-      editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
-      return;
-    }
-    // a quote holding paragraphs gives up the ones the list covers first,
-    // so each becomes its own item: one item holding several paragraphs is
-    // no list the editor can write back. One update: one undo step
+    // one update: one undo step
     editor.update(() => {
-      $unwrapQuotedBlocks();
-      editor.dispatchCommand(
-        type === "bullet"
-          ? INSERT_UNORDERED_LIST_COMMAND
-          : INSERT_ORDERED_LIST_COMMAND,
-        undefined
-      );
+      // an element caret is kept by the node beside it, as the list
+      // commands replace the block it points into
+      const selection = $getSelection();
+      const kept = $isRangeSelection(selection)
+        ? [selection.anchor, selection.focus].map((point) => {
+            if (point.type !== "element") {
+              return;
+            }
+            const block = point.getNode();
+            if ($isElementNode(block) === false) {
+              return;
+            }
+            const before = block.getChildAtIndex(point.offset - 1);
+            if (point.offset > 0 && before !== null) {
+              return { node: before, after: true };
+            }
+            const next = block.getChildAtIndex(point.offset);
+            return next === null ? undefined : { node: next, after: false };
+          })
+        : [];
+      if (state.list === type) {
+        editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
+      } else {
+        // a quote holding paragraphs gives up the ones the list covers
+        // first, so each becomes its own item: one item holding several
+        // paragraphs is no list the editor can write back
+        $unwrapQuotedBlocks();
+        editor.dispatchCommand(
+          type === "bullet"
+            ? INSERT_UNORDERED_LIST_COMMAND
+            : INSERT_ORDERED_LIST_COMMAND,
+          undefined
+        );
+      }
+      // the list commands update after this; the caret is set after them
+      editor.update(() => {
+        const next = $getSelection();
+        if ($isRangeSelection(next) === false) {
+          return;
+        }
+        for (const [index, point] of [next.anchor, next.focus].entries()) {
+          const at = kept[index];
+          const parent = at?.node.getParent();
+          if (
+            at === undefined ||
+            at.node.isAttached() === false ||
+            $isElementNode(parent) === false
+          ) {
+            continue;
+          }
+          point.set(
+            parent.getKey(),
+            at.node.getIndexWithinParent() + (at.after ? 1 : 0),
+            "element"
+          );
+        }
+      });
     });
   };
   return (
@@ -1832,6 +2037,42 @@ const ImageEditingPlugin = () => {
     const unpin = () => {
       pinnedAnchor.current = undefined;
     };
+    // a Shift+click extends the selection from its anchor, as Shift with
+    // an arrow does; any other click ends the extension
+    const pinOnShiftPointer = (event: PointerEvent) => {
+      if (event.shiftKey === false) {
+        unpin();
+        return;
+      }
+      pinnedAnchor.current = editor.getEditorState().read(() => {
+        const selection = $getSelection();
+        if (
+          $isRangeSelection(selection) === false ||
+          $isAfterLineBreak(selection.anchor) === false
+        ) {
+          return;
+        }
+        const { anchor } = selection;
+        return { key: anchor.key, offset: anchor.offset, type: anchor.type };
+      });
+    };
+    // a triple click selects its block whatever the anchor
+    const unpinOnTripleClick = (event: MouseEvent) => {
+      if (event.detail >= 3) {
+        unpin();
+      }
+    };
+    // a held anchor never outlives the editor's focus
+    const unpinOnFocusOut = (event: FocusEvent) => {
+      const root = event.currentTarget as HTMLElement;
+      if (
+        event.relatedTarget instanceof Node &&
+        root.contains(event.relatedTarget)
+      ) {
+        return;
+      }
+      unpin();
+    };
     // text input with an image selected, or at an element caret right
     // after a line break (where the browser's target range is the line
     // above), is inserted at Lexical's own selection
@@ -2258,8 +2499,12 @@ const ImageEditingPlugin = () => {
         }
       }),
       editor.registerRootListener((rootElement, previous) => {
-        previous?.removeEventListener("pointerdown", unpin);
-        rootElement?.addEventListener("pointerdown", unpin);
+        previous?.removeEventListener("pointerdown", pinOnShiftPointer);
+        rootElement?.addEventListener("pointerdown", pinOnShiftPointer);
+        previous?.removeEventListener("focusout", unpinOnFocusOut);
+        rootElement?.addEventListener("focusout", unpinOnFocusOut);
+        previous?.removeEventListener("mousedown", unpinOnTripleClick);
+        rootElement?.addEventListener("mousedown", unpinOnTripleClick);
       }),
       // a copy or cut marks its selection, for the code block's export
       editor.registerCommand(
@@ -2355,10 +2600,57 @@ const LinkRulePlugin = () => {
   return null;
 };
 
-/** Wraps each pasted list item outside a list in a list; true when any was. */
+/** Wraps each pasted list item outside a list in a list; true when anything changed. */
 const wrapStrayListItems = (body: HTMLElement) => {
+  // marks and links move into the items, and a wrapper between a list and
+  // its items gives way: such an item stands in that list
+  let changed = pushMarksIntoBlocks(body);
+  for (const item of Array.from(body.querySelectorAll("li"))) {
+    const wrappers: Element[] = [];
+    let at = item.parentElement;
+    while (
+      at !== null &&
+      at !== body &&
+      /^(UL|OL|LI)$/.test(at.tagName) === false
+    ) {
+      wrappers.push(at);
+      at = at.parentElement;
+    }
+    // only marks, links and plain wrappers give way: an item under a
+    // quote, code, a heading or a table stays stray
+    if (
+      at !== null &&
+      /^(UL|OL)$/.test(at.tagName) &&
+      wrappers.every(
+        (wrapper) =>
+          /^(BLOCKQUOTE|PRE|H[1-6]|TABLE|CAPTION|THEAD|TBODY|TFOOT|TR|TD|TH)$/.test(
+            wrapper.tagName
+          ) === false
+      )
+    ) {
+      for (const wrapper of wrappers) {
+        if (wrapper.isConnected) {
+          wrapper.replaceWith(...wrapper.childNodes);
+          changed = true;
+        }
+      }
+    }
+  }
+  // an item under a quote, code or a table in a list stands as the import
+  // reads it; one under a heading, or under no list, takes a list of its own
+  const isInList = (item: Element) => {
+    for (let at = item.parentElement; at !== null; at = at.parentElement) {
+      if (/^(UL|OL)$/.test(at.tagName)) {
+        return true;
+      }
+      if (/^(LI|H[1-6])$/.test(at.tagName) || at === body) {
+        return false;
+      }
+    }
+    return false;
+  };
   const strays = Array.from(body.querySelectorAll("li")).filter(
-    (item) => /^(UL|OL)$/.test(item.parentElement?.tagName ?? "") === false
+    (item) => isInList(item) === false
   );
   for (const item of strays) {
     const before = item.previousElementSibling;
@@ -2378,10 +2670,267 @@ const wrapStrayListItems = (body: HTMLElement) => {
   for (const list of Array.from(body.querySelectorAll("ul[data-stray]"))) {
     list.removeAttribute("data-stray");
   }
-  return strays.length > 0;
+  return changed || strays.length > 0;
 };
 
-/** The pasted data with its list items in lists; undefined when none needs it. */
+/**
+ * What follows a pasted item's nested list moves to a new item after that
+ * item, so it keeps its place after the list; true when any did.
+ */
+const splitItemsAfterNestedList = (body: HTMLElement) => {
+  // the text a node imports: no style's or script's
+  const textOf = (node: Node): string =>
+    node instanceof Element && /^(STYLE|SCRIPT|TEMPLATE)$/.test(node.tagName)
+      ? ""
+      : node.nodeType === Node.TEXT_NODE
+        ? (node.textContent ?? "")
+        : Array.from(node.childNodes).map(textOf).join("");
+  // only what imports to content: text past white space and format and
+  // ignorable characters (a pasted image does not, nor a rule on its own)
+  const isContent = (node: Node) =>
+    (node.nodeType === Node.ELEMENT_NODE || node.nodeType === Node.TEXT_NODE) &&
+    /[^\s\p{Cf}\p{Default_Ignorable_Code_Point}]/u.test(textOf(node));
+  // a rule, or what holds one and no text: never dropped
+  const isRule = (node: Node) =>
+    node instanceof Element &&
+    (node.tagName === "HR" ||
+      (isContent(node) === false && node.querySelector("hr") !== null));
+  // a block a list item cannot start with and still be edited in
+  const isLeadBlock = (node: Node) =>
+    node instanceof Element &&
+    isRule(node) === false &&
+    /^(BLOCKQUOTE|H[1-6]|PRE)$/.test(node.tagName);
+  const BLOCKS =
+    "p, h1, h2, h3, h4, h5, h6, ul, ol, li, blockquote, pre, hr, figure, figcaption, canvas, noscript, video, table, div, section, article, header, footer, aside, main, nav, address, form, fieldset, dl, dt, dd";
+  // the next line content from a node on: text, or an inline element with
+  // text, past white space, comments, images and empty elements
+  const lineContentFrom = (start: Node | null, forward: boolean): boolean => {
+    for (
+      let at = start;
+      at !== null;
+      at = forward ? at.nextSibling : at.previousSibling
+    ) {
+      if (
+        at instanceof Element &&
+        (at.tagName === "BR" || at.matches(BLOCKS))
+      ) {
+        return false;
+      }
+      if (isContent(at)) {
+        // an inline element holding a block counts by its line content
+        // nearest this side
+        return at instanceof Element && at.querySelector(BLOCKS) !== null
+          ? lineContentFrom(forward ? at.firstChild : at.lastChild, forward)
+          : true;
+      }
+    }
+    return false;
+  };
+  const isBlank = (node: Node) =>
+    (node instanceof Element && node.tagName === "BR") ||
+    (node.nodeType === Node.TEXT_NODE && isContent(node) === false);
+  const isList = (node: Node) =>
+    node instanceof Element && /^(UL|OL)$/.test(node.tagName);
+  // no mark or link holds a list when a wrapper gives way
+  pushMarksIntoBlocks(body);
+  let split = false;
+  for (const item of Array.from(body.querySelectorAll("li")).reverse()) {
+    // a wrapper holding a nested list gives way to its content first, and
+    // after the list, one holding a rule, a quote, a heading or code
+    for (;;) {
+      const children = Array.from(item.children);
+      const listAt = children.findIndex(isList);
+      const wrapper = children.find(
+        (child, index) =>
+          /^(UL|OL|LI|BLOCKQUOTE|H[1-6]|PRE|TABLE)$/.test(child.tagName) ===
+            false &&
+          child.matches(PASTE_MARKS) === false &&
+          (child.querySelector("ul, ol") !== null ||
+            (listAt !== -1 &&
+              index > listAt &&
+              child.querySelector(
+                "hr, blockquote, h1, h2, h3, h4, h5, h6, pre"
+              ) !== null))
+      );
+      if (wrapper === undefined) {
+        break;
+      }
+      // a block wrapper's edges stay line breaks between the line content
+      // on either side; an inline one gives way with none
+      if (
+        /^(DIV|SECTION|ARTICLE|HEADER|FOOTER|ASIDE|MAIN|NAV|ADDRESS|FORM|FIELDSET|DL|DT|DD|FIGURE|FIGCAPTION|CANVAS|NOSCRIPT|VIDEO)$/.test(
+          wrapper.tagName
+        )
+      ) {
+        // past white space and comments: a line break, or line content
+        const makesLine = (start: Node | null, forward: boolean) => {
+          for (
+            let at = start;
+            at !== null;
+            at = forward ? at.nextSibling : at.previousSibling
+          ) {
+            if (
+              at.nodeType === Node.COMMENT_NODE ||
+              (at.nodeType === Node.TEXT_NODE && isContent(at) === false)
+            ) {
+              continue;
+            }
+            return (
+              (at instanceof Element && at.tagName === "BR") ||
+              lineContentFrom(at, forward)
+            );
+          }
+          return false;
+        };
+        // its own last line break (past white space) makes no line of its
+        // own
+        let last = wrapper.lastChild;
+        while (
+          last !== null &&
+          last.nodeType === Node.TEXT_NODE &&
+          isContent(last) === false
+        ) {
+          last = last.previousSibling;
+        }
+        if (last instanceof Element && last.tagName === "BR") {
+          last.remove();
+        }
+        const before =
+          makesLine(wrapper.previousSibling, false) &&
+          makesLine(wrapper.firstChild, true);
+        const after =
+          makesLine(wrapper.nextSibling, true) &&
+          makesLine(wrapper.lastChild, false);
+        if (before) {
+          wrapper.insertBefore(
+            body.ownerDocument.createElement("br"),
+            wrapper.firstChild
+          );
+        }
+        if (after) {
+          wrapper.appendChild(body.ownerDocument.createElement("br"));
+        }
+      }
+      wrapper.replaceWith(...wrapper.childNodes);
+    }
+    const list = Array.from(item.children).find(isList);
+    // a rule stays in the item only after inline content of the item's own
+    // before its list, else behind the content of the run it follows, or
+    // with the next content when none precedes it
+    let ownBefore = false;
+    for (let at = list?.previousSibling; at; at = at.previousSibling) {
+      ownBefore ||= isContent(at);
+    }
+    const pending: ChildNode[] = [];
+    if (ownBefore === false) {
+      for (let at = list?.previousSibling; at; at = at.previousSibling) {
+        if (isRule(at)) {
+          pending.unshift(at);
+        }
+      }
+    }
+    // what follows each nested list, up to and including the next one: a
+    // run with content of its own (before its list) moves to new items,
+    // made in one pass; any other run stays with the item before it,
+    // without its line breaks and white space. Of a moved run, the rules
+    // before its content stay, its leading quotes, headings and code
+    // blocks take one item, and what follows from its first inline content
+    // takes the next
+    const runs: ChildNode[][] = [[]];
+    for (let at = list?.nextSibling; at; at = at.nextSibling) {
+      runs[runs.length - 1].push(at);
+      if (isList(at)) {
+        runs.push([]);
+      }
+    }
+    let target: Element = item;
+    const startItem = () => {
+      const next = body.ownerDocument.createElement("li");
+      target.parentNode?.insertBefore(next, target.nextSibling);
+      target = next;
+      split = true;
+      for (const rule of pending.splice(0)) {
+        next.appendChild(rule);
+      }
+      return next;
+    };
+    const keep = (node: Node) => {
+      if (target !== item) {
+        target.appendChild(node);
+      }
+    };
+    const keepRule = (node: ChildNode) => {
+      if (ownBefore) {
+        return;
+      }
+      if (target === item) {
+        pending.push(node);
+      } else {
+        target.appendChild(node);
+      }
+    };
+    for (const run of runs) {
+      const own = run.filter((node) => isList(node) === false);
+      if (own.some(isContent) === false) {
+        for (const node of run) {
+          if (isBlank(node)) {
+            node.remove();
+          } else if (isRule(node)) {
+            keepRule(node);
+          } else {
+            keep(node);
+          }
+        }
+        continue;
+      }
+      let at = 0;
+      // rules before the run's content stay in the original item
+      for (; at < run.length && isContent(run[at]) === false; at += 1) {
+        if (isRule(run[at])) {
+          keepRule(run[at]);
+        } else {
+          run[at].remove();
+        }
+      }
+      const blocks: ChildNode[] = [];
+      for (; at < run.length; at += 1) {
+        const node = run[at];
+        if (isLeadBlock(node)) {
+          blocks.push(node);
+        } else if (isRule(node)) {
+          // between or after the leading blocks: with them, or in the
+          // original item after its own content
+          if (ownBefore === false) {
+            blocks.push(node);
+          }
+        } else if (isContent(node) === false && isList(node) === false) {
+          node.remove();
+        } else {
+          break;
+        }
+      }
+      if (blocks.length > 0) {
+        const holder = startItem();
+        for (const node of blocks) {
+          holder.appendChild(node);
+        }
+      }
+      const rest = run.slice(at);
+      if (rest.some((node) => isList(node) === false)) {
+        startItem();
+      }
+      for (const node of rest) {
+        target.appendChild(node);
+      }
+    }
+  }
+  return split;
+};
+
+/**
+ * The pasted data with its list items in lists, and nothing after an item's
+ * nested list; undefined when none needs it.
+ */
 const withStrayListItemsWrapped = (
   data: DataTransfer
 ): DataTransfer | undefined => {
@@ -2390,7 +2939,8 @@ const withStrayListItemsWrapped = (
     return;
   }
   const dom = new DOMParser().parseFromString(html, "text/html");
-  if (wrapStrayListItems(dom.body) === false) {
+  const wrapped = wrapStrayListItems(dom.body);
+  if (splitItemsAfterNestedList(dom.body) === false && wrapped === false) {
     return;
   }
   const next = new DataTransfer();
@@ -2529,6 +3079,204 @@ const $placeAfterCode = (code: LexicalNode, images: LexicalNode[]) => {
 };
 
 /**
+ * The block that directly holds a point (a list item, a quote), when its
+ * first child is a block: the editor's own edits read no such element as a
+ * block. A list holds only items, and the root is not such a block.
+ */
+const $blockLedItemAt = (point: PointType) => {
+  let block: LexicalNode | null =
+    point.type === "element" ? point.getNode() : point.getNode().getParent();
+  while ($isElementNode(block) && block.isInline()) {
+    block = block.getParent();
+  }
+  if (
+    $isElementNode(block) === false ||
+    $isRootNode(block) ||
+    $isListNode(block)
+  ) {
+    return;
+  }
+  const first = block.getFirstChild();
+  return ($isElementNode(first) || $isDecoratorNode(first)) &&
+    first.isInline() === false
+    ? block
+    : undefined;
+};
+
+/**
+ * Runs an edit at the selection (Enter, Shift+Enter, a paste, a drop, an
+ * image) with the block-led item or quote holding its start read as a block:
+ * an empty text leads the item meanwhile, and a quote takes the edit in a
+ * paragraph of its own at the caret, as in its other paragraphs.
+ */
+const $editInBlockLedItem = (selection: RangeSelection, edit: () => void) => {
+  const start = selection.isBackward() ? selection.focus : selection.anchor;
+  const item = $blockLedItemAt(start);
+  if (item === undefined) {
+    edit();
+    return false;
+  }
+  if ($isListItemNode(item) === false && start.type === "element") {
+    const at = start.offset;
+    const isCollapsed = selection.isCollapsed();
+    for (const point of [selection.anchor, selection.focus]) {
+      if (point.key === item.getKey() && point.offset > at) {
+        point.set(point.key, point.offset + 1, "element");
+      }
+    }
+    const paragraph = $createParagraphNode();
+    item.splice(at, 0, [paragraph]);
+    for (const point of isCollapsed
+      ? [selection.anchor, selection.focus]
+      : [start]) {
+      point.set(paragraph.getKey(), 0, "element");
+    }
+    try {
+      edit();
+    } finally {
+      if (paragraph.isAttached() && paragraph.isEmpty()) {
+        paragraph.remove();
+      }
+    }
+    return true;
+  }
+  for (const point of [selection.anchor, selection.focus]) {
+    if (point.type === "element" && point.key === item.getKey()) {
+      point.set(point.key, point.offset + 1, "element");
+    }
+  }
+  const lead = $createTextNode("");
+  item.splice(0, 0, [lead]);
+  try {
+    edit();
+  } finally {
+    if (lead.isAttached()) {
+      lead.remove();
+    }
+  }
+  return true;
+};
+
+/**
+ * Runs an edit at the selection where its start is in a block-led item or
+ * quote; false, with nothing done, anywhere else.
+ */
+const $editAtBlockLed = (edit: (selection: RangeSelection) => void) => {
+  const selection = $getSelection();
+  if ($isRangeSelection(selection) === false) {
+    return false;
+  }
+  const start = selection.isBackward() ? selection.focus : selection.anchor;
+  if ($blockLedItemAt(start) === undefined) {
+    return false;
+  }
+  return $editInBlockLedItem(selection, () => edit(selection));
+};
+
+/**
+ * Plain text pasted or dropped where the selection starts in a block-led
+ * item or quote, when the data holds no HTML and none of the field's own
+ * nodes: its lines and tabs land as in any other item.
+ */
+const $insertPlainTextAtBlockLed = (
+  editor: LexicalEditor,
+  data: DataTransfer
+) =>
+  data.getData("text/plain") !== "" &&
+  data.getData("text/html") === "" &&
+  $ownClipboardNodes(editor, data) === undefined &&
+  $editAtBlockLed((selection) =>
+    $insertDataTransferForRichText(data, selection, editor)
+  );
+
+/**
+ * Nodes inserted in a list item: the item split at the selection leaves no
+ * empty item when the last inserted item starts with a block (its content
+ * cannot join the split-off rest). Items empty before, or inserted empty,
+ * stay.
+ */
+const $insertIntoListItem = (
+  nodes: LexicalNode[],
+  selection: RangeSelection
+) => {
+  const start = selection.isBackward() ? selection.focus : selection.anchor;
+  if ($findMatchingParent(start.getNode(), $isListItemNode) === null) {
+    $editInBlockLedItem(selection, () => selection.insertNodes(nodes));
+    return true;
+  }
+  const emptyItems = () =>
+    $dfs()
+      .map(({ node }) => node)
+      .filter(
+        (node): node is ListItemNode =>
+          $isListItemNode(node) && node.getChildrenSize() === 0
+      );
+  const kept = new Set(emptyItems().map((item) => item.getKey()));
+  for (const node of nodes) {
+    for (const { node: inner } of $dfs(node)) {
+      kept.add(inner.getKey());
+    }
+  }
+  // the last pasted item, when it starts with a block and ends in inline
+  // content of its own, is led by an empty text meanwhile: the rest of the
+  // split item joins it as it joins any other item. With a nested list after
+  // the caret, only where that list follows it: the last item stands in a
+  // pasted list of the caret's list type, at the top
+  const isBlock = (node: LexicalNode | null) =>
+    ($isElementNode(node) || $isDecoratorNode(node)) &&
+    node.isInline() === false;
+  const tail = nodes.at(-1) ?? null;
+  const last = $isElementNode(tail) ? (tail.getLastDescendant() ?? tail) : tail;
+  const lastItem =
+    last === null ? null : $findMatchingParent(last, $isListItemNode);
+  let lead: TextNode | undefined;
+  const startItem = $findMatchingParent(start.getNode(), $isListItemNode);
+  const startList = startItem?.getParent();
+  // the text after the caret comes from the item the selection ends in; a
+  // nested list stands in the item after its own
+  const end = selection.isBackward() ? selection.anchor : selection.focus;
+  const endItem = $findMatchingParent(end.getNode(), $isListItemNode);
+  const afterEnd = endItem?.getNextSibling() ?? null;
+  const tailList = $isListItemNode(afterEnd) ? afterEnd.getFirstChild() : null;
+  const lastList = lastItem?.getParent();
+  const keepsTailList =
+    $isListNode(tailList) &&
+    ($isListNode(lastList) === false ||
+      lastList !== tail ||
+      $isListNode(startList) === false ||
+      lastList.getListType() !== startList.getListType());
+  if (
+    keepsTailList === false &&
+    $isListItemNode(lastItem) &&
+    isBlock(lastItem.getFirstChild()) &&
+    lastItem.getLastChild() !== null &&
+    isBlock(lastItem.getLastChild()) === false
+  ) {
+    lead = $createTextNode("");
+    lastItem.splice(0, 0, [lead]);
+  }
+  $editInBlockLedItem(selection, () => selection.insertNodes(nodes));
+  if (lead?.isAttached() === true && lead.getTextContentSize() === 0) {
+    lead.remove();
+  }
+  const caret = $getSelection();
+  const caretItem = $isRangeSelection(caret)
+    ? $findMatchingParent(caret.anchor.getNode(), $isListItemNode)
+    : null;
+  for (const item of emptyItems()) {
+    if (kept.has(item.getKey()) || item.is(caretItem)) {
+      continue;
+    }
+    const list = item.getParent();
+    item.remove();
+    if ($isListNode(list) && list.getChildrenSize() === 0) {
+      list.remove();
+    }
+  }
+  return true;
+};
+
+/**
  * Nodes a paste or drop inserts (`SELECTION_INSERT_CLIPBOARD_NODES_COMMAND`)
  * where the selection starts in a code block: the selected content goes,
  * the nodes' text goes into the block, and their images and figures after
@@ -2567,7 +3315,7 @@ const $insertClipboardNodes = (
         node.isInline() === false
     ) === false
   ) {
-    return false;
+    return $insertIntoListItem(nodes, selection);
   }
   selection.removeText();
   const target = $findMatchingParent(
@@ -2815,9 +3563,51 @@ const PasteRulesPlugin = () => {
             COMMAND_PRIORITY_CRITICAL
           )
         ),
+        // Enter and Shift+Enter in a block-led item or quote split it and
+        // break the line, as in any other item
+        editor.registerCommand(
+          INSERT_PARAGRAPH_COMMAND,
+          () => $editAtBlockLed((selection) => selection.insertParagraph()),
+          COMMAND_PRIORITY_NORMAL
+        ),
+        editor.registerCommand(
+          INSERT_LINE_BREAK_COMMAND,
+          (selectStart) =>
+            $editAtBlockLed((selection) =>
+              selection.insertLineBreak(selectStart)
+            ),
+          COMMAND_PRIORITY_NORMAL
+        ),
         editor.registerCommand(
           SELECTION_INSERT_CLIPBOARD_NODES_COMMAND,
           ({ nodes, selection }) => $insertClipboardNodes(nodes, selection),
+          COMMAND_PRIORITY_NORMAL
+        ),
+        // a drop gets the paste's list passes, above LinkRulePlugin's own
+        editor.registerCommand(
+          CONTROLLED_TEXT_INSERTION_COMMAND,
+          (payload) => {
+            if (typeof payload === "string" || payload.dataTransfer === null) {
+              return false;
+            }
+            if ($insertPlainTextAtBlockLed(editor, payload.dataTransfer)) {
+              payload.preventDefault();
+              return true;
+            }
+            const wrapped = withStrayListItemsWrapped(payload.dataTransfer);
+            if (wrapped === undefined) {
+              return false;
+            }
+            payload.preventDefault();
+            editor.dispatchCommand(
+              CONTROLLED_TEXT_INSERTION_COMMAND,
+              new InputEvent(payload.type, {
+                inputType: payload.inputType,
+                dataTransfer: wrapped,
+              })
+            );
+            return true;
+          },
           COMMAND_PRIORITY_NORMAL
         ),
         // above LinkRulePlugin's paste handler
@@ -2833,7 +3623,8 @@ const PasteRulesPlugin = () => {
             const data = (event as ClipboardEvent).clipboardData!;
             if (
               $pasteIntoCode(editor, data) ||
-              $pasteFiguresBesideHeading(editor, data)
+              $pasteFiguresBesideHeading(editor, data) ||
+              $insertPlainTextAtBlockLed(editor, data)
             ) {
               event.preventDefault();
               return true;

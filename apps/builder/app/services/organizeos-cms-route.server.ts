@@ -13,9 +13,10 @@ import { CMS_PLATFORM_BASE_PATH } from "~/shared/organizeos-cms.server";
  * OrganizeOS fork: the native CMS screen's door to OrganizeOS
  * (docs/ORGANIZEOS-FORK.md section 5, "The CMS door"). Its steps are the
  * builder door's (organizeos-door-route.server.ts); this is its config: the
- * `cms` audience, the platform's CMS base path, the endpoints E0 to E13, a
- * write's JSON body of at most 2 MB and an upload (E9) of one file of at most
- * 4 MB in a body of at most 4 MB plus 64 KB, sent with a 30 second timeout.
+ * `cms` audience, the platform's CMS base path, the endpoints E0 to E13 and
+ * E20 to E25, a write's JSON body of at most 2 MB and an upload (E9) of one
+ * file of at most 4 MB in a body of at most 4 MB plus 64 KB, sent with a 30
+ * second timeout.
  * The query schemas: `q` is 1 to 200 characters, `page` is its canonical
  * decimal from 1 to 10,000, and `ids` is 1 to 100 lower-case UUIDs joined by
  * `,`.

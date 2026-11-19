@@ -337,7 +337,12 @@ can be merged with minimal conflict.
   `runtime-version.test.ts`, called from one short marked hook in `prebuild.ts`;
   `scripts/upstream-base.txt`; `scripts/check-runtime-upstream.sh`.
 - **Checks and CI.** The root `package.json`: `check:no-proprietary`,
-  `check:runtime-upstream`, `check:every-test-runs`, `test:builder:projects`
+  `check:runtime-upstream`, `check:every-test-runs`, `check:server-loads`
+  (builds the builder's server, then `scripts/check-server-loads.mjs` imports
+  each server bundle in Node with require of ES modules turned off and
+  `NODE_ENV=production`, failing when one does not load, since the production
+  runtime does not load an ES module through `require()`; a step of
+  `main.yml`'s `checks` job), `test:builder:projects`
   (the builder's Vitest projects one at a time), `checks` (CI's steps in CI's
   order), `preview:template` and its `playwright` devDependency, and
   nano-staged's `oxfmt --no-error-on-unmatched-pattern`, so a commit that stages
