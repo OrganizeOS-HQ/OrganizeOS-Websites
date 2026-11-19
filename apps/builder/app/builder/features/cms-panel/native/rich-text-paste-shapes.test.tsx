@@ -455,20 +455,32 @@ describe("the lines at a block wrapper's edges when it gives way (Z2, Z3)", () =
     await settle();
     return linesOf(lastHtml(onChange));
   };
-  test.each(OTHER_END_CASES)("$name", async ({ name, html }) => {
-    const lines = atEnd(await written(html));
-    expect(lines).toBe(CHOSEN[name] ?? BASE[name]);
-  });
-  test.each(OTHER_START_CASES)("$name", async ({ name, html }) => {
-    const lines = atStart(await written(html));
-    expect(lines).toBe(CHOSEN[name] ?? BASE[name]);
-  });
-  test.each(END_CASES)("$name", async ({ name, html }) => {
-    const lines = atEnd(await written(html));
-    expect(lines).toBe(CHOSEN[name] ?? BASE[name]);
-  });
-  test.each(START_CASES)("$name", async ({ name, html }) => {
-    const lines = atStart(await written(html));
-    expect(lines).toBe(CHOSEN[name] ?? BASE[name]);
-  });
+  test.for(OTHER_END_CASES.map(({ name, html }) => [name, html] as const))(
+    "%s",
+    async ([name, html]) => {
+      const lines = atEnd(await written(html));
+      expect(lines, name).toBe(CHOSEN[name] ?? BASE[name]);
+    }
+  );
+  test.for(OTHER_START_CASES.map(({ name, html }) => [name, html] as const))(
+    "%s",
+    async ([name, html]) => {
+      const lines = atStart(await written(html));
+      expect(lines, name).toBe(CHOSEN[name] ?? BASE[name]);
+    }
+  );
+  test.for(END_CASES.map(({ name, html }) => [name, html] as const))(
+    "%s",
+    async ([name, html]) => {
+      const lines = atEnd(await written(html));
+      expect(lines, name).toBe(CHOSEN[name] ?? BASE[name]);
+    }
+  );
+  test.for(START_CASES.map(({ name, html }) => [name, html] as const))(
+    "%s",
+    async ([name, html]) => {
+      const lines = atStart(await written(html));
+      expect(lines, name).toBe(CHOSEN[name] ?? BASE[name]);
+    }
+  );
 });
