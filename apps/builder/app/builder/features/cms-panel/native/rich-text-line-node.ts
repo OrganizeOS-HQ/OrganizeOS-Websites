@@ -313,6 +313,57 @@ const $paragraphToLine = (paragraph: ParagraphNode) => {
 };
 
 /**
+ * Of two lines that meet, the second takes a line break first when a
+ * block between them had its text join the first line (D3: that text
+ * keeps its visual line against the line after), unless a line break
+ * already stands at that edge. Read from the state before (public API).
+ */
+const $linesNeedingBreak = (container: ElementNode, children: LexicalNode[]) => {
+  const result = new Set<string>();
+  const previous = $previousChildren(container.getKey());
+  if (previous === null) {
+    return result;
+  }
+  const keys = previous.map((child) => child.key);
+  children.forEach((child, index) => {
+    const first = children[index - 1];
+    if (
+      $isCmsLineNode(child) === false ||
+      $isCmsLineNode(first) === false ||
+      isLineBreak(first.getLastChild()) ||
+      isLineBreak(child.getFirstChild())
+    ) {
+      return;
+    }
+    const from = keys.indexOf(first.getKey());
+    const to = keys.indexOf(child.getKey());
+    if (from === -1 || to === -1 || to - from < 2) {
+      return;
+    }
+    const between = keys.slice(from + 1, to);
+    const texts = $getEditor()
+      .getEditorState()
+      .read(() =>
+        between.flatMap((key) => {
+          const node = $getNodeByKey(key);
+          return $isElementNode(node)
+            ? node.getAllTextNodes().map((text) => text.getKey())
+            : [];
+        })
+      );
+    if (
+      texts.some((key) => {
+        const now = $getNodeByKey(key);
+        return now !== null && now.isAttached() && first.isParentOf(now);
+      })
+    ) {
+      result.add(child.getKey());
+    }
+  });
+  return result;
+};
+
+/**
  * Two lines meet because a node-selected block between them went (a cut,
  * a delete): the caret goes to the join, as the head's caret lands between
  * the two texts it joins.
@@ -402,6 +453,7 @@ export const $normaliseLines = (container: ElementNode) => {
   if (hasBlock === false && lineCount === 0) {
     return;
   }
+  const breakBefore = $linesNeedingBreak(container, children);
   const points = elementPoints();
   let caretSet = false;
   const moved = new Map<string, { key: string; base: number }>();
@@ -416,6 +468,9 @@ export const $normaliseLines = (container: ElementNode) => {
         const before = child.getPreviousSibling();
         if (before !== null) {
           caretSet = $caretAfterRemovedNode(before, false) || caretSet;
+        }
+        if (breakBefore.has(child.getKey())) {
+          child.splice(0, 0, [$createLineBreakNode()]);
         }
         moved.set(child.getKey(), { key: containerKey, base: index });
         const inner = child.getChildren();
@@ -448,6 +503,9 @@ export const $normaliseLines = (container: ElementNode) => {
             key: line.getKey(),
             base: line.getChildrenSize(),
           });
+          if (breakBefore.has(child.getKey())) {
+            line.append($createLineBreakNode());
+          }
           line.append(...child.getChildren());
           child.remove();
         }
@@ -1138,3 +1196,66 @@ export const $mapLineEdges = (selection: BaseSelection): BaseSelection => {
   }
   return mapped;
 };
+
+/**
+ * A caret in an empty line stands on the line's container for an edit
+ * that reads leaf nodes only (the list commands): the empty line goes and
+ * the caret takes its place; the line rules restore the line after.
+ */
+export const $caretOffEmptyLine = () => {
+  const selection = $getSelection();
+  if ($isRangeSelection(selection) === false || selection.isCollapsed() === false) {
+    return;
+  }
+  const line = selection.anchor.getNode();
+  if ($isCmsLineNode(line) === false || line.isEmpty() === false) {
+    return;
+  }
+  const container = line.getParentOrThrow();
+  const index = line.getIndexWithinParent();
+  line.remove();
+  selection.anchor.set(container.getKey(), index, "element");
+  selection.focus.set(container.getKey(), index, "element");
+};
+
+/**
+ * Typed text with a block node-selected in a lined container lands
+ * directly after the node, which stays (D15). Lexical leaves text typed
+ * over a node selection to the browser, so the field takes the
+ * `beforeinput` first.
+ */
+export const registerTypingAfterSelectedNode = (editor: LexicalEditor) =>
+  linesOff ? () => {} : editor.registerRootListener((root, previous) => {
+    const onBeforeInput = (event: InputEvent) => {
+      if (event.inputType !== "insertText" || event.data === null) {
+        return;
+      }
+      let handled = false;
+      editor.update(() => {
+        const selection = $getSelection();
+        if ($isNodeSelection(selection) === false) {
+          return;
+        }
+        const node = selection.getNodes().at(-1);
+        if (
+          node === undefined ||
+          isBlockDecorator(node) === false ||
+          isLinedContainer(node.getParent()) === false
+        ) {
+          return;
+        }
+        $nodeSelectionIntoLine(false, true);
+        const range = $getSelection();
+        if ($isRangeSelection(range)) {
+          range.insertText(event.data ?? "");
+          handled = true;
+        }
+      });
+      if (handled) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+    };
+    previous?.removeEventListener("beforeinput", onBeforeInput as EventListener, true);
+    root?.addEventListener("beforeinput", onBeforeInput as EventListener, true);
+  });

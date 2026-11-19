@@ -118,7 +118,9 @@ import { HorizontalRulePlugin } from "@lexical/react/LexicalHorizontalRulePlugin
 import {
   $createCmsLineNode,
   $isCmsLineNode,
+  $caretOffEmptyLine,
   $headPathOverNodeSelection,
+  registerTypingAfterSelectedNode,
   $liftPointsIntoLines,
   $mapLineEdges,
   $tagRemoval,
@@ -507,6 +509,7 @@ const setBlockType = (editor: LexicalEditor, block: BlockType) => {
     // a block made from a line takes no indent: the line reported its item's
     for (const { node } of $dfs()) {
       if (
+        lineSpike.on &&
         $isElementNode(node) &&
         before.has(node.getKey()) === false &&
         isLinedContainer(node.getParent()) &&
@@ -963,7 +966,8 @@ const TransformsPlugin = () => {
         editor.registerNodeTransform(HeadingNode, $liftBlocksOutOfTextBlock),
         // after the lifts: they see pasted paragraphs before lines do
         registerLineTransforms(editor),
-        registerLineCommands(editor)
+        registerLineCommands(editor),
+        registerTypingAfterSelectedNode(editor)
       ),
     [editor]
   );
@@ -1342,7 +1346,7 @@ const Toolbar = ({
   const toggleList = (type: "bullet" | "number") => {
     // one update: one undo step
     editor.update(() => {
-      $liftPointsIntoLines(false);
+      $caretOffEmptyLine();
       // an element caret is kept by the node beside it, as the list
       // commands replace the block it points into
       const selection = $getSelection();
@@ -2621,6 +2625,7 @@ const ImageEditingPlugin = () => {
           command,
           (event: ClipboardEvent | KeyboardEvent | null) => {
             if (
+              lineSpike.on === false ||
               event instanceof ClipboardEvent === false ||
               event.clipboardData === null
             ) {
@@ -3636,7 +3641,7 @@ const $pointIntoAdjacentBlock = (point: PointType) => {
     return;
   }
   // a lined container's points are the line rule's (5.3)
-  if (isLinedContainer(parent as LexicalNode)) {
+  if (lineSpike.on && isLinedContainer(parent as LexicalNode)) {
     return;
   }
   const isBlock = (node: LexicalNode | null): node is ElementNode =>

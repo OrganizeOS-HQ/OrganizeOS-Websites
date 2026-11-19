@@ -143,3 +143,39 @@ describe("line grid", () => {
     expect(fired).toEqual([]);
   }, 600_000);
 });
+
+import corpus from "./__fixtures__/rich-text-corpus.json";
+import roundtrip from "./__fixtures__/rich-text-roundtrip.json";
+
+describe("D8: the read-only check and the headless bytes, lines on and off", () => {
+  test("corpus, round-trip fixture, grid", () => {
+    const all: string[] = [
+      ...(corpus as { entries: Array<{ input: string }> }).entries.map(
+        (entry) => entry.input
+      ),
+      ...(roundtrip as { cases: Array<{ input: string; stored: string }> }).cases.flatMap(
+        (entry) => [entry.input, entry.stored]
+      ),
+      ...(roundtrip as { readOnly: Array<{ input: string }> }).readOnly.map((entry) => entry.input),
+      ...values(3),
+    ].filter((html) => typeof html === "string" && html !== "");
+    const differ: string[] = [];
+    for (const html of all) {
+      const answer = (on: boolean) => {
+        lineSpike.on = on;
+        clearRichTextReadOnlyMemo();
+        let bytes = "";
+        try {
+          bytes = sanitizeRichTextHtml(writeRichTextHeadless(html));
+        } catch (error) {
+          bytes = `THROW ${String(error)}`;
+        }
+        return `${getRichTextReadOnlyReason(html) ?? "editable"}|${bytes}`;
+      };
+      if (answer(true) !== answer(false)) differ.push(html);
+    }
+    lineSpike.on = true;
+    console.log(`D8 ${JSON.stringify({ values: all.length, differ: differ.length, sample: differ.slice(0, 5) })}`);
+    expect(differ).toEqual([]);
+  });
+});
