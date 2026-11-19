@@ -3,7 +3,7 @@
 // behaviour) and one without can be compared record by record.
 import { describe, test, vi } from "vitest";
 import { act } from "react-dom/test-utils";
-import { userEvent } from "@vitest/browser/context";
+import { cdp, userEvent } from "@vitest/browser/context";
 import {
   $createRangeSelection,
   $getRoot,
@@ -430,6 +430,20 @@ const itemPoint = (item: number, offset: number): Step => async () => {
   });
   await settle();
 };
+/** A real composition through the browser's input-method interface. */
+const ime = (text: string): Step => async () => {
+  const session = cdp() as unknown as {
+    send: (method: string, params?: object) => Promise<unknown>;
+  };
+  await session.send("Input.imeSetComposition", {
+    text,
+    selectionStart: text.length,
+    selectionEnd: text.length,
+  });
+  await settle();
+  await session.send("Input.insertText", { text });
+  await settle();
+};
 const then = (...steps: Step[]): Step => async () => {
   for (const step of steps) await step();
 };
@@ -538,6 +552,22 @@ const V_RECORDS: Rec[] = [
     });
     await settle();
   }],
+  ["R7 V11 BRR el1 Backspace then k", LI("<br><hr><hr>"), itemPoint(1, 1), keys("{Backspace}k")],
+  ["R7 IME at TR item end (click)", LI("T0w<hr>"), async () => {
+    await clickInWord("Pw");
+    const item = editable()!.querySelectorAll("li")[1] as HTMLElement;
+    const box = item.getBoundingClientRect();
+    await userEvent.click(item, { position: { x: box.width - 2, y: box.height - 2 } } as never);
+    await settle();
+  }, ime("a")],
+  ["R7 IME over a rule selected by arrows", "<ul><li>xq<hr>yq</li></ul>", nodeSelectAfter("xq"), ime("a")],
+  ["R7 IME at RT el0", LI("<hr>T1w"), itemPoint(1, 0), ime("a")],
+  ["R7 IME at QR@1", LI("<blockquote><p>Q0w</p></blockquote><hr>"), itemPoint(1, 1), ime("a")],
+  ["R7 FS9 copy html", "<ul><li><blockquote><p>Q0w</p></blockquote><br></li><li>Iw</li></ul>", async () => {
+    await clickInWord("Q0w");
+    await userEvent.keyboard("{Shift>}{ArrowRight}{/Shift}");
+    await settle();
+  }, () => clipboardEvent("copy")],
 ];
 RECORDS.push(...V_RECORDS);
 const Q1_COMMANDS: Array<[string, Step]> = [
