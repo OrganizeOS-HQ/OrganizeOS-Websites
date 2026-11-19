@@ -92,6 +92,7 @@ import {
 import {
   $generateNodesFromSerializedNodes,
   $getLexicalContent,
+  $insertDataTransferForRichText,
 } from "@lexical/clipboard";
 import { $createCodeNode, $isCodeNode } from "@lexical/code";
 import { $setBlocksType } from "@lexical/selection";
@@ -1033,7 +1034,7 @@ const insertImage = (
     ) {
       const selection = caret.clone();
       $setSelection(selection);
-      selection.insertNodes([image]);
+      $editInBlockLedItem(selection, () => selection.insertNodes([image]));
       return;
     }
     const paragraph = $createParagraphNode();
@@ -2979,8 +2980,9 @@ const $placeAfterCode = (code: LexicalNode, images: LexicalNode[]) => {
 };
 
 /**
- * The list item that directly holds a point, when the item's first child is
- * a block: the editor's own split reads no such item as a block.
+ * The block that directly holds a point (a list item, a quote), when its
+ * first child is a block: the editor's own edits read no such element as a
+ * block. A list holds only items, and the root is not such a block.
  */
 const $blockLedItemAt = (point: PointType) => {
   let block: LexicalNode | null =
@@ -2988,7 +2990,11 @@ const $blockLedItemAt = (point: PointType) => {
   while ($isElementNode(block) && block.isInline()) {
     block = block.getParent();
   }
-  if ($isListItemNode(block) === false) {
+  if (
+    $isElementNode(block) === false ||
+    $isRootNode(block) ||
+    $isListNode(block)
+  ) {
     return;
   }
   const first = block.getFirstChild();
@@ -2999,8 +3005,10 @@ const $blockLedItemAt = (point: PointType) => {
 };
 
 /**
- * Runs an edit of the selection that splits its block (Enter, a paste) with
- * a block-led item read as a block: an empty text leads it meanwhile.
+ * Runs an edit at the selection (Enter, Shift+Enter, a paste, a drop, an
+ * image) with the block-led item or quote holding its start read as a block:
+ * an empty text leads the item meanwhile, and a quote takes the edit in a
+ * paragraph of its own at the caret, as in its other paragraphs.
  */
 const $editInBlockLedItem = (selection: RangeSelection, edit: () => void) => {
   const start = selection.isBackward() ? selection.focus : selection.anchor;
@@ -3008,6 +3016,30 @@ const $editInBlockLedItem = (selection: RangeSelection, edit: () => void) => {
   if (item === undefined) {
     edit();
     return false;
+  }
+  if ($isListItemNode(item) === false && start.type === "element") {
+    const at = start.offset;
+    const isCollapsed = selection.isCollapsed();
+    for (const point of [selection.anchor, selection.focus]) {
+      if (point.key === item.getKey() && point.offset > at) {
+        point.set(point.key, point.offset + 1, "element");
+      }
+    }
+    const paragraph = $createParagraphNode();
+    item.splice(at, 0, [paragraph]);
+    for (const point of isCollapsed
+      ? [selection.anchor, selection.focus]
+      : [start]) {
+      point.set(paragraph.getKey(), 0, "element");
+    }
+    try {
+      edit();
+    } finally {
+      if (paragraph.isAttached() && paragraph.isEmpty()) {
+        paragraph.remove();
+      }
+    }
+    return true;
   }
   for (const point of [selection.anchor, selection.focus]) {
     if (point.type === "element" && point.key === item.getKey()) {
@@ -3019,12 +3051,44 @@ const $editInBlockLedItem = (selection: RangeSelection, edit: () => void) => {
   try {
     edit();
   } finally {
-    if (lead.isAttached()) {
+    if (lead.isAttached() && lead.getTextContentSize() === 0) {
       lead.remove();
     }
   }
   return true;
 };
+
+/**
+ * Runs an edit at the selection where its start is in a block-led item or
+ * quote; false, with nothing done, anywhere else.
+ */
+const $editAtBlockLed = (edit: (selection: RangeSelection) => void) => {
+  const selection = $getSelection();
+  if ($isRangeSelection(selection) === false) {
+    return false;
+  }
+  const start = selection.isBackward() ? selection.focus : selection.anchor;
+  if ($blockLedItemAt(start) === undefined) {
+    return false;
+  }
+  return $editInBlockLedItem(selection, () => edit(selection));
+};
+
+/**
+ * Plain text pasted or dropped where the selection starts in a block-led
+ * item or quote, when the data holds no HTML and none of the field's own
+ * nodes: its lines and tabs land as in any other item.
+ */
+const $insertPlainTextAtBlockLed = (
+  editor: LexicalEditor,
+  data: DataTransfer
+) =>
+  data.getData("text/plain") !== "" &&
+  data.getData("text/html") === "" &&
+  $ownClipboardNodes(editor, data) === undefined &&
+  $editAtBlockLed((selection) =>
+    $insertDataTransferForRichText(data, selection, editor)
+  );
 
 /**
  * A caret left on a block-led item, past its children, goes to the end of
@@ -3040,7 +3104,7 @@ const $caretIntoText = () => {
     return;
   }
   const item = $blockLedItemAt(selection.anchor);
-  const last = item?.getLastDescendant();
+  const last = $isListItemNode(item) ? item.getLastDescendant() : undefined;
   if ($isTextNode(last)) {
     last.select(last.getTextContentSize(), last.getTextContentSize());
   }
@@ -3058,7 +3122,7 @@ const $insertIntoListItem = (
 ) => {
   const start = selection.isBackward() ? selection.focus : selection.anchor;
   if ($findMatchingParent(start.getNode(), $isListItemNode) === null) {
-    selection.insertNodes(nodes);
+    $editInBlockLedItem(selection, () => selection.insertNodes(nodes));
     $caretIntoText();
     return true;
   }
@@ -3381,23 +3445,19 @@ const PasteRulesPlugin = () => {
             COMMAND_PRIORITY_CRITICAL
           )
         ),
-        // Enter in a block-led item splits it, as in any other item
+        // Enter and Shift+Enter in a block-led item or quote split it and
+        // break the line, as in any other item
         editor.registerCommand(
           INSERT_PARAGRAPH_COMMAND,
-          () => {
-            const selection = $getSelection();
-            if ($isRangeSelection(selection) === false) {
-              return false;
-            }
-            const start = selection.isBackward()
-              ? selection.focus
-              : selection.anchor;
-            if ($blockLedItemAt(start) === undefined) {
-              return false;
-            }
-            $editInBlockLedItem(selection, () => selection.insertParagraph());
-            return true;
-          },
+          () => $editAtBlockLed((selection) => selection.insertParagraph()),
+          COMMAND_PRIORITY_NORMAL
+        ),
+        editor.registerCommand(
+          INSERT_LINE_BREAK_COMMAND,
+          (selectStart) =>
+            $editAtBlockLed((selection) =>
+              selection.insertLineBreak(selectStart)
+            ),
           COMMAND_PRIORITY_NORMAL
         ),
         editor.registerCommand(
@@ -3411,6 +3471,10 @@ const PasteRulesPlugin = () => {
           (payload) => {
             if (typeof payload === "string" || payload.dataTransfer === null) {
               return false;
+            }
+            if ($insertPlainTextAtBlockLed(editor, payload.dataTransfer)) {
+              payload.preventDefault();
+              return true;
             }
             const wrapped = withStrayListItemsWrapped(payload.dataTransfer);
             if (wrapped === undefined) {
@@ -3441,7 +3505,8 @@ const PasteRulesPlugin = () => {
             const data = (event as ClipboardEvent).clipboardData!;
             if (
               $pasteIntoCode(editor, data) ||
-              $pasteFiguresBesideHeading(editor, data)
+              $pasteFiguresBesideHeading(editor, data) ||
+              $insertPlainTextAtBlockLed(editor, data)
             ) {
               event.preventDefault();
               return true;
