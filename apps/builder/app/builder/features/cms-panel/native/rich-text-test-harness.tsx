@@ -183,11 +183,21 @@ export const readingOrder = (html: string) =>
     .filter((text) => text.trim() !== "")
     .join("|");
 
+/**
+ * Lays out `element` and waits for the web fonts its text loads: a point
+ * measured in the fallback font misses the text once the font arrives.
+ */
+export const fontsLoaded = async (element: Element) => {
+  element.getBoundingClientRect();
+  await document.fonts.ready;
+};
+
 /** A real click in the text `word` at `offset` (its end when left out). */
 export const clickInWord = async (word: string, offset?: number) => {
   const span = [
     ...editable()!.querySelectorAll<HTMLElement>("[data-lexical-text]"),
   ].find((element) => element.textContent === word)!;
+  await fontsLoaded(span);
   const range = document.createRange();
   const at = offset ?? word.length;
   range.setStart(span.firstChild!, at);

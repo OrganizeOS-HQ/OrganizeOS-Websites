@@ -762,6 +762,10 @@ const clickInText = async (
   const span = [
     ...editable()!.querySelectorAll<HTMLElement>("[data-lexical-text]"),
   ].find((element) => element.textContent === text)!;
+  // a point measured in the fallback font misses the text once the web
+  // font arrives
+  span.getBoundingClientRect();
+  await document.fonts.ready;
   const range = document.createRange();
   const node = span.firstChild!;
   range.setStart(node, offset);

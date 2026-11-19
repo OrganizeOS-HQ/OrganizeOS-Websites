@@ -1266,25 +1266,6 @@ describe("Enter and paste in an item starting with a block (R3)", () => {
       await userEvent.keyboard("{Enter}e");
       await settle();
     });
-  /** A real click in the text `word` at `offset` (its end when left out). */
-  const clickText = async (word: string, offset?: number) => {
-    const span = [
-      ...editable()!.querySelectorAll<HTMLElement>("[data-lexical-text]"),
-    ].find((element) => element.textContent === word)!;
-    const range = document.createRange();
-    const at = offset ?? word.length;
-    range.setStart(span.firstChild!, at);
-    range.setEnd(span.firstChild!, at);
-    const rect = range.getBoundingClientRect();
-    const box = span.getBoundingClientRect();
-    await userEvent.click(span, {
-      position: {
-        x: Math.min(Math.max(rect.left - box.left, 1), box.width - 1),
-        y: box.height / 2,
-      },
-    } as never);
-    await settle();
-  };
 
   test("Enter after the pasted item's text makes an item", async () => {
     const onChange = await mountAt("<ul><li>s1</li><li>t1</li></ul>", "s1");
@@ -1318,7 +1299,7 @@ describe("Enter and paste in an item starting with a block (R3)", () => {
         "<ul><li><blockquote><p>q1</p></blockquote>q2</li><li>t1</li></ul>",
         "q1"
       );
-      await clickText("q2");
+      await clickInWord("q2");
       const errors = vi.spyOn(console, "error");
       await quickly(async () => {
         paste({ "text/html": pasted, "text/plain": "x" });
@@ -1343,7 +1324,7 @@ describe("Enter and paste in an item starting with a block (R3)", () => {
         "<ul><li><blockquote><p>q1</p></blockquote>q2xy</li><li>t1</li></ul>",
         "q1"
       );
-      await clickText("q2xy", offset);
+      await clickInWord("q2xy", offset);
       await enterAndType();
       expect(plain(lastHtml(onChange))).toContain(expected);
     },
@@ -1355,7 +1336,7 @@ describe("Enter and paste in an item starting with a block (R3)", () => {
       "<ul><li><blockquote><p>q1</p></blockquote>q2</li></ul>",
       "q1"
     );
-    await clickText("q2");
+    await clickInWord("q2");
     await enterAndType();
     expect(plain(lastHtml(onChange))).toBe(
       "<ul><li><blockquote><p>q1</p></blockquote>q2</li><li>e</li></ul>"
@@ -1379,7 +1360,7 @@ describe("Enter and paste in an item starting with a block (R3)", () => {
     "Enter in %s is the editor's own",
     async (_name, html, word, expected) => {
       const onChange = await mountAt(html, word);
-      await clickText(word);
+      await clickInWord(word);
       await enterAndType();
       expect(plain(lastHtml(onChange))).toBe(expected);
     },
