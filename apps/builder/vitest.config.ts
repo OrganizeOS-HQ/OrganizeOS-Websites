@@ -58,23 +58,40 @@ const serverProject = {
   },
 };
 
+// OrganizeOS fork: the CMS panels run as three projects, so each builder leg
+// stays inside its step limit (fork doc section 7): the rich-text field's
+// tests, its generated sweeps, and everything else in the two panels. A file
+// joins a project by its name; scripts/check-every-test-runs.mjs fails when
+// two projects collect one file.
+const cmsPanelTests =
+  "app/builder/features/{cms-panel,organizeos-panel}/**/*.{test,spec}.{ts,tsx}";
+const richTextTests =
+  "app/builder/features/cms-panel/native/rich-text-*.{test,spec}.{ts,tsx}";
+const richTextSweeps = [
+  "app/builder/features/cms-panel/native/rich-text-toolbar-corpus-*.{test,spec}.{ts,tsx}",
+  "app/builder/features/cms-panel/native/rich-text-fuzz.{test,spec}.{ts,tsx}",
+];
+
 const projects = [
   serverProject,
   browserProject("core", "builder-settings", [
     "app/builder/features/{settings-panel,style-panel}/**/*.{test,spec}.{ts,tsx}",
   ]),
-  // OrganizeOS fork: the CMS panels run as a project of their own, so each
-  // builder leg stays inside its step limit (fork doc section 7).
-  browserProject("core", "builder-cms", [
-    "app/builder/features/{cms-panel,organizeos-panel}/**/*.{test,spec}.{ts,tsx}",
-  ]),
+  browserProject("core", "builder-cms", [cmsPanelTests], [richTextTests]),
+  browserProject(
+    "core",
+    "builder-cms-rich-text",
+    [richTextTests],
+    richTextSweeps
+  ),
+  browserProject("core", "builder-cms-rich-text-sweeps", richTextSweeps),
   browserProject(
     "core",
     "builder-features",
     ["app/builder/features/**/*.{test,spec}.{ts,tsx}"],
     [
       "app/builder/features/{settings-panel,style-panel}/**/*.{test,spec}.{ts,tsx}",
-      "app/builder/features/{cms-panel,organizeos-panel}/**/*.{test,spec}.{ts,tsx}",
+      cmsPanelTests,
     ]
   ),
   browserProject("app", "builder-shared", [
