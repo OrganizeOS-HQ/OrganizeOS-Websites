@@ -621,8 +621,7 @@ export const registerRichTextTransforms = (editor: LexicalEditor) =>
     editor.registerNodeTransform(CodeNode, $keepCodePlain),
     editor.registerNodeTransform(CmsFigureNode, $liftFigure),
     editor.registerNodeTransform(ListItemNode, $keepItemInList),
-    editor.registerNodeTransform(LinkNode, $unwrapBreakOnlyLink),
-    registerLineTransforms(editor)
+    editor.registerNodeTransform(LinkNode, $unwrapBreakOnlyLink)
   );
 
 /** The editor's load and save of a stored value, with no view. */
@@ -636,6 +635,7 @@ export const writeRichTextHeadless = (html: string) => {
     },
   });
   registerRichTextTransforms(editor);
+  registerLineTransforms(editor);
   editor.update(() => importRichTextHtml(editor, html), { discrete: true });
   return exportRichTextHtml(editor);
 };

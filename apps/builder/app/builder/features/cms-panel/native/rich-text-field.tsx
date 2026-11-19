@@ -112,6 +112,14 @@ import { ListPlugin } from "@lexical/react/LexicalListPlugin";
 import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
 import { HorizontalRulePlugin } from "@lexical/react/LexicalHorizontalRulePlugin";
+import {
+  $createCmsLineNode,
+  $isCmsLineNode,
+  $liftPointsIntoLines,
+  lineSpike,
+  registerLineCommands,
+  registerLineTransforms,
+} from "./rich-text-line-node";
 import { INSERT_HORIZONTAL_RULE_COMMAND } from "@lexical/react/LexicalHorizontalRuleNode";
 import {
   Button,
@@ -422,6 +430,10 @@ const setBlockType = (editor: LexicalEditor, block: BlockType) => {
     if (selection.anchor.key === "root" || selection.focus.key === "root") {
       return;
     }
+    $liftPointsIntoLines(true);
+    const before = new Set(
+      $dfs().map(({ node }) => node.getKey())
+    );
     $setBlocksType(selection, () => {
       switch (block) {
         case "paragraph":
@@ -434,6 +446,18 @@ const setBlockType = (editor: LexicalEditor, block: BlockType) => {
           return $createHeadingNode(block);
       }
     });
+    // a line in a quote is a paragraph of that quote: Quote adds no quote
+    // inside it
+    for (const { node } of $dfs()) {
+      if (
+        lineSpike.on &&
+        $isQuoteNode(node) &&
+        before.has(node.getKey()) === false &&
+        $isQuoteNode(node.getParent())
+      ) {
+        node.replace($createCmsLineNode(), true);
+      }
+    }
   });
   editor.focus();
 };
@@ -878,7 +902,10 @@ const TransformsPlugin = () => {
         editor.registerNodeTransform(ListNode, $liftPastDepthLimit),
         editor.registerNodeTransform(QuoteNode, $liftPastDepthLimit),
         editor.registerNodeTransform(ParagraphNode, $liftBlocksOutOfTextBlock),
-        editor.registerNodeTransform(HeadingNode, $liftBlocksOutOfTextBlock)
+        editor.registerNodeTransform(HeadingNode, $liftBlocksOutOfTextBlock),
+        // after the lifts: they see pasted paragraphs before lines do
+        registerLineTransforms(editor),
+        registerLineCommands(editor)
       ),
     [editor]
   );
@@ -1049,8 +1076,9 @@ const insertImage = (
       $findMatchingParent(caret.anchor.getNode(), $isCodeNode) === null &&
       $findMatchingParent(caret.focus.getNode(), $isCodeNode) === null
     ) {
-      const selection = caret.clone();
-      $setSelection(selection);
+      $setSelection(caret.clone());
+      $liftPointsIntoLines(true);
+      const selection = $getSelection() as RangeSelection;
       $editInBlockLedItem(selection, () => selection.insertNodes([image]));
       return;
     }
@@ -1253,6 +1281,7 @@ const Toolbar = ({
   const toggleList = (type: "bullet" | "number") => {
     // one update: one undo step
     editor.update(() => {
+      $liftPointsIntoLines(true);
       // an element caret is kept by the node beside it, as the list
       // commands replace the block it points into
       const selection = $getSelection();
@@ -3298,19 +3327,54 @@ const $insertIntoListItem = (
 };
 
 /**
+ * A paste into a line of a list item gives what the same paste gives in
+ * the item's own text: one paragraph goes in as its inline content, one
+ * code block as inline code, and a list (at a caret) into the item with
+ * its lines unwrapped meanwhile, so the pasted items stand beside it.
+ */
+const $intoLine = (nodes: LexicalNode[], selection: RangeSelection) => {
+  const start = selection.isBackward() ? selection.focus : selection.anchor;
+  const line = $findMatchingParent(start.getNode(), $isCmsLineNode);
+  const item = line?.getParent() ?? null;
+  if (line === null || $isListItemNode(item) === false) {
+    return nodes;
+  }
+  if (nodes.length === 1 && $isParagraphNode(nodes[0])) {
+    return nodes[0].getChildren();
+  }
+  if (nodes.length === 1 && $isCodeNode(nodes[0])) {
+    const text = $createTextNode(nodes[0].getTextContent());
+    text.toggleFormat("code");
+    return [text];
+  }
+  if (selection.isCollapsed() && $isListNode(nodes[0])) {
+    for (const child of item.getChildren()) {
+      if ($isCmsLineNode(child)) {
+        for (const inner of child.getChildren()) {
+          child.insertBefore(inner, false);
+        }
+        child.remove();
+      }
+    }
+  }
+  return nodes;
+};
+
+/**
  * Nodes a paste or drop inserts (`SELECTION_INSERT_CLIPBOARD_NODES_COMMAND`)
  * where the selection starts in a code block: the selected content goes,
  * the nodes' text goes into the block, and their images and figures after
  * it. Where it starts at a heading's start, blocks go before the heading.
  */
 const $insertClipboardNodes = (
-  nodes: LexicalNode[],
+  pasted: LexicalNode[],
   selection: BaseSelection
 ) => {
   if ($isRangeSelection(selection) === false) {
     return false;
   }
   const start = selection.isBackward() ? selection.focus : selection.anchor;
+  const nodes = $intoLine(pasted, selection);
   const code = $findMatchingParent(start.getNode(), $isCodeNode);
   if (code !== null) {
     selection.removeText();
