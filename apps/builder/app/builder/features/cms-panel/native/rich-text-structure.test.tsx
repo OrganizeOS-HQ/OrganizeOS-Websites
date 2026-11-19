@@ -3236,3 +3236,48 @@ describe("items between a list and a quote, code or table it holds read as dropp
     expect(plain(lastHtml(onChange))).toBe(expected);
   });
 });
+
+describe("edits after a pasted item's quote ending in a rule finish at once (Y5)", () => {
+  test("a two-line plain-text paste, then Shift+Enter", async () => {
+    const onChange = await mountAt("<p></p>", "");
+    paste({
+      "text/html":
+        "<ul><li>A<ul><li>X</li></ul><blockquote><p>Z1</p><hr></blockquote></li></ul>",
+      "text/plain": "x",
+    });
+    await settle();
+    expect(
+      editorOf()!
+        .getEditorState()
+        .read(() => {
+          const selection = $getSelection();
+          return $isRangeSelection(selection)
+            ? `${selection.anchor.type}:${selection.anchor.getNode().getType()}@${selection.anchor.offset}`
+            : "none";
+        })
+    ).toBe("element:quote@2");
+    const errors = vi.spyOn(console, "error");
+    for (const step of [
+      async () => {
+        paste({ "text/plain": "L1\nL2" });
+        await settle();
+      },
+      async () => {
+        await userEvent.keyboard("{Shift>}{Enter}{/Shift}");
+        await settle();
+      },
+    ]) {
+      const start = performance.now();
+      await step();
+      expect(performance.now() - start).toBeLessThan(2000);
+    }
+    expect(
+      errors.mock.calls
+        .map((args) => String(args[0]))
+        .filter((message) => message.includes("not wrapped in act") === false)
+    ).toEqual([]);
+    expect(plain(lastHtml(onChange))).toBe(
+      "<ul><li>A<ul><li>X</li></ul></li><li><blockquote><p>Z1</p><hr /><p>L1</p><p>L2<br /></p></blockquote></li></ul>"
+    );
+  }, 60000);
+});
