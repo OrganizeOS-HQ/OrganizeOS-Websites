@@ -25,7 +25,8 @@ let container: HTMLElement | undefined;
 /** True while a field mounted by `sharedField` stays across tests. */
 let isShared = false;
 
-const unmount = () => {
+/** Unmounts the field. */
+export const unmountField = () => {
   act(() => {
     root?.unmount();
   });
@@ -36,7 +37,7 @@ const unmount = () => {
 
 afterEach(() => {
   if (isShared === false) {
-    unmount();
+    unmountField();
   }
   vi.restoreAllMocks();
 });
@@ -249,7 +250,7 @@ export const sharedField = () => {
     },
     release: () => {
       isShared = false;
-      unmount();
+      unmountField();
     },
   };
 };

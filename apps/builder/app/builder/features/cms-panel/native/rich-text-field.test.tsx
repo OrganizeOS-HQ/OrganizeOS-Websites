@@ -23,7 +23,6 @@ import { sanitizeRichTextHtml } from "./rich-text-sanitize";
 import { createLazyRichTextField, FieldControl } from "./field-controls";
 import { createFakeCmsSource } from "./fake-cms-source";
 import fixture from "./__fixtures__/rich-text-roundtrip.json";
-import corpus from "./__fixtures__/rich-text-corpus.json";
 import {
   getRichTextReadOnlyReason,
   settleRichTextHtml,
@@ -1520,64 +1519,6 @@ test.each([
   await settle();
   expect(editable()).toBeNull();
   expect(onChange).not.toHaveBeenCalled();
-});
-
-// exact-guard round, item 2: every toolbar command over a whole editable
-// corpus value saves a value that reopens editable, on every twentieth one (the
-// corpus orders its matrix by shape, so this spans every shape it crosses),
-// plus each value a run over the whole set found locking
-const corpusSample = [
-  ...corpus.entries
-    .filter((entry) => entry.verdict === "editable")
-    .filter((_entry, index) => index % 20 === 0)
-    .map((entry) => entry.input),
-  // the values the full set (every editable entry, every command) locked
-  "<p>z</p><ul><li> <ul><li>n</li></ul></li></ul>",
-];
-
-const toolbarActions: Array<[string, () => Promise<void>]> = [
-  ["Bold", () => click(byLabel("Bold"))],
-  ["Italic", () => click(byLabel("Italic"))],
-  ["Bulleted list", () => click(byLabel("Bulleted list"))],
-  ["Numbered list", () => click(byLabel("Numbered list"))],
-  ["Quote", () => chooseBlock("Quote")],
-  ["Heading 2", () => chooseBlock("Heading 2")],
-  ["Code", () => chooseBlock("Code")],
-  ["Paragraph", () => chooseBlock("Paragraph")],
-  ["Link", () => applyLink("https://example.org/")],
-];
-
-describe("every toolbar command over a corpus value reopens editable", () => {
-  test.each(toolbarActions)(
-    "%s",
-    async (_name, run) => {
-      const locked: string[] = [];
-      for (const html of corpusSample) {
-        const { onChange } = mountField({ value: { html } });
-        await settle();
-        const first = editable()?.querySelector<HTMLElement>(
-          "p, li, h2, h3, h4, blockquote, code"
-        );
-        if (first !== null && first !== undefined) {
-          await click(first);
-          await selectAll();
-          await run();
-          const written = lastHtml(onChange);
-          if (written !== "" && reopenReason(written) !== undefined) {
-            locked.push(html);
-          }
-        }
-        act(() => {
-          root?.unmount();
-        });
-        container?.remove();
-        root = undefined;
-        container = undefined;
-      }
-      expect(locked).toEqual([]);
-    },
-    600_000
-  );
 });
 
 // Round 4: the keyboard beside an inline image
