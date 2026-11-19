@@ -4,6 +4,8 @@
 import { afterAll, describe, expect, test } from "vitest";
 import {
   dropHtml,
+  editable,
+  undo,
   paste,
   plain,
   readingOrder,
@@ -483,4 +485,18 @@ describe("the lines at a block wrapper's edges when it gives way (Z2, Z3)", () =
       expect(lines, name).toBe(CHOSEN[name] ?? BASE[name]);
     }
   );
+});
+
+describe("a shared field starts each case with no history (Z8)", () => {
+  const field = sharedField();
+  afterAll(() => field.release());
+  test("an undo after an edit and a fresh start changes nothing", async () => {
+    await field.fresh();
+    paste({ "text/html": "<p>Eq</p>", "text/plain": "x" });
+    await settle();
+    const onChange = await field.fresh();
+    await undo();
+    expect(onChange).not.toHaveBeenCalled();
+    expect(editable()!.textContent).toBe("");
+  });
 });

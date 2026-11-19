@@ -6,7 +6,12 @@ import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
 import { afterEach, expect, vi } from "vitest";
 import { userEvent } from "@vitest/browser/context";
-import { $getRoot, type EditorState, type LexicalEditor } from "lexical";
+import {
+  $getRoot,
+  CLEAR_HISTORY_COMMAND,
+  type EditorState,
+  type LexicalEditor,
+} from "lexical";
 import { TooltipProvider } from "@webstudio-is/design-system";
 import { RichTextField, type RichTextFieldProps } from "./rich-text-field";
 import { sanitizeRichTextHtml } from "./rich-text-sanitize";
@@ -236,8 +241,8 @@ export const fieldContainer = () => container;
 
 /**
  * One empty field for many pure-write cases: `fresh` brings it back to the
- * state it had when mounted, with the caret in its empty paragraph, and
- * returns its onChange with no calls; `release` unmounts it.
+ * state it had when mounted, with the caret in its empty paragraph and no
+ * history, and returns its onChange with no calls; `release` unmounts it.
  */
 export const sharedField = () => {
   let onChange: ReturnType<typeof vi.fn> | undefined;
@@ -253,6 +258,7 @@ export const sharedField = () => {
       const state = mounted;
       await act(async () => {
         editorOf()!.setEditorState(state);
+        editorOf()!.dispatchCommand(CLEAR_HISTORY_COMMAND, undefined);
       });
       await settle();
       onChange.mockClear();
