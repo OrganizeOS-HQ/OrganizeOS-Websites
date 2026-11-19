@@ -2987,3 +2987,75 @@ describe("an edit at a caret where the editor finds no block (X1)", () => {
     60000
   );
 });
+
+describe("the caret after a paste into the middle of a nested item's text (Y1)", () => {
+  const STORED =
+    "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>t1</li></ul></li></ul></li><li>a2</li></ul>";
+  const BEFORE = "<ul><li>a1<ul><li>b1<ul><li>s</li></ul></li></ul></li></ul>";
+  const AFTER =
+    "<ul><li><ul><li><ul><li>t1</li></ul></li></ul></li><li>a2</li></ul>";
+  test.each([
+    [
+      "a numbered list",
+      "<ol><li>A</li><li>B</li></ol>",
+      `${BEFORE}<ol><li>A</li><li>B~1</li></ol>${AFTER}`,
+    ],
+    [
+      "a quote",
+      "<blockquote><p>A</p></blockquote>",
+      `${BEFORE}<blockquote><p>A~1</p></blockquote>${AFTER}`,
+    ],
+    [
+      "a quote holding a list",
+      "<blockquote><ul><li>A</li><li>B</li></ul></blockquote>",
+      `${BEFORE}<blockquote><ul><li>A</li><li>B~1</li></ul></blockquote>${AFTER}`,
+    ],
+    [
+      "two lists, one after the other",
+      "<ul><li>A</li></ul><ol><li>B</li></ol>",
+      `<ul><li>a1<ul><li>b1<ul><li>s</li><li>A</li></ul></li></ul></li></ul><ol><li>B~1</li></ol>${AFTER}`,
+    ],
+    [
+      "a nested list, then a paragraph",
+      "<ol><li>A<ul><li>X</li></ul></li><li>B</li></ol><p>C</p>",
+      `${BEFORE}<ol><li>A<ul><li>X</li></ul></li><li>B</li></ol><p>C~1</p>${AFTER}`,
+    ],
+  ])(
+    "typing after %s pasted lands right after it",
+    async (_name, html, expected) => {
+      const onChange = await mountAt(STORED, "s1", 1);
+      paste({ "text/html": html, "text/plain": "x" });
+      await settle();
+      await userEvent.keyboard("~");
+      await settle();
+      expect(plain(lastHtml(onChange))).toBe(expected);
+    },
+    60000
+  );
+
+  test("typing after a numbered list pasted in the middle of a depth-3 item's text lands right after it", async () => {
+    const onChange = await mountAt(nestedList(3, "s"), "s3", 1);
+    paste({ "text/html": "<ol><li>A</li><li>B</li></ol>", "text/plain": "x" });
+    await settle();
+    await userEvent.keyboard("~");
+    await settle();
+    expect(plain(lastHtml(onChange))).toBe(
+      "<ul><li>s1<ul><li>s2<ul><li>s</li></ul></li></ul></li></ul><ol><li>A</li><li>B~3</li></ol>"
+    );
+  }, 60000);
+
+  test("typing after a rule and a line break lifted after a pasted list lands after the rule", async () => {
+    const onChange = await mountAt(nestedList(6, "s"), "s6");
+    paste({
+      "text/html":
+        "<ul><li>a.<blockquote><ul><li>x.</li></ul></blockquote><hr><br></li></ul>",
+      "text/plain": "x",
+    });
+    await settle();
+    await userEvent.keyboard("z");
+    await settle();
+    expect(plain(lastHtml(onChange))).toBe(
+      "<ul><li>s1<ul><li>s2<ul><li>s3<ul><li>s4<ul><li>s5<ul><li>s6</li><li>a.<ul><li>x.</li></ul></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul><hr /><p>z</p>"
+    );
+  }, 60000);
+});

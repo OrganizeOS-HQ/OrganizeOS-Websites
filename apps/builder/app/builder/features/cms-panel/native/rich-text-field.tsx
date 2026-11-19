@@ -461,35 +461,54 @@ const $liftBlocksAfterNestedList = (item: ListItemNode) => {
   const hasContent = (node: LexicalNode) =>
     /[^\s]|\u00a0/.test(node.getTextContent()) ||
     $dfs(node).some((entry) => $isDecoratorNode(entry.node));
-  // a selection in what follows the list, or on the item past its list,
-  // goes to the end of the last content placed
+  // a point whose node the lift removes (line breaks and white space after
+  // the list, or the item past its list) goes to the end of the content
+  // before it; any other point stays where the edit left it
   const selection = $getSelection();
-  const held =
-    $isRangeSelection(selection) &&
-    [selection.anchor, selection.focus].some((point) => {
-      if (point.key === item.getKey()) {
-        return point.type === "element" && point.offset > listAt;
-      }
-      const node = point.getNode();
-      return after.some(
-        (entry) =>
-          entry.is(node) || ($isElementNode(entry) && entry.isParentOf(node))
-      );
-    });
-  const $caretAtEnd = (node: LexicalNode | null | undefined) => {
-    if (held === false || node === null || node === undefined) {
+  const moved = (
+    $isRangeSelection(selection) ? [selection.anchor, selection.focus] : []
+  ).flatMap((point) => {
+    const node = point.getNode();
+    const onItem = point.key === item.getKey();
+    if (
+      onItem
+        ? point.type !== "element" || point.offset <= listAt
+        : after.some(
+            (entry) =>
+              entry.is(node) ||
+              ($isElementNode(entry) && entry.isParentOf(node))
+          ) === false
+    ) {
+      return [];
+    }
+    // the nodes before the point, nearest first
+    const nodes = $dfs(item).map((entry) => entry.node);
+    let at = nodes.indexOf(node);
+    if (point.type === "element" && $isElementNode(node)) {
+      const child = node.getChildAtIndex(point.offset);
+      at = child === null ? at + $dfs(node).length : nodes.indexOf(child);
+    }
+    const before = nodes
+      .slice(0, at)
+      .filter((entry) => entry.isParentOf(node) === false && entry !== item)
+      .reverse();
+    return [{ point, onItem, before }];
+  });
+  const $caretAtEnd = () => {
+    const gone = moved.find(
+      ({ point, onItem }) => onItem || point.getNode().isAttached() === false
+    );
+    const target = gone?.before.find((node) => node.isAttached());
+    if (target === undefined) {
       return;
     }
-    if (node.isAttached() === false) {
-      return;
-    }
-    const last = $isElementNode(node) ? node.getLastDescendant() : node;
+    const last = $isElementNode(target) ? target.getLastDescendant() : target;
     if ($isTextNode(last)) {
       last.select(last.getTextContentSize(), last.getTextContentSize());
-    } else if ($isElementNode(node)) {
-      node.selectEnd();
+    } else if ($isElementNode(target)) {
+      target.selectEnd();
     } else {
-      node.selectNext(0, 0);
+      target.selectNext(0, 0);
     }
   };
   if (after.some(isBlock) === false) {
@@ -507,10 +526,8 @@ const $liftBlocksAfterNestedList = (item: ListItemNode) => {
       const next = $createListItemNode();
       next.append(...after.slice(first, last + 1));
       item.insertAfter(next);
-      $caretAtEnd(next);
-    } else {
-      $caretAtEnd(children[listAt]);
     }
+    $caretAtEnd();
     return;
   }
   const isEmptyList = (node: ListNode) =>
@@ -646,7 +663,7 @@ const $liftBlocksAfterNestedList = (item: ListItemNode) => {
     lifted.insertAfter(levels[levels.length - 1]);
   }
   endRun();
-  $caretAtEnd(lifted);
+  $caretAtEnd();
   // levels left empty go, innermost first, each with the item that holds it
   for (const [index, level] of levels.entries()) {
     if (level.getChildrenSize() > 0) {
