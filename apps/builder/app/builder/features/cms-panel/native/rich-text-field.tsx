@@ -460,6 +460,37 @@ const $liftBlocksAfterNestedList = (item: ListItemNode) => {
   const hasContent = (node: LexicalNode) =>
     /[^\s]|\u00a0/.test(node.getTextContent()) ||
     $dfs(node).some((entry) => $isDecoratorNode(entry.node));
+  // a selection in what follows the list, or on the item past its list,
+  // goes to the end of the last content placed
+  const selection = $getSelection();
+  const held =
+    $isRangeSelection(selection) &&
+    [selection.anchor, selection.focus].some((point) => {
+      if (point.key === item.getKey()) {
+        return point.type === "element" && point.offset > listAt;
+      }
+      const node = point.getNode();
+      return after.some(
+        (entry) =>
+          entry.is(node) || ($isElementNode(entry) && entry.isParentOf(node))
+      );
+    });
+  const $caretAtEnd = (node: LexicalNode | null | undefined) => {
+    if (held === false || node === null || node === undefined) {
+      return;
+    }
+    if (node.isAttached() === false) {
+      return;
+    }
+    const last = $isElementNode(node) ? node.getLastDescendant() : node;
+    if ($isTextNode(last)) {
+      last.select(last.getTextContentSize(), last.getTextContentSize());
+    } else if ($isElementNode(node)) {
+      node.selectEnd();
+    } else {
+      node.selectNext(0, 0);
+    }
+  };
   if (after.some(isBlock) === false) {
     // inline content after the list stands in an item after this one,
     // without the line breaks and white space at its edges; with no
@@ -475,6 +506,9 @@ const $liftBlocksAfterNestedList = (item: ListItemNode) => {
       const next = $createListItemNode();
       next.append(...after.slice(first, last + 1));
       item.insertAfter(next);
+      $caretAtEnd(next);
+    } else {
+      $caretAtEnd(children[listAt]);
     }
     return;
   }
@@ -611,6 +645,7 @@ const $liftBlocksAfterNestedList = (item: ListItemNode) => {
     lifted.insertAfter(levels[levels.length - 1]);
   }
   endRun();
+  $caretAtEnd(lifted);
   // levels left empty go, innermost first, each with the item that holds it
   for (const [index, level] of levels.entries()) {
     if (level.getChildrenSize() > 0) {

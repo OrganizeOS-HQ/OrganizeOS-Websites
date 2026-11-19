@@ -2043,3 +2043,93 @@ describe("a wrapper's lines follow the wrapper (T2)", () => {
     }
   );
 });
+
+describe("the caret after a paste whose line breaks the lift removed (U1)", () => {
+  const THREE =
+    "<ul><li>a.<blockquote><ul><li>x1.</li><li>x2.<ul><li>x3.</li></ul></li></ul></blockquote><br><br></li></ul>";
+  const ONE =
+    "<ul><li>a.<blockquote><ul><li>x.</li></ul></blockquote><br><br></li></ul>";
+  const pasted = async (html: string) => {
+    const onChange = await mountAt(nestedList(6, "s"), "s6");
+    paste({ "text/html": html, "text/plain": "x" });
+    await settle();
+    return onChange;
+  };
+  /** Presses `keys`, which must finish in under two seconds. */
+  const press = async (keys: string) => {
+    const start = performance.now();
+    await userEvent.keyboard(keys);
+    await settle();
+    expect(performance.now() - start).toBeLessThan(2000);
+  };
+  const FORMS = [
+    ["three nested items", THREE, ["a.", "x1.", "x2."], "x3."],
+    ["one nested item", ONE, ["a."], "x."],
+  ] as const;
+  const STEPS = [
+    ["Backspace", "{Backspace}", (last: string) => [last.slice(0, -1)]],
+    ["Delete", "{Delete}", (last: string) => [last]],
+    // the word before the caret is the final full stop
+    [
+      "Ctrl+Backspace",
+      "{Control>}{Backspace}{/Control}",
+      (last: string) => [last.slice(0, -1)],
+    ],
+    ["typing", "z", (last: string) => [`${last}z`]],
+  ] as const;
+  test.each(
+    FORMS.flatMap(([form, html, before, last]) =>
+      STEPS.map(([step, keys, result]) => ({
+        form,
+        step,
+        html,
+        keys,
+        expected: [...DEEP, ...before, ...result(last)].join("|"),
+      }))
+    )
+  )(
+    "$form: $step",
+    async ({ html, keys, expected }) => {
+      const onChange = await pasted(html);
+      await press(keys);
+      expect(readingOrder(lastHtml(onChange))).toBe(expected);
+    },
+    60000
+  );
+
+  test("a second quote, then two line breaks: typing lands after its text", async () => {
+    const onChange = await pasted(
+      "<ul><li>a.<blockquote><ul><li>x.</li></ul></blockquote><blockquote><p>y.</p></blockquote><br><br></li></ul>"
+    );
+    await press("z");
+    expect(readingOrder(lastHtml(onChange))).toBe(
+      [...DEEP, "a.", "x.", "y.z"].join("|")
+    );
+  }, 60000);
+
+  test.each([
+    [
+      "one line break",
+      "<ul><li>a.<blockquote><ul><li>x.</li></ul></blockquote><br></li></ul>",
+      [...DEEP, "a.", "x.z"],
+    ],
+  ])(
+    "%s: typing lands after the nested text",
+    async (_name, html, expected) => {
+      const onChange = await pasted(html);
+      await press("z");
+      expect(readingOrder(lastHtml(onChange))).toBe(expected.join("|"));
+    },
+    60000
+  );
+
+  test("a plain-text paste keeps its caret", async () => {
+    const onChange = await mountAt(nestedList(6, "s"), "s6");
+    paste({ "text/plain": "pp" });
+    await settle();
+    await press("z");
+    expect(readingOrder(lastHtml(onChange))).toBe(
+      [...DEEP.slice(0, -1), "s6ppz"].join("|")
+    );
+  }, 60000);
+});
