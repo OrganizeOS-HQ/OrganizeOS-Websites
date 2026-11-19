@@ -3186,3 +3186,53 @@ describe("a block wrapper that gives way keeps its own last line break only befo
     expect(plain(lastHtml(onChange))).toBe(expected);
   });
 });
+
+describe("items between a list and a quote, code or table it holds read as dropped before (Y4)", () => {
+  const SHAPES = [
+    [
+      "items in table cells",
+      "<ul><table><tbody><tr><td><li>Aq</li></td><td>Cq</td></tr><tr><td>Dq</td><td><li>Bq</li></td></tr></tbody></table></ul>",
+      "<ul><li>Aq</li><li>Cq</li><li>Dq</li><li>Bq</li></ul>",
+    ],
+    [
+      "items and text in a quote",
+      "<ul><blockquote>Tq<li>Aq</li>Uq<li>Bq</li>Vq</blockquote></ul>",
+      "<ul><li><blockquote>Tq<ul><li>Aq</li></ul>Uq<ul><li>Bq</li></ul>Vq</blockquote></li></ul>",
+    ],
+    [
+      "items and text in code",
+      "<ul><pre>Tq<li>Aq</li>Uq<li>Bq</li>Vq</pre></ul>",
+      "<ul><li><pre><code>Tq\nAq\nUq\nBq\nVq</code></pre></li></ul>",
+    ],
+    [
+      "items and text in a heading",
+      "<ul><h2>Tq<li>Aq</li>Uq<li>Bq</li>Vq</h2></ul>",
+      "<ul><li><h2>Tq</h2><ul><li>Aq</li><li>Bq</li></ul></li></ul><h2>UqVq</h2>",
+    ],
+  ] as const;
+  test.each(
+    SHAPES.flatMap(([shape, html, expected]) =>
+      (["drop", "paste"] as const).map((how) => ({
+        shape,
+        how,
+        html,
+        expected,
+      }))
+    )
+  )("$how of $shape writes", async ({ how, html, expected }) => {
+    const onChange = await mountAt("<p></p>", "");
+    const errors = vi.spyOn(console, "error");
+    if (how === "paste") {
+      paste({ "text/html": html, "text/plain": "x" });
+      await settle();
+    } else {
+      await dropHtml(html);
+    }
+    expect(
+      errors.mock.calls
+        .map((args) => String(args[0]))
+        .filter((message) => message.includes("not wrapped in act") === false)
+    ).toEqual([]);
+    expect(plain(lastHtml(onChange))).toBe(expected);
+  });
+});

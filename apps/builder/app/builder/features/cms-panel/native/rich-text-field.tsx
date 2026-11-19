@@ -2636,8 +2636,21 @@ const wrapStrayListItems = (body: HTMLElement) => {
       }
     }
   }
+  // an item under a quote, code or a table in a list stands as the import
+  // reads it; one under a heading, or under no list, takes a list of its own
+  const isInList = (item: Element) => {
+    for (let at = item.parentElement; at !== null; at = at.parentElement) {
+      if (/^(UL|OL)$/.test(at.tagName)) {
+        return true;
+      }
+      if (/^(LI|H[1-6])$/.test(at.tagName) || at === body) {
+        return false;
+      }
+    }
+    return false;
+  };
   const strays = Array.from(body.querySelectorAll("li")).filter(
-    (item) => /^(UL|OL)$/.test(item.parentElement?.tagName ?? "") === false
+    (item) => isInList(item) === false
   );
   for (const item of strays) {
     const before = item.previousElementSibling;
