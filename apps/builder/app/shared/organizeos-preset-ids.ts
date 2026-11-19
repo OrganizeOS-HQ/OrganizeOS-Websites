@@ -6,7 +6,8 @@ import type { Resource } from "@webstudio-is/sdk";
  * (`shared/db/resource-presets.server.ts`, `shared/db/collections-sync.server.ts`,
  * `shared/db/signup-form-preset.server.tsx`) and the builder in the
  * browser, which finds the Events Resource, adds the Forms Resource at insert
- * time and lists the catalog (`builder/features/organizeos-panel`). Both sides
+ * time and lists the catalog for the CMS column
+ * (`builder/features/organizeos-panel`). Both sides
  * must derive the same id from the same name, so a Resource the builder adds is
  * the one a later re-provision rewrites in place, never a second copy. The
  * names of the Resources a block creates (Forms, Upcoming Events) and of the
@@ -51,9 +52,8 @@ export const UPCOMING_EVENTS_RESOURCE_NAME = "Upcoming Events";
 /**
  * The names of the bindings the Events blocks bring, distinctive for the same
  * reason as FORMS_PRESET_NAME. The Events one is for the blocks that bind the
- * Events Resource as it is (the RSVP Form). A binding the OrganizeOS data tab
- * adds to a page keeps its Resource's name ("Events", "Upcoming Events")
- * instead.
+ * Events Resource as it is (the RSVP Form). A catalog Resource's `:root`
+ * binding keeps its Resource's name ("Events", "Upcoming Events") instead.
  */
 export const EVENTS_BINDING_NAME = "OrganizeOS Events";
 export const UPCOMING_EVENTS_BINDING_NAME = "OrganizeOS Upcoming Events";

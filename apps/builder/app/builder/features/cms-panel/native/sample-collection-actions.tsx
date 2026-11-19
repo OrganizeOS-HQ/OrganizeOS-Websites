@@ -1,7 +1,7 @@
 /**
  * Storybook stand-ins for the build's side of the CMS column (4.5): a row's
  * "..." menu, its stale line and the orphan rows at the column's foot, drawn
- * as the data tab draws them (`organizeos-panel/collection-row-menu.tsx`).
+ * as the real ones draw them (`organizeos-panel/collection-row-menu.tsx`).
  * They act on nothing.
  */
 import type { ReactNode } from "react";

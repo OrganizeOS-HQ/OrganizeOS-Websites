@@ -1,4 +1,5 @@
 import { createElement, type ReactElement } from "react";
+import { useStore } from "@nanostores/react";
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
 import { enableMapSet } from "immer";
@@ -52,7 +53,12 @@ import {
   findStaleItemPages,
   parseItemResourceSlug,
 } from "./organizeos-data";
-import { OrganizeosPanel } from "./organizeos-panel";
+import {
+  getCollectionSlug,
+  joinCmsCatalog,
+  useCatalog,
+  type CmsCatalogOrphan,
+} from "./collection-catalog";
 import {
   CollectionActionsMenu,
   OrphanRow,
@@ -207,13 +213,85 @@ const until = async <T,>(read: () => T): Promise<T> => {
   return vi.waitFor(read, { timeout: 5000, interval: 20 });
 };
 
+const renderOrphan = (orphan: CmsCatalogOrphan) => {
+  switch (orphan.kind) {
+    case "stale_page":
+      return (
+        <OrphanRow
+          key={orphan.key}
+          name={orphan.name}
+          isStale={true}
+          removeIn="menu"
+        />
+      );
+    case "sitemap":
+      return (
+        <OrphanRow
+          key={orphan.key}
+          name={orphan.slug}
+          isStale={false}
+          sitemapSlug={orphan.slug}
+          removeIn="menu"
+        />
+      );
+    case "no_collection":
+      return (
+        <OrphanRow
+          key={orphan.key}
+          name={orphan.name}
+          isStale={orphan.isStale}
+          removeIn="menu"
+        />
+      );
+  }
+};
+
+/**
+ * The catalog's collections as the native CMS column mounts the menu
+ * (cms-native-screen.tsx): a row per collection with its actions menu and
+ * stale line, then the orphans, each a menu.
+ */
+const CatalogRows = () => {
+  const catalog = useCatalog();
+  const pages = useStore($pages);
+  const instances = useStore($instances);
+  const props = useStore($props);
+  const dataSources = useStore($dataSources);
+  const resources = useStore($resources);
+  if (catalog === undefined || pages === undefined) {
+    return null;
+  }
+  const { rows, orphans } = joinCmsCatalog(
+    catalog.flatMap((entry) => getCollectionSlug(entry) ?? []),
+    catalog,
+    { pages, instances, props, dataSources, resources }
+  );
+  return (
+    <div>
+      {[...rows].map(([slug, row]) => (
+        <div key={slug} data-organizeos-collection={slug}>
+          <span>{row.entry.resource.name}</span>
+          <CollectionActionsMenu
+            slug={slug}
+            name={row.entry.resource.name}
+            itemPage={row.itemPage}
+            isSitemapOrphan={row.isSitemapOrphan}
+          />
+          {row.isStale && <StaleItemPageLine />}
+        </div>
+      ))}
+      {orphans.map(renderOrphan)}
+    </div>
+  );
+};
+
 const render = async () => {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
   act(() => {
     root?.render(
-      createElement(TooltipProvider, null, createElement(OrganizeosPanel))
+      createElement(TooltipProvider, null, createElement(CatalogRows))
     );
   });
   // the catalog has resolved: its collection rows are there
@@ -324,7 +402,7 @@ afterEach(() => {
 });
 
 describe("a collection row's menu", () => {
-  test("replaces the row's button with a '...' menu: Create item page, Add list, Add to this page", async () => {
+  test("is a '...' menu of Create item page and Add list, with no Add to this page", async () => {
     await render();
     expect((await findRow("blog")).textContent).toEqual("Blog posts");
     const trigger = row("blog")?.querySelector("button");
@@ -334,17 +412,7 @@ describe("a collection row's menu", () => {
     expect(items.map((item) => item.textContent)).toEqual([
       "Create item page",
       "Add list",
-      "Add to this page",
     ]);
-  });
-
-  test("other catalog rows keep their button", async () => {
-    const host = await render();
-    await until(() =>
-      expect(
-        host.querySelector("[data-organizeos-data]")?.textContent
-      ).toContain("EventsAdd to this page")
-    );
   });
 
   test("Create item page creates it, switches to it and says 'Item page created', with no action", async () => {
@@ -377,18 +445,6 @@ describe("a collection row's menu", () => {
     expect($pages.get()).toBe(pages);
   });
 
-  test("Add to this page binds the Resource, and then shows 'On this page' with the entry disabled", async () => {
-    await render();
-    await choose(menuItem(await openMenu("blog"), "Add to this page"));
-    await until(() =>
-      expect(row("blog")?.textContent).toContain("On this page")
-    );
-    const items = await openMenu("blog");
-    expect(
-      menuItem(items, "Add to this page").hasAttribute("data-disabled")
-    ).toBe(true);
-  });
-
   test("without dynamic data in the plan, Create item page and Add list are disabled with the plan badge", async () => {
     $planFeatures.set({ ...defaultPlanFeatures, allowDynamicData: false });
     await render();
@@ -400,9 +456,7 @@ describe("a collection row's menu", () => {
       // a plain label: never a link to a pricing page
       expect(item.querySelector("a, [href]"), name).toBeNull();
     }
-    expect(
-      menuItem(items, "Add to this page").hasAttribute("data-disabled")
-    ).toBe(false);
+    expect(menuItem(items, "Add to this page")).toBeUndefined();
     await choose(menuItem(items, "Create item page"));
     expect(findCollectionItemPage("blog")).toBeUndefined();
   });
@@ -612,7 +666,7 @@ describe("Remove from sitemap", () => {
     await until(() => expect(listSitemapCollections()).toEqual([]));
   });
 
-  test("a sitemap part of a collection no longer in the catalog gets a row with the button", async () => {
+  test("a sitemap part of a collection no longer in the catalog gets a row with a menu", async () => {
     await render();
     await createBlogItemPage();
     act(() => {
@@ -623,10 +677,23 @@ describe("Remove from sitemap", () => {
     removeBlogFromCatalog();
     await render();
     const orphan = await orphanRow();
-    expect(orphan.textContent).toEqual("blogRemove from sitemap");
+    expect(orphan.textContent).toEqual("blog");
+    const trigger = orphan.querySelector(
+      '[aria-label="blog menu"]'
+    ) as HTMLElement;
     act(() => {
-      (orphan.querySelector("button") as HTMLElement).click();
+      trigger.dispatchEvent(
+        new MouseEvent("pointerdown", { bubbles: true, button: 0 })
+      );
     });
+    const items = await until(() => {
+      const found = Array.from(
+        document.querySelectorAll<HTMLElement>('[role="menuitem"]')
+      );
+      expect(found.length).toBeGreaterThan(0);
+      return found;
+    });
+    await choose(menuItem(items, "Remove from sitemap"));
     await until(() => expect(listSitemapCollections()).toEqual([]));
   });
 });
@@ -855,14 +922,13 @@ describe("the split for the CMS column", () => {
     ]);
   });
 
-  test("the tab's menu keeps today's order for a sitemap orphan", async () => {
+  test("a sitemap orphan's menu offers Create item page, Add list and Remove from sitemap, and no Add to this page", async () => {
     await leaveBlogInSitemap();
     await render();
     const items = await openMenu("blog");
     expect(items.map((item) => item.textContent)).toEqual([
       "Create item page",
       "Add list",
-      "Add to this page",
       "Remove from sitemap",
     ]);
   });

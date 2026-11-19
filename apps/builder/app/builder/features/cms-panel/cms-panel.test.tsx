@@ -214,9 +214,9 @@ describe("$isCmsPanelAvailable", () => {
 });
 
 describe("the sidebar's panels", () => {
-  test("cms is no longer a panel name, and the OrganizeOS data tab is", () => {
+  test("neither cms nor the OrganizeOS data tab is a panel name", () => {
     expect(sidebarPanelNames).not.toContain("cms");
-    expect(sidebarPanelNames).toContain("organizeos");
+    expect(sidebarPanelNames).not.toContain("organizeos");
   });
 });
 
@@ -539,47 +539,34 @@ describe("the CMS overlay in the builder", () => {
     });
   });
 
-  describe("the data tab", () => {
-    test("is back in its own slot after Components, with the CMS on the rail too", () => {
+  describe("the rail without the data tab", () => {
+    const rail = [
+      "Components",
+      "Pages",
+      "Navigator",
+      "Assets",
+      "CMS",
+      "Variables",
+    ];
+
+    test("reads Components, Pages, Navigator, Assets, then CMS and Variables", () => {
       render();
-      expect(tab("OrganizeOS data")).not.toBeNull();
-      expect(railLabels()).toEqual([
-        "Components",
-        "OrganizeOS data",
-        "Pages",
-        "Navigator",
-        "Assets",
-        "CMS",
-        "Variables",
-      ]);
+      expect(tab("OrganizeOS data")).toBeNull();
+      expect(railLabels()).toEqual(rail);
     });
 
-    test("the Variables button shows for an org denied the blocks", () => {
-      $organizeosSite.set({ ...site, blocksEnabled: false });
-      render();
-      expect(
-        document.querySelector('[data-rail-button="variables"]')
-      ).not.toBeNull();
-    });
-
-    test("keeps its rules: only for an org not denied the blocks", () => {
+    test("reads the same for an org denied the blocks", () => {
       $organizeosSite.set({ ...site, blocksEnabled: false });
       render();
       expect(tab("OrganizeOS data")).toBeNull();
-      expect(railButton()).not.toBeNull();
+      expect(railLabels()).toEqual(rail);
     });
 
-    test("keeps its rules: hidden in Content mode", () => {
-      $builderMode.set("content");
-      render();
-      expect(tab("OrganizeOS data")).toBeNull();
-    });
-
-    test("is listed without the CMS", () => {
+    test("reads the same without the CMS", () => {
       $organizeosSite.set({ ...site, cmsPanelEnabled: false });
       render();
-      expect(tab("OrganizeOS data")).not.toBeNull();
       expect(railButton()).toBeNull();
+      expect(railLabels()).toEqual(rail.filter((label) => label !== "CMS"));
     });
   });
 

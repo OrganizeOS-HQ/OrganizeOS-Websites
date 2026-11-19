@@ -893,7 +893,7 @@ export const removeCollectionFromSitemap = async (
 };
 
 /**
- * Create item page, from the data tab: reads the collection's schema and its
+ * Create item page, from the collection menu: reads the collection's schema and its
  * first item, then writes the page in one transaction and switches to it.
  * The same transaction creates the sitemap page, or adds the collection to
  * it (addCollectionToSitemapMutable).

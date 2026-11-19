@@ -19,7 +19,6 @@ import {
   NavigatorIcon,
   PageIcon,
   PlusIcon,
-  ResourceIcon,
   type IconComponent,
 } from "@webstudio-is/icons";
 import { useStore } from "@nanostores/react";
@@ -44,10 +43,6 @@ import {
 } from "~/builder/shared/assets/drag-monitor";
 import { getSetting, setSetting } from "~/builder/shared/client-settings";
 import { ComponentsPanel } from "~/builder/features/components";
-import {
-  $isOrganizeosPanelAvailable,
-  OrganizeosPanel,
-} from "~/builder/features/organizeos-panel";
 import {
   CmsOverlay,
   CmsRailButton,
@@ -141,22 +136,6 @@ const panels: PanelConfig[] = [
       text: false,
     },
   },
-  // OrganizeOS fork: the OrganizeOS data tab: the org's data catalog. The
-  // CMS is not a panel: it is a rail button that opens an overlay
-  // (builder/features/cms-panel). The blocks are in the Components panel's
-  // OrganizeOS section, which binds each to the project's data as it inserts
-  // it, and Motion is in the Inspector. Offered only to orgs not denied
-  // the blocks (see getAvailablePanels).
-  {
-    name: "organizeos",
-    label: "OrganizeOS data",
-    Icon: ResourceIcon,
-    Panel: OrganizeosPanel,
-    visibility: {
-      content: false,
-      text: false,
-    },
-  },
   {
     name: "pages",
     label: "Pages",
@@ -182,12 +161,6 @@ const panels: PanelConfig[] = [
     Panel: AssetsPanel,
   },
 ];
-
-// OrganizeOS fork: the OrganizeOS data tab only where the org may use it.
-const getAvailablePanels = (isOrganizeosPanelAvailable: boolean) =>
-  panels.filter(
-    (panel) => panel.name !== "organizeos" || isOrganizeosPanelAvailable
-  );
 
 const setSidebarPanelWidth = (panelName: string, width: number) => {
   const widths = getSetting("sidebarPanelWidths");
@@ -218,12 +191,7 @@ type SidebarLeftProps = {
 export const SidebarLeft = ({ publish }: SidebarLeftProps) => {
   const activePanel = useStore($activeSidebarPanel);
   const dragAndDropState = useStore($dragAndDropState);
-  const availablePanels = getAvailablePanels(
-    useStore($isOrganizeosPanelAvailable)
-  );
-  const activePanelConfig = availablePanels.find(
-    (item) => item.name === activePanel
-  );
+  const activePanelConfig = panels.find((item) => item.name === activePanel);
   const { Panel } = activePanelConfig ?? none;
   const isPreviewMode = useStore($isPreviewMode);
   const isContentMode = useStore($isContentMode);
@@ -299,7 +267,7 @@ export const SidebarLeft = ({ publish }: SidebarLeftProps) => {
           <ExternalDragDropMonitor />
           <div ref={tabsWrapperRef} style={{ display: "contents" }}>
             <SidebarTabsList>
-              {availablePanels
+              {panels
                 .filter((panel) => isPanelVisible(panel, modes))
                 .map(({ name, Icon, label, visibility, ariaLabel }) => {
                   const disabled = isPanelDisabled({ visibility }, modes);
