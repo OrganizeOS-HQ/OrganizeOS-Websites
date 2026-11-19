@@ -61,6 +61,7 @@ import {
   CmsImageNode,
   importStoredImages,
 } from "./rich-text-image-node";
+import { CmsLineNode, registerLineTransforms } from "./rich-text-line-node";
 
 /**
  * One node for each tag of the platform's allowlist, and the code block's
@@ -77,6 +78,7 @@ export const richTextNodes: ReadonlyArray<Klass<LexicalNode>> = [
   HorizontalRuleNode,
   CmsImageNode,
   CmsFigureNode,
+  CmsLineNode,
 ];
 
 const parseHtml = (html: string) =>
@@ -619,7 +621,8 @@ export const registerRichTextTransforms = (editor: LexicalEditor) =>
     editor.registerNodeTransform(CodeNode, $keepCodePlain),
     editor.registerNodeTransform(CmsFigureNode, $liftFigure),
     editor.registerNodeTransform(ListItemNode, $keepItemInList),
-    editor.registerNodeTransform(LinkNode, $unwrapBreakOnlyLink)
+    editor.registerNodeTransform(LinkNode, $unwrapBreakOnlyLink),
+    registerLineTransforms(editor)
   );
 
 /** The editor's load and save of a stored value, with no view. */
@@ -704,6 +707,8 @@ const isFlattenedAtDepthLimit = (stored: string) =>
 
 const readOnlyMemo = new Map<string, RichTextReadOnlyReason | undefined>();
 const READ_ONLY_MEMO_SIZE = 8;
+/** SPIKE: a fresh read-only check. */
+export const clearRichTextReadOnlyMemo = () => readOnlyMemo.clear();
 
 /**
  * "lossy" for a value the editor would change on a load and save: the value
