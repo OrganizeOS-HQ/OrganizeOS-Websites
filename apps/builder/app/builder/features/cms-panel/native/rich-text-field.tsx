@@ -3083,7 +3083,19 @@ const $placeAfterCode = (code: LexicalNode, images: LexicalNode[]) => {
  * first child is a block: the editor's own edits read no such element as a
  * block. A list holds only items, and the root is not such a block.
  */
+/** SPIKE: guards made no-ops, from VITE_GUARDS_OFF (comma separated). */
+const guardOff = (name: string) =>
+  String(
+    (import.meta as { env?: Record<string, string> }).env?.VITE_GUARDS_OFF ??
+      ""
+  )
+    .split(",")
+    .includes(name);
+
 const $blockLedItemAt = (point: PointType) => {
+  if (guardOff("blockLedItemAt")) {
+    return;
+  }
   let block: LexicalNode | null =
     point.type === "element" ? point.getNode() : point.getNode().getParent();
   while ($isElementNode(block) && block.isInline()) {
@@ -3110,6 +3122,10 @@ const $blockLedItemAt = (point: PointType) => {
  * paragraph of its own at the caret, as in its other paragraphs.
  */
 const $editInBlockLedItem = (selection: RangeSelection, edit: () => void) => {
+  if (guardOff("editInBlockLedItem")) {
+    edit();
+    return false;
+  }
   const start = selection.isBackward() ? selection.focus : selection.anchor;
   const item = $blockLedItemAt(start);
   if (item === undefined) {
@@ -3162,6 +3178,9 @@ const $editInBlockLedItem = (selection: RangeSelection, edit: () => void) => {
  * quote; false, with nothing done, anywhere else.
  */
 const $editAtBlockLed = (edit: (selection: RangeSelection) => void) => {
+  if (guardOff("editAtBlockLed")) {
+    return false;
+  }
   const selection = $getSelection();
   if ($isRangeSelection(selection) === false) {
     return false;
@@ -3182,6 +3201,7 @@ const $insertPlainTextAtBlockLed = (
   editor: LexicalEditor,
   data: DataTransfer
 ) =>
+  guardOff("insertPlainTextAtBlockLed") === false &&
   data.getData("text/plain") !== "" &&
   data.getData("text/html") === "" &&
   $ownClipboardNodes(editor, data) === undefined &&
@@ -3229,6 +3249,7 @@ const $insertIntoListItem = (
     last === null ? null : $findMatchingParent(last, $isListItemNode);
   let lead: TextNode | undefined;
   if (
+    guardOff("z6") === false &&
     $isListItemNode(lastItem) &&
     isBlock(lastItem.getFirstChild()) &&
     lastItem.getLastChild() !== null &&
@@ -3506,6 +3527,9 @@ const $pointOutOfInline = (point: PointType) => {
 };
 
 const $selectionIntoAdjacentBlocks = () => {
+  if (guardOff("selectionIntoAdjacentBlocks")) {
+    return false;
+  }
   const selection = $getSelection();
   if ($isRangeSelection(selection)) {
     $pointOutOfInline(selection.anchor);
