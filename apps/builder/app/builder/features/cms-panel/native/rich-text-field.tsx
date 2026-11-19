@@ -2979,12 +2979,6 @@ const $placeAfterCode = (code: LexicalNode, images: LexicalNode[]) => {
 };
 
 /**
- * Nodes inserted in a list item: the item split at the selection leaves no
- * empty item when the last inserted item starts with a block (its content
- * cannot join the split-off rest). Items empty before, or inserted empty,
- * stay.
- */
-/**
  * The list item that directly holds a point, when the item's first child is
  * a block: the editor's own split reads no such item as a block.
  */
@@ -3052,6 +3046,12 @@ const $caretIntoText = () => {
   }
 };
 
+/**
+ * Nodes inserted in a list item: the item split at the selection leaves no
+ * empty item when the last inserted item starts with a block (its content
+ * cannot join the split-off rest). Items empty before, or inserted empty,
+ * stay.
+ */
 const $insertIntoListItem = (
   nodes: LexicalNode[],
   selection: RangeSelection

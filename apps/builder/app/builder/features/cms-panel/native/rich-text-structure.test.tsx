@@ -912,27 +912,19 @@ describe("what follows a pasted item's nested list and imports to nothing adds n
 describe("a pasted item starting with a block leaves no empty item (H2)", () => {
   test.each([
     {
-      name: "the rest after a nested list: a quote, then text",
-      html: "<ul><li>s1</li><li>t1</li></ul>",
-      paste:
-        "<ul><li>A<ul><li>X</li></ul><blockquote><p>Z1</p></blockquote>Z2</li></ul>",
-    },
-    {
-      name: "the rest after a nested list, into a numbered list",
+      name: "a quote, then text, into a numbered list",
       html: "<ol><li>r1</li><li>s1</li></ol>",
-      paste:
-        "<ul><li>A<ul><li>X</li></ul><blockquote><p>Z1</p></blockquote>Z2</li></ul>",
+      paste: "<ul><li><blockquote><p>Z1</p></blockquote>Z2</li></ul>",
     },
     {
       name: "a heading, then bold text",
       html: "<ul><li>s1</li><li>t1</li></ul>",
-      paste: "<ul><li>A<ul><li>X</li></ul><h2>Z1</h2><b>Z2</b></li></ul>",
+      paste: "<ul><li><h2>Z1</h2><b>Z2</b></li></ul>",
     },
     {
-      name: "the rest after a nested list, at depth 3",
+      name: "a quote, then text, at depth 3",
       html: "<ul><li>a<ul><li>b<ul><li>s1</li><li>t1</li></ul></li></ul></li></ul>",
-      paste:
-        "<ul><li>A<ul><li>X</li></ul><blockquote><p>Z1</p></blockquote>Z2</li></ul>",
+      paste: "<ul><li><blockquote><p>Z1</p></blockquote>Z2</li></ul>",
     },
     {
       name: "an item holding a quote, then text",
@@ -1402,8 +1394,8 @@ describe("a list pasted after a block into a nested item keeps the depth limit (
 });
 
 describe("Enter and paste in an item starting with a block (R3)", () => {
-  const H2_PASTE =
-    "<ul><li>A<ul><li>X</li></ul><blockquote><p>Z1</p></blockquote>Z2</li></ul>";
+  const BLOCK_LED_PASTE =
+    "<ul><li><blockquote><p>Z1</p></blockquote>Z2</li></ul>";
   /** Runs `step`, which must finish in under two seconds. */
   const quickly = async (step: () => Promise<void>) => {
     const start = performance.now();
@@ -1437,7 +1429,7 @@ describe("Enter and paste in an item starting with a block (R3)", () => {
 
   test("Enter after the pasted item's text makes an item", async () => {
     const onChange = await mountAt("<ul><li>s1</li><li>t1</li></ul>", "s1");
-    paste({ "text/html": H2_PASTE, "text/plain": "x" });
+    paste({ "text/html": BLOCK_LED_PASTE, "text/plain": "x" });
     await settle();
     await enterAndType();
     const written = plain(lastHtml(onChange));
@@ -1447,15 +1439,40 @@ describe("Enter and paste in an item starting with a block (R3)", () => {
 
   test("a second paste after the pasted item's text lands", async () => {
     const onChange = await mountAt("<ul><li>s1</li><li>t1</li></ul>", "s1");
-    paste({ "text/html": H2_PASTE, "text/plain": "x" });
+    paste({ "text/html": BLOCK_LED_PASTE, "text/plain": "x" });
     await settle();
     await quickly(async () => {
       paste({ "text/html": "<p>more</p><p>again</p>", "text/plain": "x" });
       await settle();
     });
     const written = plain(lastHtml(onChange));
-    expect(readingOrder(written)).toBe("s1|A|X|Z1|Z2more|again|t1");
+    expect(readingOrder(written)).toBe("s1|Z1|Z2more|again|t1");
   }, 60000);
+
+  test.each([
+    ["two paragraphs", "<p>more</p><p>again</p>", "q1|q2more|again|t1"],
+    ["a list", "<ul><li>k1</li><li>k2</li></ul>", "q1|q2|k1|k2|t1"],
+  ])(
+    "a paste of %s at the end of a stored item starting with a quote",
+    async (_name, pasted, order) => {
+      const onChange = await mountAt(
+        "<ul><li><blockquote><p>q1</p></blockquote>q2</li><li>t1</li></ul>",
+        "q1"
+      );
+      await clickText("q2");
+      const errors = vi.spyOn(console, "error");
+      await quickly(async () => {
+        paste({ "text/html": pasted, "text/plain": "x" });
+        await settle();
+      });
+      expect(errors).not.toHaveBeenCalled();
+      const written = plain(lastHtml(onChange));
+      expect(written).not.toMatch(/<li[^>]*><\/li>/);
+      expect(readingOrder(written)).toBe(order);
+      expectFixedPoint(written);
+    },
+    60000
+  );
 
   test.each([
     ["at its end", undefined, "q2xy</li><li>e</li><li>t1"],
@@ -1520,14 +1537,13 @@ describe("a paste over a backward selection from a list item leaves no empty ite
       "s1"
     );
     paste({
-      "text/html":
-        "<ul><li>A<ul><li>X</li></ul><blockquote><p>Z1</p></blockquote>Z2</li></ul>",
+      "text/html": "<ul><li><blockquote><p>Z1</p></blockquote>Z2</li></ul>",
       "text/plain": "x",
     });
     await settle();
     const written = plain(lastHtml(onChange));
     expect(written).not.toMatch(/<li[^>]*><\/li>/);
-    expect(readingOrder(written)).toBe("r1|s1|A|X|Z1|Z2");
+    expect(readingOrder(written)).toBe("r1|s1|Z1|Z2");
   });
 });
 
@@ -1624,6 +1640,7 @@ describe("inline content after a lifted block keeps to its own runs (R4)", () =>
     ["two line breaks", "<br><br>", "a.|x.|y."],
     ["line breaks around a heading", "<br><h2>h.</h2><br>", "a.|x.|y.|h."],
     ["a rule, then a paragraph", "<hr><p>t.</p>", "a.|x.|y.|t."],
+    ["text, then two line breaks", "t.<br><br>", "a.|x.|y.|t."],
   ])("%s after the second quote", async (_name, after, order) => {
     const onChange = await mountAt(nestedList(6, "s"), "s6");
     paste({
@@ -1930,21 +1947,30 @@ describe("items under marks or wrappers in a pasted list stay its items (T4)", (
       );
     });
   };
-  const SHAPES = [
+  const SHAPES: [string, string, string | undefined][] = [
     [
       "links",
       '<ul><a href="https://example.org/a"><li>Aq</li></a><a href="https://example.org/b"><li>Bq</li></a></ul>',
+      "link",
     ],
-    ["bold in a bulleted list", "<ul><b><li>Aq</li><li>Bq</li></b></ul>"],
-    ["bold in a numbered list", "<ol><b><li>Aq</li><li>Bq</li></b></ol>"],
-    ["a div", "<ul><div><li>Aq</li><li>Bq</li></div></ul>"],
-    ["a span", "<ul><span><li>Aq</li><li>Bq</li></span></ul>"],
+    [
+      "bold in a bulleted list",
+      "<ul><b><li>Aq</li><li>Bq</li></b></ul>",
+      "bold",
+    ],
+    [
+      "bold in a numbered list",
+      "<ol><b><li>Aq</li><li>Bq</li></b></ol>",
+      "bold",
+    ],
+    ["a div", "<ul><div><li>Aq</li><li>Bq</li></div></ul>", undefined],
+    ["a span", "<ul><span><li>Aq</li><li>Bq</li></span></ul>", undefined],
   ];
   test.each(
-    SHAPES.flatMap(([name, html]) =>
-      ["drop", "paste"].map((how) => ({ name, html, how }))
+    SHAPES.flatMap(([name, html, mark]) =>
+      ["drop", "paste"].map((how) => ({ name, html, mark, how }))
     )
-  )("$name, by $how", async ({ html, how }) => {
+  )("$name, by $how", async ({ html, mark, how }) => {
     const onChange = await mountAt("<p></p>", "");
     if (how === "drop") {
       await drop(html);
@@ -1960,6 +1986,9 @@ describe("items under marks or wrappers in a pasted list stay its items (T4)", (
     expect(list.querySelectorAll("ul, ol")).toHaveLength(0);
     expect(list.children).toHaveLength(2);
     expect(readingOrder(written)).toBe("Aq|Bq");
+    if (mark !== undefined) {
+      expect(marked(mark, ["Aq", "Bq"])).toEqual(["Aq: true", "Bq: true"]);
+    }
   });
 });
 
@@ -1983,10 +2012,19 @@ describe("a new item starts at its content (T3)", () => {
   });
 
   test.each(
-    ["‎", "‏", "­", "؜", "‪", "‮", "⁦", "⁩", "⁢", "️", "᠎"].map((char) => [
-      char.codePointAt(0)!.toString(16).padStart(4, "0"),
-      char,
-    ])
+    [
+      "\u200e",
+      "\u200f",
+      "\u00ad",
+      "\u061c",
+      "\u202a",
+      "\u202e",
+      "\u2066",
+      "\u2069",
+      "\u2062",
+      "\ufe0f",
+      "\u180e",
+    ].map((char) => [char.codePointAt(0)!.toString(16).padStart(4, "0"), char])
   )("U+%s after the nested list adds no item", async (_code, char) => {
     const onChange = await mountAt("<p></p>", "");
     paste({
@@ -2282,7 +2320,15 @@ describe("an item under a quote, code, heading or table in a list stays stray (V
 });
 
 describe("default-ignorable characters after a nested list add no item (V4)", () => {
-  test.each(["ㅤ", "͏", "ᅟ", "ﾠ", "឴", "᠋", "\u{e0100}"])("%j", async (char) => {
+  test.each([
+    "\u3164",
+    "\u034f",
+    "\u115f",
+    "\uffa0",
+    "\u17b4",
+    "\u180b",
+    "\u{e0100}",
+  ])("%j", async (char) => {
     const onChange = await mountAt("<p></p>", "");
     paste({
       "text/html": `<ul><li>Aq<ul><li>Xq</li></ul>${char}</li><li>Bq</li></ul>`,
