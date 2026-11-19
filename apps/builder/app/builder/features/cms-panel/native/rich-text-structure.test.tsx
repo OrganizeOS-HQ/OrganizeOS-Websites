@@ -2841,8 +2841,14 @@ describe("the text after the caret joins a pasted item that starts with a rule (
   ] as const)(
     "%s",
     async (_name, stored, html, offset, pastedWrite, typedWrite) => {
-      const { pasted, typed } = await run(stored, html, "paste", offset);
+      const { pasted, redone, typed } = await run(
+        stored,
+        html,
+        "paste",
+        offset
+      );
       expect(pasted).toBe(pastedWrite);
+      expect(redone).toBe(pastedWrite);
       expect(typed).toBe(typedWrite);
     },
     60000
@@ -2916,26 +2922,26 @@ describe("the text after the caret joins a pasted item that starts with a rule (
         "<ul><li>s1</li></ul><ol><li>Aq</li><li><hr />T1qZq</li></ol><ul><li>t1q</li></ul>",
       ],
     ];
-    test.each(
+    test.for(
       CASES.flatMap(([name, stored, html, pastedWrite, typedWrite]) =>
-        (["paste", "drop"] as const).map((how) => ({
-          name,
-          stored,
-          html,
-          how,
-          pastedWrite,
-          typedWrite,
-        }))
+        (["paste", "drop"] as const).map(
+          (how) =>
+            [
+              `${how} of ${name} writes`,
+              stored,
+              html,
+              how,
+              pastedWrite,
+              typedWrite,
+            ] as const
+        )
       )
-    )(
-      "$how of $name writes",
-      async ({ stored, html, how, pastedWrite, typedWrite }) => {
-        const { pasted, typed } = await run(stored, html, how);
-        expect(pasted).toBe(pastedWrite);
-        expect(typed).toBe(typedWrite);
-      },
-      60000
-    );
+    )("%s", async ([, stored, html, how, pastedWrite, typedWrite]) => {
+      const { pasted, redone, typed } = await run(stored, html, how);
+      expect(pasted).toBe(pastedWrite);
+      expect(redone).toBe(pastedWrite);
+      expect(typed).toBe(typedWrite);
+    });
 
     const P_S =
       "<ul><li>p1q</li><li>s1q<ul><li>n1q</li></ul></li><li>t1q</li></ul>";
