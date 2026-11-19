@@ -30,7 +30,8 @@ import {
   undo,
   unmountField,
 } from "./rich-text-test-harness";
-import { $createNodeSelection } from "lexical";
+import { $createNodeSelection, SELECTION_CHANGE_COMMAND } from "lexical";
+import { lineRuleViolations } from "./rich-text-line-node";
 import {
   clearRichTextReadOnlyMemo,
   getRichTextReadOnlyReason,
@@ -80,6 +81,10 @@ const nodeSelectAfter = (word: string): Step => async () => {
 };
 
 /** An element point on the `nth` list item or quote holding `word`. */
+/** The selection change a click's DOM selection would dispatch. */
+const announce = () => {
+  editorOf()!.dispatchCommand(SELECTION_CHANGE_COMMAND, undefined);
+};
 const elementPoint = (word: string, offset: number): Step => async () => {
   await clickInWord(word);
   await act(async () => {
@@ -99,6 +104,7 @@ const elementPoint = (word: string, offset: number): Step => async () => {
       selection.anchor.set(container!.getKey(), offset, "element");
       selection.focus.set(container!.getKey(), offset, "element");
       $setSelection(selection);
+      announce();
     });
   });
   await settle();
@@ -192,6 +198,7 @@ const nodeSelect = (type: string): Step => async () => {
       const selection = $createNodeSelection();
       selection.add(target.getKey());
       $setSelection(selection);
+      announce();
     });
   });
   await settle();
@@ -342,6 +349,7 @@ const RECORDS: Rec[] = [
         selection.anchor.set(host.getKey(), host.getChildrenSize(), "element");
         selection.focus.set(host.getKey(), host.getChildrenSize(), "element");
         $setSelection(selection);
+      announce();
       });
     });
     await settle();
@@ -349,10 +357,86 @@ const RECORDS: Rec[] = [
   ["Q6 a line of only an image, mounted", `<ul><li><blockquote>Q0w</blockquote>${IMGTAG}</li><li>Nw</li></ul>`, at("Nw"), keys("k")],
   ["Q6 a line of only an image, by the Image button", "<ul><li><blockquote>Q0w</blockquote>T1w</li><li>Nw</li></ul>", ["T1w", 0, "T1w", 3], imageButton],
   ["Q6 depth 6 list paste", "<ul><li>s1<ul><li>s2<ul><li>s3<ul><li>s4<ul><li>s5<ul><li>T0w<blockquote>Q1w</blockquote>T2w</li></ul></li></ul></li></ul></li></ul></li></ul>", at("T0w"), pasteHtml("<ul><li>Aq</li><li>Bq<blockquote>Cq</blockquote></li></ul>")],
+  ["R5 click to a bare point after a rule, then undo", "<ul><li>Pw</li><li>T0w<hr></li><li>Nw</li></ul>", async () => {
+    await clickInWord("Pw");
+    await userEvent.keyboard("k");
+    await settle();
+  }, async () => {
+    const item = editable()!.querySelectorAll("li")[1] as HTMLElement;
+    const box = item.getBoundingClientRect();
+    await userEvent.click(item, { position: { x: box.width - 2, y: box.height - 2 } } as never);
+    await settle();
+  }],
+  ["R5 click to a bare point, then back to Pw (lines: 1 expected)", "<ul><li>Pw</li><li>T0w<hr></li><li>Nw</li></ul>", at("Pw"), async () => {
+    const item = editable()!.querySelectorAll("li")[1] as HTMLElement;
+    const box = item.getBoundingClientRect();
+    await userEvent.click(item, { position: { x: box.width - 2, y: box.height - 2 } } as never);
+    await settle();
+    console.log(`MID ${JSON.stringify(editorOf()!.getEditorState().toJSON()).split('"cms-line"').length - 1}`);
+    await clickInWord("Pw");
+  }],
+  ["R5 arrow key to a bare point after a rule", "<ul><li>Pw</li><li>T0w<hr></li><li>Nw</li></ul>", at("T0w"), keys("{ArrowRight}{ArrowRight}")],
+  ["R5 TCT Backspace at C1w@0", "<ul><li>Pw</li><li>T0w<pre><code>C1w</code></pre>T2w</li><li>Nw</li></ul>", at("C1w", 0), keys("{Backspace}")],
+  ["R5 BQB Backspace at Q1w@0", "<ul><li>Pw</li><li><br><blockquote><p>Q1w</p></blockquote><br></li><li>Nw</li></ul>", at("Q1w", 0), keys("{Backspace}")],
+  ["R5 TQT Backspace at T2w@0", "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>", at("T2w", 0), keys("{Backspace}")],
+  ["R5 D13 Code at TR item@2", TR, elementPoint("T0w", 2), blockType("Code")],
+  ["R5 T13 QB range Image", "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><br></li><li>Nw</li></ul>", ["Pw", 1, "Q0w", 3], imageButton],
+  ["R5 K0 BQT whole item letter", "<ul><li>Pw</li><li><br><blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>", ["Q1w", 0, "T2w", 3], keys("k")],
+  ["R5 triple-click then Enter", "<ul><li>Aw</li><li>Bw</li></ul>", async () => {
+    await clickInWord("Aw", 1);
+    await userEvent.tripleClick(editable()!.querySelector("li")!);
+    await settle();
+  }, keys("{Enter}")],
+  ["R5 paste over a range inside a mixed item", "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>", ["T0w", 1, "T2w", 1], pasteHtml("<p>Aq</p><p>Bq</p>")],
+  ["R5 list off on a nested list in a mixed item", "<ul><li>T0w<blockquote><p>Q1w</p></blockquote><ul><li>Nw</li></ul></li></ul>", at("Nw", 1), button("Bulleted list")],
+  ["R5 Enter over a range", "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>", ["Pw", 1, "Q1w", 3], keys("{Enter}")],
+  ["R5 Shift+Enter over a range", "<ul><li>Pw</li><li><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>", ["Pw", 1, "Q1w", 3], keys("{Shift>}{Enter}{/Shift}")],
+  ["R5 Divider over a range", "<ul><li>Pw</li><li><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>", ["Pw", 1, "Q1w", 3], button("Divider")],
+  ["R5 cut empties an item", "<ul><li>Pw</li><li><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>", ["Pw", 1, "Q1w", 3], () => clipboardEvent("cut")],
+  ["R5 files-only paste with a rule selected", "<ul><li>xq<hr>yq</li></ul>", nodeSelectAfter("xq"), async () => {
+    const data = new DataTransfer();
+    data.items.add(new File(["x"], "a.txt", { type: "text/plain" }));
+    await act(async () => {
+      editable()!.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: data }));
+    });
+    await settle();
+  }],
+  ["R5 letter with a rule selected by arrows", "<ul><li>xq<hr>yq</li></ul>", nodeSelectAfter("xq"), keys("k")],
+  ["R5 Ctrl+A then Bold", "<ul><li>Pw</li><li>T0w<hr></li><li>Nw</li></ul>", async () => {
+    await clickInWord("Pw");
+    await userEvent.keyboard("{Control>}a{/Control}");
+    await settle();
+  }, button("Bold")],
 ];
 
 // Q1: Enter and Block type at every element point of these item shapes.
 const Q1_COMMANDS: Array<[string, Step]> = [
+  ["Backspace", keys("{Backspace}")],
+  ["Delete", keys("{Delete}")],
+  ["Ctrl+Backspace", keys("{Control>}{Backspace}{/Control}")],
+  ["Ctrl+Delete", keys("{Control>}{Delete}{/Control}")],
+  ["Shift+Enter", keys("{Shift>}{Enter}{/Shift}")],
+  ["Quote", blockType("Quote")],
+  ["Code", blockType("Code")],
+  ["Paragraph", blockType("Paragraph")],
+  ["cut", () => clipboardEvent("cut")],
+  ["paste HTML", pasteHtml("<p>Aq</p><p>Bq</p>")],
+  ["paste text", pasteText("Aq")],
+  ["paste own nodes", async () => {
+    clip = new DataTransfer();
+    clip.setData("text/html", "<b>Aq</b>");
+    clip.setData("text/plain", "Aq");
+    await pasteClip();
+  }],
+  ["drop", async () => {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.setData("text/html", "<p>Dq</p>");
+    dataTransfer.setData("text/plain", "Dq");
+    await act(async () => {
+      editable()!.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, cancelable: true, inputType: "insertFromDrop", dataTransfer }));
+    });
+    await settle();
+  }],
   ["Image", imageButton],
   ["Divider", button("Divider")],
   ["Link", linkButton],
@@ -392,6 +476,7 @@ for (const [name, html, , size] of Q1_SHAPES) {
           selection.anchor.set(item.getKey(), index, "element");
           selection.focus.set(item.getKey(), index, "element");
           $setSelection(selection);
+      announce();
         });
       });
       await settle();
@@ -468,6 +553,7 @@ describe("S records", () => {
           errors.push(text.slice(0, 200));
         }
       });
+      lineRuleViolations.splice(0);
       let onChange = await mount(stored);
       if (Array.isArray(place)) {
         await click(editable());
@@ -546,6 +632,8 @@ describe("S records", () => {
           undoRestores: calls === 0 || undone === stored,
           redoState,
           redoDiff,
+          violations: lineRuleViolations.splice(0),
+          lines: JSON.stringify(editorOf()!.getEditorState().toJSON()).split('"cms-line"').length - 1,
           clipHtml: clip?.getData("text/html"),
           clipHasLine: (clip?.getData("application/x-lexical-editor") ?? "").includes("cms-line"),
         })}`

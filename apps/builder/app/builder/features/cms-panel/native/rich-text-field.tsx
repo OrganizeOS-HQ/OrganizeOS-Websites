@@ -27,6 +27,7 @@ import {
   $isRootNode,
   $isLineBreakNode,
   COMMAND_PRIORITY_CRITICAL,
+  COMMAND_PRIORITY_HIGH,
   DELETE_CHARACTER_COMMAND,
   DELETE_LINE_COMMAND,
   DELETE_WORD_COMMAND,
@@ -91,8 +92,10 @@ import {
 } from "@lexical/rich-text";
 import {
   $generateNodesFromSerializedNodes,
+  $getClipboardDataFromSelection,
   $getLexicalContent,
   $insertDataTransferForRichText,
+  setLexicalClipboardDataTransfer,
 } from "@lexical/clipboard";
 import { $createCodeNode, $isCodeNode } from "@lexical/code";
 import { $setBlocksType } from "@lexical/selection";
@@ -115,8 +118,11 @@ import { HorizontalRulePlugin } from "@lexical/react/LexicalHorizontalRulePlugin
 import {
   $createCmsLineNode,
   $isCmsLineNode,
+  $headPathOverNodeSelection,
   $liftPointsIntoLines,
+  $mapLineEdges,
   $tagRemoval,
+  isLinedContainer,
   $unwrapLines,
   lineSpike,
   registerLineCommands,
@@ -432,8 +438,19 @@ const setBlockType = (editor: LexicalEditor, block: BlockType) => {
     if (selection.anchor.key === "root" || selection.focus.key === "root") {
       return;
     }
-    // Paragraph at a place with no line writes nothing
-    $liftPointsIntoLines(block !== "paragraph");
+    // Paragraph on a line writes nothing: a line already is its
+    // container's paragraph (D2, D13)
+    const lineOf = (point: PointType) =>
+      $isCmsLineNode(point.getNode())
+        ? point.getNode()
+        : $findMatchingParent(point.getNode(), $isCmsLineNode);
+    if (
+      block === "paragraph" &&
+      lineOf(selection.anchor) !== null &&
+      lineOf(selection.focus) !== null
+    ) {
+      return;
+    }
     // a code block holds no image: Code on a line holding one changes nothing
     if (block === "code") {
       const line = $findMatchingParent(
@@ -485,6 +502,17 @@ const setBlockType = (editor: LexicalEditor, block: BlockType) => {
         quotedLineContent.has(node.getFirstChild()?.getKey() ?? "")
       ) {
         node.replace($createCmsLineNode(), true);
+      }
+    }
+    // a block made from a line takes no indent: the line reported its item's
+    for (const { node } of $dfs()) {
+      if (
+        $isElementNode(node) &&
+        before.has(node.getKey()) === false &&
+        isLinedContainer(node.getParent()) &&
+        node.getIndent() > 0
+      ) {
+        node.setIndent(0);
       }
     }
   });
@@ -2584,6 +2612,46 @@ const ImageEditingPlugin = () => {
           return false;
         },
         COMMAND_PRIORITY_CRITICAL
+      ),
+      // the field writes the clipboard from the selection with line edges
+      // mapped to their containers (D6), and a cut removes in this same
+      // update, marked as a removal (5.4)
+      ...([COPY_COMMAND, CUT_COMMAND] as const).map((command) =>
+        editor.registerCommand(
+          command,
+          (event: ClipboardEvent | KeyboardEvent | null) => {
+            if (
+              event instanceof ClipboardEvent === false ||
+              event.clipboardData === null
+            ) {
+              return false;
+            }
+            const selection = $getSelection();
+            if (selection === null) {
+              return false;
+            }
+            const mapped = $mapLineEdges(selection);
+            markRichTextCopy(mapped);
+            event.preventDefault();
+            setLexicalClipboardDataTransfer(
+              event.clipboardData,
+              $getClipboardDataFromSelection(mapped)
+            );
+            if (command === CUT_COMMAND) {
+              $tagRemoval();
+              if ($isRangeSelection(selection)) {
+                selection.removeText();
+              } else if ($isNodeSelection(selection)) {
+                $headPathOverNodeSelection();
+                for (const node of selection.getNodes()) {
+                  node.remove();
+                }
+              }
+            }
+            return true;
+          },
+          COMMAND_PRIORITY_HIGH
+        )
       )
     );
   }, [editor]);
@@ -3565,6 +3633,10 @@ const $pointIntoAdjacentBlock = (point: PointType) => {
   }
   const parent = point.getNode();
   if ($isQuoteNode(parent) === false && $isListItemNode(parent) === false) {
+    return;
+  }
+  // a lined container's points are the line rule's (5.3)
+  if (isLinedContainer(parent as LexicalNode)) {
     return;
   }
   const isBlock = (node: LexicalNode | null): node is ElementNode =>

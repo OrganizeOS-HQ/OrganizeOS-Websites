@@ -30,7 +30,6 @@ import {
   DELETE_WORD_COMMAND,
   DecoratorNode,
   ElementNode,
-  FORMAT_TEXT_COMMAND,
   INSERT_LINE_BREAK_COMMAND,
   INSERT_PARAGRAPH_COMMAND,
   KEY_BACKSPACE_COMMAND,
@@ -39,6 +38,7 @@ import {
   REMOVE_TEXT_COMMAND,
   SELECTION_CHANGE_COMMAND,
   SELECTION_INSERT_CLIPBOARD_NODES_COMMAND,
+  type BaseSelection,
   type LexicalCommand,
   ParagraphNode,
   type DOMConversionMap,
@@ -57,7 +57,8 @@ import {
 } from "@lexical/list";
 import { $isQuoteNode, HeadingNode, QuoteNode } from "@lexical/rich-text";
 import { CodeNode } from "@lexical/code";
-import { $findMatchingParent, mergeRegister } from "@lexical/utils";
+import { $dfs, $findMatchingParent, mergeRegister } from "@lexical/utils";
+import { INSERT_HORIZONTAL_RULE_COMMAND } from "@lexical/react/LexicalHorizontalRuleNode";
 
 /** SPIKE: VITE_LINES_OFF turns every line rule off (the head's behaviour). */
 const linesOff =
@@ -126,19 +127,31 @@ export class CmsLineNode extends ElementNode {
     return true;
   }
 
-  // an indent of a line indents its item
+  // a line reports and sets its item's indent; of the lines of one item a
+  // range covers, the first changes the item, so the item changes once
   canIndent() {
-    return $isListItemNode(this.getParent());
+    const item = this.getParent();
+    if ($isListItemNode(item) === false) {
+      return false;
+    }
+    const selection = $getSelection();
+    return (
+      selection === null ||
+      this.getPreviousSiblings().some(
+        (sibling) => $isCmsLineNode(sibling) && sibling.isSelected(selection)
+      ) === false
+    );
   }
 
   getIndent() {
-    return 0;
+    const item = this.getParent();
+    return $isListItemNode(item) ? item.getIndent() : 0;
   }
 
   setIndent(indent: number) {
-    const parent = this.getParent();
-    if ($isListItemNode(parent) && indent !== 0) {
-      parent.setIndent(Math.max(0, parent.getIndent() + indent));
+    const item = this.getParent();
+    if ($isListItemNode(item) && indent !== item.getIndent()) {
+      item.setIndent(Math.max(0, indent));
     }
     return this;
   }
@@ -353,7 +366,11 @@ const $caretAfterRemovedNode = (node: LexicalNode, inside: boolean) => {
 export const $normaliseLines = (container: ElementNode) => {
   if ($isListItemNode(container)) {
     for (const child of container.getChildren()) {
-      if ($isParagraphNode(child)) {
+      // a paragraph holding a block waits for its lift
+      if (
+        $isParagraphNode(child) &&
+        child.getChildren().every(isInlineContent)
+      ) {
         $paragraphToLine(child);
       }
     }
@@ -482,34 +499,65 @@ const $wasEmptied = (node: ElementNode) => {
   if (node.getChildrenSize() !== 0) {
     return false;
   }
-  const previousMap = $getEditor().getEditorState()._nodeMap;
-  const previous = previousMap.get(node.getKey());
-  if ($isElementNode(previous) === false || previous.__size === 0) {
+  const held = $previousChildren(node.getKey());
+  if (held === null || held.length === 0) {
     return false;
   }
-  let key: string | null = previous.__first;
-  while (key !== null) {
+  return held.every(({ key }) => {
     const now = $getNodeByKey(key);
-    if (now !== null && now.isAttached()) {
-      return false;
-    }
-    key = previousMap.get(key)?.__next ?? null;
-  }
-  return true;
+    return now === null || now.isAttached() === false;
+  });
 };
+
+/** The children a node held in the state before this update (public API). */
+const $previousChildren = (key: string) =>
+  $getEditor()
+    .getEditorState()
+    .read(() => {
+      const node = $getNodeByKey(key);
+      return $isElementNode(node)
+        ? node.getChildren().map((child) => ({
+            key: child.getKey(),
+            isLine: $isCmsLineNode(child),
+          }))
+        : null;
+    });
 
 /** An item or quote this update emptied goes, unless it holds the caret. */
 const REMOVAL_TAG = "cms-removal";
+/** SPIKE: the rule violations seen, for the probe. */
+export const lineRuleViolations: string[] = [];
 /** An update that runs the head's own path over unwrapped lines. */
 const HEAD_PATH_TAG = "cms-head-path";
 
-/** This update removes content (a range replaced, a delete, a cut). */
-export const $tagRemoval = () => $addUpdateTag(REMOVAL_TAG);
+const REMOVAL_START_TAG = "cms-removal-start:";
+
+/**
+ * This update removes content (a range, a node selection, a delete, a
+ * cut). The block the removed range starts in, and its ancestors, are
+ * never emptied by it.
+ */
+export const $tagRemoval = () => {
+  $addUpdateTag(REMOVAL_TAG);
+  const selection = $getSelection();
+  if ($isRangeSelection(selection) === false || selection.isCollapsed()) {
+    return;
+  }
+  const start = selection.isBackward() ? selection.focus : selection.anchor;
+  for (
+    let node: LexicalNode | null = start.getNode();
+    node !== null;
+    node = node.getParent()
+  ) {
+    $addUpdateTag(`${REMOVAL_START_TAG}${node.getKey()}`);
+  }
+};
 
 const $dropEmptied = (node: ElementNode) => {
   if (
     lineSpike.noEmptied === false ||
     $hasUpdateTag(REMOVAL_TAG) === false ||
+    $hasUpdateTag(`${REMOVAL_START_TAG}${node.getKey()}`) ||
     $wasEmptied(node) === false ||
     holdsSelection(node)
   ) {
@@ -546,34 +594,24 @@ const $joinRestOfItem = (item: ElementNode) => {
   if ($isListItemNode(item) === false || item.isEmpty()) {
     return false;
   }
-  const previousMap = $getEditor().getEditorState()._nodeMap;
-  const previous = previousMap.get(item.getKey());
-  if ($isElementNode(previous) === false || previous.__first === null) {
+  const previous = $previousChildren(item.getKey());
+  if (previous === null || previous.length === 0) {
     return false;
   }
   // the removal reached the item's start: its first child is gone, and
   // what stays is the rest of what it held. A line of it went too: the
   // head read that text as the item's own, and joined the item whole
-  const first = $getNodeByKey(previous.__first);
-  if (first !== null && first.isAttached()) {
-    return false;
-  }
-  const held = new Set<string>();
-  let lineWent = false;
-  for (
-    let key: string | null = previous.__first;
-    key !== null;
-    key = previousMap.get(key)?.__next ?? null
-  ) {
-    held.add(key);
+  const gone = (key: string) => {
     const now = $getNodeByKey(key);
-    if ($isCmsLineNode(previousMap.get(key)) && (now === null || now.isAttached() === false)) {
-      lineWent = true;
-    }
-  }
-  if (lineWent === false) {
+    return now === null || now.isAttached() === false;
+  };
+  if (gone(previous[0].key) === false) {
     return false;
   }
+  if (previous.some((child) => child.isLine && gone(child.key)) === false) {
+    return false;
+  }
+  const held = new Set(previous.map((child) => child.key));
   if (item.getChildren().some((child) => held.has(child.getKey()) === false)) {
     return false;
   }
@@ -607,6 +645,9 @@ const $keepContainer = (container: ElementNode) => {
     return;
   }
   $normaliseLines(container);
+  if (container.isAttached()) {
+    $liftPointsIntoLines(true);
+  }
 };
 
 /**
@@ -638,12 +679,20 @@ const $dropEmptiedBlockInContainer = (block: ElementNode) => {
 // Points on a lined container
 // ============================================================
 
-/** A list item or quote that the editor reads as no block: it holds a block. */
-const isLinedContainer = (node: LexicalNode | null): node is ElementNode =>
-  isLineContainer(node) &&
-  node.getChildren().some(
-    (child) => $isCmsLineNode(child) || isInlineContent(child) === false
-  );
+/**
+ * A lined container: a list item that holds a non-inline child, or a quote
+ * that holds a line. A quote of paragraphs and blocks is not lined.
+ */
+export const isLinedContainer = (
+  node: LexicalNode | null
+): node is ElementNode =>
+  ($isListItemNode(node) &&
+    node
+      .getChildren()
+      .some(
+        (child) => $isCmsLineNode(child) || isInlineContent(child) === false
+      )) ||
+  ($isQuoteNode(node) && node.getChildren().some($isCmsLineNode));
 
 /**
  * Each element point on a lined container moves into the line beside it:
@@ -651,13 +700,13 @@ const isLinedContainer = (node: LexicalNode | null): node is ElementNode =>
  * `create`, a point with no line beside it gets an empty line of its own
  * there.
  */
-export const $liftPointsIntoLines = (create: boolean) => {
+export const $liftPointsIntoLines = (create: boolean): boolean => {
   if (lineSpike.on === false) {
-    return;
+    return false;
   }
   const selection = $getSelection();
   if ($isRangeSelection(selection) === false) {
-    return;
+    return false;
   }
   const made = new Map<string, CmsLineNode>();
   for (const point of [selection.anchor, selection.focus]) {
@@ -679,9 +728,7 @@ export const $liftPointsIntoLines = (create: boolean) => {
       point.set(before.getKey(), before.getChildrenSize(), "element");
       continue;
     }
-    // a quote takes an edit there in a paragraph of its own
-    // (`$editInBlockLedItem`)
-    if (create === false || $isListItemNode(container) === false) {
+    if (create === false) {
       continue;
     }
     const at = `${container.getKey()}@${point.offset}`;
@@ -703,7 +750,48 @@ export const $liftPointsIntoLines = (create: boolean) => {
     }
     point.set(line.getKey(), 0, "element");
   }
+  return made.size > 0;
 };
+
+/** Empty lines that hold no point of the selection go. True when any did. */
+const $removeLeftEmptyLines = () => {
+  let removed = false;
+  for (const { node } of $dfs()) {
+    if (
+      $isCmsLineNode(node) &&
+      node.isAttached() &&
+      node.isEmpty() &&
+      holdsSelection(node) === false
+    ) {
+      node.remove();
+      removed = true;
+    }
+  }
+  return removed;
+};
+
+/** Whether a committed selection breaks the point rule (5.3). */
+const $pointRuleBroken = () => {
+  const selection = $getSelection();
+  if ($isRangeSelection(selection) === false) {
+    return null;
+  }
+  for (const point of [selection.anchor, selection.focus]) {
+    const node = $getNodeByKey(point.key);
+    if (point.type === "element" && node !== null && isLinedContainer(node)) {
+      return `${node.getType()}@${point.offset}`;
+    }
+  }
+  return null;
+};
+
+/** Whether a line holds a non-inline child (5.5). */
+const $lineHoldsBlock = () =>
+  $dfs().some(
+    ({ node }) =>
+      $isCmsLineNode(node) &&
+      node.getChildren().some((child) => isInlineContent(child) === false)
+  );
 
 /**
  * A node selection of a block in a lined container becomes a caret in a
@@ -741,7 +829,7 @@ const $nodeSelectionIntoLine = (replace: boolean, create: boolean) => {
  * update, so the head's own path runs over the head's tree, and the line
  * rules wrap the result at the end of the update. True when it did.
  */
-const $headPathOverNodeSelection = () => {
+export const $headPathOverNodeSelection = () => {
   const selection = $getSelection();
   if ($isNodeSelection(selection) === false) {
     return false;
@@ -767,15 +855,7 @@ const pasteCommands: LexicalCommand<never>[] = [
   SELECTION_INSERT_CLIPBOARD_NODES_COMMAND,
 ] as LexicalCommand<never>[];
 
-const replacingCommands = new Set<LexicalCommand<never>>([
-  CONTROLLED_TEXT_INSERTION_COMMAND,
-  PASTE_COMMAND,
-] as LexicalCommand<never>[]);
 
-/** A mark at a point with no line beside it changes nothing: no line is made. */
-const moveOnlyCommands: LexicalCommand<never>[] = [
-  FORMAT_TEXT_COMMAND,
-] as LexicalCommand<never>[];
 
 const removeCommands: LexicalCommand<never>[] = [
   DELETE_CHARACTER_COMMAND,
@@ -819,14 +899,33 @@ const isBlockDecorator = (node: LexicalNode | null): node is DecoratorNode<unkno
  */
 export const registerLineCommands = (editor: LexicalEditor) =>
   linesOff ? () => {} : mergeRegister(
+    // a caret that arrives with no line beside it gets an empty line, and
+    // an empty line the caret left goes: not an edit (no undo step, no
+    // onChange: the field's change plugin skips history-merge updates)
     editor.registerCommand(
       SELECTION_CHANGE_COMMAND,
       () => {
-        $liftPointsIntoLines(false);
+        const made = $liftPointsIntoLines(true);
+        const removed = $removeLeftEmptyLines();
+        if (made || removed) {
+          $addUpdateTag("history-merge");
+        }
         return false;
       },
       COMMAND_PRIORITY_CRITICAL
     ),
+    // the rule holds in every committed state (5.3, 5.5)
+    editor.registerUpdateListener(({ editorState }) => {
+      const broken = editorState.read($pointRuleBroken);
+      const block = editorState.read($lineHoldsBlock);
+      if (broken !== null || block) {
+        const message = broken !== null
+          ? `cms-line point rule: a point on ${broken}`
+          : "cms-line rule: a line holds a block";
+        console.error(message);
+        lineRuleViolations.push(message);
+      }
+    }),
     ...insertCommands.map((command) =>
       editor.registerCommand(
         command,
@@ -840,14 +939,16 @@ export const registerLineCommands = (editor: LexicalEditor) =>
             typeof payload !== "string";
           const selection = $getSelection();
           if (
-            command === CONTROLLED_TEXT_INSERTION_COMMAND &&
             $isRangeSelection(selection) &&
             selection.isCollapsed() === false
           ) {
-            $addUpdateTag(REMOVAL_TAG);
+            $tagRemoval();
           }
-          $nodeSelectionIntoLine(replacingCommands.has(command), isDrop === false);
-          $liftPointsIntoLines(isDrop === false);
+          // typed or composed text lands directly after a selected node,
+          // which stays (D15)
+          if (command === CONTROLLED_TEXT_INSERTION_COMMAND && isDrop === false) {
+            $nodeSelectionIntoLine(false, true);
+          }
           return false;
         },
         COMMAND_PRIORITY_CRITICAL
@@ -862,7 +963,7 @@ export const registerLineCommands = (editor: LexicalEditor) =>
           }
           const selection = $getSelection();
           if ($isRangeSelection(selection) && selection.isCollapsed() === false) {
-            $addUpdateTag(REMOVAL_TAG);
+            $tagRemoval();
           }
           const data =
             command === PASTE_COMMAND && payload instanceof ClipboardEvent
@@ -876,22 +977,33 @@ export const registerLineCommands = (editor: LexicalEditor) =>
           ) {
             return false;
           }
-          $nodeSelectionIntoLine(true, false);
-          $liftPointsIntoLines(false);
+          // plain text replaces the node; a clipboard of files only leaves it
+          if (
+            command === PASTE_COMMAND &&
+            data !== null &&
+            data.getData("text/plain") !== ""
+          ) {
+            $nodeSelectionIntoLine(true, false);
+          }
           return false;
         },
         COMMAND_PRIORITY_CRITICAL
       )
     ),
-    ...moveOnlyCommands.map((command) =>
-      editor.registerCommand(
-        command,
-        () => {
-          $liftPointsIntoLines(false);
-          return false;
-        },
-        COMMAND_PRIORITY_CRITICAL
-      )
+    // Enter, Shift+Enter and Divider over a range remove it
+    ...[INSERT_PARAGRAPH_COMMAND, INSERT_LINE_BREAK_COMMAND, INSERT_HORIZONTAL_RULE_COMMAND].map(
+      (command) =>
+        editor.registerCommand(
+          command as LexicalCommand<unknown>,
+          () => {
+            const selection = $getSelection();
+            if ($isRangeSelection(selection) && selection.isCollapsed() === false) {
+              $tagRemoval();
+            }
+            return false;
+          },
+          COMMAND_PRIORITY_CRITICAL
+        )
     ),
     ...removeCommands.map((command) =>
       editor.registerCommand(
@@ -903,30 +1015,11 @@ export const registerLineCommands = (editor: LexicalEditor) =>
           ) {
             return false;
           }
-          $addUpdateTag(REMOVAL_TAG);
-          $liftPointsIntoLines(false);
+          $tagRemoval();
           return false;
         },
         COMMAND_PRIORITY_CRITICAL
       )
-    ),
-    editor.registerCommand(
-      KEY_BACKSPACE_COMMAND,
-      (event: KeyboardEvent) => {
-        const line = $lineAtStart();
-        const item = line?.getParent();
-        if (
-          line !== null &&
-          $isListItemNode(item) &&
-          item.getIndent() > 0
-        ) {
-          event.preventDefault();
-          item.setIndent(item.getIndent() - 1);
-          return true;
-        }
-        return false;
-      },
-      COMMAND_PRIORITY_LOW
     ),
     editor.registerCommand(
       DELETE_WORD_COMMAND,
@@ -1004,3 +1097,44 @@ export const $unwrapLines = (nodes: LexicalNode[]): LexicalNode[] =>
     node.remove();
     return children;
   });
+
+/**
+ * The selection a copy, a cut or a drag writes from: a point at the edge
+ * of a line counts as the same point on the line's container (D6), so the
+ * copied data holds the list item wherever the head's does.
+ */
+export const $mapLineEdges = (selection: BaseSelection): BaseSelection => {
+  if ($isRangeSelection(selection) === false) {
+    return selection;
+  }
+  const mapped = selection.clone();
+  for (const point of [mapped.anchor, mapped.focus]) {
+    const node = point.getNode();
+    const line = $isCmsLineNode(node)
+      ? node
+      : $findMatchingParent(node, $isCmsLineNode);
+    if (line === null || isLineContainer(line.getParent()) === false) {
+      continue;
+    }
+    const first = line.getFirstDescendant();
+    const last = line.getLastDescendant();
+    const atStart =
+      point.offset === 0 &&
+      (line.is(node) || first === null || first.is(node));
+    const atEnd = line.is(node)
+      ? point.offset === line.getChildrenSize()
+      : last !== null &&
+        last.is(node) &&
+        point.offset === node.getTextContentSize();
+    if (atStart === false && atEnd === false) {
+      continue;
+    }
+    const container = line.getParentOrThrow();
+    point.set(
+      container.getKey(),
+      line.getIndexWithinParent() + (atStart ? 0 : 1),
+      "element"
+    );
+  }
+  return mapped;
+};
