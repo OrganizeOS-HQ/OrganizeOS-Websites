@@ -54,7 +54,8 @@ import {
   $isListNode,
   ListItemNode,
 } from "@lexical/list";
-import { $isQuoteNode, QuoteNode } from "@lexical/rich-text";
+import { $isQuoteNode, HeadingNode, QuoteNode } from "@lexical/rich-text";
+import { CodeNode } from "@lexical/code";
 import { $findMatchingParent, mergeRegister } from "@lexical/utils";
 
 /** SPIKE: VITE_LINES_OFF turns every line rule off (the head's behaviour). */
@@ -444,6 +445,11 @@ const $wasEmptied = (node: ElementNode) => {
 
 /** An item or quote this update emptied goes, unless it holds the caret. */
 const REMOVAL_TAG = "cms-removal";
+/** An update that runs the head's own path over unwrapped lines. */
+const HEAD_PATH_TAG = "cms-head-path";
+
+/** This update removes content (a range replaced, a delete, a cut). */
+export const $tagRemoval = () => $addUpdateTag(REMOVAL_TAG);
 
 const $dropEmptied = (node: ElementNode) => {
   if (
@@ -490,24 +496,35 @@ const $joinRestOfItem = (item: ElementNode) => {
   if ($isElementNode(previous) === false || previous.__first === null) {
     return false;
   }
-  const line = previousMap.get(previous.__first);
-  if ($isCmsLineNode(line) === false || $getNodeByKey(line.__key)?.isAttached()) {
+  // the removal reached the item's start: its first child is gone, and
+  // what stays is the rest of what it held
+  const first = $getNodeByKey(previous.__first);
+  if (first !== null && first.isAttached()) {
     return false;
   }
+  const held = new Set<string>();
+  for (
+    let key: string | null = previous.__first;
+    key !== null;
+    key = previousMap.get(key)?.__next ?? null
+  ) {
+    held.add(key);
+  }
+  if (item.getChildren().some((child) => held.has(child.getKey()) === false)) {
+    return false;
+  }
+  // the text it started with joined the item before, where the caret is
   const before = item.getPreviousSibling();
-  if ($isListItemNode(before) === false) {
+  const selection = $getSelection();
+  if (
+    $isListItemNode(before) === false ||
+    $isRangeSelection(selection) === false ||
+    selection.isCollapsed() === false
+  ) {
     return false;
   }
-  let key: string | null = line.__first;
-  let joined = false;
-  while (key !== null) {
-    const now = $getNodeByKey(key);
-    if (now !== null && now.isAttached() && before.isParentOf(now)) {
-      joined = true;
-    }
-    key = previousMap.get(key)?.__next ?? null;
-  }
-  if (joined === false) {
+  const at = selection.anchor.getNode();
+  if (before.is(at) === false && before.isParentOf(at) === false) {
     return false;
   }
   before.append(...item.getChildren());
@@ -537,8 +554,21 @@ export const registerLineTransforms = (editor: LexicalEditor) =>
   linesOff ? () => {} : mergeRegister(
     editor.registerNodeTransform(CmsLineNode, $keepLineInPlace),
     editor.registerNodeTransform(ListItemNode, $keepContainer),
-    editor.registerNodeTransform(QuoteNode, $keepContainer)
+    editor.registerNodeTransform(QuoteNode, $keepContainer),
+    editor.registerNodeTransform(HeadingNode, $dropEmptiedBlockInContainer),
+    editor.registerNodeTransform(CodeNode, $dropEmptiedBlockInContainer)
   );
+
+/**
+ * A heading or code block in an item or quote whose children a removal
+ * detached goes, as an item or quote does (K12).
+ */
+const $dropEmptiedBlockInContainer = (block: ElementNode) => {
+  if (lineSpike.on === false || isLineContainer(block.getParent()) === false) {
+    return;
+  }
+  $dropEmptied(block);
+};
 
 // ============================================================
 // Points on a lined container
@@ -640,6 +670,27 @@ const $nodeSelectionIntoLine = (replace: boolean, create: boolean) => {
   }
 };
 
+/**
+ * A node selection in a lined container, for a command the head runs
+ * well there (a paste of HTML or of the field's own nodes, a cut, a
+ * delete): the container's lines give way to their children for this
+ * update, so the head's own path runs over the head's tree, and the line
+ * rules wrap the result at the end of the update. True when it did.
+ */
+const $headPathOverNodeSelection = () => {
+  const selection = $getSelection();
+  if ($isNodeSelection(selection) === false) {
+    return false;
+  }
+  const container = selection.getNodes().at(-1)?.getParent() ?? null;
+  if (isLinedContainer(container) === false) {
+    return false;
+  }
+  $unwrapLines(container.getChildren());
+  $addUpdateTag(HEAD_PATH_TAG);
+  return true;
+};
+
 const insertCommands: LexicalCommand<never>[] = [
   INSERT_PARAGRAPH_COMMAND,
   INSERT_LINE_BREAK_COMMAND,
@@ -712,6 +763,9 @@ export const registerLineCommands = (editor: LexicalEditor) =>
       editor.registerCommand(
         command,
         (payload: unknown) => {
+          if ($hasUpdateTag(HEAD_PATH_TAG)) {
+            return false;
+          }
           // a drop carries a data transfer: it is a paste
           const isDrop =
             command === CONTROLLED_TEXT_INSERTION_COMMAND &&
@@ -734,10 +788,25 @@ export const registerLineCommands = (editor: LexicalEditor) =>
     ...pasteCommands.map((command) =>
       editor.registerCommand(
         command,
-        () => {
+        (payload: unknown) => {
+          if ($hasUpdateTag(HEAD_PATH_TAG)) {
+            return false;
+          }
           const selection = $getSelection();
           if ($isRangeSelection(selection) && selection.isCollapsed() === false) {
             $addUpdateTag(REMOVAL_TAG);
+          }
+          const data =
+            command === PASTE_COMMAND && payload instanceof ClipboardEvent
+              ? payload.clipboardData
+              : null;
+          if (
+            data !== null &&
+            (data.getData("text/html") !== "" ||
+              data.getData("application/x-lexical-editor") !== "") &&
+            $headPathOverNodeSelection()
+          ) {
+            return false;
           }
           $nodeSelectionIntoLine(true, false);
           $liftPointsIntoLines(false);
@@ -750,6 +819,9 @@ export const registerLineCommands = (editor: LexicalEditor) =>
       editor.registerCommand(
         command,
         () => {
+          if ($hasUpdateTag(HEAD_PATH_TAG) || $headPathOverNodeSelection()) {
+            return false;
+          }
           $addUpdateTag(REMOVAL_TAG);
           $liftPointsIntoLines(false);
           return false;

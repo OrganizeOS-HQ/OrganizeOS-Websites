@@ -116,6 +116,7 @@ import {
   $createCmsLineNode,
   $isCmsLineNode,
   $liftPointsIntoLines,
+  $tagRemoval,
   $unwrapLines,
   lineSpike,
   registerLineCommands,
@@ -431,7 +432,8 @@ const setBlockType = (editor: LexicalEditor, block: BlockType) => {
     if (selection.anchor.key === "root" || selection.focus.key === "root") {
       return;
     }
-    $liftPointsIntoLines(true);
+    // Paragraph at a place with no line writes nothing
+    $liftPointsIntoLines(block !== "paragraph");
     const before = new Set(
       $dfs().map(({ node }) => node.getKey())
     );
@@ -1091,6 +1093,9 @@ const insertImage = (
       $findMatchingParent(caret.focus.getNode(), $isCodeNode) === null
     ) {
       $setSelection(caret.clone());
+      if (caret.isCollapsed() === false) {
+        $tagRemoval();
+      }
       $liftPointsIntoLines(true);
       const selection = $getSelection() as RangeSelection;
       $editInBlockLedItem(selection, () => selection.insertNodes([image]));

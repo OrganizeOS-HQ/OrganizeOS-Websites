@@ -23,12 +23,14 @@ import {
   editable,
   editorOf,
   lastHtml,
-  mountAt,
   paste,
+  fieldContainer,
   renderField,
   settle,
   undo,
+  unmountField,
 } from "./rich-text-test-harness";
+import { $createNodeSelection } from "lexical";
 import {
   clearRichTextReadOnlyMemo,
   getRichTextReadOnlyReason,
@@ -125,6 +127,77 @@ const pasteClip: Step = async () => {
   await settle();
 };
 
+const SOURCE = {
+  uploadImage: vi.fn(async () => ({
+    url: "https://cdn.example.org/x.png",
+    path: "org/x.png",
+  })),
+} as never;
+const mount = (html: string) => renderField(html, { source: SOURCE });
+/** The onChange of a field mounted by an action (a second field). */
+let swapped: ReturnType<typeof vi.fn> | undefined;
+const secondField = (html: string, word: string, offset?: number): Step => async () => {
+  unmountField();
+  swapped = await mount(sanitizeRichTextHtml(html));
+  await clickInWord(word, offset);
+  swapped.mockClear();
+  await pasteClip();
+};
+const imageButton: Step = async () => {
+  const canvas = document.createElement("canvas");
+  canvas.width = 2;
+  canvas.height = 3;
+  const blob = await new Promise<Blob>((resolve) =>
+    canvas.toBlob((result) => resolve(result!), "image/png")
+  );
+  const file = new File([blob], "a.png", { type: "image/png" });
+  await act(async () => {
+    byLabel("Image")!.click();
+  });
+  const input = fieldContainer()!.querySelector<HTMLInputElement>('input[type="file"]')!;
+  const transfer = new DataTransfer();
+  transfer.items.add(file);
+  await act(async () => {
+    input.files = transfer.files;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  for (let round = 0; round < 20; round += 1) await settle();
+};
+const linkButton: Step = async () => {
+  await click(byLabel("Link"));
+  const url = byLabel("URL") as HTMLInputElement | null;
+  if (url === null) return;
+  await userEvent.fill(url, "https://example.org/a");
+  await userEvent.keyboard("{Enter}");
+  await settle();
+};
+const button = (label: string): Step => () => click(byLabel(label));
+/** A node selection of the `nth` decorator (rule or image), set directly. */
+const nodeSelect = (type: string): Step => async () => {
+  await clickInWord("Pw");
+  await act(async () => {
+    editorOf()!.update(() => {
+      const find = (node: LexicalNode): LexicalNode | undefined => {
+        if (node.getType() === type) return node;
+        if ($isElementNode(node)) {
+          for (const child of node.getChildren()) {
+            const found = find(child);
+            if (found) return found;
+          }
+        }
+        return undefined;
+      };
+      const target = find($getRoot());
+      if (target === undefined) return;
+      const selection = $createNodeSelection();
+      selection.add(target.getKey());
+      $setSelection(selection);
+    });
+  });
+  await settle();
+};
+const IMGTAG = '<img src="https://cdn.example.org/x.png" alt="" width="2" height="3" />';
+
 const TRT = "<ul><li>Pw</li><li>T0w<hr>T2w</li><li>Nw</li></ul>";
 const TR = "<ul><li>Pw</li><li>T0w<hr></li><li>Nw</li></ul>";
 const XRY = "<ul><li>xq<hr>yq</li></ul>";
@@ -203,9 +276,95 @@ const RECORDS: Rec[] = [
     await clickInWord("sq");
     await pasteClip();
   }],
+  ["TS0 item@2 Paragraph writes nothing", TR, elementPoint("T0w", 2), blockType("Paragraph")],
+  ["TS0 item@2 Heading 2, then the caret leaves", TR, elementPoint("T0w", 2), async () => {
+    await blockType("Heading 2")();
+    await clickInWord("Pw");
+    await userEvent.keyboard("k");
+    await settle();
+  }],
+  ["TS0 item@2 Quote, then the caret leaves", TR, elementPoint("T0w", 2), async () => {
+    await blockType("Quote")();
+    await clickInWord("Pw");
+    await userEvent.keyboard("k");
+    await settle();
+  }],
+  ["TS2 range Pw@1-T0w@2 Image", TR, ["Pw", 1, "T0w", 2], imageButton],
+  ["T0 whole T0w Image", TR, ["T0w", 0, "T0w", 3], imageButton],
+  ["K12 Enter over T0w@1-H1w@3", "<ul><li>Pw</li><li>T0w<h3>H1w</h3></li><li>Nw</li></ul>", ["T0w", 1, "H1w", 3], keys("{Enter}")],
+  ["K12 Enter over T0w@1-Q1w@3", "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>", ["T0w", 1, "Q1w", 3], keys("{Enter}")],
+  ["K12 Backspace over Pw@1-H0w@3", "<ul><li>Pw</li><li><h3>H0w</h3>T1w</li><li>Nw</li></ul>", ["Pw", 1, "H0w", 3], keys("{Backspace}")],
+  ["K12 Backspace over T0w@1-C1w@3", "<ul><li>Pw</li><li>T0w<pre><code>C1w</code></pre>T2w</li><li>Nw</li></ul>", ["T0w", 1, "C1w", 3], keys("{Backspace}")],
+  ["K12 quote Enter over X0w@1-H1w@3", "<blockquote>X0w<h3>H1w</h3><ul><li>Yw</li></ul></blockquote>", ["X0w", 1, "H1w", 3], keys("{Enter}")],
+  ["Q4 own copy of a mixed item into a mixed item", XQY, ["xq", 0, "yq", 2], async () => {
+    await clipboardEvent("copy");
+    await clickInWord("yq");
+    await pasteClip();
+  }],
+  ["Q4 own copy of a mixed item into a root paragraph", `<p>Rw</p>${XQY}`, ["xq", 0, "yq", 2], async () => {
+    await clipboardEvent("copy");
+    await clickInWord("Rw");
+    await pasteClip();
+  }],
+  ["Q4 own copy of a mixed item into a second field's item", XQY, ["xq", 0, "yq", 2], async () => {
+    await clipboardEvent("copy");
+    await secondField("<ul><li>Pw</li><li>Iw</li><li>Nw</li></ul>", "Iw", 1)();
+  }],
+  ["Q4 own copy of a mixed item into a second field's paragraph", XQY, ["xq", 0, "yq", 2], async () => {
+    await clipboardEvent("copy");
+    await secondField("<p>Rw</p>", "Rw")();
+  }],
+  ["FS9 copy ending in an empty line, into a second field", "<ul><li><blockquote><p>Q0w</p></blockquote><br></li></ul>", async () => {
+    await clickInWord("Q0w");
+    await userEvent.keyboard("{Shift>}{ArrowRight}{/Shift}");
+    await settle();
+  }, async () => {
+    await clipboardEvent("copy");
+    await secondField("<ul><li>Pw</li><li>Iw</li><li>Nw</li></ul>", "Iw", 1)();
+  }],
+  ["FS9 copy ending in an empty line, same field", "<ul><li><blockquote><p>Q0w</p></blockquote><br></li><li>Iw</li></ul>", async () => {
+    await clickInWord("Q0w");
+    await userEvent.keyboard("{Shift>}{ArrowRight}{/Shift}");
+    await settle();
+  }, async () => {
+    await clipboardEvent("copy");
+    await clickInWord("Iw", 1);
+    await pasteClip();
+  }],
+  ["FS8 Code after an image that is a line's only content", `<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>${IMGTAG}</li><li>Nw</li></ul>`, async () => {
+    await clickInWord("Pw");
+    await act(async () => {
+      editorOf()!.update(() => {
+        const item = $getRoot().getFirstChildOrThrow<import("lexical").ElementNode>().getChildAtIndex(1) as import("lexical").ElementNode;
+        const last = item.getLastChild() as import("lexical").ElementNode;
+        const host = $isElementNode(last) ? last : item;
+        const selection = $createRangeSelection();
+        selection.anchor.set(host.getKey(), host.getChildrenSize(), "element");
+        selection.focus.set(host.getKey(), host.getChildrenSize(), "element");
+        $setSelection(selection);
+      });
+    });
+    await settle();
+  }, blockType("Code")],
+  ["Q6 a line of only an image, mounted", `<ul><li><blockquote>Q0w</blockquote>${IMGTAG}</li><li>Nw</li></ul>`, at("Nw"), keys("k")],
+  ["Q6 a line of only an image, by the Image button", "<ul><li><blockquote>Q0w</blockquote>T1w</li><li>Nw</li></ul>", ["T1w", 0, "T1w", 3], imageButton],
+  ["Q6 depth 6 list paste", "<ul><li>s1<ul><li>s2<ul><li>s3<ul><li>s4<ul><li>s5<ul><li>T0w<blockquote>Q1w</blockquote>T2w</li></ul></li></ul></li></ul></li></ul></li></ul>", at("T0w"), pasteHtml("<ul><li>Aq</li><li>Bq<blockquote>Cq</blockquote></li></ul>")],
 ];
 
 // Q1: Enter and Block type at every element point of these item shapes.
+const Q1_COMMANDS: Array<[string, Step]> = [
+  ["Image", imageButton],
+  ["Divider", button("Divider")],
+  ["Link", linkButton],
+  ["Bulleted", button("Bulleted list")],
+  ["Numbered", button("Numbered list")],
+  ["Bold", button("Bold")],
+  ["Italic", button("Italic")],
+  ["Underline", button("Underline")],
+  ["Strikethrough", button("Strikethrough")],
+  ["Tab", keys("{Tab}")],
+  ["Shift+Tab", keys("{Shift>}{Tab}{/Shift}")],
+];
 const Q1_SHAPES: Array<[string, string, string, number]> = [
   ["TR", "<ul><li>Pw</li><li>T0w<hr></li><li>Nw</li></ul>", "Pw", 2],
   ["RT", "<ul><li>Pw</li><li><hr>T1w</li><li>Nw</li></ul>", "Pw", 2],
@@ -240,6 +399,29 @@ for (const [name, html, , size] of Q1_SHAPES) {
     RECORDS.push([`Q1 ${name} item@${offset} Enter`, html, place, keys("{Enter}")]);
     RECORDS.push([`Q1 ${name} item@${offset} Heading 2`, html, place, blockType("Heading 2")]);
     RECORDS.push([`Q1 ${name} item@${offset} letter`, html, place, keys("k")]);
+    for (const [label, step] of Q1_COMMANDS) {
+      RECORDS.push([`Q1 ${name} item@${offset} ${label}`, html, place, step]);
+    }
+  }
+}
+const Q1_NODE_SHAPES: Array<[string, string, string]> = [
+  ["rule in TRT", TRT, "horizontalrule"],
+  ["rule in TR", TR, "horizontalrule"],
+  ["image in QI", `<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>${IMGTAG}</li><li>Nw</li></ul>`, "cms-image"],
+  ["image in TQI", `<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>X2w${IMGTAG}</li><li>Nw</li></ul>`, "cms-image"],
+];
+for (const [name, html, type] of Q1_NODE_SHAPES) {
+  for (const [label, step] of [
+    ...Q1_COMMANDS,
+    ["Enter", keys("{Enter}")],
+    ["letter", keys("k")],
+    ["Heading 2", blockType("Heading 2")],
+    ["paste <hr>", pasteHtml("<hr>")],
+    ["paste two paragraphs", pasteHtml("<p>Aq</p><p>Bq</p>")],
+    ["Backspace", keys("{Backspace}")],
+    ["cut", () => clipboardEvent("cut")],
+  ] as Array<[string, Step]>) {
+    RECORDS.push([`Q1 node ${name} ${label}`, html, nodeSelect(type), step]);
   }
 }
 
@@ -274,11 +456,19 @@ describe("S records", () => {
           errors.push(text.slice(0, 200));
         }
       });
-      let onChange;
+      let onChange = await mount(stored);
       if (Array.isArray(place)) {
-        onChange = await mountAt(stored, place[0], place[1], place[2], place[3]);
+        await click(editable());
+        await act(async () => {
+          editorOf()!.update(() => {
+            const texts = $getRoot().getAllTextNodes();
+            const find = (word: string) => texts.find((text) => text.getTextContent() === word)!;
+            const selection = find(place[0]).select(place[1], place[1]);
+            selection.focus.set(find(place[2]).getKey(), place[3], "text");
+          });
+        });
+        await settle();
       } else {
-        onChange = await renderField(stored);
         await place();
       }
       const mountCalls = onChange.mock.calls.length;
@@ -291,6 +481,10 @@ describe("S records", () => {
         thrown = String(error).slice(0, 200);
       }
       const ms = Math.round(performance.now() - t0);
+      if (swapped !== undefined) {
+        onChange = swapped;
+        swapped = undefined;
+      }
       const calls = onChange.mock.calls.length;
       const after = calls > 0 ? sanitizeRichTextHtml(lastHtml(onChange)) : stored;
       const caret = caretOf();
@@ -304,7 +498,14 @@ describe("S records", () => {
       const undone = sanitizeRichTextHtml(lastHtml(onChange));
       await userEvent.keyboard("{Control>}{Shift>}z{/Shift}{/Control}");
       await settle();
-      const redoState = stateOf() === written;
+      const redone = stateOf();
+      const redoState = redone === written;
+      let redoDiff = "";
+      if (redoState === false) {
+        let i = 0;
+        while (i < written.length && written[i] === redone[i]) i += 1;
+        redoDiff = `written ...${written.slice(Math.max(0, i - 60), i + 140)} | redo ...${redone.slice(Math.max(0, i - 60), i + 140)}`;
+      }
       console.log(
         `REC ${JSON.stringify({
           id,
@@ -318,6 +519,7 @@ describe("S records", () => {
           reopens,
           undoRestores: calls === 0 || undone === stored,
           redoState,
+          redoDiff,
           clipHtml: clip?.getData("text/html"),
           clipHasLine: (clip?.getData("application/x-lexical-editor") ?? "").includes("cms-line"),
         })}`
