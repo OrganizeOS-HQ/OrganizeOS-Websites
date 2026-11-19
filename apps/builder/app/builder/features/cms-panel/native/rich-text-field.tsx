@@ -2762,12 +2762,45 @@ const splitItemsAfterNestedList = (body: HTMLElement) => {
           wrapper.tagName
         )
       ) {
+        // past white space and comments: a line break, or line content
+        const makesLine = (start: Node | null, forward: boolean) => {
+          for (
+            let at = start;
+            at !== null;
+            at = forward ? at.nextSibling : at.previousSibling
+          ) {
+            if (
+              at.nodeType === Node.COMMENT_NODE ||
+              (at.nodeType === Node.TEXT_NODE && isContent(at) === false)
+            ) {
+              continue;
+            }
+            return (
+              (at instanceof Element && at.tagName === "BR") ||
+              lineContentFrom(at, forward)
+            );
+          }
+          return false;
+        };
+        // its own last line break (past white space and comments) makes no
+        // line of its own
+        let last = wrapper.lastChild;
+        while (
+          last !== null &&
+          (last.nodeType === Node.COMMENT_NODE ||
+            (last.nodeType === Node.TEXT_NODE && isContent(last) === false))
+        ) {
+          last = last.previousSibling;
+        }
+        if (last instanceof Element && last.tagName === "BR") {
+          last.remove();
+        }
         const before =
-          lineContentFrom(wrapper.previousSibling, false) &&
-          lineContentFrom(wrapper.firstChild, true);
+          makesLine(wrapper.previousSibling, false) &&
+          makesLine(wrapper.firstChild, true);
         const after =
-          lineContentFrom(wrapper.nextSibling, true) &&
-          lineContentFrom(wrapper.lastChild, false);
+          makesLine(wrapper.nextSibling, true) &&
+          makesLine(wrapper.lastChild, false);
         if (before) {
           wrapper.insertBefore(
             body.ownerDocument.createElement("br"),
@@ -2776,20 +2809,6 @@ const splitItemsAfterNestedList = (body: HTMLElement) => {
         }
         if (after) {
           wrapper.appendChild(body.ownerDocument.createElement("br"));
-        }
-        // with no line content after it, its own last line break goes
-        if (lineContentFrom(wrapper.nextSibling, true) === false) {
-          let last = wrapper.lastChild;
-          while (
-            last !== null &&
-            (last.nodeType === Node.COMMENT_NODE ||
-              (last.nodeType === Node.TEXT_NODE && isContent(last) === false))
-          ) {
-            last = last.previousSibling;
-          }
-          if (last instanceof Element && last.tagName === "BR") {
-            last.remove();
-          }
         }
       }
       wrapper.replaceWith(...wrapper.childNodes);

@@ -3393,3 +3393,358 @@ describe("an item with no content before its nested list leaves no item holding 
     async (shape) => check(shape.split(" "), "drop")
   );
 });
+
+describe("the lines at a block wrapper's edges when it gives way (Z2, Z3)", () => {
+  /** The value's lines: text and line breaks, "|" at each item or list edge. */
+  const linesOf = (html: string) =>
+    plain(html)
+      .replace(/<\/?(li|ul|ol)\b[^>]*>/g, "|")
+      .replace(/<(?!br\b)[^>]*>/g, "")
+      .replace(/\s*(<br \/>|\|)\s*/g, "$1")
+      .replace(/\|+/g, "|");
+  const ENDINGS = ["Zq", "Zq<br>", "Zq<br><br>"].flatMap((ending) =>
+    ["", " ", "<!--c-->"].map((after) => ending + after)
+  );
+  const FOLLOWS = [
+    "",
+    "Qq",
+    "<br>Qq",
+    "<br><br>Qq",
+    " <br>Qq",
+    "<!--c--><br>Qq",
+    "<div>Qq</div>",
+    "<p>Qq</p>",
+    "<b>Qq</b>",
+  ];
+  const PRECEDES = [
+    "",
+    "Pq",
+    "Pq<br>",
+    "Pq<br><br>",
+    "Pq <!--c--> ",
+    "<div>Pq</div>",
+    "<p>Pq</p>",
+    "<b>Pq</b>",
+  ];
+  const STARTS = ["Aq", "<br>Aq"];
+  const WRAPPERS = ["div", "section"];
+  const END_CASES = WRAPPERS.flatMap((wrapper) =>
+    ENDINGS.flatMap((ending) =>
+      FOLLOWS.map((follows) => ({
+        name: `${wrapper} ending ${JSON.stringify(ending)}, then ${JSON.stringify(follows)}`,
+        html: `<ul><li><${wrapper}>Aq<ul><li>Xq</li></ul>${ending}</${wrapper}>${follows}</li><li>Bq</li></ul>`,
+      }))
+    )
+  );
+  const START_CASES = WRAPPERS.flatMap((wrapper) =>
+    PRECEDES.flatMap((precedes) =>
+      STARTS.map((start) => ({
+        name: `${JSON.stringify(precedes)}, then ${wrapper} starting ${JSON.stringify(start)}`,
+        html: `<ul><li>${precedes}<${wrapper}>${start}<ul><li>Xq</li></ul>Zq</${wrapper}></li><li>Bq</li></ul>`,
+      }))
+    )
+  );
+  const atEnd = (lines: string) => {
+    const from = lines.indexOf("Zq");
+    return lines.slice(from, lines.indexOf("|", from) + 1);
+  };
+  const atStart = (lines: string) => {
+    const to = lines.indexOf("Aq") + 2;
+    return lines.slice(lines.lastIndexOf("|", to - 1), to);
+  };
+  /** What the import wrote at each edge before a wrapper gave way. */
+  const BASE: Record<string, string> = {
+    '"", then div starting "<br>Aq"': "|<br />Aq",
+    '"", then div starting "Aq"': "|Aq",
+    '"", then section starting "<br>Aq"': "|<br />Aq",
+    '"", then section starting "Aq"': "|Aq",
+    '"<b>Pq</b>", then div starting "<br>Aq"': "|Pq<br /><br />Aq",
+    '"<b>Pq</b>", then div starting "Aq"': "|Pq<br />Aq",
+    '"<b>Pq</b>", then section starting "<br>Aq"': "|Pq<br /><br />Aq",
+    '"<b>Pq</b>", then section starting "Aq"': "|Pq<br />Aq",
+    '"<div>Pq</div>", then div starting "<br>Aq"': "|Pq<br /><br />Aq",
+    '"<div>Pq</div>", then div starting "Aq"': "|Pq<br />Aq",
+    '"<div>Pq</div>", then section starting "<br>Aq"': "|Pq<br /><br />Aq",
+    '"<div>Pq</div>", then section starting "Aq"': "|Pq<br />Aq",
+    '"<p>Pq</p>", then div starting "<br>Aq"': "|Pq<br /><br />Aq",
+    '"<p>Pq</p>", then div starting "Aq"': "|Pq<br />Aq",
+    '"<p>Pq</p>", then section starting "<br>Aq"': "|Pq<br /><br />Aq",
+    '"<p>Pq</p>", then section starting "Aq"': "|Pq<br />Aq",
+    '"Pq <!--c--> ", then div starting "<br>Aq"': "|Pq<br /><br />Aq",
+    '"Pq <!--c--> ", then div starting "Aq"': "|Pq<br />Aq",
+    '"Pq <!--c--> ", then section starting "<br>Aq"': "|Pq<br /><br />Aq",
+    '"Pq <!--c--> ", then section starting "Aq"': "|Pq<br />Aq",
+    '"Pq", then div starting "<br>Aq"': "|Pq<br /><br />Aq",
+    '"Pq", then div starting "Aq"': "|Pq<br />Aq",
+    '"Pq", then section starting "<br>Aq"': "|Pq<br /><br />Aq",
+    '"Pq", then section starting "Aq"': "|Pq<br />Aq",
+    '"Pq<br>", then div starting "<br>Aq"': "|Pq<br /><br /><br />Aq",
+    '"Pq<br>", then div starting "Aq"': "|Pq<br /><br />Aq",
+    '"Pq<br>", then section starting "<br>Aq"': "|Pq<br /><br /><br />Aq",
+    '"Pq<br>", then section starting "Aq"': "|Pq<br /><br />Aq",
+    '"Pq<br><br>", then div starting "<br>Aq"': "|Pq<br /><br /><br /><br />Aq",
+    '"Pq<br><br>", then div starting "Aq"': "|Pq<br /><br /><br />Aq",
+    '"Pq<br><br>", then section starting "<br>Aq"':
+      "|Pq<br /><br /><br /><br />Aq",
+    '"Pq<br><br>", then section starting "Aq"': "|Pq<br /><br /><br />Aq",
+    'div ending "Zq ", then " <br>Qq"': "Zq<br /><br />Qq|",
+    'div ending "Zq ", then ""': "Zq|",
+    'div ending "Zq ", then "<!--c--><br>Qq"': "Zq<br /><br />Qq|",
+    'div ending "Zq ", then "<b>Qq</b>"': "Zq<br />Qq|",
+    'div ending "Zq ", then "<br><br>Qq"': "Zq<br /><br /><br />Qq|",
+    'div ending "Zq ", then "<br>Qq"': "Zq<br /><br />Qq|",
+    'div ending "Zq ", then "<div>Qq</div>"': "Zq<br />Qq|",
+    'div ending "Zq ", then "<p>Qq</p>"': "Zq<br />Qq|",
+    'div ending "Zq ", then "Qq"': "Zq<br />Qq|",
+    'div ending "Zq", then " <br>Qq"': "Zq<br /><br />Qq|",
+    'div ending "Zq", then ""': "Zq|",
+    'div ending "Zq", then "<!--c--><br>Qq"': "Zq<br /><br />Qq|",
+    'div ending "Zq", then "<b>Qq</b>"': "Zq<br />Qq|",
+    'div ending "Zq", then "<br><br>Qq"': "Zq<br /><br /><br />Qq|",
+    'div ending "Zq", then "<br>Qq"': "Zq<br /><br />Qq|",
+    'div ending "Zq", then "<div>Qq</div>"': "Zq<br />Qq|",
+    'div ending "Zq", then "<p>Qq</p>"': "Zq<br />Qq|",
+    'div ending "Zq", then "Qq"': "Zq<br />Qq|",
+    'div ending "Zq<!--c-->", then " <br>Qq"': "Zq<br /><br />Qq|",
+    'div ending "Zq<!--c-->", then ""': "Zq|",
+    'div ending "Zq<!--c-->", then "<!--c--><br>Qq"': "Zq<br /><br />Qq|",
+    'div ending "Zq<!--c-->", then "<b>Qq</b>"': "Zq<br />Qq|",
+    'div ending "Zq<!--c-->", then "<br><br>Qq"': "Zq<br /><br /><br />Qq|",
+    'div ending "Zq<!--c-->", then "<br>Qq"': "Zq<br /><br />Qq|",
+    'div ending "Zq<!--c-->", then "<div>Qq</div>"': "Zq<br />Qq|",
+    'div ending "Zq<!--c-->", then "<p>Qq</p>"': "Zq<br />Qq|",
+    'div ending "Zq<!--c-->", then "Qq"': "Zq<br />Qq|",
+    'div ending "Zq<br> ", then " <br>Qq"': "Zq<br /><br />Qq|",
+    'div ending "Zq<br> ", then ""': "Zq|",
+    'div ending "Zq<br> ", then "<!--c--><br>Qq"': "Zq<br /><br />Qq|",
+    'div ending "Zq<br> ", then "<b>Qq</b>"': "Zq<br />Qq|",
+    'div ending "Zq<br> ", then "<br><br>Qq"': "Zq<br /><br /><br />Qq|",
+    'div ending "Zq<br> ", then "<br>Qq"': "Zq<br /><br />Qq|",
+    'div ending "Zq<br> ", then "<div>Qq</div>"': "Zq<br />Qq|",
+    'div ending "Zq<br> ", then "<p>Qq</p>"': "Zq<br />Qq|",
+    'div ending "Zq<br> ", then "Qq"': "Zq<br />Qq|",
+    'div ending "Zq<br>", then " <br>Qq"': "Zq<br /><br />Qq|",
+    'div ending "Zq<br>", then ""': "Zq|",
+    'div ending "Zq<br>", then "<!--c--><br>Qq"': "Zq<br /><br />Qq|",
+    'div ending "Zq<br>", then "<b>Qq</b>"': "Zq<br />Qq|",
+    'div ending "Zq<br>", then "<br><br>Qq"': "Zq<br /><br /><br />Qq|",
+    'div ending "Zq<br>", then "<br>Qq"': "Zq<br /><br />Qq|",
+    'div ending "Zq<br>", then "<div>Qq</div>"': "Zq<br />Qq|",
+    'div ending "Zq<br>", then "<p>Qq</p>"': "Zq<br />Qq|",
+    'div ending "Zq<br>", then "Qq"': "Zq<br />Qq|",
+    'div ending "Zq<br><!--c-->", then " <br>Qq"': "Zq<br /><br /><br />Qq|",
+    'div ending "Zq<br><!--c-->", then ""': "Zq<br />|",
+    'div ending "Zq<br><!--c-->", then "<!--c--><br>Qq"':
+      "Zq<br /><br /><br />Qq|",
+    'div ending "Zq<br><!--c-->", then "<b>Qq</b>"': "Zq<br /><br />Qq|",
+    'div ending "Zq<br><!--c-->", then "<br><br>Qq"':
+      "Zq<br /><br /><br /><br />Qq|",
+    'div ending "Zq<br><!--c-->", then "<br>Qq"': "Zq<br /><br /><br />Qq|",
+    'div ending "Zq<br><!--c-->", then "<div>Qq</div>"': "Zq<br /><br />Qq|",
+    'div ending "Zq<br><!--c-->", then "<p>Qq</p>"': "Zq<br /><br />Qq|",
+    'div ending "Zq<br><!--c-->", then "Qq"': "Zq<br /><br />Qq|",
+    'div ending "Zq<br><br> ", then " <br>Qq"': "Zq<br /><br /><br />Qq|",
+    'div ending "Zq<br><br> ", then ""': "Zq<br />|",
+    'div ending "Zq<br><br> ", then "<!--c--><br>Qq"':
+      "Zq<br /><br /><br />Qq|",
+    'div ending "Zq<br><br> ", then "<b>Qq</b>"': "Zq<br /><br />Qq|",
+    'div ending "Zq<br><br> ", then "<br><br>Qq"':
+      "Zq<br /><br /><br /><br />Qq|",
+    'div ending "Zq<br><br> ", then "<br>Qq"': "Zq<br /><br /><br />Qq|",
+    'div ending "Zq<br><br> ", then "<div>Qq</div>"': "Zq<br /><br />Qq|",
+    'div ending "Zq<br><br> ", then "<p>Qq</p>"': "Zq<br /><br />Qq|",
+    'div ending "Zq<br><br> ", then "Qq"': "Zq<br /><br />Qq|",
+    'div ending "Zq<br><br>", then " <br>Qq"': "Zq<br /><br /><br />Qq|",
+    'div ending "Zq<br><br>", then ""': "Zq<br />|",
+    'div ending "Zq<br><br>", then "<!--c--><br>Qq"': "Zq<br /><br /><br />Qq|",
+    'div ending "Zq<br><br>", then "<b>Qq</b>"': "Zq<br /><br />Qq|",
+    'div ending "Zq<br><br>", then "<br><br>Qq"':
+      "Zq<br /><br /><br /><br />Qq|",
+    'div ending "Zq<br><br>", then "<br>Qq"': "Zq<br /><br /><br />Qq|",
+    'div ending "Zq<br><br>", then "<div>Qq</div>"': "Zq<br /><br />Qq|",
+    'div ending "Zq<br><br>", then "<p>Qq</p>"': "Zq<br /><br />Qq|",
+    'div ending "Zq<br><br>", then "Qq"': "Zq<br /><br />Qq|",
+    'div ending "Zq<br><br><!--c-->", then " <br>Qq"':
+      "Zq<br /><br /><br /><br />Qq|",
+    'div ending "Zq<br><br><!--c-->", then ""': "Zq<br /><br />|",
+    'div ending "Zq<br><br><!--c-->", then "<!--c--><br>Qq"':
+      "Zq<br /><br /><br /><br />Qq|",
+    'div ending "Zq<br><br><!--c-->", then "<b>Qq</b>"':
+      "Zq<br /><br /><br />Qq|",
+    'div ending "Zq<br><br><!--c-->", then "<br><br>Qq"':
+      "Zq<br /><br /><br /><br /><br />Qq|",
+    'div ending "Zq<br><br><!--c-->", then "<br>Qq"':
+      "Zq<br /><br /><br /><br />Qq|",
+    'div ending "Zq<br><br><!--c-->", then "<div>Qq</div>"':
+      "Zq<br /><br /><br />Qq|",
+    'div ending "Zq<br><br><!--c-->", then "<p>Qq</p>"':
+      "Zq<br /><br /><br />Qq|",
+    'div ending "Zq<br><br><!--c-->", then "Qq"': "Zq<br /><br /><br />Qq|",
+    'section ending "Zq ", then " <br>Qq"': "Zq<br /><br />Qq|",
+    'section ending "Zq ", then ""': "Zq|",
+    'section ending "Zq ", then "<!--c--><br>Qq"': "Zq<br /><br />Qq|",
+    'section ending "Zq ", then "<b>Qq</b>"': "Zq<br />Qq|",
+    'section ending "Zq ", then "<br><br>Qq"': "Zq<br /><br /><br />Qq|",
+    'section ending "Zq ", then "<br>Qq"': "Zq<br /><br />Qq|",
+    'section ending "Zq ", then "<div>Qq</div>"': "Zq<br />Qq|",
+    'section ending "Zq ", then "<p>Qq</p>"': "Zq<br />Qq|",
+    'section ending "Zq ", then "Qq"': "Zq<br />Qq|",
+    'section ending "Zq", then " <br>Qq"': "Zq<br /><br />Qq|",
+    'section ending "Zq", then ""': "Zq|",
+    'section ending "Zq", then "<!--c--><br>Qq"': "Zq<br /><br />Qq|",
+    'section ending "Zq", then "<b>Qq</b>"': "Zq<br />Qq|",
+    'section ending "Zq", then "<br><br>Qq"': "Zq<br /><br /><br />Qq|",
+    'section ending "Zq", then "<br>Qq"': "Zq<br /><br />Qq|",
+    'section ending "Zq", then "<div>Qq</div>"': "Zq<br />Qq|",
+    'section ending "Zq", then "<p>Qq</p>"': "Zq<br />Qq|",
+    'section ending "Zq", then "Qq"': "Zq<br />Qq|",
+    'section ending "Zq<!--c-->", then " <br>Qq"': "Zq<br /><br />Qq|",
+    'section ending "Zq<!--c-->", then ""': "Zq|",
+    'section ending "Zq<!--c-->", then "<!--c--><br>Qq"': "Zq<br /><br />Qq|",
+    'section ending "Zq<!--c-->", then "<b>Qq</b>"': "Zq<br />Qq|",
+    'section ending "Zq<!--c-->", then "<br><br>Qq"': "Zq<br /><br /><br />Qq|",
+    'section ending "Zq<!--c-->", then "<br>Qq"': "Zq<br /><br />Qq|",
+    'section ending "Zq<!--c-->", then "<div>Qq</div>"': "Zq<br />Qq|",
+    'section ending "Zq<!--c-->", then "<p>Qq</p>"': "Zq<br />Qq|",
+    'section ending "Zq<!--c-->", then "Qq"': "Zq<br />Qq|",
+    'section ending "Zq<br> ", then " <br>Qq"': "Zq<br /><br />Qq|",
+    'section ending "Zq<br> ", then ""': "Zq|",
+    'section ending "Zq<br> ", then "<!--c--><br>Qq"': "Zq<br /><br />Qq|",
+    'section ending "Zq<br> ", then "<b>Qq</b>"': "Zq<br />Qq|",
+    'section ending "Zq<br> ", then "<br><br>Qq"': "Zq<br /><br /><br />Qq|",
+    'section ending "Zq<br> ", then "<br>Qq"': "Zq<br /><br />Qq|",
+    'section ending "Zq<br> ", then "<div>Qq</div>"': "Zq<br />Qq|",
+    'section ending "Zq<br> ", then "<p>Qq</p>"': "Zq<br />Qq|",
+    'section ending "Zq<br> ", then "Qq"': "Zq<br />Qq|",
+    'section ending "Zq<br>", then " <br>Qq"': "Zq<br /><br />Qq|",
+    'section ending "Zq<br>", then ""': "Zq|",
+    'section ending "Zq<br>", then "<!--c--><br>Qq"': "Zq<br /><br />Qq|",
+    'section ending "Zq<br>", then "<b>Qq</b>"': "Zq<br />Qq|",
+    'section ending "Zq<br>", then "<br><br>Qq"': "Zq<br /><br /><br />Qq|",
+    'section ending "Zq<br>", then "<br>Qq"': "Zq<br /><br />Qq|",
+    'section ending "Zq<br>", then "<div>Qq</div>"': "Zq<br />Qq|",
+    'section ending "Zq<br>", then "<p>Qq</p>"': "Zq<br />Qq|",
+    'section ending "Zq<br>", then "Qq"': "Zq<br />Qq|",
+    'section ending "Zq<br><!--c-->", then " <br>Qq"':
+      "Zq<br /><br /><br />Qq|",
+    'section ending "Zq<br><!--c-->", then ""': "Zq<br />|",
+    'section ending "Zq<br><!--c-->", then "<!--c--><br>Qq"':
+      "Zq<br /><br /><br />Qq|",
+    'section ending "Zq<br><!--c-->", then "<b>Qq</b>"': "Zq<br /><br />Qq|",
+    'section ending "Zq<br><!--c-->", then "<br><br>Qq"':
+      "Zq<br /><br /><br /><br />Qq|",
+    'section ending "Zq<br><!--c-->", then "<br>Qq"': "Zq<br /><br /><br />Qq|",
+    'section ending "Zq<br><!--c-->", then "<div>Qq</div>"':
+      "Zq<br /><br />Qq|",
+    'section ending "Zq<br><!--c-->", then "<p>Qq</p>"': "Zq<br /><br />Qq|",
+    'section ending "Zq<br><!--c-->", then "Qq"': "Zq<br /><br />Qq|",
+    'section ending "Zq<br><br> ", then " <br>Qq"': "Zq<br /><br /><br />Qq|",
+    'section ending "Zq<br><br> ", then ""': "Zq<br />|",
+    'section ending "Zq<br><br> ", then "<!--c--><br>Qq"':
+      "Zq<br /><br /><br />Qq|",
+    'section ending "Zq<br><br> ", then "<b>Qq</b>"': "Zq<br /><br />Qq|",
+    'section ending "Zq<br><br> ", then "<br><br>Qq"':
+      "Zq<br /><br /><br /><br />Qq|",
+    'section ending "Zq<br><br> ", then "<br>Qq"': "Zq<br /><br /><br />Qq|",
+    'section ending "Zq<br><br> ", then "<div>Qq</div>"': "Zq<br /><br />Qq|",
+    'section ending "Zq<br><br> ", then "<p>Qq</p>"': "Zq<br /><br />Qq|",
+    'section ending "Zq<br><br> ", then "Qq"': "Zq<br /><br />Qq|",
+    'section ending "Zq<br><br>", then " <br>Qq"': "Zq<br /><br /><br />Qq|",
+    'section ending "Zq<br><br>", then ""': "Zq<br />|",
+    'section ending "Zq<br><br>", then "<!--c--><br>Qq"':
+      "Zq<br /><br /><br />Qq|",
+    'section ending "Zq<br><br>", then "<b>Qq</b>"': "Zq<br /><br />Qq|",
+    'section ending "Zq<br><br>", then "<br><br>Qq"':
+      "Zq<br /><br /><br /><br />Qq|",
+    'section ending "Zq<br><br>", then "<br>Qq"': "Zq<br /><br /><br />Qq|",
+    'section ending "Zq<br><br>", then "<div>Qq</div>"': "Zq<br /><br />Qq|",
+    'section ending "Zq<br><br>", then "<p>Qq</p>"': "Zq<br /><br />Qq|",
+    'section ending "Zq<br><br>", then "Qq"': "Zq<br /><br />Qq|",
+    'section ending "Zq<br><br><!--c-->", then " <br>Qq"':
+      "Zq<br /><br /><br /><br />Qq|",
+    'section ending "Zq<br><br><!--c-->", then ""': "Zq<br /><br />|",
+    'section ending "Zq<br><br><!--c-->", then "<!--c--><br>Qq"':
+      "Zq<br /><br /><br /><br />Qq|",
+    'section ending "Zq<br><br><!--c-->", then "<b>Qq</b>"':
+      "Zq<br /><br /><br />Qq|",
+    'section ending "Zq<br><br><!--c-->", then "<br><br>Qq"':
+      "Zq<br /><br /><br /><br /><br />Qq|",
+    'section ending "Zq<br><br><!--c-->", then "<br>Qq"':
+      "Zq<br /><br /><br /><br />Qq|",
+    'section ending "Zq<br><br><!--c-->", then "<div>Qq</div>"':
+      "Zq<br /><br /><br />Qq|",
+    'section ending "Zq<br><br><!--c-->", then "<p>Qq</p>"':
+      "Zq<br /><br /><br />Qq|",
+    'section ending "Zq<br><br><!--c-->", then "Qq"': "Zq<br /><br /><br />Qq|",
+  };
+  /** Where a comment follows a wrapper's last line break, or line breaks end the item, the edit's own rules hold. */
+  const CHOSEN: Record<string, string> = {
+    'div ending "Zq<br><!--c-->", then " <br>Qq"': "Zq<br /><br />Qq|",
+    'div ending "Zq<br><!--c-->", then ""': "Zq|",
+    'div ending "Zq<br><!--c-->", then "<!--c--><br>Qq"': "Zq<br /><br />Qq|",
+    'div ending "Zq<br><!--c-->", then "<b>Qq</b>"': "Zq<br />Qq|",
+    'div ending "Zq<br><!--c-->", then "<br><br>Qq"': "Zq<br /><br /><br />Qq|",
+    'div ending "Zq<br><!--c-->", then "<br>Qq"': "Zq<br /><br />Qq|",
+    'div ending "Zq<br><!--c-->", then "<div>Qq</div>"': "Zq<br />Qq|",
+    'div ending "Zq<br><!--c-->", then "<p>Qq</p>"': "Zq<br />Qq|",
+    'div ending "Zq<br><!--c-->", then "Qq"': "Zq<br />Qq|",
+    'div ending "Zq<br><br> ", then ""': "Zq|",
+    'div ending "Zq<br><br>", then ""': "Zq|",
+    'div ending "Zq<br><br><!--c-->", then " <br>Qq"':
+      "Zq<br /><br /><br />Qq|",
+    'div ending "Zq<br><br><!--c-->", then ""': "Zq<br />|",
+    'div ending "Zq<br><br><!--c-->", then "<!--c--><br>Qq"':
+      "Zq<br /><br /><br />Qq|",
+    'div ending "Zq<br><br><!--c-->", then "<b>Qq</b>"': "Zq<br /><br />Qq|",
+    'div ending "Zq<br><br><!--c-->", then "<br><br>Qq"':
+      "Zq<br /><br /><br /><br />Qq|",
+    'div ending "Zq<br><br><!--c-->", then "<br>Qq"': "Zq<br /><br /><br />Qq|",
+    'div ending "Zq<br><br><!--c-->", then "<div>Qq</div>"':
+      "Zq<br /><br />Qq|",
+    'div ending "Zq<br><br><!--c-->", then "<p>Qq</p>"': "Zq<br /><br />Qq|",
+    'div ending "Zq<br><br><!--c-->", then "Qq"': "Zq<br /><br />Qq|",
+    'section ending "Zq<br><!--c-->", then " <br>Qq"': "Zq<br /><br />Qq|",
+    'section ending "Zq<br><!--c-->", then ""': "Zq|",
+    'section ending "Zq<br><!--c-->", then "<!--c--><br>Qq"':
+      "Zq<br /><br />Qq|",
+    'section ending "Zq<br><!--c-->", then "<b>Qq</b>"': "Zq<br />Qq|",
+    'section ending "Zq<br><!--c-->", then "<br><br>Qq"':
+      "Zq<br /><br /><br />Qq|",
+    'section ending "Zq<br><!--c-->", then "<br>Qq"': "Zq<br /><br />Qq|",
+    'section ending "Zq<br><!--c-->", then "<div>Qq</div>"': "Zq<br />Qq|",
+    'section ending "Zq<br><!--c-->", then "<p>Qq</p>"': "Zq<br />Qq|",
+    'section ending "Zq<br><!--c-->", then "Qq"': "Zq<br />Qq|",
+    'section ending "Zq<br><br> ", then ""': "Zq|",
+    'section ending "Zq<br><br>", then ""': "Zq|",
+    'section ending "Zq<br><br><!--c-->", then " <br>Qq"':
+      "Zq<br /><br /><br />Qq|",
+    'section ending "Zq<br><br><!--c-->", then ""': "Zq<br />|",
+    'section ending "Zq<br><br><!--c-->", then "<!--c--><br>Qq"':
+      "Zq<br /><br /><br />Qq|",
+    'section ending "Zq<br><br><!--c-->", then "<b>Qq</b>"':
+      "Zq<br /><br />Qq|",
+    'section ending "Zq<br><br><!--c-->", then "<br><br>Qq"':
+      "Zq<br /><br /><br /><br />Qq|",
+    'section ending "Zq<br><br><!--c-->", then "<br>Qq"':
+      "Zq<br /><br /><br />Qq|",
+    'section ending "Zq<br><br><!--c-->", then "<div>Qq</div>"':
+      "Zq<br /><br />Qq|",
+    'section ending "Zq<br><br><!--c-->", then "<p>Qq</p>"':
+      "Zq<br /><br />Qq|",
+    'section ending "Zq<br><br><!--c-->", then "Qq"': "Zq<br /><br />Qq|",
+  };
+  const written = async (html: string) => {
+    const onChange = await mountAt("<p></p>", "");
+    paste({ "text/html": html, "text/plain": "x" });
+    await settle();
+    return linesOf(lastHtml(onChange));
+  };
+  test.each(END_CASES)("$name", async ({ name, html }) => {
+    const lines = atEnd(await written(html));
+    expect(lines).toBe(CHOSEN[name] ?? BASE[name]);
+  });
+  test.each(START_CASES)("$name", async ({ name, html }) => {
+    const lines = atStart(await written(html));
+    expect(lines).toBe(CHOSEN[name] ?? BASE[name]);
+  });
+});
