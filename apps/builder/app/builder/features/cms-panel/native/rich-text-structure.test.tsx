@@ -2538,12 +2538,176 @@ describe("the text after the caret joins a pasted item that starts with a rule (
       await userEvent.keyboard("{Control>}y{/Control}");
       await settle();
     });
+    const redone = plain(lastHtml(onChange));
     await quickly(async () => {
       await userEvent.keyboard("Z");
       await settle();
     });
     expect(errorsOf(errors)).toEqual([]);
-    return { pasted, typed: plain(lastHtml(onChange)) };
+    return { pasted, redone, typed: plain(lastHtml(onChange)) };
+  };
+  /** What each shape writes after the paste or drop, and after a typed Z. */
+  const SHAPE_WRITES: Record<string, [string, string]> = {
+    "HHLT depth 1 drop": [
+      "<ul><li>s1</li><li>Aq<ul><li>X3q</li></ul></li><li><hr /><hr />T4qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq<ul><li>X3q</li></ul></li><li><hr /><hr />T4qZq</li><li>t1q</li></ul>",
+    ],
+    "HHLT depth 1 paste": [
+      "<ul><li>s1</li><li>Aq<ul><li>X3q</li></ul></li><li><hr /><hr />T4qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq<ul><li>X3q</li></ul></li><li><hr /><hr />T4qZq</li><li>t1q</li></ul>",
+    ],
+    "HHLT depth 3 drop": [
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X3q</li></ul></li><li><hr /><hr />T4qq</li><li>t1q</li></ul></li></ul></li></ul>",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X3q</li></ul></li><li><hr /><hr />T4qZq</li><li>t1q</li></ul></li></ul></li></ul>",
+    ],
+    "HHLT depth 3 paste": [
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X3q</li></ul></li><li><hr /><hr />T4qq</li><li>t1q</li></ul></li></ul></li></ul>",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X3q</li></ul></li><li><hr /><hr />T4qZq</li><li>t1q</li></ul></li></ul></li></ul>",
+    ],
+    "HLD depth 1 drop": [
+      "<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr /><hr />D3qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr /><hr />D3qZq</li><li>t1q</li></ul>",
+    ],
+    "HLD depth 1 paste": [
+      "<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr /><hr />D3qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr /><hr />D3qZq</li><li>t1q</li></ul>",
+    ],
+    "HLD depth 3 drop": [
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr /><hr />D3qq</li><li>t1q</li></ul></li></ul></li></ul>",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr /><hr />D3qZq</li><li>t1q</li></ul></li></ul></li></ul>",
+    ],
+    "HLD depth 3 paste": [
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr /><hr />D3qq</li><li>t1q</li></ul></li></ul></li></ul>",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr /><hr />D3qZq</li><li>t1q</li></ul></li></ul></li></ul>",
+    ],
+    "HLHT depth 1 drop": [
+      "<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr /><hr />T4qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr /><hr />T4qZq</li><li>t1q</li></ul>",
+    ],
+    "HLHT depth 1 paste": [
+      "<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr /><hr />T4qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr /><hr />T4qZq</li><li>t1q</li></ul>",
+    ],
+    "HLHT depth 3 drop": [
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr /><hr />T4qq</li><li>t1q</li></ul></li></ul></li></ul>",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr /><hr />T4qZq</li><li>t1q</li></ul></li></ul></li></ul>",
+    ],
+    "HLHT depth 3 paste": [
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr /><hr />T4qq</li><li>t1q</li></ul></li></ul></li></ul>",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr /><hr />T4qZq</li><li>t1q</li></ul></li></ul></li></ul>",
+    ],
+    "HLLT depth 1 drop": [
+      "<ul><li>s1</li><li>Aq</li><li><ul><li>X2q</li></ul><ul><li>X3q</li></ul></li><li><hr />T4qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq</li><li><ul><li>X2q</li></ul><ul><li>X3q</li></ul></li><li><hr />T4qZq</li><li>t1q</li></ul>",
+    ],
+    "HLLT depth 1 paste": [
+      "<ul><li>s1</li><li>Aq</li><li><ul><li>X2q</li></ul><ul><li>X3q</li></ul></li><li><hr />T4qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq</li><li><ul><li>X2q</li></ul><ul><li>X3q</li></ul></li><li><hr />T4qZq</li><li>t1q</li></ul>",
+    ],
+    "HLLT depth 3 drop": [
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq</li><li><ul><li>X2q</li></ul><ul><li>X3q</li></ul></li><li><hr />T4qq</li><li>t1q</li></ul></li></ul></li></ul>",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq</li><li><ul><li>X2q</li></ul><ul><li>X3q</li></ul></li><li><hr />T4qZq</li><li>t1q</li></ul></li></ul></li></ul>",
+    ],
+    "HLLT depth 3 paste": [
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq</li><li><ul><li>X2q</li></ul><ul><li>X3q</li></ul></li><li><hr />T4qq</li><li>t1q</li></ul></li></ul></li></ul>",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq</li><li><ul><li>X2q</li></ul><ul><li>X3q</li></ul></li><li><hr />T4qZq</li><li>t1q</li></ul></li></ul></li></ul>",
+    ],
+    "HLT depth 1 drop": [
+      "<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr />T3qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr />T3qZq</li><li>t1q</li></ul>",
+    ],
+    "HLT depth 1 paste": [
+      "<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr />T3qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr />T3qZq</li><li>t1q</li></ul>",
+    ],
+    "HLT depth 3 drop": [
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr />T3qq</li><li>t1q</li></ul></li></ul></li></ul>",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr />T3qZq</li><li>t1q</li></ul></li></ul></li></ul>",
+    ],
+    "HLT depth 3 paste": [
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr />T3qq</li><li>t1q</li></ul></li></ul></li></ul>",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X2q</li></ul></li><li><hr />T3qZq</li><li>t1q</li></ul></li></ul></li></ul>",
+    ],
+    "HT depth 1 drop": [
+      "<ul><li>s1</li><li>Aq</li><li><hr />T2qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq</li><li><hr />T2qZq</li><li>t1q</li></ul>",
+    ],
+    "HT depth 1 paste": [
+      "<ul><li>s1</li><li>Aq</li><li><hr />T2qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq</li><li><hr />T2qZq</li><li>t1q</li></ul>",
+    ],
+    "HT depth 3 drop": [
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq</li><li><hr />T2qq</li><li>t1q</li></ul></li></ul></li></ul>",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq</li><li><hr />T2qZq</li><li>t1q</li></ul></li></ul></li></ul>",
+    ],
+    "HT depth 3 paste": [
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq</li><li><hr />T2qq</li><li>t1q</li></ul></li></ul></li></ul>",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq</li><li><hr />T2qZq</li><li>t1q</li></ul></li></ul></li></ul>",
+    ],
+    "LHBT depth 1 drop": [
+      "<ul><li>s1</li><li>Aq<ul><li>X1q</li></ul></li><li><hr />T4qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq<ul><li>X1q</li></ul></li><li><hr />T4qZq</li><li>t1q</li></ul>",
+    ],
+    "LHBT depth 1 paste": [
+      "<ul><li>s1</li><li>Aq<ul><li>X1q</li></ul></li><li><hr />T4qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq<ul><li>X1q</li></ul></li><li><hr />T4qZq</li><li>t1q</li></ul>",
+    ],
+    "LHBT depth 3 drop": [
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X1q</li></ul></li><li><hr />T4qq</li><li>t1q</li></ul></li></ul></li></ul>",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X1q</li></ul></li><li><hr />T4qZq</li><li>t1q</li></ul></li></ul></li></ul>",
+    ],
+    "LHBT depth 3 paste": [
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X1q</li></ul></li><li><hr />T4qq</li><li>t1q</li></ul></li></ul></li></ul>",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X1q</li></ul></li><li><hr />T4qZq</li><li>t1q</li></ul></li></ul></li></ul>",
+    ],
+    "LHT depth 1 drop": [
+      "<ul><li>s1</li><li>Aq<ul><li>X1q</li></ul></li><li><hr />T3qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq<ul><li>X1q</li></ul></li><li><hr />T3qZq</li><li>t1q</li></ul>",
+    ],
+    "LHT depth 1 paste": [
+      "<ul><li>s1</li><li>Aq<ul><li>X1q</li></ul></li><li><hr />T3qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq<ul><li>X1q</li></ul></li><li><hr />T3qZq</li><li>t1q</li></ul>",
+    ],
+    "LHT depth 3 drop": [
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X1q</li></ul></li><li><hr />T3qq</li><li>t1q</li></ul></li></ul></li></ul>",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X1q</li></ul></li><li><hr />T3qZq</li><li>t1q</li></ul></li></ul></li></ul>",
+    ],
+    "LHT depth 3 paste": [
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X1q</li></ul></li><li><hr />T3qq</li><li>t1q</li></ul></li></ul></li></ul>",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq<ul><li>X1q</li></ul></li><li><hr />T3qZq</li><li>t1q</li></ul></li></ul></li></ul>",
+    ],
+    "LLHD depth 1 drop": [
+      "<ul><li>s1</li><li>Aq</li><li><ul><li>X1q</li></ul><ul><li>X2q</li></ul></li><li><hr /><hr />D4qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq</li><li><ul><li>X1q</li></ul><ul><li>X2q</li></ul></li><li><hr /><hr />D4qZq</li><li>t1q</li></ul>",
+    ],
+    "LLHD depth 1 paste": [
+      "<ul><li>s1</li><li>Aq</li><li><ul><li>X1q</li></ul><ul><li>X2q</li></ul></li><li><hr /><hr />D4qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq</li><li><ul><li>X1q</li></ul><ul><li>X2q</li></ul></li><li><hr /><hr />D4qZq</li><li>t1q</li></ul>",
+    ],
+    "LLHD depth 3 drop": [
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq</li><li><ul><li>X1q</li></ul><ul><li>X2q</li></ul></li><li><hr /><hr />D4qq</li><li>t1q</li></ul></li></ul></li></ul>",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq</li><li><ul><li>X1q</li></ul><ul><li>X2q</li></ul></li><li><hr /><hr />D4qZq</li><li>t1q</li></ul></li></ul></li></ul>",
+    ],
+    "LLHD depth 3 paste": [
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq</li><li><ul><li>X1q</li></ul><ul><li>X2q</li></ul></li><li><hr /><hr />D4qq</li><li>t1q</li></ul></li></ul></li></ul>",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq</li><li><ul><li>X1q</li></ul><ul><li>X2q</li></ul></li><li><hr /><hr />D4qZq</li><li>t1q</li></ul></li></ul></li></ul>",
+    ],
+    "LLHT depth 1 drop": [
+      "<ul><li>s1</li><li>Aq</li><li><ul><li>X1q</li></ul><ul><li>X2q</li></ul></li><li><hr />T4qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq</li><li><ul><li>X1q</li></ul><ul><li>X2q</li></ul></li><li><hr />T4qZq</li><li>t1q</li></ul>",
+    ],
+    "LLHT depth 1 paste": [
+      "<ul><li>s1</li><li>Aq</li><li><ul><li>X1q</li></ul><ul><li>X2q</li></ul></li><li><hr />T4qq</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq</li><li><ul><li>X1q</li></ul><ul><li>X2q</li></ul></li><li><hr />T4qZq</li><li>t1q</li></ul>",
+    ],
+    "LLHT depth 3 drop": [
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq</li><li><ul><li>X1q</li></ul><ul><li>X2q</li></ul></li><li><hr />T4qq</li><li>t1q</li></ul></li></ul></li></ul>",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq</li><li><ul><li>X1q</li></ul><ul><li>X2q</li></ul></li><li><hr />T4qZq</li><li>t1q</li></ul></li></ul></li></ul>",
+    ],
+    "LLHT depth 3 paste": [
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq</li><li><ul><li>X1q</li></ul><ul><li>X2q</li></ul></li><li><hr />T4qq</li><li>t1q</li></ul></li></ul></li></ul>",
+      "<ul><li>a1<ul><li>b1<ul><li>s1</li><li>Aq</li><li><ul><li>X1q</li></ul><ul><li>X2q</li></ul></li><li><hr />T4qZq</li><li>t1q</li></ul></li></ul></li></ul>",
+    ],
   };
   const SHAPES = [
     "HLT",
@@ -2567,10 +2731,12 @@ describe("the text after the caret joins a pasted item that starts with a rule (
     "$how of a last item $shape at $depth",
     async ({ shape, depth, how }) => {
       const html = `<ul><li>Aq</li><li>${itemOf(shape)}</li></ul>`;
-      const { pasted, typed } = await run(STORED[depth], html, how);
-      expect(pasted).toMatch(/<li>(<hr \/>)+[TD]\dqq<\/li><li>t1q<\/li>/);
-      expect(pasted).not.toContain("<li>q</li>");
-      expect(typed).toMatch(/<li>(<hr \/>)+[TD]\dqZq<\/li><li>t1q<\/li>/);
+      const { pasted, redone, typed } = await run(STORED[depth], html, how);
+      const [pastedWrite, typedWrite] =
+        SHAPE_WRITES[`${shape} ${depth} ${how}`];
+      expect(pasted).toBe(pastedWrite);
+      expect(redone).toBe(pastedWrite);
+      expect(typed).toBe(typedWrite);
     },
     60000
   );
@@ -2651,6 +2817,22 @@ describe("the text after the caret joins a pasted item that starts with a rule (
       2,
       "<ul><li>s1</li><li>Aq</li><li><hr /><blockquote><p>Q2qq</p></blockquote></li><li>t1q</li></ul>",
       "<ul><li>s1</li><li>Aq</li><li><hr /><blockquote><p>Q2qZq</p></blockquote></li><li>t1q</li></ul>",
+    ],
+    [
+      "a last item ending in a quote holding a rule is unchanged",
+      STORED["depth 1"],
+      "<ul><li>Aq</li><li><hr>T2q<blockquote><hr>Q1q</blockquote></li></ul>",
+      2,
+      "<ul><li>s1</li><li>Aq</li><li><hr />T2q<blockquote><hr />Q1q</blockquote></li><li>q</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq</li><li><hr />T2q<blockquote><hr />Q1qZ</blockquote></li><li>q</li><li>t1q</li></ul>",
+    ],
+    [
+      "a last item ending in a heading holding a rule is unchanged",
+      STORED["depth 1"],
+      "<ul><li>Aq</li><li><hr>T2q<h2><hr>H1q</h2></li></ul>",
+      2,
+      "<ul><li>s1</li><li>Aq</li><li><hr />T2q<hr /><h2>H1q</h2></li><li>q</li><li>t1q</li></ul>",
+      "<ul><li>s1</li><li>Aq</li><li><hr />T2q<hr /><h2>H1qZ</h2></li><li>q</li><li>t1q</li></ul>",
     ],
   ] as const)(
     "%s",
