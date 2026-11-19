@@ -410,6 +410,17 @@ const Q1_NODE_SHAPES: Array<[string, string, string]> = [
   ["image in QI", `<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>${IMGTAG}</li><li>Nw</li></ul>`, "cms-image"],
   ["image in TQI", `<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>X2w${IMGTAG}</li><li>Nw</li></ul>`, "cms-image"],
 ];
+/** A rule reached by the arrow keys, or an image by a real click and Escape. */
+const realNodeSelect = (type: string): Step =>
+  type === "horizontalrule"
+    ? nodeSelectAfter("T0w")
+    : async () => {
+        await clickInWord("Pw");
+        await userEvent.click(editable()!.querySelector<HTMLElement>("img")!);
+        await settle();
+        await userEvent.keyboard("{Escape}");
+        await settle();
+      };
 for (const [name, html, type] of Q1_NODE_SHAPES) {
   for (const [label, step] of [
     ...Q1_COMMANDS,
@@ -422,6 +433,7 @@ for (const [name, html, type] of Q1_NODE_SHAPES) {
     ["cut", () => clipboardEvent("cut")],
   ] as Array<[string, Step]>) {
     RECORDS.push([`Q1 node ${name} ${label}`, html, nodeSelect(type), step]);
+    RECORDS.push([`Q1 real node ${name} ${label}`, html, realNodeSelect(type), step]);
   }
 }
 
@@ -491,6 +503,20 @@ describe("S records", () => {
       const written = stateOf();
       clearRichTextReadOnlyMemo();
       const reopens = after === "" || getRichTextReadOnlyReason(after) === undefined;
+      const letterPass =
+        String((import.meta as { env?: Record<string, string> }).env?.VITE_LETTER_AFTER ?? "") !== "";
+      if (letterPass) {
+        const startCaret = caretOf();
+        editable()!.focus();
+        await settle();
+        await userEvent.keyboard("z");
+        await settle();
+        console.log(
+          `LET ${JSON.stringify({ id, caret: startCaret, letterHtml: sanitizeRichTextHtml(lastHtml(onChange)), letterCaret: caretOf() })}`
+        );
+        clip = undefined;
+        return;
+      }
       // undo, then redo, from the editor itself (Block type leaves the focus
       // outside the field)
       editable()!.focus();
