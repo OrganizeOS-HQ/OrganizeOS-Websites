@@ -441,62 +441,14 @@ describe("the lines at a block wrapper's edges when it gives way (Z2, Z3)", () =
       "Zq<br /><br /><br />Qq|",
     'section ending "Zq<br><br><!--c-->", then "Qq"': "Zq<br /><br /><br />Qq|",
   };
-  /** Where a comment follows a wrapper's last line break, or line breaks end the item, the edit's own rules hold. */
+  /** Line breaks at the end of an item the split makes are trimmed. */
   const CHOSEN: Record<string, string> = {
-    'div ending "Zq<br><!--c-->", then " <br>Qq"': "Zq<br /><br />Qq|",
-    'div ending "Zq<br><!--c-->", then ""': "Zq|",
-    'div ending "Zq<br><!--c-->", then "<!--c--><br>Qq"': "Zq<br /><br />Qq|",
-    'div ending "Zq<br><!--c-->", then "<b>Qq</b>"': "Zq<br />Qq|",
-    'div ending "Zq<br><!--c-->", then "<br><br>Qq"': "Zq<br /><br /><br />Qq|",
-    'div ending "Zq<br><!--c-->", then "<br>Qq"': "Zq<br /><br />Qq|",
-    'div ending "Zq<br><!--c-->", then "<div>Qq</div>"': "Zq<br />Qq|",
-    'div ending "Zq<br><!--c-->", then "<p>Qq</p>"': "Zq<br />Qq|",
-    'div ending "Zq<br><!--c-->", then "Qq"': "Zq<br />Qq|",
     'div ending "Zq<br><br> ", then ""': "Zq|",
     'div ending "Zq<br><br>", then ""': "Zq|",
-    'div ending "Zq<br><br><!--c-->", then " <br>Qq"':
-      "Zq<br /><br /><br />Qq|",
-    'div ending "Zq<br><br><!--c-->", then ""': "Zq<br />|",
-    'div ending "Zq<br><br><!--c-->", then "<!--c--><br>Qq"':
-      "Zq<br /><br /><br />Qq|",
-    'div ending "Zq<br><br><!--c-->", then "<b>Qq</b>"': "Zq<br /><br />Qq|",
-    'div ending "Zq<br><br><!--c-->", then "<br><br>Qq"':
-      "Zq<br /><br /><br /><br />Qq|",
-    'div ending "Zq<br><br><!--c-->", then "<br>Qq"': "Zq<br /><br /><br />Qq|",
-    'div ending "Zq<br><br><!--c-->", then "<div>Qq</div>"':
-      "Zq<br /><br />Qq|",
-    'div ending "Zq<br><br><!--c-->", then "<p>Qq</p>"': "Zq<br /><br />Qq|",
-    'div ending "Zq<br><br><!--c-->", then "Qq"': "Zq<br /><br />Qq|",
-    'section ending "Zq<br><!--c-->", then " <br>Qq"': "Zq<br /><br />Qq|",
-    'section ending "Zq<br><!--c-->", then ""': "Zq|",
-    'section ending "Zq<br><!--c-->", then "<!--c--><br>Qq"':
-      "Zq<br /><br />Qq|",
-    'section ending "Zq<br><!--c-->", then "<b>Qq</b>"': "Zq<br />Qq|",
-    'section ending "Zq<br><!--c-->", then "<br><br>Qq"':
-      "Zq<br /><br /><br />Qq|",
-    'section ending "Zq<br><!--c-->", then "<br>Qq"': "Zq<br /><br />Qq|",
-    'section ending "Zq<br><!--c-->", then "<div>Qq</div>"': "Zq<br />Qq|",
-    'section ending "Zq<br><!--c-->", then "<p>Qq</p>"': "Zq<br />Qq|",
-    'section ending "Zq<br><!--c-->", then "Qq"': "Zq<br />Qq|",
     'section ending "Zq<br><br> ", then ""': "Zq|",
     'section ending "Zq<br><br>", then ""': "Zq|",
-    'section ending "Zq<br><br><!--c-->", then " <br>Qq"':
-      "Zq<br /><br /><br />Qq|",
-    'section ending "Zq<br><br><!--c-->", then ""': "Zq<br />|",
-    'section ending "Zq<br><br><!--c-->", then "<!--c--><br>Qq"':
-      "Zq<br /><br /><br />Qq|",
-    'section ending "Zq<br><br><!--c-->", then "<b>Qq</b>"':
-      "Zq<br /><br />Qq|",
-    'section ending "Zq<br><br><!--c-->", then "<br><br>Qq"':
-      "Zq<br /><br /><br /><br />Qq|",
-    'section ending "Zq<br><br><!--c-->", then "<br>Qq"':
-      "Zq<br /><br /><br />Qq|",
-    'section ending "Zq<br><br><!--c-->", then "<div>Qq</div>"':
-      "Zq<br /><br />Qq|",
-    'section ending "Zq<br><br><!--c-->", then "<p>Qq</p>"':
-      "Zq<br /><br />Qq|",
-    'section ending "Zq<br><br><!--c-->", then "Qq"': "Zq<br /><br />Qq|",
   };
+
   const written = async (html: string) => {
     const onChange = await field.fresh();
     paste({ "text/html": html, "text/plain": "x" });

@@ -2366,7 +2366,7 @@ describe("a block wrapper that gives way keeps its own last line break only befo
     [
       "a section ending in white space and a comment, then a paragraph",
       "<ul><li><section>Aq<ul><li>Xq</li></ul>Zq<br> <!-- c --> </section><p>Qq</p></li><li>Bq</li></ul>",
-      "<ul><li>Aq<ul><li>Xq</li></ul></li><li>Zq<br />Qq</li><li>Bq</li></ul>",
+      "<ul><li>Aq<ul><li>Xq</li></ul></li><li>Zq<br /><br />Qq</li><li>Bq</li></ul>",
     ],
     [
       "a figure, then a div",

@@ -2782,13 +2782,13 @@ const splitItemsAfterNestedList = (body: HTMLElement) => {
           }
           return false;
         };
-        // its own last line break (past white space and comments) makes no
-        // line of its own
+        // its own last line break (past white space) makes no line of its
+        // own
         let last = wrapper.lastChild;
         while (
           last !== null &&
-          (last.nodeType === Node.COMMENT_NODE ||
-            (last.nodeType === Node.TEXT_NODE && isContent(last) === false))
+          last.nodeType === Node.TEXT_NODE &&
+          isContent(last) === false
         ) {
           last = last.previousSibling;
         }
