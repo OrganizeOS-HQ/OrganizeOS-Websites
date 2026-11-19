@@ -534,7 +534,9 @@ export const $liftPointsIntoLines = (create: boolean) => {
       point.set(before.getKey(), before.getChildrenSize(), "element");
       continue;
     }
-    if (create === false) {
+    // a quote takes an edit there in a paragraph of its own
+    // (`$editInBlockLedItem`)
+    if (create === false || $isListItemNode(container) === false) {
       continue;
     }
     const at = `${container.getKey()}@${point.offset}`;
@@ -563,7 +565,7 @@ export const $liftPointsIntoLines = (create: boolean) => {
  * line after the block; with `replace`, the block goes (a paste, a drop or
  * typing replaces it).
  */
-const $nodeSelectionIntoLine = (replace: boolean) => {
+const $nodeSelectionIntoLine = (replace: boolean, create: boolean) => {
   const selection = $getSelection();
   if ($isNodeSelection(selection) === false) {
     return;
@@ -579,7 +581,7 @@ const $nodeSelectionIntoLine = (replace: boolean) => {
   range.anchor.set(container.getKey(), index, "element");
   range.focus.set(container.getKey(), index, "element");
   $setSelection(range);
-  $liftPointsIntoLines(true);
+  $liftPointsIntoLines(create);
   if (replace) {
     for (const node of nodes) {
       node.remove();
@@ -591,9 +593,13 @@ const insertCommands: LexicalCommand<never>[] = [
   INSERT_PARAGRAPH_COMMAND,
   INSERT_LINE_BREAK_COMMAND,
   CONTROLLED_TEXT_INSERTION_COMMAND,
+  FORMAT_TEXT_COMMAND,
+] as LexicalCommand<never>[];
+
+/** A paste or drop at a point with no line beside it goes the head's way. */
+const pasteCommands: LexicalCommand<never>[] = [
   PASTE_COMMAND,
   SELECTION_INSERT_CLIPBOARD_NODES_COMMAND,
-  FORMAT_TEXT_COMMAND,
 ] as LexicalCommand<never>[];
 
 const replacingCommands = new Set<LexicalCommand<never>>([
@@ -654,9 +660,24 @@ export const registerLineCommands = (editor: LexicalEditor) =>
     ...insertCommands.map((command) =>
       editor.registerCommand(
         command,
+        (payload: unknown) => {
+          // a drop carries a data transfer: it is a paste
+          const isDrop =
+            command === CONTROLLED_TEXT_INSERTION_COMMAND &&
+            typeof payload !== "string";
+          $nodeSelectionIntoLine(replacingCommands.has(command), isDrop === false);
+          $liftPointsIntoLines(isDrop === false);
+          return false;
+        },
+        COMMAND_PRIORITY_CRITICAL
+      )
+    ),
+    ...pasteCommands.map((command) =>
+      editor.registerCommand(
+        command,
         () => {
-          $nodeSelectionIntoLine(replacingCommands.has(command));
-          $liftPointsIntoLines(true);
+          $nodeSelectionIntoLine(true, false);
+          $liftPointsIntoLines(false);
           return false;
         },
         COMMAND_PRIORITY_CRITICAL
@@ -746,3 +767,22 @@ export const registerLineCommands = (editor: LexicalEditor) =>
       COMMAND_PRIORITY_LOW
     )
   );
+
+/**
+ * The lines among `nodes` give way to their children, in place, and the
+ * nodes come back with each line replaced by its children: a lift that
+ * reads inline content reads it as the head's tree held it. The line rules
+ * wrap whatever stays mixed again.
+ */
+export const $unwrapLines = (nodes: LexicalNode[]): LexicalNode[] =>
+  nodes.flatMap((node) => {
+    if ($isCmsLineNode(node) === false) {
+      return [node];
+    }
+    const children = node.getChildren();
+    for (const child of children) {
+      node.insertBefore(child);
+    }
+    node.remove();
+    return children;
+  });

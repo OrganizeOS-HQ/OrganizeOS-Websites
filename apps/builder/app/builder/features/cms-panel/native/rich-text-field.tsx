@@ -116,6 +116,7 @@ import {
   $createCmsLineNode,
   $isCmsLineNode,
   $liftPointsIntoLines,
+  $unwrapLines,
   lineSpike,
   registerLineCommands,
   registerLineTransforms,
@@ -473,11 +474,12 @@ const setBlockType = (editor: LexicalEditor, block: BlockType) => {
  * level stay.
  */
 const $liftBlocksAfterNestedList = (item: ListItemNode) => {
-  const children = item.getChildren();
-  const listAt = children.findIndex($isListNode);
+  const listAt = item.getChildren().findIndex($isListNode);
   if (listAt === -1) {
     return;
   }
+  $unwrapLines(item.getChildren().slice(listAt + 1));
+  const children = item.getChildren();
   const after = children.slice(listAt + 1);
   const isBlock = (node: LexicalNode) =>
     ($isElementNode(node) || $isDecoratorNode(node)) &&
@@ -766,7 +768,7 @@ const $nestingOf = (node: LexicalNode) => {
  * follows them.
  */
 const $liftQuoteOutOfItem = (quote: QuoteNode, item: ListItemNode) => {
-  const rest = quote.getNextSiblings();
+  const rest = $unwrapLines(quote.getNextSiblings());
   let at: LexicalNode = item;
   // a quote inside gives way to its blocks too, in order
   const children: LexicalNode[] = [];
@@ -3329,8 +3331,8 @@ const $insertIntoListItem = (
 /**
  * A paste into a line of a list item gives what the same paste gives in
  * the item's own text: one paragraph goes in as its inline content, one
- * code block as inline code, and a list (at a caret) into the item with
- * its lines unwrapped meanwhile, so the pasted items stand beside it.
+ * code block as inline code, and blocks (at a caret) into the item with
+ * its lines unwrapped meanwhile, as in the item's own text.
  */
 const $intoLine = (nodes: LexicalNode[], selection: RangeSelection) => {
   const start = selection.isBackward() ? selection.focus : selection.anchor;
@@ -3347,7 +3349,10 @@ const $intoLine = (nodes: LexicalNode[], selection: RangeSelection) => {
     text.toggleFormat("code");
     return [text];
   }
-  if (selection.isCollapsed() && $isListNode(nodes[0])) {
+  const isBlock = (node: LexicalNode) =>
+    ($isElementNode(node) || $isDecoratorNode(node)) &&
+    node.isInline() === false;
+  if (selection.isCollapsed() && nodes.some(isBlock)) {
     for (const child of item.getChildren()) {
       if ($isCmsLineNode(child)) {
         for (const inner of child.getChildren()) {
