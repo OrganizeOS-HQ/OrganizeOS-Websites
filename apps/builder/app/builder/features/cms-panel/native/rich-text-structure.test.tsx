@@ -2516,9 +2516,13 @@ describe("the text after the caret joins a pasted item that starts with a rule (
     stored: string,
     html: string,
     how: "paste" | "drop",
-    offset = 2
+    offset = 2,
+    range?: [string, number, string, number]
   ) => {
-    const onChange = await mountAt(stored, "s1q", offset);
+    const onChange =
+      range === undefined
+        ? await mountAt(stored, "s1q", offset)
+        : await mountAt(stored, ...range);
     const before = stateOf();
     const errors = vi.spyOn(console, "error");
     onChange.mockClear();
@@ -2932,5 +2936,139 @@ describe("the text after the caret joins a pasted item that starts with a rule (
       },
       60000
     );
+
+    const P_S =
+      "<ul><li>p1q</li><li>s1q<ul><li>n1q</li></ul></li><li>t1q</li></ul>";
+    /** What each range writes after the paste or drop, and after a typed Z. */
+    const RANGE_WRITES: Record<string, [string, string]> = {
+      "drop of a range ending in the nested item (Z13)": [
+        "<ul><li>s1</li></ul><ol><li>Aq</li><li><hr />T1q1q</li></ol><ul><li>t1q</li></ul>",
+        "<ul><li>s1</li></ul><ol><li>Aq</li><li><hr />T1qZ1q</li></ol><ul><li>t1q</li></ul>",
+      ],
+      "drop of a range in a numbered list, bulleted paste (Z13)": [
+        "<ol><li>p1</li></ol><ul><li>Aq</li><li><hr />T1q</li></ul><ol><li>q<ol><li>n1q</li></ol></li><li>t1q</li></ol>",
+        "<ol><li>p1</li></ol><ul><li>Aq</li><li><hr />T1qZ</li></ul><ol><li>q<ol><li>n1q</li></ol></li><li>t1q</li></ol>",
+      ],
+      "drop of a range into the item before the nested list (Z13)": [
+        "<ul><li>p1</li></ul><ol><li>Aq</li><li><hr />T1q</li></ol><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+        "<ul><li>p1</li></ul><ol><li>Aq</li><li><hr />T1qZ</li></ol><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+      ],
+      "drop of a range over an item between (Z13)": [
+        "<ul><li>p1</li></ul><ol><li>Aq</li><li><hr />T1q</li></ol><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+        "<ul><li>p1</li></ul><ol><li>Aq</li><li><hr />T1qZ</li></ol><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+      ],
+      "drop of a range taking the nested list with it (Z13)": [
+        "<ul><li>s1</li></ul><ol><li>Aq</li><li><hr />T1q1q</li></ol>",
+        "<ul><li>s1</li></ul><ol><li>Aq</li><li><hr />T1qZ1q</li></ol>",
+      ],
+      "drop of a range, the list in a quote (Z13)": [
+        "<ul><li>p1</li></ul><blockquote><ul><li>Aq</li><li><hr />T1q</li></ul></blockquote><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+        "<ul><li>p1</li></ul><blockquote><ul><li>Aq</li><li><hr />T1qZ</li></ul></blockquote><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+      ],
+      "drop of control: a range with the same list type (Z13)": [
+        "<ul><li>p1</li><li>Aq</li><li><hr />T1qq<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+        "<ul><li>p1</li><li>Aq</li><li><hr />T1qZq<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+      ],
+      "drop of that range made backward (Z13)": [
+        "<ul><li>p1</li></ul><ol><li>Aq</li><li><hr />T1q</li></ol><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+        "<ul><li>p1</li></ul><ol><li>Aq</li><li><hr />T1qZ</li></ol><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+      ],
+      "paste of a range ending in the nested item (Z13)": [
+        "<ul><li>s1</li></ul><ol><li>Aq</li><li><hr />T1q1q</li></ol><ul><li>t1q</li></ul>",
+        "<ul><li>s1</li></ul><ol><li>Aq</li><li><hr />T1qZ1q</li></ol><ul><li>t1q</li></ul>",
+      ],
+      "paste of a range in a numbered list, bulleted paste (Z13)": [
+        "<ol><li>p1</li></ol><ul><li>Aq</li><li><hr />T1q</li></ul><ol><li>q<ol><li>n1q</li></ol></li><li>t1q</li></ol>",
+        "<ol><li>p1</li></ol><ul><li>Aq</li><li><hr />T1qZ</li></ul><ol><li>q<ol><li>n1q</li></ol></li><li>t1q</li></ol>",
+      ],
+      "paste of a range into the item before the nested list (Z13)": [
+        "<ul><li>p1</li></ul><ol><li>Aq</li><li><hr />T1q</li></ol><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+        "<ul><li>p1</li></ul><ol><li>Aq</li><li><hr />T1qZ</li></ol><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+      ],
+      "paste of a range over an item between (Z13)": [
+        "<ul><li>p1</li></ul><ol><li>Aq</li><li><hr />T1q</li></ol><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+        "<ul><li>p1</li></ul><ol><li>Aq</li><li><hr />T1qZ</li></ol><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+      ],
+      "paste of a range taking the nested list with it (Z13)": [
+        "<ul><li>s1</li></ul><ol><li>Aq</li><li><hr />T1q1q</li></ol>",
+        "<ul><li>s1</li></ul><ol><li>Aq</li><li><hr />T1qZ1q</li></ol>",
+      ],
+      "paste of a range, the list in a quote (Z13)": [
+        "<ul><li>p1</li></ul><blockquote><ul><li>Aq</li><li><hr />T1q</li></ul></blockquote><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+        "<ul><li>p1</li></ul><blockquote><ul><li>Aq</li><li><hr />T1qZ</li></ul></blockquote><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+      ],
+      "paste of control: a range with the same list type (Z13)": [
+        "<ul><li>p1</li><li>Aq</li><li><hr />T1qq<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+        "<ul><li>p1</li><li>Aq</li><li><hr />T1qZq<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+      ],
+      "paste of that range made backward (Z13)": [
+        "<ul><li>p1</li></ul><ol><li>Aq</li><li><hr />T1q</li></ol><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+        "<ul><li>p1</li></ul><ol><li>Aq</li><li><hr />T1qZ</li></ol><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+      ],
+    };
+    const RANGES: [string, string, string, [string, number, string, number]][] =
+      [
+        [
+          "a range into the item before the nested list (Z13)",
+          P_S,
+          "<ol><li>Aq</li><li><hr>T1q</li></ol>",
+          ["p1q", 2, "s1q", 2],
+        ],
+        [
+          "that range made backward (Z13)",
+          P_S,
+          "<ol><li>Aq</li><li><hr>T1q</li></ol>",
+          ["s1q", 2, "p1q", 2],
+        ],
+        [
+          "a range over an item between (Z13)",
+          "<ul><li>p1q</li><li>m1q</li><li>s1q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+          "<ol><li>Aq</li><li><hr>T1q</li></ol>",
+          ["p1q", 2, "s1q", 2],
+        ],
+        [
+          "a range in a numbered list, bulleted paste (Z13)",
+          "<ol><li>p1q</li><li>s1q<ol><li>n1q</li></ol></li><li>t1q</li></ol>",
+          "<ul><li>Aq</li><li><hr>T1q</li></ul>",
+          ["p1q", 2, "s1q", 2],
+        ],
+        [
+          "a range, the list in a quote (Z13)",
+          P_S,
+          "<blockquote><ul><li>Aq</li><li><hr>T1q</li></ul></blockquote>",
+          ["p1q", 2, "s1q", 2],
+        ],
+        [
+          "a range taking the nested list with it (Z13)",
+          NESTED_UL,
+          "<ol><li>Aq</li><li><hr>T1q</li></ol>",
+          ["s1q", 2, "t1q", 1],
+        ],
+        [
+          "a range ending in the nested item (Z13)",
+          NESTED_UL,
+          "<ol><li>Aq</li><li><hr>T1q</li></ol>",
+          ["s1q", 2, "n1q", 1],
+        ],
+        [
+          "control: a range with the same list type (Z13)",
+          P_S,
+          "<ul><li>Aq</li><li><hr>T1q</li></ul>",
+          ["p1q", 2, "s1q", 2],
+        ],
+      ];
+    test.for(
+      RANGES.flatMap(([name, stored, html, range]) =>
+        (["paste", "drop"] as const).map(
+          (how) => [`${how} of ${name}`, stored, html, range, how] as const
+        )
+      )
+    )("%s", async ([title, stored, html, range, how]) => {
+      const { pasted, redone, typed } = await run(stored, html, how, 2, range);
+      const [pastedWrite, typedWrite] = RANGE_WRITES[title];
+      expect(pasted).toBe(pastedWrite);
+      expect(redone).toBe(pastedWrite);
+      expect(typed).toBe(typedWrite);
+    });
   });
 });

@@ -3232,14 +3232,14 @@ const $insertIntoListItem = (
   let lead: TextNode | undefined;
   const startItem = $findMatchingParent(start.getNode(), $isListItemNode);
   const startList = startItem?.getParent();
-  // a nested list stands in the item after its own
-  const afterStart = startItem?.getNextSibling() ?? null;
-  const tailList = $isListItemNode(afterStart)
-    ? afterStart.getFirstChild()
-    : null;
+  // the text after the caret comes from the item the selection ends in; a
+  // nested list stands in the item after its own
+  const end = selection.isBackward() ? selection.anchor : selection.focus;
+  const endItem = $findMatchingParent(end.getNode(), $isListItemNode);
+  const afterEnd = endItem?.getNextSibling() ?? null;
+  const tailList = $isListItemNode(afterEnd) ? afterEnd.getFirstChild() : null;
   const lastList = lastItem?.getParent();
   const keepsTailList =
-    $isListItemNode(startItem) &&
     $isListNode(tailList) &&
     ($isListNode(lastList) === false ||
       lastList !== tail ||
