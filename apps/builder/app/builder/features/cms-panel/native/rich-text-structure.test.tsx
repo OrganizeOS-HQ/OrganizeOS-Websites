@@ -2133,3 +2133,198 @@ describe("the caret after a paste whose line breaks the lift removed (U1)", () =
     );
   }, 60000);
 });
+
+describe("rules after a pasted nested list (V1)", () => {
+  test.each([
+    ["in a div", "<div><hr></div>Zq"],
+    ["in a font", '<font color="red"><hr></font>Zq'],
+    ["in a center", "<center><hr></center>Zq"],
+    ["in a quote", "<blockquote><hr></blockquote>Zq"],
+    [
+      "in a table cell",
+      "<table><tbody><tr><td><hr></td></tr></tbody></table>Zq",
+    ],
+    ["in a div before a div", "<div><hr></div><div>Zq</div>"],
+    [
+      "after a leading quote",
+      "<blockquote><p>Z1q</p></blockquote><div><hr></div>Zq",
+    ],
+    ["in a later run", "Mq<ul><li>Yq</li></ul><div><hr></div>Zq"],
+  ])("a rule %s is kept", async (_name, behind) => {
+    const onChange = await mountAt("<p></p>", "");
+    paste({
+      "text/html": `<ul><li>Aq<ul><li>Xq</li></ul>${behind}</li><li>Bq</li></ul>`,
+      "text/plain": "x",
+    });
+    await settle();
+    const written = sanitizeRichTextHtml(lastHtml(onChange));
+    expect(written.match(/<hr/g)).toHaveLength(1);
+    expect(written).toContain("Zq");
+  });
+
+  const SEQUENCES = [
+    [
+      "a rule and text in a div, into an item",
+      "<ul><li>s1</li><li>t1</li></ul>",
+      "s1",
+      "<ul><li>A<ul><li>X</li></ul><div><hr>Z2</div></li></ul>",
+    ],
+    [
+      "a rule and a paragraph in a section, into an item",
+      "<ul><li>s1</li><li>t1</li></ul>",
+      "s1",
+      "<ul><li>A<ul><li>X</li></ul><section><hr><p>Z2</p></section></li></ul>",
+    ],
+    [
+      "a quote, then a rule, into an empty field",
+      "<p></p>",
+      "",
+      "<ul><li>A<ul><li>X</li></ul><blockquote><p>Z1</p></blockquote><hr></li></ul>",
+    ],
+    [
+      "a heading, then a rule, into an empty field",
+      "<p></p>",
+      "",
+      "<ul><li>A<ul><li>X</li></ul><h2>Z1</h2><hr></li></ul>",
+    ],
+    [
+      "a quote and text in a div, into an empty field",
+      "<p></p>",
+      "",
+      "<ul><li>A<ul><li>X</li></ul><div><blockquote><p>Z1</p></blockquote>Z2</div></li></ul>",
+    ],
+  ];
+  test.each(
+    SEQUENCES.flatMap(([name, html, at, pasted]) =>
+      (["a two-line plain-text paste", "Shift+Enter"] as const).map((step) => ({
+        name,
+        html,
+        at,
+        pasted,
+        step,
+      }))
+    )
+  )(
+    "$name, then $step",
+    async ({ html, at, pasted, step }) => {
+      const onChange = await mountAt(html, at);
+      paste({ "text/html": pasted, "text/plain": "x" });
+      await settle();
+      expect(lastHtml(onChange)).not.toMatch(/<li[^>]*><hr/);
+      const errors = vi.spyOn(console, "error");
+      const start = performance.now();
+      if (step === "Shift+Enter") {
+        await userEvent.keyboard("{Shift>}{Enter}{/Shift}e");
+      } else {
+        paste({ "text/plain": "L1\nL2" });
+      }
+      await settle();
+      expect(performance.now() - start).toBeLessThan(2000);
+      expect(
+        errors.mock.calls
+          .map((args) => String(args[0]))
+          .filter((message) => message.includes("not wrapped in act") === false)
+      ).toEqual([]);
+      const written = plain(lastHtml(onChange));
+      expect(written).toMatch(step === "Shift+Enter" ? /<br \/>e/ : /L1.*L2/);
+    },
+    60000
+  );
+});
+
+describe("an item under a quote, code, heading or table in a list stays stray (V3)", () => {
+  const drop = async (html: string) => {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.setData("text/html", html);
+    dataTransfer.setData("text/plain", "x");
+    await act(async () => {
+      editable()!.dispatchEvent(
+        new InputEvent("beforeinput", {
+          bubbles: true,
+          cancelable: true,
+          inputType: "insertFromDrop",
+          dataTransfer,
+        })
+      );
+    });
+    await settle();
+  };
+  test("items in a quote, by drop", async () => {
+    const onChange = await mountAt("<p></p>", "");
+    await drop("<ul><blockquote><li>Aq</li><li>Bq</li></blockquote></ul>");
+    expect(plain(lastHtml(onChange))).toBe(
+      "<ul><li><blockquote><ul><li>Aq</li><li>Bq</li></ul></blockquote></li></ul>"
+    );
+  });
+  test("items in code, by drop", async () => {
+    const onChange = await mountAt("<p></p>", "");
+    await drop("<ul><pre><li>Aq</li><li>Bq</li></pre></ul>");
+    const written = plain(lastHtml(onChange));
+    expect(written).toMatch(/^<ul><li><pre/);
+    expect(written.match(/<li>/g)).toHaveLength(1);
+  });
+  test("items in table cells, by drop", async () => {
+    const onChange = await mountAt("<p></p>", "");
+    await drop(
+      "<ul><table><tbody><tr><td><li>Aq</li></td><td>Cq</td></tr><tr><td>Dq</td><td><li>Bq</li></td></tr></tbody></table></ul>"
+    );
+    expect(plain(lastHtml(onChange))).not.toContain("CqDq");
+  });
+  test("items in a heading, by paste", async () => {
+    const onChange = await mountAt("<p></p>", "");
+    paste({
+      "text/html": "<ul><h2>Tq<li>Aq</li><li>Bq</li></h2></ul>",
+      "text/plain": "x",
+    });
+    await settle();
+    expect(plain(lastHtml(onChange))).toContain("<h2>Tq");
+  });
+});
+
+describe("default-ignorable characters after a nested list add no item (V4)", () => {
+  test.each(["ㅤ", "͏", "ᅟ", "ﾠ", "឴", "᠋", "\u{e0100}"])("%j", async (char) => {
+    const onChange = await mountAt("<p></p>", "");
+    paste({
+      "text/html": `<ul><li>Aq<ul><li>Xq</li></ul>${char}</li><li>Bq</li></ul>`,
+      "text/plain": "x",
+    });
+    await settle();
+    const template = document.createElement("template");
+    template.innerHTML = plain(lastHtml(onChange));
+    expect(template.content.firstElementChild!.children).toHaveLength(2);
+  });
+});
+
+describe("block wrapper edges beside inline elements holding blocks (V2)", () => {
+  const lines = (html: string) => html.replace(/<(?!br\b)[^>]*>/g, "");
+  test.each([
+    [
+      "a font holding the list in a div",
+      '<ul><li>Pq<div><font color="red">Aq<ul><li>Xq</li></ul>Zq</font></div>Qq</li><li>Bq</li></ul>',
+      ["Pq<br />Aq", "Zq<br />Qq"],
+    ],
+    [
+      "a font holding a list after a div",
+      '<ul><li><div>Aq<ul><li>Xq</li></ul>Zq</div><font color="red">Sq<ul><li>Vq</li></ul>Qq</font></li></ul>',
+      ["Zq<br />Sq"],
+    ],
+    [
+      "bold in a font in a section",
+      '<ul><li>Pq<section><font color="red"><b>Aq<ul><li>Xq</li></ul>Zq</b></font></section>Qq</li></ul>',
+      ["Pq<br />Aq", "Zq<br />Qq"],
+    ],
+    [
+      "a figure",
+      "<ul><li>Pq<figure>Aq<ul><li>Xq</li></ul>Zq</figure>Qq</li></ul>",
+      ["Pq<br />Aq", "Zq<br />Qq"],
+    ],
+  ])("%s keeps its lines", async (_name, html, expected) => {
+    const onChange = await mountAt("<p></p>", "");
+    paste({ "text/html": html, "text/plain": "x" });
+    await settle();
+    const written = lines(plain(lastHtml(onChange)));
+    for (const line of expected) {
+      expect(written).toContain(line);
+    }
+  });
+});

@@ -2598,7 +2598,18 @@ const wrapStrayListItems = (body: HTMLElement) => {
       wrappers.push(at);
       at = at.parentElement;
     }
-    if (at !== null && /^(UL|OL)$/.test(at.tagName)) {
+    // only marks, links and plain wrappers give way: an item under a
+    // quote, code, a heading or a table stays stray
+    if (
+      at !== null &&
+      /^(UL|OL)$/.test(at.tagName) &&
+      wrappers.every(
+        (wrapper) =>
+          /^(BLOCKQUOTE|PRE|H[1-6]|TABLE|CAPTION|THEAD|TBODY|TFOOT|TR|TD|TH)$/.test(
+            wrapper.tagName
+          ) === false
+      )
+    ) {
       for (const wrapper of wrappers) {
         if (wrapper.isConnected) {
           wrapper.replaceWith(...wrapper.childNodes);
@@ -2647,18 +2658,22 @@ const splitItemsAfterNestedList = (body: HTMLElement) => {
   // ignorable characters (a pasted image does not, nor a rule on its own)
   const isContent = (node: Node) =>
     (node.nodeType === Node.ELEMENT_NODE || node.nodeType === Node.TEXT_NODE) &&
-    /[^\s\p{Cf}\u00ad\u180e\ufe00-\ufe0f]/u.test(textOf(node));
+    /[^\s\p{Cf}\p{Default_Ignorable_Code_Point}]/u.test(textOf(node));
+  // a rule, or what holds one and no text: never dropped
   const isRule = (node: Node) =>
-    node instanceof Element && node.tagName === "HR";
+    node instanceof Element &&
+    (node.tagName === "HR" ||
+      (isContent(node) === false && node.querySelector("hr") !== null));
   // a block a list item cannot start with and still be edited in
   const isLeadBlock = (node: Node) =>
     node instanceof Element &&
-    /^(BLOCKQUOTE|H[1-6]|PRE|HR)$/.test(node.tagName);
+    isRule(node) === false &&
+    /^(BLOCKQUOTE|H[1-6]|PRE)$/.test(node.tagName);
   const BLOCKS =
-    "p, h1, h2, h3, h4, h5, h6, ul, ol, li, blockquote, pre, hr, figure, table, div, section, article, header, footer, aside, main, nav, address, form, fieldset, dl, dt, dd";
+    "p, h1, h2, h3, h4, h5, h6, ul, ol, li, blockquote, pre, hr, figure, figcaption, canvas, noscript, video, table, div, section, article, header, footer, aside, main, nav, address, form, fieldset, dl, dt, dd";
   // the next line content from a node on: text, or an inline element with
   // text, past white space, comments, images and empty elements
-  const lineContentFrom = (start: Node | null, forward: boolean) => {
+  const lineContentFrom = (start: Node | null, forward: boolean): boolean => {
     for (
       let at = start;
       at !== null;
@@ -2671,9 +2686,11 @@ const splitItemsAfterNestedList = (body: HTMLElement) => {
         return false;
       }
       if (isContent(at)) {
-        return (
-          at instanceof Element === false || at.querySelector(BLOCKS) === null
-        );
+        // an inline element holding a block counts by its line content
+        // nearest this side
+        return at instanceof Element && at.querySelector(BLOCKS) !== null
+          ? lineContentFrom(forward ? at.firstChild : at.lastChild, forward)
+          : true;
       }
     }
     return false;
@@ -2687,14 +2704,22 @@ const splitItemsAfterNestedList = (body: HTMLElement) => {
   pushMarksIntoBlocks(body);
   let split = false;
   for (const item of Array.from(body.querySelectorAll("li")).reverse()) {
-    // a wrapper holding a nested list gives way to its content first
+    // a wrapper holding a nested list gives way to its content first, and
+    // after the list, one holding a rule, a quote, a heading or code
     for (;;) {
-      const wrapper = Array.from(item.children).find(
-        (child) =>
+      const children = Array.from(item.children);
+      const listAt = children.findIndex(isList);
+      const wrapper = children.find(
+        (child, index) =>
           /^(UL|OL|LI|BLOCKQUOTE|H[1-6]|PRE|TABLE)$/.test(child.tagName) ===
             false &&
           child.matches(PASTE_MARKS) === false &&
-          child.querySelector("ul, ol") !== null
+          (child.querySelector("ul, ol") !== null ||
+            (listAt !== -1 &&
+              index > listAt &&
+              child.querySelector(
+                "hr, blockquote, h1, h2, h3, h4, h5, h6, pre"
+              ) !== null))
       );
       if (wrapper === undefined) {
         break;
@@ -2702,7 +2727,7 @@ const splitItemsAfterNestedList = (body: HTMLElement) => {
       // a block wrapper's edges stay line breaks between the line content
       // on either side; an inline one gives way with none
       if (
-        /^(DIV|SECTION|ARTICLE|HEADER|FOOTER|ASIDE|MAIN|NAV|ADDRESS|FORM|FIELDSET|DL|DT|DD)$/.test(
+        /^(DIV|SECTION|ARTICLE|HEADER|FOOTER|ASIDE|MAIN|NAV|ADDRESS|FORM|FIELDSET|DL|DT|DD|FIGURE|FIGCAPTION|CANVAS|NOSCRIPT|VIDEO)$/.test(
           wrapper.tagName
         )
       ) {
@@ -2758,17 +2783,16 @@ const splitItemsAfterNestedList = (body: HTMLElement) => {
         for (const node of run) {
           if (isBlank(node)) {
             node.remove();
-          } else {
+          } else if (isRule(node) === false) {
             keep(node);
           }
         }
         continue;
       }
       let at = 0;
+      // rules before the run's content stay in the original item
       for (; at < run.length && isContent(run[at]) === false; at += 1) {
-        if (isRule(run[at])) {
-          keep(run[at]);
-        } else {
+        if (isRule(run[at]) === false) {
           run[at].remove();
         }
       }
@@ -2777,6 +2801,8 @@ const splitItemsAfterNestedList = (body: HTMLElement) => {
         const node = run[at];
         if (isLeadBlock(node)) {
           blocks.push(node);
+        } else if (isRule(node)) {
+          // between or after the leading blocks: stays in the original item
         } else if (isContent(node) === false && isList(node) === false) {
           node.remove();
         } else {
@@ -3006,13 +3032,35 @@ const $editInBlockLedItem = (selection: RangeSelection, edit: () => void) => {
   return true;
 };
 
+/**
+ * A caret left on a block-led item, past its children, goes to the end of
+ * its last text: an edit there needs a text point.
+ */
+const $caretIntoText = () => {
+  const selection = $getSelection();
+  if (
+    $isRangeSelection(selection) === false ||
+    selection.isCollapsed() === false ||
+    selection.anchor.type !== "element"
+  ) {
+    return;
+  }
+  const item = $blockLedItemAt(selection.anchor);
+  const last = item?.getLastDescendant();
+  if ($isTextNode(last)) {
+    last.select(last.getTextContentSize(), last.getTextContentSize());
+  }
+};
+
 const $insertIntoListItem = (
   nodes: LexicalNode[],
   selection: RangeSelection
 ) => {
   const start = selection.isBackward() ? selection.focus : selection.anchor;
   if ($findMatchingParent(start.getNode(), $isListItemNode) === null) {
-    return false;
+    selection.insertNodes(nodes);
+    $caretIntoText();
+    return true;
   }
   const emptyItems = () =>
     $dfs()
@@ -3028,6 +3076,7 @@ const $insertIntoListItem = (
     }
   }
   $editInBlockLedItem(selection, () => selection.insertNodes(nodes));
+  $caretIntoText();
   const caret = $getSelection();
   const caretItem = $isRangeSelection(caret)
     ? $findMatchingParent(caret.anchor.getNode(), $isListItemNode)
