@@ -2547,8 +2547,31 @@ const LinkRulePlugin = () => {
   return null;
 };
 
-/** Wraps each pasted list item outside a list in a list; true when any was. */
+/** Wraps each pasted list item outside a list in a list; true when anything changed. */
 const wrapStrayListItems = (body: HTMLElement) => {
+  // marks and links move into the items, and a wrapper between a list and
+  // its items gives way: such an item stands in that list
+  let changed = pushMarksIntoBlocks(body);
+  for (const item of Array.from(body.querySelectorAll("li"))) {
+    const wrappers: Element[] = [];
+    let at = item.parentElement;
+    while (
+      at !== null &&
+      at !== body &&
+      /^(UL|OL|LI)$/.test(at.tagName) === false
+    ) {
+      wrappers.push(at);
+      at = at.parentElement;
+    }
+    if (at !== null && /^(UL|OL)$/.test(at.tagName)) {
+      for (const wrapper of wrappers) {
+        if (wrapper.isConnected) {
+          wrapper.replaceWith(...wrapper.childNodes);
+          changed = true;
+        }
+      }
+    }
+  }
   const strays = Array.from(body.querySelectorAll("li")).filter(
     (item) => /^(UL|OL)$/.test(item.parentElement?.tagName ?? "") === false
   );
@@ -2570,7 +2593,7 @@ const wrapStrayListItems = (body: HTMLElement) => {
   for (const list of Array.from(body.querySelectorAll("ul[data-stray]"))) {
     list.removeAttribute("data-stray");
   }
-  return strays.length > 0;
+  return changed || strays.length > 0;
 };
 
 /**
@@ -2578,26 +2601,48 @@ const wrapStrayListItems = (body: HTMLElement) => {
  * item, so it keeps its place after the list; true when any did.
  */
 const splitItemsAfterNestedList = (body: HTMLElement) => {
-  // the text a node imports: no style's or script's, no zero-width space
+  // the text a node imports: no style's or script's
   const textOf = (node: Node): string =>
     node instanceof Element && /^(STYLE|SCRIPT|TEMPLATE)$/.test(node.tagName)
       ? ""
       : node.nodeType === Node.TEXT_NODE
         ? (node.textContent ?? "")
         : Array.from(node.childNodes).map(textOf).join("");
-  // only what imports to content: text or a rule (a pasted image does not)
+  // only what imports to content: text past white space and format and
+  // ignorable characters (a pasted image does not, nor a rule on its own)
   const isContent = (node: Node) =>
     (node.nodeType === Node.ELEMENT_NODE || node.nodeType === Node.TEXT_NODE) &&
-    (/[^\s\u200b-\u200d\u2060\ufeff]/.test(textOf(node)) ||
-      (node instanceof Element &&
-        (node.tagName === "HR" || node.querySelector("hr") !== null)));
-  const isInlineContent = (node: Node) =>
-    isContent(node) &&
-    (node instanceof Element === false ||
-      (node.matches(PASTE_MARKS) &&
-        node.querySelector(
-          "p, h1, h2, h3, h4, h5, h6, ul, ol, li, blockquote, pre, hr, div, table"
-        ) === null));
+    /[^\s\p{Cf}\u00ad\u180e\ufe00-\ufe0f]/u.test(textOf(node));
+  const isRule = (node: Node) =>
+    node instanceof Element && node.tagName === "HR";
+  // a block a list item cannot start with and still be edited in
+  const isLeadBlock = (node: Node) =>
+    node instanceof Element &&
+    /^(BLOCKQUOTE|H[1-6]|PRE|HR)$/.test(node.tagName);
+  const BLOCKS =
+    "p, h1, h2, h3, h4, h5, h6, ul, ol, li, blockquote, pre, hr, figure, table, div, section, article, header, footer, aside, main, nav, address, form, fieldset, dl, dt, dd";
+  // the next line content from a node on: text, or an inline element with
+  // text, past white space, comments, images and empty elements
+  const lineContentFrom = (start: Node | null, forward: boolean) => {
+    for (
+      let at = start;
+      at !== null;
+      at = forward ? at.nextSibling : at.previousSibling
+    ) {
+      if (
+        at instanceof Element &&
+        (at.tagName === "BR" || at.matches(BLOCKS))
+      ) {
+        return false;
+      }
+      if (isContent(at)) {
+        return (
+          at instanceof Element === false || at.querySelector(BLOCKS) === null
+        );
+      }
+    }
+    return false;
+  };
   const isBlank = (node: Node) =>
     (node instanceof Element && node.tagName === "BR") ||
     (node.nodeType === Node.TEXT_NODE && isContent(node) === false);
@@ -2619,32 +2664,39 @@ const splitItemsAfterNestedList = (body: HTMLElement) => {
       if (wrapper === undefined) {
         break;
       }
-      // its edges stay line breaks between the text on either side
-      const first = wrapper.firstChild;
-      const last = wrapper.lastChild;
+      // a block wrapper's edges stay line breaks between the line content
+      // on either side; an inline one gives way with none
       if (
-        wrapper.previousSibling !== null &&
-        isInlineContent(wrapper.previousSibling) &&
-        first !== null &&
-        isInlineContent(first)
+        /^(DIV|SECTION|ARTICLE|HEADER|FOOTER|ASIDE|MAIN|NAV|ADDRESS|FORM|FIELDSET|DL|DT|DD)$/.test(
+          wrapper.tagName
+        )
       ) {
-        wrapper.insertBefore(body.ownerDocument.createElement("br"), first);
-      }
-      if (
-        wrapper.nextSibling !== null &&
-        isInlineContent(wrapper.nextSibling) &&
-        last !== null &&
-        isInlineContent(last)
-      ) {
-        wrapper.appendChild(body.ownerDocument.createElement("br"));
+        const before =
+          lineContentFrom(wrapper.previousSibling, false) &&
+          lineContentFrom(wrapper.firstChild, true);
+        const after =
+          lineContentFrom(wrapper.nextSibling, true) &&
+          lineContentFrom(wrapper.lastChild, false);
+        if (before) {
+          wrapper.insertBefore(
+            body.ownerDocument.createElement("br"),
+            wrapper.firstChild
+          );
+        }
+        if (after) {
+          wrapper.appendChild(body.ownerDocument.createElement("br"));
+        }
       }
       wrapper.replaceWith(...wrapper.childNodes);
     }
     const list = Array.from(item.children).find(isList);
     // what follows each nested list, up to and including the next one: a
-    // run with content of its own (before its list) starts a new item, made
-    // in one pass; any other run stays with the item before it, without
-    // its line breaks and white space
+    // run with content of its own (before its list) moves to new items,
+    // made in one pass; any other run stays with the item before it,
+    // without its line breaks and white space. Of a moved run, the rules
+    // before its content stay, its leading quotes, headings and code
+    // blocks take one item, and what follows from its first inline content
+    // takes the next
     const runs: ChildNode[][] = [[]];
     for (let at = list?.nextSibling; at; at = at.nextSibling) {
       runs[runs.length - 1].push(at);
@@ -2653,28 +2705,61 @@ const splitItemsAfterNestedList = (body: HTMLElement) => {
       }
     }
     let target: Element = item;
+    const startItem = () => {
+      const next = body.ownerDocument.createElement("li");
+      target.parentNode?.insertBefore(next, target.nextSibling);
+      target = next;
+      split = true;
+      return next;
+    };
+    const keep = (node: Node) => {
+      if (target !== item) {
+        target.appendChild(node);
+      }
+    };
     for (const run of runs) {
       const own = run.filter((node) => isList(node) === false);
-      if (own.some(isContent)) {
-        const next = body.ownerDocument.createElement("li");
-        target.parentNode?.insertBefore(next, target.nextSibling);
-        target = next;
-        split = true;
-        // a new item starts at its content
-        while (run.length > 0 && isBlank(run[0])) {
-          run.shift()?.remove();
-        }
-      } else {
-        for (const node of own.filter(isBlank)) {
-          node.remove();
-        }
-      }
-      if (target !== item) {
+      if (own.some(isContent) === false) {
         for (const node of run) {
-          if (node.parentNode !== null) {
-            target.appendChild(node);
+          if (isBlank(node)) {
+            node.remove();
+          } else {
+            keep(node);
           }
         }
+        continue;
+      }
+      let at = 0;
+      for (; at < run.length && isContent(run[at]) === false; at += 1) {
+        if (isRule(run[at])) {
+          keep(run[at]);
+        } else {
+          run[at].remove();
+        }
+      }
+      const blocks: ChildNode[] = [];
+      for (; at < run.length; at += 1) {
+        const node = run[at];
+        if (isLeadBlock(node)) {
+          blocks.push(node);
+        } else if (isContent(node) === false && isList(node) === false) {
+          node.remove();
+        } else {
+          break;
+        }
+      }
+      if (blocks.length > 0) {
+        const holder = startItem();
+        for (const node of blocks) {
+          holder.appendChild(node);
+        }
+      }
+      const rest = run.slice(at);
+      if (rest.some((node) => isList(node) === false)) {
+        startItem();
+      }
+      for (const node of rest) {
+        target.appendChild(node);
       }
     }
   }

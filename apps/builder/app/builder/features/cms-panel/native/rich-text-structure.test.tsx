@@ -884,12 +884,12 @@ describe("what follows a pasted item's nested list and imports to nothing adds n
     expectFixedPoint(written);
   });
 
-  test("a rule after the nested list stands in its own item", async () => {
+  test("a rule alone after the nested list adds no item", async () => {
     const onChange = await mountAt("<p></p>", "");
     paste({ "text/html": steps("<hr>"), "text/plain": "x" });
     await settle();
     expect(plain(lastHtml(onChange))).toBe(
-      "<ol><li>Open the settings:<ul><li>Click the gear</li></ul></li><li><hr /></li><li>Save.</li></ol>"
+      "<ol><li>Open the settings:<br /><hr /><ul><li>Click the gear</li></ul></li><li>Save.</li></ol>"
     );
   });
 
@@ -1457,18 +1457,6 @@ describe("Enter and paste in an item starting with a block (R3)", () => {
     expect(readingOrder(written)).toBe("s1|A|X|Z1|Z2more|again|t1");
   }, 60000);
 
-  test("Enter in an item holding a pasted rule makes an item", async () => {
-    const onChange = await mountAt("<p></p>", "");
-    paste({
-      "text/html": "<ul><li>Open<ul><li>Click</li></ul><hr></li></ul>",
-      "text/plain": "x",
-    });
-    await settle();
-    await enterAndType();
-    const written = plain(lastHtml(onChange));
-    expect(written).toMatch(/<li><hr \/><\/li><li>e<\/li>/);
-  }, 60000);
-
   test.each([
     ["at its end", undefined, "q2xy</li><li>e</li><li>t1"],
     ["in its middle", 3, "q2x</li><li>ey</li><li>t1"],
@@ -1749,4 +1737,309 @@ describe("a wrapper that gives way in a pasted item keeps its lines (R5)", () =>
     const written = plain(lastHtml(onChange));
     expect(written).not.toMatch(/AC1|C3D1|D1D2|D2Z/);
   });
+});
+
+/** A real click in the text `word` at `offset` (its end when left out). */
+const clickInWord = async (word: string, offset?: number) => {
+  const span = [
+    ...editable()!.querySelectorAll<HTMLElement>("[data-lexical-text]"),
+  ].find((element) => element.textContent === word)!;
+  const range = document.createRange();
+  const at = offset ?? word.length;
+  range.setStart(span.firstChild!, at);
+  range.setEnd(span.firstChild!, at);
+  const rect = range.getBoundingClientRect();
+  const box = span.getBoundingClientRect();
+  await userEvent.click(span, {
+    position: {
+      x: Math.min(Math.max(rect.left - box.left, 1), box.width - 1),
+      y: box.height / 2,
+    },
+  } as never);
+  await settle();
+};
+
+describe("an item the paste makes after a nested list stays editable (T1)", () => {
+  const pasteAfter = (behind: string) => async () => {
+    const onChange = await mountAt("<ul><li>s1</li><li>t1</li></ul>", "s1");
+    paste({
+      "text/html": `<ul><li>A<ul><li>X</li></ul>${behind}</li></ul>`,
+      "text/plain": "x",
+    });
+    await settle();
+    return onChange;
+  };
+  const SETUPS = [
+    ["a quote", pasteAfter("<blockquote><p>Z1</p></blockquote>Z2")],
+    ["a heading", pasteAfter("<h2>Z1</h2>Z2")],
+    ["a rule", pasteAfter("<hr>Z2")],
+    [
+      "nothing (an ordinary item)",
+      () => mountAt("<ul><li>s1</li><li>Z2</li><li>t1</li></ul>", "Z2"),
+    ],
+  ] as const;
+  const plainPaste = (text: string) => paste({ "text/plain": text });
+  const drop = async (text: string) => {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.setData("text/plain", text);
+    await act(async () => {
+      editable()!.dispatchEvent(
+        new InputEvent("beforeinput", {
+          bubbles: true,
+          cancelable: true,
+          inputType: "insertFromDrop",
+          dataTransfer,
+        })
+      );
+    });
+  };
+  const STEPS: [string, () => Promise<void>, RegExp][] = [
+    ["Enter", () => userEvent.keyboard("{Enter}e"), /Z2<\/li><li>e<\/li>/],
+    [
+      "Shift+Enter",
+      () => userEvent.keyboard("{Shift>}{Enter}{/Shift}e"),
+      /Z2<br \/>e/,
+    ],
+    [
+      "a two-line plain-text paste",
+      async () => plainPaste("L1\nL2"),
+      /Z2L1.*L2/,
+    ],
+    [
+      "a three-line CRLF plain-text paste",
+      async () => plainPaste("L1\r\nL2\r\nL3"),
+      /Z2L1.*L2.*L3/,
+    ],
+    ["a plain-text paste with a tab", async () => plainPaste("a\tb"), /Z2a.*b/],
+    ["a two-line plain-text drop", () => drop("L1\nL2"), /Z2L1.*L2/],
+    ["Delete at the item's end", () => userEvent.keyboard("{Delete}"), /Z2t1/],
+    [
+      "Backspace at the next item's start",
+      async () => {
+        await clickInWord("t1", 0);
+        await userEvent.keyboard("{Backspace}");
+      },
+      /Z2t1/,
+    ],
+    [
+      "Heading 2",
+      async () => {
+        await userEvent.click(byLabel("Block type")!);
+        await settle();
+        const option = [
+          ...document.querySelectorAll<HTMLElement>('[role="option"]'),
+        ].find((element) => element.textContent === "Heading 2");
+        await userEvent.click(option!);
+      },
+      /<h2>Z2<\/h2>/,
+    ],
+  ];
+  test.each(
+    SETUPS.flatMap(([setup, mount]) =>
+      STEPS.map(([step, run, written]) => ({
+        setup,
+        mount,
+        step,
+        run,
+        written,
+      }))
+    )
+  )(
+    "after $setup: $step",
+    async ({ mount, run, written }) => {
+      const onChange = await mount();
+      const errors = vi.spyOn(console, "error");
+      const start = performance.now();
+      await run();
+      await settle();
+      expect(performance.now() - start).toBeLessThan(2000);
+      expect(
+        errors.mock.calls
+          .map((args) => String(args[0]))
+          .filter((message) => message.includes("not wrapped in act") === false)
+      ).toEqual([]);
+      expect(plain(lastHtml(onChange)).replace(/\n/g, "")).toMatch(written);
+    },
+    60000
+  );
+
+  test.each([
+    [
+      "a quote, then text",
+      "<blockquote><p>Z1</p></blockquote>Z2",
+      "<ul><li>s1</li><li>A<ul><li>X</li></ul></li><li><blockquote><p>Z1</p></blockquote></li><li>Z2</li><li>t1</li></ul>",
+    ],
+    [
+      "a heading, then text",
+      "<h2>Z1</h2>Z2",
+      "<ul><li>s1</li><li>A<ul><li>X</li></ul></li><li><h2>Z1</h2></li><li>Z2</li><li>t1</li></ul>",
+    ],
+    [
+      "code, then text",
+      "<pre><code>c1</code></pre>Z2",
+      "<ul><li>s1</li><li>A<ul><li>X</li></ul></li><li><pre><code>c1</code></pre></li><li>Z2</li><li>t1</li></ul>",
+    ],
+  ])("%s after the nested list writes", async (_name, behind, expected) => {
+    const onChange = await pasteAfter(behind)();
+    expect(plain(lastHtml(onChange))).toBe(expected);
+    await userEvent.keyboard("q");
+    await settle();
+    expect(plain(lastHtml(onChange))).toContain("<li>Z2q</li>");
+  });
+
+  test("a rule, then text: the rule stays in the item, the text takes its own", async () => {
+    const onChange = await pasteAfter("<hr>Z2")();
+    const written = plain(lastHtml(onChange));
+    expect(written).toMatch(/<li>A(<br \/>)?<hr \/>/);
+    expect(written).toMatch(/<\/li><li>Z2<\/li><li>t1<\/li><\/ul>$/);
+  });
+
+  test("a rule alone after a nested list: Enter, Shift+Enter and a plain-text paste finish at once", async () => {
+    const onChange = await mountAt("<p></p>", "");
+    paste({
+      "text/html": "<ul><li>Open<ul><li>Click</li></ul><hr></li></ul>",
+      "text/plain": "x",
+    });
+    await settle();
+    expect(plain(lastHtml(onChange))).toBe(
+      "<ul><li>Open<br /><hr /><ul><li>Click</li></ul></li></ul>"
+    );
+    const start = performance.now();
+    await userEvent.keyboard("{Enter}e{Shift>}{Enter}{/Shift}f");
+    await settle();
+    paste({ "text/plain": "L1\nL2" });
+    await settle();
+    expect(performance.now() - start).toBeLessThan(3000);
+    expect(lastHtml(onChange)).toContain("L2");
+  }, 60000);
+});
+
+describe("items under marks or wrappers in a pasted list stay its items (T4)", () => {
+  const drop = async (html: string) => {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.setData("text/html", html);
+    dataTransfer.setData("text/plain", "x");
+    await act(async () => {
+      editable()!.dispatchEvent(
+        new InputEvent("beforeinput", {
+          bubbles: true,
+          cancelable: true,
+          inputType: "insertFromDrop",
+          dataTransfer,
+        })
+      );
+    });
+  };
+  const SHAPES = [
+    [
+      "links",
+      '<ul><a href="https://example.org/a"><li>Aq</li></a><a href="https://example.org/b"><li>Bq</li></a></ul>',
+    ],
+    ["bold in a bulleted list", "<ul><b><li>Aq</li><li>Bq</li></b></ul>"],
+    ["bold in a numbered list", "<ol><b><li>Aq</li><li>Bq</li></b></ol>"],
+    ["a div", "<ul><div><li>Aq</li><li>Bq</li></div></ul>"],
+    ["a span", "<ul><span><li>Aq</li><li>Bq</li></span></ul>"],
+  ];
+  test.each(
+    SHAPES.flatMap(([name, html]) =>
+      ["drop", "paste"].map((how) => ({ name, html, how }))
+    )
+  )("$name, by $how", async ({ html, how }) => {
+    const onChange = await mountAt("<p></p>", "");
+    if (how === "drop") {
+      await drop(html);
+    } else {
+      paste({ "text/html": html, "text/plain": "x" });
+    }
+    await settle();
+    const written = plain(lastHtml(onChange));
+    const template = document.createElement("template");
+    template.innerHTML = written;
+    const list = template.content.firstElementChild!;
+    expect(/^(UL|OL)$/.test(list.tagName)).toBe(true);
+    expect(list.querySelectorAll("ul, ol")).toHaveLength(0);
+    expect(list.children).toHaveLength(2);
+    expect(readingOrder(written)).toBe("Aq|Bq");
+  });
+});
+
+describe("a new item starts at its content (T3)", () => {
+  test.each([
+    ["an image", '<img src="https://example.org/a.png" alt="alt">'],
+    ["a comment", "<!-- note -->"],
+    ["an empty span", "<span></span>"],
+    ["a style", "<style>p{color:red}</style>"],
+    ["a bold line break", "<b><br></b>"],
+  ])("%s and a line break before the text", async (_name, before) => {
+    const onChange = await mountAt("<p></p>", "");
+    paste({
+      "text/html": `<ol><li>T1q<ul><li>T2q</li></ul>${before}<br>T3q</li><li>T4q</li></ol>`,
+      "text/plain": "x",
+    });
+    await settle();
+    expect(plain(lastHtml(onChange))).toBe(
+      "<ol><li>T1q<ul><li>T2q</li></ul></li><li>T3q</li><li>T4q</li></ol>"
+    );
+  });
+
+  test.each(
+    ["‎", "‏", "­", "؜", "‪", "‮", "⁦", "⁩", "⁢", "️", "᠎"].map((char) => [
+      char.codePointAt(0)!.toString(16).padStart(4, "0"),
+      char,
+    ])
+  )("U+%s after the nested list adds no item", async (_code, char) => {
+    const onChange = await mountAt("<p></p>", "");
+    paste({
+      "text/html": `<ul><li>Aq<ul><li>Xq</li></ul>${char}</li><li>Bq</li></ul>`,
+      "text/plain": "x",
+    });
+    await settle();
+    const template = document.createElement("template");
+    template.innerHTML = plain(lastHtml(onChange));
+    expect(template.content.firstElementChild!.children).toHaveLength(2);
+  });
+});
+
+describe("a wrapper's lines follow the wrapper (T2)", () => {
+  /** The written value with only its line breaks left as tags. */
+  const lines = (html: string) => html.replace(/<(?!br\b)[^>]*>/g, "");
+  test.each([
+    [
+      "small text on either side",
+      "<ul><li><small>Pq</small><div>Aq<ul><li>Xq</li></ul>Zq</div><small>Qq</small></li></ul>",
+    ],
+    [
+      "white space between the tags",
+      "<ul><li><b>Pq</b> <div>Aq<ul><li>Xq</li></ul>Zq</div> <i>Qq</i></li></ul>",
+    ],
+    [
+      "an image and a comment beside it",
+      '<ul><li>Pq<img src="https://example.org/a.png" alt="a"><section>Aq<ul><li>Xq</li></ul>Zq</section><!-- c --><span></span>Qq</li></ul>',
+    ],
+  ])(
+    "a block wrapper with %s keeps a line break at each edge",
+    async (_name, html) => {
+      const onChange = await mountAt("<p></p>", "");
+      paste({ "text/html": html, "text/plain": "x" });
+      await settle();
+      const written = lines(plain(lastHtml(onChange)));
+      expect(written).toContain("Pq<br />Aq");
+      expect(written).toContain("Zq<br />Qq");
+    }
+  );
+
+  test.each(["font", "small", "sup", "mark", "label"])(
+    "an inline %s wrapper gives way with no line break",
+    async (tag) => {
+      const onChange = await mountAt("<p></p>", "");
+      paste({
+        "text/html": `<ul><li>Pq<${tag}>Aq<ul><li>Xq</li></ul>Zq</${tag}>Qq</li><li>Bq</li></ul>`,
+        "text/plain": "x",
+      });
+      await settle();
+      const written = lines(plain(lastHtml(onChange)));
+      expect(written).toContain("PqAq");
+      expect(written).toContain("ZqQq");
+    }
+  );
 });
