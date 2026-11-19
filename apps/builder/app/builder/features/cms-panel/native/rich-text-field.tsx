@@ -3219,7 +3219,9 @@ const $insertIntoListItem = (
   }
   // the last pasted item, when it starts with a block and ends in inline
   // content of its own, is led by an empty text meanwhile: the rest of the
-  // split item joins it as it joins any other item
+  // split item joins it as it joins any other item. With a nested list after
+  // the caret, only where that list follows it: the last item stands in a
+  // pasted list of the caret's list type, at the top
   const isBlock = (node: LexicalNode | null) =>
     ($isElementNode(node) || $isDecoratorNode(node)) &&
     node.isInline() === false;
@@ -3228,7 +3230,23 @@ const $insertIntoListItem = (
   const lastItem =
     last === null ? null : $findMatchingParent(last, $isListItemNode);
   let lead: TextNode | undefined;
+  const startItem = $findMatchingParent(start.getNode(), $isListItemNode);
+  const startList = startItem?.getParent();
+  // a nested list stands in the item after its own
+  const afterStart = startItem?.getNextSibling() ?? null;
+  const tailList = $isListItemNode(afterStart)
+    ? afterStart.getFirstChild()
+    : null;
+  const lastList = lastItem?.getParent();
+  const keepsTailList =
+    $isListItemNode(startItem) &&
+    $isListNode(tailList) &&
+    ($isListNode(lastList) === false ||
+      lastList !== tail ||
+      $isListNode(startList) === false ||
+      lastList.getListType() !== startList.getListType());
   if (
+    keepsTailList === false &&
     $isListItemNode(lastItem) &&
     isBlock(lastItem.getFirstChild()) &&
     lastItem.getLastChild() !== null &&

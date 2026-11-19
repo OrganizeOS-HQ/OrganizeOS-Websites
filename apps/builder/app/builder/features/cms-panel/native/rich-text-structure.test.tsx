@@ -2661,4 +2661,94 @@ describe("the text after the caret joins a pasted item that starts with a rule (
     },
     60000
   );
+
+  describe("the join leaves no nested list of the text after the caret behind (Z9)", () => {
+    const NESTED_UL = "<ul><li>s1q<ul><li>n1q</li></ul></li><li>t1q</li></ul>";
+    const NESTED_OL = "<ol><li>s1q<ol><li>n1q</li></ol></li><li>t1q</li></ol>";
+    const CASES: [string, string, string, string, string][] = [
+      [
+        "a numbered list into a bulleted item",
+        NESTED_UL,
+        "<ol><li>Aq</li><li><hr>T1q</li></ol>",
+        "<ul><li>s1</li></ul><ol><li>Aq</li><li><hr />T1q</li></ol><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+        "<ul><li>s1</li></ul><ol><li>Aq</li><li><hr />T1qZ</li></ol><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+      ],
+      [
+        "a quote holding the list",
+        NESTED_UL,
+        "<blockquote><ul><li>Aq</li><li><hr>T1q</li></ul></blockquote>",
+        "<ul><li>s1</li></ul><blockquote><ul><li>Aq</li><li><hr />T1q</li></ul></blockquote><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+        "<ul><li>s1</li></ul><blockquote><ul><li>Aq</li><li><hr />T1qZ</li></ul></blockquote><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+      ],
+      [
+        "two lists, the last numbered",
+        NESTED_UL,
+        "<ul><li>Bq</li></ul><ol><li>Aq</li><li><hr>T1q</li></ol>",
+        "<ul><li>s1</li><li>Bq</li></ul><ol><li>Aq</li><li><hr />T1q</li></ol><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+        "<ul><li>s1</li><li>Bq</li></ul><ol><li>Aq</li><li><hr />T1qZ</li></ol><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+      ],
+      [
+        "a numbered list whose last item follows a nested list",
+        NESTED_UL,
+        "<ol><li>Aq</li><li><hr><ul><li>X1q</li></ul>T1q</li></ol>",
+        "<ul><li>s1</li></ul><ol><li>Aq<ul><li>X1q</li></ul></li><li><hr />T1q</li></ol><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+        "<ul><li>s1</li></ul><ol><li>Aq<ul><li>X1q</li></ul></li><li><hr />T1qZ</li></ol><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+      ],
+      [
+        "a bulleted list into a numbered item",
+        NESTED_OL,
+        "<ul><li>Aq</li><li><hr>T1q</li></ul>",
+        "<ol><li>s1</li></ol><ul><li>Aq</li><li><hr />T1q</li></ul><ol><li>q<ol><li>n1q</li></ol></li><li>t1q</li></ol>",
+        "<ol><li>s1</li></ol><ul><li>Aq</li><li><hr />T1qZ</li></ul><ol><li>q<ol><li>n1q</li></ol></li><li>t1q</li></ol>",
+      ],
+      [
+        "a bulleted rule-led item alone into a numbered item",
+        NESTED_OL,
+        "<ul><li><hr>T1q</li></ul>",
+        "<ol><li>s1</li></ol><ul><li><hr />T1q</li></ul><ol><li>q<ol><li>n1q</li></ol></li><li>t1q</li></ol>",
+        "<ol><li>s1</li></ol><ul><li><hr />T1qZ</li></ul><ol><li>q<ol><li>n1q</li></ol></li><li>t1q</li></ol>",
+      ],
+      [
+        "a rule then a link, numbered, into a bulleted item",
+        NESTED_UL,
+        '<ol><li>Aq</li><li><hr><a href="https://example.org/">T1q</a></li></ol>',
+        '<ul><li>s1</li></ul><ol><li>Aq</li><li><hr /><a href="https://example.org/">T1q</a></li></ol><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>',
+        '<ul><li>s1</li></ul><ol><li>Aq</li><li><hr /><a href="https://example.org/">T1q</a>Z</li></ol><ul><li>q<ul><li>n1q</li></ul></li><li>t1q</li></ul>',
+      ],
+      [
+        "control: the same list type",
+        NESTED_UL,
+        "<ul><li>Aq</li><li><hr>T1q</li></ul>",
+        "<ul><li>s1</li><li>Aq</li><li><hr />T1qq<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+        "<ul><li>s1</li><li>Aq</li><li><hr />T1qZq<ul><li>n1q</li></ul></li><li>t1q</li></ul>",
+      ],
+      [
+        "control: no nested list after the caret",
+        STORED["depth 1"],
+        "<ol><li>Aq</li><li><hr>T1q</li></ol>",
+        "<ul><li>s1</li></ul><ol><li>Aq</li><li><hr />T1qq</li></ol><ul><li>t1q</li></ul>",
+        "<ul><li>s1</li></ul><ol><li>Aq</li><li><hr />T1qZq</li></ol><ul><li>t1q</li></ul>",
+      ],
+    ];
+    test.each(
+      CASES.flatMap(([name, stored, html, pastedWrite, typedWrite]) =>
+        (["paste", "drop"] as const).map((how) => ({
+          name,
+          stored,
+          html,
+          how,
+          pastedWrite,
+          typedWrite,
+        }))
+      )
+    )(
+      "$how of $name writes",
+      async ({ stored, html, how, pastedWrite, typedWrite }) => {
+        const { pasted, typed } = await run(stored, html, how);
+        expect(pasted).toBe(pastedWrite);
+        expect(typed).toBe(typedWrite);
+      },
+      60000
+    );
+  });
 });
