@@ -3059,3 +3059,85 @@ describe("the caret after a paste into the middle of a nested item's text (Y1)",
     );
   }, 60000);
 });
+
+/** Drops `html` (with plain text) at the selection. */
+const dropHtml = async (html: string) => {
+  const dataTransfer = new DataTransfer();
+  dataTransfer.setData("text/html", html);
+  dataTransfer.setData("text/plain", "x");
+  await act(async () => {
+    editable()!.dispatchEvent(
+      new InputEvent("beforeinput", {
+        bubbles: true,
+        cancelable: true,
+        inputType: "insertFromDrop",
+        dataTransfer,
+      })
+    );
+  });
+  await settle();
+};
+
+describe("a rule after an item's leading nested list stays behind content (Y2)", () => {
+  const SHAPES = [
+    [
+      "a paragraph, a list, then a rule",
+      "<ul><li><ul><li>Xq</li></ul><p>Tq</p><ul><li>Yq</li></ul><hr></li><li>Bq</li></ul>",
+      "<ul><li><ul><li>Xq</li></ul></li><li>Tq<br /><hr /><ul><li>Yq</li></ul></li><li>Bq</li></ul>",
+    ],
+    [
+      "a paragraph, a list, then two rules",
+      "<ul><li><ul><li>Xq</li></ul><p>Tq</p><ul><li>Yq</li></ul><hr><hr></li><li>Bq</li></ul>",
+      "<ul><li><ul><li>Xq</li></ul></li><li>Tq<br /><hr /><hr /><ul><li>Yq</li></ul></li><li>Bq</li></ul>",
+    ],
+    [
+      "a quote, a list, then a rule",
+      "<ul><li><ul><li>Xq</li></ul><blockquote><p>Tq</p></blockquote><ul><li>Yq</li></ul><hr></li><li>Bq</li></ul>",
+      "<ul><li><ul><li>Xq</li></ul></li><li><blockquote><p>Tq</p></blockquote><hr /><ul><li>Yq</li></ul></li><li>Bq</li></ul>",
+    ],
+    [
+      "a quote, a rule, then a paragraph",
+      "<ul><li><ul><li>Xq</li></ul><blockquote><p>Tq</p></blockquote><hr><p>Zq</p></li><li>Bq</li></ul>",
+      "<ul><li><ul><li>Xq</li></ul></li><li><blockquote><p>Tq</p></blockquote><hr /></li><li>Zq</li><li>Bq</li></ul>",
+    ],
+    [
+      "a paragraph, a list, a rule, then a paragraph",
+      "<ul><li><ul><li>Xq</li></ul><p>Tq</p><ul><li>Yq</li></ul><hr><p>Uq</p></li><li>Bq</li></ul>",
+      "<ul><li><ul><li>Xq</li></ul></li><li>Tq<br /><hr /><ul><li>Yq</li></ul></li><li>Uq</li><li>Bq</li></ul>",
+    ],
+    [
+      "a rule before the paragraph",
+      "<ul><li><ul><li>Xq</li></ul><hr><p>Tq</p><ul><li>Yq</li></ul></li><li>Bq</li></ul>",
+      "<ul><li><hr /><br />Tq<ul><li>Xq</li></ul><ul><li>Yq</li></ul></li><li>Bq</li></ul>",
+    ],
+    [
+      "a rule on each side of the paragraph",
+      "<ul><li><ul><li>Xq</li></ul><hr><p>Tq</p><hr></li><li>Bq</li></ul>",
+      "<ul><li><hr /><br />Tq<br /><hr /><ul><li>Xq</li></ul></li><li>Bq</li></ul>",
+    ],
+    [
+      "text of the item's own before its list",
+      "<ul><li>Aq<ul><li>Xq</li></ul><p>Tq</p><ul><li>Yq</li></ul><hr></li><li>Bq</li></ul>",
+      "<ul><li>Aq<br /><hr /><ul><li>Xq</li></ul></li><li>Tq<ul><li>Yq</li></ul></li><li>Bq</li></ul>",
+    ],
+  ] as const;
+  test.each(
+    SHAPES.flatMap(([shape, html, expected]) =>
+      (["paste", "drop"] as const).map((how) => ({
+        shape,
+        how,
+        html,
+        expected,
+      }))
+    )
+  )("$how of $shape writes", async ({ how, html, expected }) => {
+    const onChange = await mountAt("<p></p>", "");
+    if (how === "paste") {
+      paste({ "text/html": html, "text/plain": "x" });
+      await settle();
+    } else {
+      await dropHtml(html);
+    }
+    expect(plain(lastHtml(onChange))).toBe(expected);
+  });
+});

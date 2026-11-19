@@ -2768,6 +2768,30 @@ const splitItemsAfterNestedList = (body: HTMLElement) => {
       wrapper.replaceWith(...wrapper.childNodes);
     }
     const list = Array.from(item.children).find(isList);
+    // a rule stays in the item only after inline content of the item's own
+    // before its list, else behind the content of the run it follows; an
+    // item with no content before such a rule stays as it is
+    const ownBefore = Array.from(item.childNodes)
+      .slice(
+        0,
+        list === undefined ? 0 : Array.from(item.childNodes).indexOf(list)
+      )
+      .some(isContent);
+    if (ownBefore === false && list !== undefined) {
+      let ruleFirst = false;
+      for (let at = list.nextSibling; at; at = at.nextSibling) {
+        if (isRule(at)) {
+          ruleFirst = true;
+          break;
+        }
+        if (isContent(at)) {
+          break;
+        }
+      }
+      if (ruleFirst) {
+        continue;
+      }
+    }
     // what follows each nested list, up to and including the next one: a
     // run with content of its own (before its list) moves to new items,
     // made in one pass; any other run stays with the item before it,
@@ -2795,13 +2819,20 @@ const splitItemsAfterNestedList = (body: HTMLElement) => {
         target.appendChild(node);
       }
     };
+    const keepRule = (node: Node) => {
+      if (ownBefore === false) {
+        keep(node);
+      }
+    };
     for (const run of runs) {
       const own = run.filter((node) => isList(node) === false);
       if (own.some(isContent) === false) {
         for (const node of run) {
           if (isBlank(node)) {
             node.remove();
-          } else if (isRule(node) === false) {
+          } else if (isRule(node)) {
+            keepRule(node);
+          } else {
             keep(node);
           }
         }
@@ -2810,7 +2841,9 @@ const splitItemsAfterNestedList = (body: HTMLElement) => {
       let at = 0;
       // rules before the run's content stay in the original item
       for (; at < run.length && isContent(run[at]) === false; at += 1) {
-        if (isRule(run[at]) === false) {
+        if (isRule(run[at])) {
+          keepRule(run[at]);
+        } else {
           run[at].remove();
         }
       }
@@ -2820,7 +2853,11 @@ const splitItemsAfterNestedList = (body: HTMLElement) => {
         if (isLeadBlock(node)) {
           blocks.push(node);
         } else if (isRule(node)) {
-          // between or after the leading blocks: stays in the original item
+          // between or after the leading blocks: with them, or in the
+          // original item after its own content
+          if (ownBefore === false) {
+            blocks.push(node);
+          }
         } else if (isContent(node) === false && isList(node) === false) {
           node.remove();
         } else {
