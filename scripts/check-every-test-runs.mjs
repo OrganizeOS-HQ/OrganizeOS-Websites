@@ -3,8 +3,9 @@
 //
 // Each leg's file list comes from Vitest itself (`vitest list --filesOnly`, in
 // the same directory and with the same project the leg runs), so a file no
-// include glob matches, or a builder project with no leg, fails the check. It
-// lists files only: nothing is run and no browser starts.
+// include glob matches, a builder project with no leg, or a file two builder
+// projects collect, fails the check. It lists files only: nothing is run and
+// no browser starts.
 //
 // A leg counts only if the tests job runs it, so the check also holds the job
 // to its shape: the matrix legs, the steps that run them (each as a whole
@@ -312,6 +313,21 @@ const builderProjects = new Map();
 for (const { file, project } of listVitestFiles(builderDirectory)) {
   const name = project.replace(/ \(chromium\)$/, "");
   builderProjects.set(name, [...(builderProjects.get(name) ?? []), file]);
+}
+// The set of running files cannot see a file two projects collect: a file
+// counted twice is still running, and its tests run twice.
+const projectsOfFile = new Map();
+for (const [project, files] of builderProjects) {
+  for (const file of new Set(files)) {
+    projectsOfFile.set(file, [...(projectsOfFile.get(file) ?? []), project]);
+  }
+}
+for (const [file, projects] of projectsOfFile) {
+  if (projects.length > 1) {
+    failures.push(
+      `${file} runs in ${projects.length} builder projects (${[...projects].sort().join(", ")}): a test file belongs to one`
+    );
+  }
 }
 for (const project of builderProjects.keys()) {
   if (workflowProjects.has(project) === false) {
