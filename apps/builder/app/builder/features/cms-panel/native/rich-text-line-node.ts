@@ -8,7 +8,9 @@ import {
   $createLineBreakNode,
   $createParagraphNode,
   $createRangeSelection,
+  $addUpdateTag,
   $getEditor,
+  $hasUpdateTag,
   $getNodeByKey,
   $getSelection,
   $isDecoratorNode,
@@ -32,7 +34,6 @@ import {
   INSERT_PARAGRAPH_COMMAND,
   KEY_BACKSPACE_COMMAND,
   KEY_DELETE_COMMAND,
-  OUTDENT_CONTENT_COMMAND,
   PASTE_COMMAND,
   REMOVE_TEXT_COMMAND,
   SELECTION_CHANGE_COMMAND,
@@ -310,8 +311,16 @@ export const $normaliseLines = (container: ElementNode) => {
       }
     }
   }
+  const previousMap = $getEditor().getEditorState()._nodeMap;
   for (const child of container.getChildren()) {
-    if ($isCmsLineNode(child) && child.isEmpty() && holdsSelection(child) === false) {
+    if (
+      ($isCmsLineNode(child) ||
+        ($isQuoteNode(container) &&
+          $isParagraphNode(child) &&
+          previousMap.has(child.getKey()) === false)) &&
+      child.isEmpty() &&
+      holdsSelection(child) === false
+    ) {
       child.remove();
     }
   }
@@ -438,9 +447,12 @@ const $wasEmptied = (node: ElementNode) => {
 };
 
 /** An item or quote this update emptied goes, unless it holds the caret. */
+const REMOVAL_TAG = "cms-removal";
+
 const $dropEmptied = (node: ElementNode) => {
   if (
     lineSpike.noEmptied === false ||
+    $hasUpdateTag(REMOVAL_TAG) === false ||
     $wasEmptied(node) === false ||
     holdsSelection(node)
   ) {
@@ -467,11 +479,54 @@ const $keepLineInPlace = (line: CmsLineNode) => {
   line.replace(paragraph, true);
 };
 
+/**
+ * An item whose first line this update joined into the item before it
+ * (a removal from that item into this one) joins it whole: the rest of
+ * the item follows the joined text, as an item of text and a rule joins
+ * at the head.
+ */
+const $joinRestOfItem = (item: ElementNode) => {
+  if ($isListItemNode(item) === false || item.isEmpty()) {
+    return false;
+  }
+  const previousMap = $getEditor().getEditorState()._nodeMap;
+  const previous = previousMap.get(item.getKey());
+  if ($isElementNode(previous) === false || previous.__first === null) {
+    return false;
+  }
+  const line = previousMap.get(previous.__first);
+  if ($isCmsLineNode(line) === false || $getNodeByKey(line.__key)?.isAttached()) {
+    return false;
+  }
+  const before = item.getPreviousSibling();
+  if ($isListItemNode(before) === false) {
+    return false;
+  }
+  let key: string | null = line.__first;
+  let joined = false;
+  while (key !== null) {
+    const now = $getNodeByKey(key);
+    if (now !== null && now.isAttached() && before.isParentOf(now)) {
+      joined = true;
+    }
+    key = previousMap.get(key)?.__next ?? null;
+  }
+  if (joined === false) {
+    return false;
+  }
+  before.append(...item.getChildren());
+  item.remove();
+  return true;
+};
+
 const $keepContainer = (container: ElementNode) => {
   if (lineSpike.on === false) {
     return;
   }
   if ($dropEmptied(container)) {
+    return;
+  }
+  if ($hasUpdateTag(REMOVAL_TAG) && $joinRestOfItem(container)) {
     return;
   }
   $normaliseLines(container);
@@ -665,6 +720,14 @@ export const registerLineCommands = (editor: LexicalEditor) =>
           const isDrop =
             command === CONTROLLED_TEXT_INSERTION_COMMAND &&
             typeof payload !== "string";
+          const selection = $getSelection();
+          if (
+            command === CONTROLLED_TEXT_INSERTION_COMMAND &&
+            $isRangeSelection(selection) &&
+            selection.isCollapsed() === false
+          ) {
+            $addUpdateTag(REMOVAL_TAG);
+          }
           $nodeSelectionIntoLine(replacingCommands.has(command), isDrop === false);
           $liftPointsIntoLines(isDrop === false);
           return false;
@@ -676,6 +739,10 @@ export const registerLineCommands = (editor: LexicalEditor) =>
       editor.registerCommand(
         command,
         () => {
+          const selection = $getSelection();
+          if ($isRangeSelection(selection) && selection.isCollapsed() === false) {
+            $addUpdateTag(REMOVAL_TAG);
+          }
           $nodeSelectionIntoLine(true, false);
           $liftPointsIntoLines(false);
           return false;
@@ -687,6 +754,7 @@ export const registerLineCommands = (editor: LexicalEditor) =>
       editor.registerCommand(
         command,
         () => {
+          $addUpdateTag(REMOVAL_TAG);
           $liftPointsIntoLines(false);
           return false;
         },
@@ -704,7 +772,8 @@ export const registerLineCommands = (editor: LexicalEditor) =>
           item.getIndent() > 0
         ) {
           event.preventDefault();
-          return editor.dispatchCommand(OUTDENT_CONTENT_COMMAND, undefined);
+          item.setIndent(item.getIndent() - 1);
+          return true;
         }
         return false;
       },

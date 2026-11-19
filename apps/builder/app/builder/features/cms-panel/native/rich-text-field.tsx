@@ -435,6 +435,17 @@ const setBlockType = (editor: LexicalEditor, block: BlockType) => {
     const before = new Set(
       $dfs().map(({ node }) => node.getKey())
     );
+    // the inline content of lines that stand in quotes
+    const quotedLineContent = new Set(
+      $dfs()
+        .map(({ node }) => node)
+        .filter(
+          (node) =>
+            $isCmsLineNode(node.getParent()) &&
+            $isQuoteNode(node.getParent()?.getParent() ?? null)
+        )
+        .map((node) => node.getKey())
+    );
     $setBlocksType(selection, () => {
       switch (block) {
         case "paragraph":
@@ -454,7 +465,8 @@ const setBlockType = (editor: LexicalEditor, block: BlockType) => {
         lineSpike.on &&
         $isQuoteNode(node) &&
         before.has(node.getKey()) === false &&
-        $isQuoteNode(node.getParent())
+        $isQuoteNode(node.getParent()) &&
+        quotedLineContent.has(node.getFirstChild()?.getKey() ?? "")
       ) {
         node.replace($createCmsLineNode(), true);
       }
