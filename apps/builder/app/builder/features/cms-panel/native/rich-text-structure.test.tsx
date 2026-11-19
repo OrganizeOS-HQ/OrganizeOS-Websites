@@ -3044,6 +3044,21 @@ describe("the caret after a paste into the middle of a nested item's text (Y1)",
     );
   }, 60000);
 
+  test("typing after a pasted tree ending in a stray item lands right after its last text", async () => {
+    const onChange = await mountAt(STORED, "s1", 1);
+    paste({
+      "text/html":
+        "<div><ol><li><p>T1q</p></li><li><ol><li>T2q <hr></li><li>T3q</li></ol>T4qT5qT6q</li></ol></div><li><div><ol><li>T7qT8q</li><li><p>T9q</p>T10q<ul><li><p>T11q</p><p>T12q</p><hr></li></ul></li></ol>T13q</div></li>",
+      "text/plain": "x",
+    });
+    await settle();
+    await userEvent.keyboard("~");
+    await settle();
+    expect(plain(lastHtml(onChange))).toBe(
+      "<ul><li>a1<ul><li>b1<ul><li>s</li></ul></li></ul></li></ul><ol><li>T1q<ol><li>T2q<hr /></li><li>T3q</li></ol></li><li>T4qT5qT6q</li></ol><ul><li><ul><li><ul><li><ol><li>T7qT8q</li><li>T9q<br />T10q<ul><li>T11q<br />T12q<br /><hr /></li></ul></li></ol></li><li>T13q~1</li><li>t1</li></ul></li></ul></li><li>a2</li></ul>"
+    );
+  }, 60000);
+
   test("typing after a rule and a line break lifted after a pasted list lands after the rule", async () => {
     const onChange = await mountAt(nestedList(6, "s"), "s6");
     paste({
