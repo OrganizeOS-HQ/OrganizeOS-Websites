@@ -3190,26 +3190,6 @@ const $insertPlainTextAtBlockLed = (
   );
 
 /**
- * A caret left on a block-led item, past its children, goes to the end of
- * its last text: an edit there needs a text point.
- */
-const $caretIntoText = () => {
-  const selection = $getSelection();
-  if (
-    $isRangeSelection(selection) === false ||
-    selection.isCollapsed() === false ||
-    selection.anchor.type !== "element"
-  ) {
-    return;
-  }
-  const item = $blockLedItemAt(selection.anchor);
-  const last = $isListItemNode(item) ? item.getLastDescendant() : undefined;
-  if ($isTextNode(last)) {
-    last.select(last.getTextContentSize(), last.getTextContentSize());
-  }
-};
-
-/**
  * Nodes inserted in a list item: the item split at the selection leaves no
  * empty item when the last inserted item starts with a block (its content
  * cannot join the split-off rest). Items empty before, or inserted empty,
@@ -3222,7 +3202,6 @@ const $insertIntoListItem = (
   const start = selection.isBackward() ? selection.focus : selection.anchor;
   if ($findMatchingParent(start.getNode(), $isListItemNode) === null) {
     $editInBlockLedItem(selection, () => selection.insertNodes(nodes));
-    $caretIntoText();
     return true;
   }
   const emptyItems = () =>
@@ -3239,7 +3218,6 @@ const $insertIntoListItem = (
     }
   }
   $editInBlockLedItem(selection, () => selection.insertNodes(nodes));
-  $caretIntoText();
   const caret = $getSelection();
   const caretItem = $isRangeSelection(caret)
     ? $findMatchingParent(caret.anchor.getNode(), $isListItemNode)
