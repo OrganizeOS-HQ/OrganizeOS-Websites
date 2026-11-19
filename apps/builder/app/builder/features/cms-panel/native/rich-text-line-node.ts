@@ -378,21 +378,22 @@ const $linesNeedingBreak = (container: ElementNode, children: LexicalNode[]) => 
       return;
     }
     const between = keys.slice(from + 1, to);
-    const texts = $getEditor()
+    // the first line grew by text a removed block between held (its text
+    // nodes may be replaced on the way, as a code block's are)
+    const before = $getEditor()
       .getEditorState()
-      .read(() =>
-        between.flatMap((key) => {
-          const node = $getNodeByKey(key);
-          return $isElementNode(node)
-            ? node.getAllTextNodes().map((text) => text.getKey())
-            : [];
-        })
-      );
+      .read(() => ({
+        line: $getNodeByKey(first.getKey())?.getTextContent() ?? "",
+        blocks: between
+          .map((key) => $getNodeByKey(key))
+          .filter((node) => $isElementNode(node))
+          .map((node) => node!.getTextContent()),
+      }));
+    const now = first.getTextContent();
+    const grown = now.startsWith(before.line) ? now.slice(before.line.length) : "";
     if (
-      texts.some((key) => {
-        const now = $getNodeByKey(key);
-        return now !== null && now.isAttached() && first.isParentOf(now);
-      })
+      grown !== "" &&
+      before.blocks.some((text) => text !== "" && text.endsWith(grown))
     ) {
       result.add(child.getKey());
     }
@@ -1303,8 +1304,9 @@ export const registerLineCommands = (editor: LexicalEditor) =>
       },
       COMMAND_PRIORITY_LOW
     ),
-    editor.registerCommand(
-      DELETE_CHARACTER_COMMAND,
+    ...[DELETE_CHARACTER_COMMAND, DELETE_WORD_COMMAND, DELETE_LINE_COMMAND].map((command) =>
+      editor.registerCommand(
+        command as LexicalCommand<boolean>,
       (isBackward: boolean) => {
         if (isBackward === false) {
           return false;
@@ -1349,6 +1351,7 @@ export const registerLineCommands = (editor: LexicalEditor) =>
         return true;
       },
       COMMAND_PRIORITY_LOW
+    )
     )
   );
 

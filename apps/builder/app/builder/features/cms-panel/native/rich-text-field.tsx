@@ -3443,6 +3443,16 @@ const $intoLine = (nodes: LexicalNode[], selection: RangeSelection) => {
   const end = selection.isBackward() ? selection.anchor : selection.focus;
   const line = $findMatchingParent(start.getNode(), $isCmsLineNode);
   const item = line?.getParent() ?? null;
+  // a range that starts outside a line and ends in one: the end's
+  // container takes the head's path (V3)
+  if ((line === null || item === null) && selection.isCollapsed() === false) {
+    const endLine = $findMatchingParent(end.getNode(), $isCmsLineNode);
+    const endContainer = endLine?.getParent() ?? null;
+    if (endContainer !== null) {
+      $unwrapLines(endContainer.getChildren());
+    }
+    return nodes;
+  }
   if (line === null || item === null) {
     return nodes;
   }
