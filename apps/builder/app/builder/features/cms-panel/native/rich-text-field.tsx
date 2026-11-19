@@ -3051,7 +3051,7 @@ const $editInBlockLedItem = (selection: RangeSelection, edit: () => void) => {
   try {
     edit();
   } finally {
-    if (lead.isAttached() && lead.getTextContentSize() === 0) {
+    if (lead.isAttached()) {
       lead.remove();
     }
   }
