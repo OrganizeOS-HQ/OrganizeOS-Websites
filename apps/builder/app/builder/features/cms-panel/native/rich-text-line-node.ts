@@ -834,9 +834,23 @@ export const $liftPointsIntoLines = (create: boolean): boolean => {
     if (isLinedContainer(container) === false) {
       continue;
     }
-    // the head's resolver (PR #116's `$pointIntoAdjacentBlock`), with a
-    // line counting as a block: the start of the block at the point, else
-    // the end of the block before it (D18)
+    // D18: a line at the point (its start), else a line directly before
+    // it (its end); else a block at the point (its start), else a block
+    // directly before it (its end); else an empty line
+    const lineAt = container.getChildAtIndex(point.offset);
+    const lineBefore =
+      point.offset > 0 ? container.getChildAtIndex(point.offset - 1) : null;
+    if ($isCmsLineNode(lineAt) || $isCmsLineNode(lineBefore)) {
+      const line = ($isCmsLineNode(lineAt) ? lineAt : lineBefore) as CmsLineNode;
+      const atStart = $isCmsLineNode(lineAt);
+      const edge = atStart ? line.getFirstDescendant() : line.getLastDescendant();
+      if ($isTextNode(edge)) {
+        point.set(edge.getKey(), atStart ? 0 : edge.getTextContentSize(), "text");
+      } else {
+        point.set(line.getKey(), atStart ? 0 : line.getChildrenSize(), "element");
+      }
+      continue;
+    }
     if ($pointIntoBlockBeside(point)) {
       continue;
     }
@@ -1116,7 +1130,10 @@ export const registerLineCommands = (editor: LexicalEditor) =>
           } else {
             node.selectNext();
           }
-          $liftPointsIntoLines(true);
+          // a caret move, not an edit
+          if ($liftPointsIntoLines(true)) {
+            $addUpdateTag("history-merge");
+          }
           return true;
         },
         COMMAND_PRIORITY_LOW
