@@ -39,6 +39,17 @@ export const lineSpike = {
   noEmptied: true,
 };
 
+/** Nodes an Enter emptied on purpose: the emptied rule keeps them. */
+const keptEmpty = new Set<string>();
+const keepEmpty = (...nodes: LexicalNode[]) => {
+  if (keptEmpty.size === 0) {
+    queueMicrotask(() => keptEmpty.clear());
+  }
+  for (const node of nodes) {
+    keptEmpty.add(node.getKey());
+  }
+};
+
 export class CmsLineNode extends ElementNode {
   static getType() {
     return "cms-line";
@@ -116,6 +127,7 @@ export class CmsLineNode extends ElementNode {
   ): ElementNode {
     const parent = this.getParent();
     if ($isListItemNode(parent)) {
+      keepEmpty(this, parent);
       const item = $createListItemNode();
       const rest = this.getNextSiblings();
       parent.insertAfter(item);
@@ -127,6 +139,7 @@ export class CmsLineNode extends ElementNode {
       item.append(line, ...rest);
       return line;
     }
+    keepEmpty(this);
     const paragraph = $createParagraphNode();
     this.insertAfter(paragraph, restoreSelection);
     return paragraph;
@@ -339,6 +352,7 @@ const $dropEmptied = (node: ElementNode) => {
   if (
     lineSpike.noEmptied === false ||
     node.getChildrenSize() !== 0 ||
+    keptEmpty.has(node.getKey()) ||
     hadChildren(node) === false ||
     holdsSelection(node)
   ) {
