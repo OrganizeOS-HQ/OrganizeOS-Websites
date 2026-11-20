@@ -58,6 +58,24 @@ describe("14.6: D3's first case, an empty block that joins goes whole with no br
     await keys("{Shift>}{ArrowRight}{/Shift}{Backspace}");
     expect(written(onChange)).toBe(stored(LI(`T0w${IMG}<br />T2w`)));
   });
+  test("a heading of only an image, the range form", async () => {
+    const onChange = await renderField(LI(`T0w<h3>${IMG}</h3>T2w`));
+    await clickInWord("T0w");
+    await keys("{Shift>}{ArrowRight}{/Shift}{Backspace}");
+    expect(written(onChange)).toBe(stored(LI(`T0w${IMG}<br />T2w`)));
+  });
+  test("a quote whose first paragraph is empty and whose second holds text, Delete at T0w's end: the empty paragraph goes, as at the head", async () => {
+    const onChange = await renderField(LI("T0w<blockquote><p></p><p>Q2w</p></blockquote>T3w"));
+    await clickInWord("T0w");
+    await keys("{Delete}");
+    expect(written(onChange)).toBe(stored(LI("T0w<blockquote><p>Q2w</p></blockquote>T3w")));
+  });
+  test("head hazard (the head throws and hangs): Backspace at T2w's start after a quote of one empty paragraph", async () => {
+    const onChange = await renderField(LI("T0w<blockquote><p></p></blockquote>T2w"));
+    await clickInWord("T2w", 0);
+    await keys("{Backspace}");
+    expect(written(onChange)).toBe(stored(LI("T0w<blockquote><p>T2w</p></blockquote>")));
+  });
   test("Backspace at T2w's start after an empty heading: D3's second case", async () => {
     const onChange = await renderField(LI("T0w<h3></h3>T2w"));
     await clickInWord("T2w", 0);
