@@ -6,8 +6,14 @@ import { act } from "react-dom/test-utils";
 import { describe, expect, test, vi } from "vitest";
 import { cdp, userEvent } from "@vitest/browser/context";
 import {
+  $createRangeSelection,
+  $getRoot,
   $getSelection,
+  $isElementNode,
   $isNodeSelection,
+  $isRangeSelection,
+  $setSelection,
+  type ElementNode,
   CAN_REDO_COMMAND,
   CAN_UNDO_COMMAND,
   COMMAND_PRIORITY_CRITICAL,
@@ -732,5 +738,156 @@ describe("14.7: the arrow rules take the direction the key moves the caret in th
     expect(ruleIsSelected()).toBe(false);
     await keys("k");
     expect(written(onChange)).toBe(stored(LI("T0w<hr /><blockquote><p>אkבג</p></blockquote>")));
+  });
+});
+
+describe("14.1: Divider beside a block splits up to the root", () => {
+  const divider = () => click(byLabel("Divider"));
+  test("QT, at Q0w's end: the caret at T1w's start", async () => {
+    const onChange = await renderField(LI("<blockquote><p>Q0w</p></blockquote>T1w"));
+    await clickInWord("Q0w");
+    await divider();
+    expect(written(onChange)).toBe(
+      stored("<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote></li></ul><hr /><ul><li>T1w</li><li>Nw</li></ul>")
+    );
+    await keys("k");
+    expect(written(onChange)).toBe(
+      stored("<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote></li></ul><hr /><ul><li>kT1w</li><li>Nw</li></ul>")
+    );
+  });
+  test("QT, at T1w's start: the same write", async () => {
+    const onChange = await renderField(LI("<blockquote><p>Q0w</p></blockquote>T1w"));
+    await clickInWord("T1w", 0);
+    await divider();
+    expect(written(onChange)).toBe(
+      stored("<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote></li></ul><hr /><ul><li>T1w</li><li>Nw</li></ul>")
+    );
+  });
+  test("TQT, at Q1w's end", async () => {
+    const onChange = await renderField(LI("T0w<blockquote><p>Q1w</p></blockquote>T2w"));
+    await clickInWord("Q1w");
+    await divider();
+    expect(written(onChange)).toBe(
+      stored("<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote></li></ul><hr /><ul><li>T2w</li><li>Nw</li></ul>")
+    );
+  });
+  test("HT, at H0w's end", async () => {
+    const onChange = await renderField(LI("<h3>H0w</h3>T1w"));
+    await clickInWord("H0w");
+    await divider();
+    expect(written(onChange)).toBe(
+      stored("<ul><li>Pw</li><li><h3>H0w</h3></li></ul><hr /><ul><li>T1w</li><li>Nw</li></ul>")
+    );
+  });
+  test("QR, at Q0w's end: the caret on the empty line before the second rule", async () => {
+    const onChange = await renderField(LI("<blockquote><p>Q0w</p></blockquote><hr>"));
+    await clickInWord("Q0w");
+    await divider();
+    expect(written(onChange)).toBe(
+      stored("<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote></li></ul><hr /><ul><li><hr /></li><li>Nw</li></ul>")
+    );
+    await keys("k");
+    expect(written(onChange)).toBe(
+      stored("<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote></li></ul><hr /><ul><li>k<hr /></li><li>Nw</li></ul>")
+    );
+  });
+  test("RQ, at Q0w's start", async () => {
+    const onChange = await renderField(LI("<hr><blockquote><p>Q0w</p></blockquote>"));
+    await clickInWord("Q0w", 0);
+    await divider();
+    expect(written(onChange)).toBe(
+      stored("<ul><li>Pw</li><li><hr /></li></ul><hr /><ul><li><blockquote><p>Q0w</p></blockquote></li><li>Nw</li></ul>")
+    );
+  });
+  test("a quote in a nested item, at Q1w's end", async () => {
+    const onChange = await renderField("<ul><li>Pw<ul><li><blockquote><p>Q1w</p></blockquote></li></ul></li><li>Nw</li></ul>");
+    await clickInWord("Q1w");
+    await divider();
+    expect(written(onChange)).toBe(
+      stored("<ul><li>Pw<ul><li><blockquote><p>Q1w</p></blockquote></li></ul></li></ul><hr /><ul><li>Nw</li></ul>")
+    );
+  });
+  test("a list in a root quote, at Q1w's end: the rule leaves the root quote too", async () => {
+    const html = "<blockquote><ul><li>T0w<blockquote><p>Q1w</p></blockquote></li></ul></blockquote>";
+    const onChange = await renderField(html);
+    await clickInWord("Q1w");
+    await divider();
+    expect(written(onChange)).toBe(stored(`${html}<hr /><p></p>`));
+  });
+});
+
+describe("14.10: tests that guard their fix", () => {
+  const $placeOnItem = (find: (item: ElementNode) => boolean, offset: number) => {
+    const items: ElementNode[] = [];
+    const walk = (node: ElementNode) => {
+      for (const child of node.getChildren()) {
+        if ($isElementNode(child)) {
+          if (child.getType() === "listitem") {
+            items.push(child);
+          }
+          walk(child);
+        }
+      }
+    };
+    walk($getRoot());
+    const item = items.find(find)!;
+    const selection = $createRangeSelection();
+    selection.anchor.set(item.getKey(), offset, "element");
+    selection.focus.set(item.getKey(), offset, "element");
+    $setSelection(selection);
+  };
+  const anchorType = () =>
+    editorOf()!
+      .getEditorState()
+      .read(() => {
+        const selection = $getSelection();
+        return $isRangeSelection(selection) ? selection.anchor.getNode().getType() : "none";
+      });
+  test("J: a point on the wrapper item that holds only a nested list resolves into it", async () => {
+    await renderField("<ul><li>a1q</li><li><ul><li><hr>T1q</li></ul></li></ul>");
+    await click(editable());
+    const errors = vi.spyOn(console, "error");
+    await act(async () => {
+      editorOf()!.update(() =>
+        $placeOnItem((item) => item.getChildrenSize() === 1 && item.getFirstChild()?.getType() === "list", 0)
+      );
+    });
+    await settle();
+    expect(errors.mock.calls.map((args) => String(args[0])).filter((m) => m.includes("cms-line"))).toEqual([]);
+    expect(anchorType()).not.toBe("listitem");
+  });
+  test("J: check 2's shape, a point before the nested list of an item with text", async () => {
+    await renderField("<ul><li>a1q<ul><li><hr>T1q</li></ul></li></ul>");
+    await click(editable());
+    const errors = vi.spyOn(console, "error");
+    await act(async () => {
+      editorOf()!.update(() => $placeOnItem((item) => item.getTextContent().startsWith("a1q"), 1));
+    });
+    await settle();
+    expect(errors.mock.calls.map((args) => String(args[0])).filter((m) => m.includes("cms-line"))).toEqual([]);
+    expect(anchorType()).not.toBe("listitem");
+  });
+  test("M1: a heading's whole text in an item, Enter, undo, redo: the redo gives the Enter's write", async () => {
+    const onChange = await renderField(LI("<h3>H0w</h3>"));
+    await clickInWord("H0w", 0);
+    await userEvent.keyboard("{Shift>}{End}{/Shift}");
+    await settle();
+    await keys("{Enter}");
+    const enter = written(onChange);
+    expect(enter).toBe(stored(LI("<h3></h3><br />")));
+    await keys("{Control>}z{/Control}");
+    expect(written(onChange)).toBe(stored(LI("<h3>H0w</h3>")));
+    await keys("{Control>}{Shift>}z{/Shift}{/Control}");
+    expect(written(onChange)).toBe(enter);
+  });
+  test("the container point at QB el1 stays: a letter lands after the quote, before the break", async () => {
+    const onChange = await renderField(LI("<blockquote><p>Q0w</p></blockquote><br>"));
+    await click(editable());
+    await act(async () => {
+      editorOf()!.update(() => $placeOnItem((item) => item.getTextContent().startsWith("Q0w"), 1));
+    });
+    await settle();
+    await keys("k");
+    expect(written(onChange)).toBe(stored(LI("<blockquote><p>Q0w</p></blockquote>k<br />")));
   });
 });
