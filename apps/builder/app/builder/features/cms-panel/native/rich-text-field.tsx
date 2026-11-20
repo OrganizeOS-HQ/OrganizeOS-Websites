@@ -15,6 +15,8 @@ import {
   $createTextNode,
   $getAdjacentNode,
   $getRoot,
+  $createRangeSelection,
+  createEditor,
   $getNodeByKey,
   $getSelection,
   $isNodeSelection,
@@ -2683,8 +2685,19 @@ const ImageEditingPlugin = () => {
             const mapped = $mapLineEdges(selection);
             markRichTextCopy(mapped);
             event.preventDefault();
-            const data = $getClipboardDataFromSelection(mapped);
-            data["text/plain"] = $plainTextOf(mapped);
+            // G (D6): a range whose two ends are text points copies what the
+            // head copies for the same two ends: text/html and the editor
+            // data are written on the head's form of the tree; text/plain is
+            // read from the structure
+            const textEnds =
+              $isRangeSelection(selection) &&
+              selection.isCollapsed() === false &&
+              selection.anchor.type === "text" &&
+              selection.focus.type === "text";
+            const data = textEnds
+              ? $headFormClipboard(editor, selection as RangeSelection)
+              : $getClipboardDataFromSelection(mapped);
+            data["text/plain"] = $plainTextOf(textEnds ? selection : mapped);
             setLexicalClipboardDataTransfer(event.clipboardData, data);
             if (command === CUT_COMMAND) {
               $tagRemoval();
@@ -2705,6 +2718,61 @@ const ImageEditingPlugin = () => {
     );
   }, [editor]);
   return null;
+};
+
+/**
+ * The clipboard Lexical writes for `selection` on the head's form of the
+ * tree: a scratch editor with the field's nodes and namespace holds the
+ * same state with every line replaced by its children, the selection
+ * carried over by path.
+ */
+const $headFormClipboard = (editor: LexicalEditor, selection: RangeSelection) => {
+  const pathOf = (node: LexicalNode) => {
+    const path: number[] = [];
+    let at: LexicalNode = node;
+    while (at.getParent() !== null) {
+      path.unshift(at.getIndexWithinParent());
+      at = at.getParentOrThrow();
+    }
+    return path;
+  };
+  const ends = [selection.anchor, selection.focus].map((point) => ({
+    path: pathOf(point.getNode()),
+    offset: point.offset,
+    type: point.type,
+  }));
+  const scratch = createEditor({
+    namespace: editor._config.namespace,
+    theme: editor._config.theme,
+    nodes: [...richTextNodes],
+    html: richTextHtmlConfig,
+    onError: (error: Error) => {
+      throw error;
+    },
+  });
+  scratch.setEditorState(scratch.parseEditorState(editor.getEditorState().toJSON()));
+  let data = { "text/plain": "" } as ReturnType<typeof $getClipboardDataFromSelection>;
+  scratch.update(
+    () => {
+      const resolve = (path: number[]) =>
+        path.reduce<LexicalNode>(
+          (node, index) => (node as ElementNode).getChildAtIndex(index)!,
+          $getRoot()
+        );
+      const range = $createRangeSelection();
+      range.anchor.set(resolve(ends[0].path).getKey(), ends[0].offset, ends[0].type);
+      range.focus.set(resolve(ends[1].path).getKey(), ends[1].offset, ends[1].type);
+      $setSelection(range);
+      for (const { node } of $dfs()) {
+        if ($isCmsLineNode(node) && node.isAttached()) {
+          $unwrapLines([node]);
+        }
+      }
+      data = { ...$getClipboardDataFromSelection($getSelection()) };
+    },
+    { discrete: true }
+  );
+  return data;
 };
 
 const LinkRulePlugin = () => {
