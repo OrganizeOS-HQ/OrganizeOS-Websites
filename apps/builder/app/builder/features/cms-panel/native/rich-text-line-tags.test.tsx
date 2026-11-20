@@ -180,6 +180,42 @@ describe("no tag outlives its update", () => {
   });
 });
 
+describe("undo into a state whose point rests on a lined container", () => {
+  test("then a letter: one onChange, and an undo step of its own", async () => {
+    const html = "<ul><li>Pw</li><li>T0w<hr /></li><li>Nw</li></ul>";
+    const onChange = await renderField(html);
+    taggedNoChange.splice(0);
+    await clickInWord("Pw");
+    // an edit that leaves its point on the item, between its line and its rule
+    await act(async () => {
+      editorOf()!.update(() => {
+        const text = nodes().find((node) => node.getTextContent() === "Pw" && node.getType() === "text")!;
+        (text as unknown as { setTextContent: (value: string) => void }).setTextContent("Pwx");
+        const item = nodes().filter((node) => node.getType() === "listitem")[1];
+        const range = $createRangeSelection();
+        range.anchor.set(item.getKey(), 1, "element");
+        range.focus.set(item.getKey(), 1, "element");
+        $setSelection(range);
+      });
+    });
+    await settle();
+    await clickInWord("Nw");
+    await keys("k");
+    await undo();
+    expect(written(onChange)).toBe(stored("<ul><li>Pwx</li><li>T0w<hr /></li><li>Nw</li></ul>"));
+    const before = onChange.mock.calls.length;
+    const steps = undoSteps();
+    await keys("m");
+    expect(onChange.mock.calls.length - before).toBe(1);
+    expect(undoSteps()).toBe(steps + 1);
+    const typed = written(onChange);
+    await undo();
+    expect(written(onChange)).toBe(stored("<ul><li>Pwx</li><li>T0w<hr /></li><li>Nw</li></ul>"));
+    expect(typed).toContain("m");
+    expect(taggedNoChange.splice(0)).toEqual([]);
+  });
+});
+
 describe("the no-value decision does not read empty lines", () => {
   // empty caret lines add only new lines to the text, which the decision trims
   test("a list item that comes to hold only a rule, the caret on its empty line", async () => {

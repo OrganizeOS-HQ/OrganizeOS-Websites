@@ -33,9 +33,16 @@ export const taggedNoChange: string[] = [];
 const UNREAD_LEXICAL_TAGS = new Set(["focus"]);
 
 export const registerTagCheck = (editor: LexicalEditor) => {
-  let previous: { tags: Set<string>; names: string[] } | undefined;
+  let previous: { tags: Set<string>; names: string[]; nested: boolean } | undefined;
   return editor.registerUpdateListener(({ tags }) => {
+    // Lexical's commit of a changed node selection dispatches
+    // SELECTION_CHANGE_COMMAND before its listeners run, and that update runs
+    // at once, adding its tags to the set of the commit under way; the set
+    // is that update's own when it commits next, and is not reported. Dev
+    // check only: it reads whether an update is pending
+    const nested = previous?.nested === true;
     const leaked =
+      nested === false &&
       previous !== undefined && previous.tags === tags
         ? previous.names.filter(
             (name) =>
@@ -48,7 +55,11 @@ export const registerTagCheck = (editor: LexicalEditor) => {
       taggedNoChange.push(message);
       console.error(message);
     }
-    previous = { tags, names: [...tags] };
+    previous = {
+      tags,
+      names: [...tags],
+      nested: (editor as unknown as { _pendingEditorState: unknown })._pendingEditorState !== null,
+    };
   });
 };
 
