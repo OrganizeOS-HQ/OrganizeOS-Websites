@@ -2133,32 +2133,46 @@ export const registerLineCommands = (editor: LexicalEditor) => {
   };
   // 15.12: the page's selection is read back where the page has moved
   // since Lexical last wrote or read it
-  const $readBack = () => {
+  const pageMoved = () => {
     if (editor.isComposing() || lineSpike.resyncOff) {
-      return;
+      return false;
     }
     const now = pageSnapshot();
     const was = pageSelection;
-    if (
+    // a range the page shows where Lexical last left none (a node
+    // selection's commit removes the page's range, and the browser puts a
+    // caret back on its own) is no step of the person's
+    return !(
       now === null ||
+      was === null ||
       (was !== null &&
         now.anchorNode === was.anchorNode &&
         now.anchorOffset === was.anchorOffset &&
         now.focusNode === was.focusNode &&
         now.focusOffset === was.focusOffset)
-    ) {
-      return;
+    );
+  };
+  const $readBack = () => {
+    if (pageMoved() === false) {
+      return false;
     }
+    const now = pageSnapshot();
     const selection = $getSelection();
     const dom = window.getSelection();
     if ($isRangeSelection(selection) === false || dom === null) {
-      return;
+      return false;
     }
     const page = $createRangeSelectionFromDom(dom, editor);
     if (page !== null) {
       $setSelection(page);
+      // the read-back never writes the page's selection: the page already
+      // shows it, and a write (Lexical writes an element point back even
+      // when it is unchanged) drops the page's goal column for the next
+      // vertical step
+      page.dirty = false;
     }
     pageSelection = now;
+    return page !== null;
   };
   // a key, or an edit or clipboard event, in the field: in an update of its
   // own before the key's or the edit's (not an edit: no undo step, no
@@ -2167,7 +2181,9 @@ export const registerLineCommands = (editor: LexicalEditor) => {
   // the selection
   const beforeKeyOrEditEvents = ["keydown", "beforeinput", "paste", "cut", "copy", "drop"] as const;
   const beforeKeyOrEdit = () => {
-    if (editor.isComposing() || (keptOf(editor).size === 0 && pressId === null)) {
+    // the page's read-back applies to a range Lexical holds
+    const rangeHeld = editor.getEditorState().read(() => $isRangeSelection($getSelection()));
+    if (editor.isComposing() || (keptOf(editor).size === 0 && pressId === null && (rangeHeld === false || pageMoved() === false))) {
       return;
     }
     const dom = window.getSelection();
@@ -2175,8 +2191,15 @@ export const registerLineCommands = (editor: LexicalEditor) => {
     const nodeSelected = editor.getEditorState().read(() => $isNodeSelection($getSelection()));
     editor.update(
       () => {
-        $readBack();
+        // a page step read back here is the selection change the page has
+        // not reported yet: its step runs as at that change (a line the
+        // caret left goes) before the key or edit reads the selection
+        const readBack = $readBack();
         let changed = $removeKeptLines();
+        if (readBack && pressId === null) {
+          changed = $liftPointsIntoLines(true) || changed;
+          changed = $removeLeftEmptyLines() || changed;
+        }
         if (pressId !== null) {
           changed = $liftPointsIntoLines(true) || changed;
           changed = $removeLeftEmptyLines() || changed;
@@ -2534,6 +2557,26 @@ export const registerLineCommands = (editor: LexicalEditor) => {
       const broken = editorState.read($pointRuleBroken);
       if (broken === null) {
         checkFailed = false;
+        // a line the caret left by a key or by code, where no selection
+        // change of the page followed (the field moved the caret in the
+        // key's own update), goes at once
+        const kept = keptOf(editor);
+        const left = editorState.read(() =>
+          $dfs().some(
+            ({ node }) =>
+              $isCmsLineNode(node) &&
+              node.isEmpty() &&
+              holdsSelection(node) === false &&
+              kept.has(node.getKey()) === false
+          )
+        );
+        if (left) {
+          editor.update(() => {
+            if ($removeLeftEmptyLines()) {
+              $addUpdateTag("history-merge");
+            }
+          }, { discrete: true });
+        }
         return;
       }
       // a check that could not resolve the point has reported it already

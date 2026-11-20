@@ -1960,3 +1960,88 @@ test("15.10 a copy at x1 writes what a copy at the caret there writes", async ()
   };
   expect(await copyAt(true)).toEqual(await copyAt(false));
 }, 30_000);
+
+// 15.12: the read-back never writes the page's selection: across the
+// read-back's commit no call sets the page's selection (an element point
+// above all), and the page's anchor and focus are unchanged, so the
+// page's goal column survives the next vertical step
+const pageWrites = () => {
+  const calls: string[] = [];
+  const proto = Selection.prototype as unknown as Record<string, (...args: unknown[]) => unknown>;
+  const original: Record<string, (...args: unknown[]) => unknown> = {};
+  for (const name of ["setBaseAndExtent", "addRange", "removeAllRanges", "collapse", "extend", "removeRange"]) {
+    original[name] = proto[name];
+    proto[name] = function (this: Selection, ...args: unknown[]) {
+      calls.push(name);
+      return original[name].apply(this, args);
+    };
+  }
+  return { calls, restore: () => { for (const name of Object.keys(original)) proto[name] = original[name]; } };
+};
+const pageEnds = () => { const page = window.getSelection()!; return [page.anchorNode, page.anchorOffset, page.focusNode, page.focusOffset]; };
+const READ_BACK_CELLS: [string, string, string, number, [string, string, string]][] = [
+  ["an empty line (an element point)", LI("<h3>H0w</h3><br>"), "H0w", 3, ["move", "forward", "line"]],
+  ["a link's start", '<p>Aw <a href="https://example.org/l">Lw</a></p>', "Aw ", 3, ["move", "forward", "character"]],
+  ["a container focus", LI("<blockquote><p>Q0w</p></blockquote><hr>T2w"), "Q0w", 3, ["extend", "forward", "line"]],
+];
+for (const [name, html, word, at, [alter, direction, granularity]] of READ_BACK_CELLS) test(`15.12 the read-back writes nothing to the page: ${name}`, async () => {
+  await renderField(html);
+  await placeIn(word, at);
+  const before = walkSel();
+  (window.getSelection() as unknown as { modify: (a: string, b: string, c: string) => void }).modify(alter, direction, granularity);
+  const ends = pageEnds();
+  const writes = pageWrites();
+  try {
+    await act(async () => {
+      editable()!.dispatchEvent(new KeyboardEvent("keydown", { key: "Shift", code: "ShiftLeft", shiftKey: true, bubbles: true, cancelable: true }));
+    });
+  } finally {
+    writes.restore();
+  }
+  expect(walkSel()).not.toBe(before);
+  expect(writes.calls).toEqual([]);
+  expect(pageEnds()).toEqual(ends);
+  await settle();
+}, 30_000);
+/** A Down walk, with a wait between the presses or none, then a letter: the write. */
+const downWalk = async (html: string, word: string, at: number, presses: number, wait: boolean) => {
+  const onChange = await renderField(html);
+  await placeIn(word, at);
+  if (wait) {
+    for (let press = 0; press < presses; press++) { await userEvent.keyboard("{ArrowDown}"); await settle(); }
+    await userEvent.keyboard("k");
+  } else {
+    await userEvent.keyboard("{ArrowDown}".repeat(presses) + "k");
+  }
+  await settle();
+  const write = writeOf(onChange);
+  unmountField();
+  return write;
+};
+test("15.12 a goal-column walk: Down from a long line's end through an empty line and a short line to a long one lands in the same place, fast or with a wait", async () => {
+  const html = "<p>Along line of words</p><p><br></p><p>Sw</p><p>Blong line of words</p>";
+  const waited = await downWalk(html, "Along line of words", 19, 4, true);
+  // the column kept: the walk ends at the long line's end
+  expect(waited).toBe("<p>Along line of words</p><p><br /></p><p>Sw</p><p>Blong line of wordsk</p>");
+  for (let run = 0; run < 10; run++) expect(await downWalk(html, "Along line of words", 19, 4, false)).toBe(waited);
+}, 120_000);
+// ACCEPTED (R2's list): a vertical walk that passes an empty caret line
+// loses its column. The field sets the caret line's element point, and
+// Lexical writes it to the page; the next Down lands at the line's start
+test("15.12 ACCEPTED: a vertical walk that passes an empty caret line loses its column", async () => {
+  const html = "<ul><li>Along line of words<hr><hr>Blong line of words</li></ul>";
+  const waited = await downWalk(html, "Along line of words", 19, 2, true);
+  expect(waited).toBe("<ul><li>Along line of words<hr /><hr />kBlong line of words</li></ul>");
+  expect(await downWalk(html, "Along line of words", 19, 2, false)).toBe(waited);
+}, 30_000);
+// the walk the sweep once stopped on (S QRL, Shift+ArrowRight, press 11):
+// it ends, in bounded time
+test("15.12 S QRL Shift+ArrowRight x11 then a letter ends in bounded time", async () => {
+  const onChange = await renderField(LI("<blockquote><p>Q0w</p></blockquote><hr><ul><li>L2w</li></ul>"));
+  await placeIn("Pw", 2);
+  const started = performance.now();
+  await userEvent.keyboard("{Shift>}{ArrowRight}{/Shift}".repeat(11) + "k");
+  await settle();
+  expect(performance.now() - started).toBeLessThan(10_000);
+  expect(writeOf(onChange)).toBe("<ul><li>Pwkw</li></ul>");
+}, 30_000);
