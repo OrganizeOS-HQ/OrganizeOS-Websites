@@ -1731,6 +1731,110 @@ const R10_PINS: Record<string, { w: string; clip: string }> = {
   "clip": "[\"w\\nPw\",\"<p dir=\\\"ltr\\\"><span style=\\\"white-space: pre-wrap;\\\">w</span></p><blockquote dir=\\\"ltr\\\"><p dir=\\\"ltr\\\"><span style=\\\"white-space: pre-wrap;\\\">Pw</span></p></blockquote>\"]"
  }
 };
+// the head's write for the same input (lines off; a7f8121fd gives the same
+// six results): the "before" record of each cell
+const R10_HEAD: Record<string, string> = {
+ "l R p | Backspace": "<ul><li>Pw</li></ul>",
+ "l R p | CtrlBackspace": "<ul><li>Pw</li></ul>",
+ "l R p | CtrlDelete": "<ul><li>Pw</li></ul>",
+ "l R p | Delete": "<ul><li>Pw</li></ul>",
+ "l R p | Enter": "<ul><li>Pw</li><li></li></ul>",
+ "l R p | ShiftEnter": "<ul><li>Pw<br /></li></ul>",
+ "l R p | copy": "NOOP",
+ "l R p | cut": "<ul><li>Pw</li></ul>",
+ "l R p | k": "THROWS: Expected node root to have a parent",
+ "l R p | paste": "THROWS: Expected node root to have a parent",
+ "l2 R p | Backspace": "<ul><li>Aw<ul><li>Pw</li></ul></li></ul>",
+ "l2 R p | CtrlBackspace": "<ul><li>Aw<ul><li>Pw</li></ul></li></ul>",
+ "l2 R p | CtrlDelete": "<ul><li>Aw<ul><li>Pw</li></ul></li></ul>",
+ "l2 R p | Delete": "<ul><li>Aw<ul><li>Pw</li></ul></li></ul>",
+ "l2 R p | Enter": "<ul><li>Aw<ul><li>Pw</li><li></li></ul></li></ul>",
+ "l2 R p | ShiftEnter": "<ul><li>Aw<ul><li>Pw<br /></li></ul></li></ul>",
+ "l2 R p | copy": "NOOP",
+ "l2 R p | cut": "<ul><li>Aw<ul><li>Pw</li></ul></li></ul>",
+ "l2 R p | k": "THROWS: Expected node root to have a parent",
+ "l2 R p | paste": "THROWS: Expected node root to have a parent",
+ "q R end | Backspace": "<blockquote><p>Pw</p></blockquote>",
+ "q R end | CtrlBackspace": "<blockquote><p>Pw</p></blockquote>",
+ "q R end | CtrlDelete": "<blockquote><p>Pw</p></blockquote>",
+ "q R end | Delete": "<blockquote><p>Pw</p></blockquote>",
+ "q R end | Enter": "<blockquote><p>Pw</p><p></p></blockquote>",
+ "q R end | ShiftEnter": "<blockquote><p>Pw<br /></p></blockquote>",
+ "q R end | copy": "NOOP",
+ "q R end | cut": "<blockquote><p>Pw</p></blockquote>",
+ "q R end | k": "THROWS: Expected node root to have a parent",
+ "q R end | paste": "THROWS: Expected node root to have a parent",
+ "q R p | Backspace": "<blockquote><p>Pw</p></blockquote>",
+ "q R p | CtrlBackspace": "<blockquote><p>Pw</p></blockquote>",
+ "q R p | CtrlDelete": "<blockquote><p>Pw</p></blockquote>",
+ "q R p | Delete": "<blockquote><p>Pw</p></blockquote>",
+ "q R p | Enter": "<blockquote><p>Pw</p><p></p></blockquote>",
+ "q R p | ShiftEnter": "<blockquote><p>Pw<br /></p></blockquote>",
+ "q R p | copy": "NOOP",
+ "q R p | cut": "<blockquote><p>Pw</p></blockquote>",
+ "q R p | k": "THROWS: Expected node root to have a parent",
+ "q R p | paste": "THROWS: Expected node root to have a parent",
+ "q R q | Backspace": "<blockquote><p>Pw</p></blockquote>",
+ "q R q | CtrlBackspace": "<blockquote><p>Pw</p></blockquote>",
+ "q R q | CtrlDelete": "<blockquote><p>Pw</p></blockquote>",
+ "q R q | Delete": "<blockquote><p>Pw</p></blockquote>",
+ "q R q | Enter": "<blockquote><p>Pw</p><p></p></blockquote>",
+ "q R q | ShiftEnter": "<blockquote><p>Pw<br /></p></blockquote>",
+ "q R q | copy": "NOOP",
+ "q R q | cut": "<blockquote><p>Pw</p></blockquote>",
+ "q R q | k": "THROWS: Expected node root to have a parent",
+ "q R q | paste": "THROWS: Expected node root to have a parent",
+ "q-br R p | Backspace": "<blockquote><p>Pw<br /></p></blockquote>",
+ "q-br R p | CtrlBackspace": "<blockquote><p>Pw<br /></p></blockquote>",
+ "q-br R p | CtrlDelete": "<blockquote><p>Pw<br /></p></blockquote>",
+ "q-br R p | Delete": "<blockquote><p>Pw<br /></p></blockquote>",
+ "q-br R p | Enter": "<blockquote><p>Pw<br /></p><p></p></blockquote>",
+ "q-br R p | ShiftEnter": "<blockquote><p>Pw<br /><br /></p></blockquote>",
+ "q-br R p | copy": "NOOP",
+ "q-br R p | cut": "<blockquote><p>Pw<br /></p></blockquote>",
+ "q-br R p | k": "THROWS: Expected node root to have a parent",
+ "q-br R p | paste": "THROWS: Expected node root to have a parent",
+ "q-img R p | Backspace": "<blockquote><p>Pw</p></blockquote>",
+ "q-img R p | CtrlBackspace": "<blockquote><p>Pw</p></blockquote>",
+ "q-img R p | CtrlDelete": "<blockquote><p>Pw</p></blockquote>",
+ "q-img R p | Delete": "<blockquote><p>Pw</p></blockquote>",
+ "q-img R p | Enter": "<blockquote><p>Pw</p><p></p></blockquote>",
+ "q-img R p | ShiftEnter": "<blockquote><p>Pw<br /></p></blockquote>",
+ "q-img R p | copy": "NOOP",
+ "q-img R p | cut": "<blockquote><p>Pw</p></blockquote>",
+ "q-img R p | k": "THROWS: Expected node root to have a parent",
+ "q-img R p | paste": "THROWS: Expected node root to have a parent",
+ "q-link R p | Backspace": "<blockquote><p>Pw<a href=\"https://example.org/l\">Lw</a></p></blockquote>",
+ "q-link R p | CtrlBackspace": "<blockquote><p>Pw<a href=\"https://example.org/l\">Lw</a></p></blockquote>",
+ "q-link R p | CtrlDelete": "<blockquote><p>Pw<a href=\"https://example.org/l\">Lw</a></p></blockquote>",
+ "q-link R p | Delete": "<blockquote><p>Pw<a href=\"https://example.org/l\">Lw</a></p></blockquote>",
+ "q-link R p | Enter": "<blockquote><p>Pw<a href=\"https://example.org/l\">Lw</a></p><p></p></blockquote>",
+ "q-link R p | ShiftEnter": "<blockquote><p>Pw<a href=\"https://example.org/l\">Lw</a><br /></p></blockquote>",
+ "q-link R p | copy": "NOOP",
+ "q-link R p | cut": "<blockquote><p>Pw<a href=\"https://example.org/l\">Lw</a></p></blockquote>",
+ "q-link R p | k": "THROWS: Expected node root to have a parent",
+ "q-link R p | paste": "THROWS: Expected node root to have a parent",
+ "text-back in q R p | Backspace": "<blockquote><p>P</p></blockquote>",
+ "text-back in q R p | CtrlBackspace": "<blockquote><p>P</p></blockquote>",
+ "text-back in q R p | CtrlDelete": "<blockquote><p>P</p></blockquote>",
+ "text-back in q R p | Delete": "<blockquote><p>P</p></blockquote>",
+ "text-back in q R p | Enter": "<blockquote><p>P</p><p></p></blockquote>",
+ "text-back in q R p | ShiftEnter": "<blockquote><p>P<br /></p></blockquote>",
+ "text-back in q R p | copy": "NOOP",
+ "text-back in q R p | cut": "<blockquote><p>P</p></blockquote>",
+ "text-back in q R p | k": "THROWS: Expected node root to have a parent",
+ "text-back in q R p | paste": "THROWS: Expected node root to have a parent",
+ "text-back q R p | Backspace": "<p>A</p><hr /><p>Nw</p>",
+ "text-back q R p | CtrlBackspace": "<p>A</p><hr /><p>Nw</p>",
+ "text-back q R p | CtrlDelete": "<p>A</p><hr /><p>Nw</p>",
+ "text-back q R p | Delete": "<p>A</p><hr /><p>Nw</p>",
+ "text-back q R p | Enter": "<p>A</p><p></p><hr /><p>Nw</p>",
+ "text-back q R p | ShiftEnter": "<p>A<br /></p><hr /><p>Nw</p>",
+ "text-back q R p | copy": "NOOP",
+ "text-back q R p | cut": "<p>A</p><hr /><p>Nw</p>",
+ "text-back q R p | k": "<p>Ak</p><hr /><p>Nw</p>",
+ "text-back q R p | paste": "<p>AZq</p><hr /><p>Nw</p>"
+};
 const r10Find = (el: string, nth: number) => (el === "root" ? $getRoot() : (all().filter((node) => node.getType() === el)[nth] as ElementNode));
 const r10Run = async (shape: R10Shape, form: "range" | "oracle", entry: (typeof R10_ENTRY)[number]) => {
   const onChange = await renderField(shape.html);
@@ -1770,6 +1874,89 @@ const r10Run = async (shape: R10Shape, form: "range" | "oracle", entry: (typeof 
 for (const shape of R10) for (const entry of R10_ENTRY) test(`15.10 ${shape.id}: ${entry} over the range to the root after the block`, async () => {
   const range = await r10Run(shape, "range", entry);
   expect(range).toEqual(R10_PINS[`${shape.id} | ${entry}`]);
+  expect(R10_HEAD[`${shape.id} | ${entry}`]).toBeDefined();
   // the range holds text: it gives what the range one press earlier gives
   if (shape.id.startsWith("text-back")) expect(range).toEqual(await r10Run(shape, "oracle", entry));
+}, 30_000);
+
+// 15.13 (a): a rule node-selected by a press with a kept line beside it, or
+// in another item: each key gives what it gives with the rule selected by
+// an arrow and no kept line
+type KeptNode = { name: string; html: string; rule: number; keep: () => Promise<void>; arrow: () => Promise<void> };
+const nodeSelectedNow = () => editorOf()!.getEditorState().read(() => $isNodeSelection($getSelection()));
+const arrowUntilSelected = async (key: string) => {
+  for (let press = 0; press < 4 && nodeSelectedNow() === false; press++) { await userEvent.keyboard(key); await settle(); }
+  expect(nodeSelectedNow()).toBe(true);
+};
+const KEPT_NODE: KeptNode[] = [
+  {
+    name: "the kept line directly before the rule",
+    html: LI("<hr>T1w"),
+    rule: 0,
+    keep: async () => { await clickInWord("T1w", 1); await hold(besideLeadingRule(), 50); expect(walkSel()).toBe("cms-line@0[-]"); },
+    arrow: async () => { await clickInWord("T1w", 0); await arrowUntilSelected("{ArrowLeft}"); },
+  },
+  {
+    name: "the kept line directly after the rule",
+    html: LI("<hr><hr>T2w"),
+    rule: 0,
+    keep: async () => { await caretLineAt(1); },
+    arrow: async () => { await clickInWord("Pw", 2); await arrowUntilSelected("{ArrowRight}"); },
+  },
+  {
+    name: "the kept line in another item",
+    html: "<ul><li>Pw</li><li><hr>T1w</li><li><hr>T2w</li><li>Nw</li></ul>",
+    rule: 1,
+    keep: async () => { await caretLineAt(0); },
+    arrow: async () => { await clickInWord("T2w", 0); await arrowUntilSelected("{ArrowLeft}"); },
+  },
+];
+const KEPT_NODE_KEYS: [string, () => Promise<void>][] = [
+  ["a letter", async () => { await userEvent.keyboard("k"); }],
+  ["Backspace", async () => { await userEvent.keyboard("{Backspace}"); }],
+  ["Delete", async () => { await userEvent.keyboard("{Delete}"); }],
+  ["Enter", async () => { await userEvent.keyboard("{Enter}"); }],
+  ["a paste", async () => { const data = new DataTransfer(); data.setData("text/plain", "Zq"); await act(async () => { editable()!.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: data })); }); }],
+  ["ArrowLeft", async () => { await userEvent.keyboard("{ArrowLeft}"); }],
+  ["ArrowRight", async () => { await userEvent.keyboard("{ArrowRight}"); }],
+];
+for (const shape of KEPT_NODE) for (const [keyName, key] of KEPT_NODE_KEYS) test(`15.13 (a) a rule selected by a press, ${shape.name}: ${keyName} as with the rule selected by an arrow`, async () => {
+  const run = async (kept: boolean) => {
+    const onChange = await renderField(shape.html);
+    if (kept) {
+      await shape.keep();
+      const rule = editable()!.querySelectorAll("hr")[shape.rule];
+      await hold(centre(rule), 50);
+      expect(selectedElement()).toBe(rule);
+      expect(emptyLines()).toBe(1);
+    } else {
+      await shape.arrow();
+      expect(selectedElement()).toBe(editable()!.querySelectorAll("hr")[shape.rule]);
+    }
+    await key();
+    await settle();
+    const out = { w: writeOf(onChange), sel: walkSel(), lines: emptyLines() };
+    unmountField();
+    return out;
+  };
+  expect(await run(true)).toEqual(await run(false));
+}, 30_000);
+// 15.10: the copy at x1 is the copy at a plain caret at that place, the
+// clipboard written or left exactly as there
+test("15.10 a copy at x1 writes what a copy at the caret there writes", async () => {
+  const copyAt = async (range: boolean) => {
+    await renderField("<blockquote><p>Pw</p></blockquote><hr><p>Nw</p>");
+    await clickInWord("Pw", 2);
+    await act(async () => { editorOf()!.update(() => { $getRoot().getAllTextNodes().find((t) => t.getTextContent() === "Pw")!.select(2, 2); }); });
+    await settle();
+    if (range) { await userEvent.keyboard("{Shift>}{ArrowRight}{/Shift}"); await settle(); expect(walkSel()).toBe('"Pw"@2->root@1[horizontalrule]'); }
+    const data = new DataTransfer();
+    const event = new ClipboardEvent("copy", { bubbles: true, cancelable: true, clipboardData: data });
+    await act(async () => { editable()!.dispatchEvent(event); });
+    await settle();
+    const out = { prevented: event.defaultPrevented, types: [...data.types], values: [...data.types].map((type) => data.getData(type).replace(/cms-rich-text-[0-9a-f-]{36}/g, "NS")) };
+    unmountField();
+    return out;
+  };
+  expect(await copyAt(true)).toEqual(await copyAt(false));
 }, 30_000);

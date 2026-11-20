@@ -1169,6 +1169,10 @@ export const $tagRemoval = (isBackward?: boolean): boolean => {
   if ($isRangeSelection(selection) && $lastPointToBlockEnd(selection) && selection.isCollapsed()) {
     return true;
   }
+  // 15.11 (3): the removal uses the ends the clipboard writer uses
+  if ($isRangeSelection(selection) && selection.isCollapsed() === false && lineSpike.on) {
+    $endsIntoText(selection, false);
+  }
   $mark(REMOVAL_TAG);
   if ($isRangeSelection(selection) === false) {
     return false;
@@ -3194,7 +3198,76 @@ const queueLinePoints: ElementPoint[] = [];
  * the range, a text node with a character inside it, and an image, rule or
  * line break wholly inside it. The two ends come first and last.
  */
-const $nodesInRange = (selection: RangeSelection) => {
+/** A range's two ends in document order, by the tree (not Lexical's isBackward). */
+export const $endsInOrder = (selection: RangeSelection) => {
+  const { start, end } = $nodesInRange(selection, false);
+  return { start, end };
+};
+
+/**
+ * 15.11 (candidate iii): each element-point end of a range gets a place of
+ * its own in text, the same place for the clipboard writer and for a
+ * removal: the edge of a text node directly beside it in the same parent
+ * (the side inside the range first), else an empty text node at the point.
+ * Where no text can stand (the root, a list, a quote between its
+ * paragraphs) nothing moves and the result is null. With `mark`, the
+ * inserted nodes carry the mark the writer drops them by.
+ */
+export const PLACE_MARK = "--cms-place: 1";
+export const $endsIntoText = (selection: RangeSelection, mark: boolean): TextNode[] | null => {
+  const { start, end } = $endsInOrder(selection);
+  const holders = [start, end].filter((point) => point.type === "element");
+  for (const point of holders) {
+    const element = point.getNode();
+    if (
+      $isRootOrShadowRoot(element) ||
+      $isListNode(element) ||
+      ($isQuoteNode(element) && isLinedContainer(element) === false)
+    ) {
+      return null;
+    }
+  }
+  const inserted: TextNode[] = [];
+  const placed = new Map<string, TextNode>();
+  for (const point of [start, end]) {
+    if (point.type !== "element") {
+      continue;
+    }
+    const isStart = point === start;
+    const element = point.getNode() as ElementNode;
+    const left = point.offset > 0 ? element.getChildAtIndex(point.offset - 1) : null;
+    const right = element.getChildAtIndex(point.offset);
+    const sides: [LexicalNode | null, "left" | "right"][] = isStart
+      ? [[right, "right"], [left, "left"]]
+      : [[left, "left"], [right, "right"]];
+    const beside = sides.find(([node]) => $isTextNode(node));
+    if (beside !== undefined) {
+      const text = beside[0] as TextNode;
+      point.set(text.getKey(), beside[1] === "left" ? text.getTextContentSize() : 0, "text");
+      continue;
+    }
+    const at = `${element.getKey()}@${point.offset}`;
+    let text = placed.get(at);
+    if (text === undefined) {
+      text = $createTextNode("");
+      if (mark) {
+        text.toggleUnmergeable();
+        text.setStyle(PLACE_MARK);
+      }
+      if (right !== null) {
+        right.insertBefore(text);
+      } else {
+        element.append(text);
+      }
+      placed.set(at, text);
+      inserted.push(text);
+    }
+    point.set(text.getKey(), 0, "text");
+  }
+  return inserted;
+};
+
+const $nodesInRange = (selection: RangeSelection, collect = true) => {
   const pathOf = (node: LexicalNode) => {
     const path: number[] = [];
     let at: LexicalNode = node;
@@ -3228,6 +3301,9 @@ const $nodesInRange = (selection: RangeSelection) => {
   const from = placeOf(start);
   const to = placeOf(end);
   const nodes: LexicalNode[] = [];
+  if (collect === false) {
+    return { nodes, start, end };
+  }
   const walk = (node: LexicalNode) => {
     const path = pathOf(node);
     const index = path.pop() ?? 0;

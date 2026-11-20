@@ -134,6 +134,8 @@ import {
   type HeldContent,
   $liftPointsIntoLines,
   $lastPointToBlockEnd,
+  $endsIntoText,
+  PLACE_MARK,
   removeKeptLines,
   $mapLineEdges,
   $plainTextOf,
@@ -1478,8 +1480,10 @@ const Toolbar = ({
       className={toolbarStyle()}
       role="toolbar"
       aria-label="Formatting"
-      // 15.13 (a): lines a press's caret left go before a toolbar command
-      onPointerDownCapture={() => removeKeptLines(editor)}
+      // 15.13 (a): lines a press's caret left go before a toolbar command,
+      // at the click (the press is over: nothing moves under the pointer)
+      // or the key that runs it
+      onClickCapture={() => removeKeptLines(editor)}
       onKeyDownCapture={() => removeKeptLines(editor)}
     >
       <Select
@@ -2729,15 +2733,25 @@ const ImageEditingPlugin = () => {
             // with an element-point end, and a node selection, keep the
             // mapped writer: on the head's form of the tree Lexical's own
             // walk copies past an element end at a line's start (FS9)
-            const textEnds =
-              $isRangeSelection(selection) &&
-              selection.isCollapsed() === false &&
-              selection.anchor.type === "text" &&
-              selection.focus.type === "text";
+            // 15.11: one writer for every range (candidate iii): each
+            // element end takes a place of its own in text in the scratch
+            // editor; where no text can stand the present writer runs
+            const range =
+              $isRangeSelection(selection) && selection.isCollapsed() === false;
             let data: ReturnType<typeof $getClipboardDataFromSelection> | null;
             let plain: string;
-            if (textEnds) {
-              data = $headFormClipboard(editor, selection as RangeSelection);
+            const written = range
+              ? $headFormClipboard(editor, selection as RangeSelection, true)
+              : "fallback";
+            const textEnds =
+              range &&
+              (selection as RangeSelection).anchor.type === "text" &&
+              (selection as RangeSelection).focus.type === "text";
+            if (written !== "fallback" || textEnds) {
+              data =
+                written === "fallback"
+                  ? ($headFormClipboard(editor, selection as RangeSelection) as typeof data)
+                  : written;
               plain = $plainTextOf(selection);
               if (data === null && import.meta.env.DEV) {
                 console.error("cms-line clipboard: the head-form copy could not be written");
@@ -2842,10 +2856,56 @@ const $treeJSON = (node: LexicalNode): SerializedLexicalNode => {
  * container with the line's children). Null when it cannot write: a throw,
  * or an end that does not carry over or does not fit its node.
  */
+/** 15.11 (2): the empty text nodes that gave an element end its place leave nothing. */
+const dropPlaces = (data: ReturnType<typeof $getClipboardDataFromSelection>) => {
+  const json = data["application/x-lexical-editor"];
+  if (json !== undefined && json !== "") {
+    const parsed = JSON.parse(json) as { nodes: SerializedLexicalNode[] };
+    const drop = (nodes: SerializedLexicalNode[]): SerializedLexicalNode[] =>
+      nodes.flatMap((node) => {
+        const item = node as SerializedLexicalNode & { style?: string; children?: SerializedLexicalNode[] };
+        if (item.type === "text" && (item.style ?? "").includes(PLACE_MARK)) {
+          return [];
+        }
+        if (item.children !== undefined) {
+          item.children = drop(item.children);
+        }
+        return [item];
+      });
+    parsed.nodes = drop(parsed.nodes);
+    data["application/x-lexical-editor"] = JSON.stringify(parsed);
+  }
+  const html = data["text/html"];
+  if (html !== undefined && html.includes("--cms-place")) {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    for (const span of doc.body.querySelectorAll("span")) {
+      if ((span.getAttribute("style") ?? "").includes("--cms-place") === false) {
+        continue;
+      }
+      // the span and any wrapper it alone fills
+      let at: Element = span;
+      while (
+        at.parentElement !== null &&
+        at.parentElement !== doc.body &&
+        at.parentElement.tagName === "SPAN" &&
+        at.parentElement.childNodes.length === 1
+      ) {
+        at = at.parentElement;
+      }
+      at.remove();
+    }
+    data["text/html"] = doc.body.innerHTML;
+  }
+  return data;
+};
+
+/** "fallback": an element end where no text can stand (15.11 (4)): the present writer runs. */
 const $headFormClipboard = (
   editor: LexicalEditor,
-  selection: RangeSelection
-): ReturnType<typeof $getClipboardDataFromSelection> | null => {
+  selection: RangeSelection,
+  give = false
+): ReturnType<typeof $getClipboardDataFromSelection> | null | "fallback" => {
+  let fellBack = false;
   const pathOf = (node: LexicalNode) => {
     const path: number[] = [];
     let at: LexicalNode = node;
@@ -2956,6 +3016,12 @@ const $headFormClipboard = (
           return;
         }
         $setSelection(range);
+        // 15.11: each element end a place of its own in text, before the
+        // lines give way
+        if (give && $endsIntoText(range, true) === null) {
+          fellBack = true;
+          return;
+        }
         for (const { node } of $dfs()) {
           if ($isCmsLineNode(node) && node.isAttached()) {
             $unwrapLines([node]);
@@ -2967,12 +3033,15 @@ const $headFormClipboard = (
           throw new Error("cms-line clipboard: forced failure");
         }
         markRichTextCopy($getSelection());
-        data = { ...$getClipboardDataFromSelection($getSelection()) };
+        data = dropPlaces({ ...$getClipboardDataFromSelection($getSelection()) });
       },
       { discrete: true }
     );
   } catch {
     return null;
+  }
+  if (fellBack) {
+    return "fallback";
   }
   return data as ReturnType<typeof $getClipboardDataFromSelection> | null;
 };
