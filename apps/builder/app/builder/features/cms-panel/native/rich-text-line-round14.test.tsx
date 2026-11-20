@@ -17,12 +17,14 @@ import {
   CAN_REDO_COMMAND,
   CAN_UNDO_COMMAND,
   COMMAND_PRIORITY_CRITICAL,
+  COPY_COMMAND,
   type LexicalEditor,
 } from "lexical";
 import { TooltipProvider } from "@webstudio-is/design-system";
 import { RichTextField } from "./rich-text-field";
 import { byLabel, click, clickInWord, editable, editorOf, lastHtml, paste, renderField, settle } from "./rich-text-test-harness";
 import { sanitizeRichTextHtml } from "./rich-text-sanitize";
+import { lineSpike } from "./rich-text-line-node";
 
 const LI = (x: string) => `<ul><li>Pw</li><li>${x}</li><li>Nw</li></ul>`;
 const stored = (html: string) => sanitizeRichTextHtml(html);
@@ -1012,5 +1014,108 @@ describe("14.8: a paste with a rule node-selected in a lined item", () => {
       .replace(/blockquote/g, "q")
       .replace(/<\/?p>/g, "");
     expect(short).toBe(expected);
+  });
+});
+
+describe("14.9: one writer for a range", () => {
+  const CODE = "<pre><code>C1w</code></pre>";
+  const ITEM = "T0w<blockquote><p>Q1w</p></blockquote>T2w";
+  const PLACES: [string, string][] = [
+    ["after the list", `${LI(ITEM)}${CODE}`],
+    ["before the list", `${CODE}${LI(ITEM)}`],
+    ["in another item", `<ul><li>Pw${CODE}</li><li>${ITEM}</li><li>Nw</li></ul>`],
+    ["in a root quote", `<blockquote>${CODE}</blockquote>${LI(ITEM)}`],
+    ["in the item itself", LI(`${ITEM}${CODE}`)],
+  ];
+  /** The head's clipboard for T0w@1 to T2w@2 in that item, with a code block anywhere. */
+  const HEAD_HTML = "0w<blockquote><p>Q1w</p></blockquote>T2";
+  const HEAD_NODES = "[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"0w\",\"type\":\"text\",\"version\":1},{\"children\":[{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"Q1w\",\"type\":\"text\",\"version\":1}],\"format\":\"\",\"indent\":0,\"type\":\"paragraph\",\"version\":1,}],\"format\":\"\",\"indent\":0,\"type\":\"quote\",\"version\":1},{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"T2\",\"type\":\"text\",\"version\":1}]";
+  const editorNodes = (data: DataTransfer) => {
+    const lexical = data.getData("application/x-lexical-editor");
+    return lexical === ""
+      ? ""
+      : JSON.stringify(JSON.parse(lexical).nodes).replace(
+          /"direction":"(ltr|rtl)",?|"direction":null,?|"textFormat":\d+,?|"textStyle":"[^"]*",?/g,
+          ""
+        );
+  };
+  const selectT0toT2 = async () => {
+    await clickInWord("T0w", 1);
+    await userEvent.keyboard("{Shift>}");
+    await clickInWord("T2w", 2);
+    await userEvent.keyboard("{/Shift}");
+    await settle();
+  };
+  const clipboard = (type: "copy" | "cut") => {
+    const data = new DataTransfer();
+    act(() => {
+      editable()!.dispatchEvent(new ClipboardEvent(type, { bubbles: true, cancelable: true, clipboardData: data }));
+    });
+    return data;
+  };
+  test.each(PLACES)("a code block %s: the copy's text/html and editor data are the head's", async (_place, html) => {
+    await renderField(html);
+    await selectT0toT2();
+    const data = clipboard("copy");
+    expect(stored(data.getData("text/html"))).toBe(HEAD_HTML);
+    expect(editorNodes(data)).toBe(HEAD_NODES);
+    // F7: text/plain from the structure, a new line between the quote and the line after it
+    expect(data.getData("text/plain")).toBe("0w\nQ1w\nT2");
+  });
+  for (const [label, html] of [
+    ["no code block", LI(ITEM)],
+    ["a code block in the field", `${LI(ITEM)}${CODE}`],
+  ] as const) {
+    test(`the scratch write fails, ${label}: a copy writes text/plain only and the assertion reports it`, async () => {
+      await renderField(html);
+      await selectT0toT2();
+      const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+      lineSpike.scratchClipboardFails = true;
+      try {
+        const data = clipboard("copy");
+        expect(data.getData("text/html")).toBe("");
+        expect(data.getData("application/x-lexical-editor")).toBe("");
+        expect(data.getData("text/plain")).toBe("0w\nQ1w\nT2");
+        expect(errors.mock.calls.some((args) => String(args[0]).includes("cms-line clipboard"))).toBe(true);
+      } finally {
+        lineSpike.scratchClipboardFails = false;
+      }
+    });
+    test(`the scratch write fails, ${label}: a cut writes text/plain only and removes nothing`, async () => {
+      const onChange = await renderField(html);
+      await selectT0toT2();
+      const calls = onChange.mock.calls.length;
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      lineSpike.scratchClipboardFails = true;
+      try {
+        const data = clipboard("cut");
+        await settle();
+        expect(data.getData("text/html")).toBe("");
+        expect(data.getData("text/plain")).toBe("0w\nQ1w\nT2");
+        expect(onChange.mock.calls.length).toBe(calls);
+      } finally {
+        lineSpike.scratchClipboardFails = false;
+      }
+    });
+  }
+  test("a copy dispatched in an uncommitted update copies the state it runs in", async () => {
+    await renderField(LI("q<hr>yq"));
+    await click(editable());
+    const data = new DataTransfer();
+    await act(async () => {
+      editorOf()!.update(() => {
+        const texts = $getRoot().getAllTextNodes();
+        const q = texts.find((node) => node.getTextContent() === "q")!;
+        const yq = texts.find((node) => node.getTextContent() === "yq")!;
+        q.setTextContent("xq");
+        const range = $createRangeSelection();
+        range.anchor.set(q.getKey(), 0, "text");
+        range.focus.set(yq.getKey(), 2, "text");
+        $setSelection(range);
+        editorOf()!.dispatchCommand(COPY_COMMAND, new ClipboardEvent("copy", { clipboardData: data }));
+      });
+    });
+    await settle();
+    expect(stored(data.getData("text/html"))).toBe("<ul><li>xq<hr />yq</li></ul>");
   });
 });

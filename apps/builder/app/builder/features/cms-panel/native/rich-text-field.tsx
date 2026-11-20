@@ -9,6 +9,8 @@
  */
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
+  type SerializedEditorState,
+  type SerializedLexicalNode,
   $copyNode,
   $createNodeSelection,
   $createParagraphNode,
@@ -2691,24 +2693,36 @@ const ImageEditingPlugin = () => {
             if (selection === null) {
               return false;
             }
-            const mapped = $mapLineEdges(selection);
-            markRichTextCopy(mapped);
             event.preventDefault();
-            // G (D6): a range whose two ends are text points copies what the
-            // head copies for the same two ends: text/html and the editor
-            // data are written on the head's form of the tree; text/plain is
-            // read from the structure
-            const textEnds =
-              $isRangeSelection(selection) &&
-              selection.isCollapsed() === false &&
-              selection.anchor.type === "text" &&
-              selection.focus.type === "text";
-            const data =
-              (textEnds
-                ? $headFormClipboard(editor, selection as RangeSelection)
-                : null) ?? $getClipboardDataFromSelection(mapped);
-            data["text/plain"] = $plainTextOf(textEnds ? selection : mapped);
-            setLexicalClipboardDataTransfer(event.clipboardData, data);
+            // G (D6), 14.9: a range copies what the head copies for the same
+            // two ends: text/html and the editor data are written on the
+            // head's form of the tree, by the one writer (an element-point
+            // end goes with its line's children, as the unwrap carries it);
+            // text/plain is read from the structure. A node selection keeps
+            // the mapped writer
+            const isRange =
+              $isRangeSelection(selection) && selection.isCollapsed() === false;
+            if (isRange) {
+              const data = $headFormClipboard(editor, selection as RangeSelection);
+              const plain = $plainTextOf(selection);
+              if (data === null) {
+                // the safe result: text/plain only, and a cut removes nothing
+                if (import.meta.env.DEV) {
+                  console.error("cms-line clipboard: the head-form copy could not be written");
+                }
+                markRichTextCopy(null);
+                setLexicalClipboardDataTransfer(event.clipboardData, { "text/plain": plain });
+                return true;
+              }
+              data["text/plain"] = plain;
+              setLexicalClipboardDataTransfer(event.clipboardData, data);
+            } else {
+              const mapped = $mapLineEdges(selection);
+              markRichTextCopy(mapped);
+              const data = $getClipboardDataFromSelection(mapped);
+              data["text/plain"] = $plainTextOf(mapped);
+              setLexicalClipboardDataTransfer(event.clipboardData, data);
+            }
             if (command === CUT_COMMAND) {
               $tagRemoval();
               if ($isRangeSelection(selection)) {
@@ -2730,16 +2744,29 @@ const ImageEditingPlugin = () => {
   return null;
 };
 
+/** A node and its descendants as the editor state's JSON holds them. */
+const $treeJSON = (node: LexicalNode): SerializedLexicalNode => {
+  const json = node.exportJSON() as SerializedLexicalNode & {
+    children?: SerializedLexicalNode[];
+  };
+  if ($isElementNode(node)) {
+    json.children = node.getChildren().map($treeJSON);
+  }
+  return json;
+};
+
 /**
  * The clipboard Lexical writes for `selection` on the head's form of the
  * tree: a scratch editor with the field's nodes and namespace holds the
- * same state with every line replaced by its children, the selection
- * carried over by path.
+ * state the command runs in, with every line replaced by its children, the
+ * selection carried over by path (an element point on a line goes to its
+ * container with the line's children). Null when it cannot write: a throw,
+ * or an end that does not carry over or does not fit its node.
  */
 const $headFormClipboard = (
   editor: LexicalEditor,
   selection: RangeSelection
-) => {
+): ReturnType<typeof $getClipboardDataFromSelection> | null => {
   const pathOf = (node: LexicalNode) => {
     const path: number[] = [];
     let at: LexicalNode = node;
@@ -2787,9 +2814,8 @@ const $headFormClipboard = (
       throw error;
     },
   });
-  scratch.setEditorState(
-    scratch.parseEditorState(editor.getEditorState().toJSON())
-  );
+  const state = { root: $treeJSON($getRoot()) } as unknown as SerializedEditorState;
+  scratch.setEditorState(scratch.parseEditorState(state));
   let data: ReturnType<typeof $getClipboardDataFromSelection> | null = null;
   try {
     scratch.update(
@@ -2803,8 +2829,7 @@ const $headFormClipboard = (
         const range = $createRangeSelection();
         const anchorNode = resolve(ends[0].path);
         const focusNode = resolve(ends[1].path);
-        // a path that does not carry over falls back to the field's own
-        // writer
+        // an end that does not carry over: no clipboard
         if (
           anchorNode === null ||
           focusNode === null ||
@@ -2841,6 +2866,16 @@ const $headFormClipboard = (
         };
         place(range.anchor, anchorNode, ends[0]);
         place(range.focus, focusNode, ends[1]);
+        // an end that does not fit the node it lands on: no clipboard
+        const fits = (point: typeof range.anchor) => {
+          const node = point.getNode();
+          return point.type === "text"
+            ? $isTextNode(node) && point.offset <= node.getTextContentSize()
+            : $isElementNode(node) && point.offset <= node.getChildrenSize();
+        };
+        if (fits(range.anchor) === false || fits(range.focus) === false) {
+          return;
+        }
         $setSelection(range);
         for (const { node } of $dfs()) {
           if ($isCmsLineNode(node) && node.isAttached()) {
@@ -2849,6 +2884,9 @@ const $headFormClipboard = (
         }
         // a code block reached partway writes its selected text, read from
         // this editor's selection
+        if (lineSpike.scratchClipboardFails) {
+          throw new Error("cms-line clipboard: forced failure");
+        }
         markRichTextCopy($getSelection());
         data = { ...$getClipboardDataFromSelection($getSelection()) };
       },
@@ -2857,7 +2895,7 @@ const $headFormClipboard = (
   } catch {
     return null;
   }
-  return data;
+  return data as ReturnType<typeof $getClipboardDataFromSelection> | null;
 };
 
 /** Lexical's history, held where the line rules can reach it (K). */

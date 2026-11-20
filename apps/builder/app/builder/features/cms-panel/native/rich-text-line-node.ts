@@ -89,6 +89,8 @@ export const lineSpike = {
   on: linesOff === false,
   /** An update leaves no item, quote or line it emptied. */
   noEmptied: true,
+  /** Tests: the head-form clipboard's scratch write throws. */
+  scratchClipboardFails: false,
 };
 
 export class CmsLineNode extends ElementNode {
