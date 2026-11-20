@@ -241,4 +241,35 @@ describe("F: a block paste or drop over a range in a lined item: the removal, th
   });
 });
 
+/** A real copy or cut: the clipboard event the browser dispatches. */
+const clipboard = async (type: "copy" | "cut") => {
+  const data = new DataTransfer();
+  editable()!.dispatchEvent(new ClipboardEvent(type, { bubbles: true, cancelable: true, clipboardData: data }));
+  await settle();
+  return {
+    html: data.getData("text/html").replace(/ (class|dir|style|value)="[^"]*"/g, "").replace(/<\/?span>/g, ""),
+    text: data.getData("text/plain"),
+  };
+};
+
+describe("G: the clipboard holds what the selection holds, and a cut removes that", () => {
+  test("a line's whole text before a quote copies the text only", async () => {
+    await renderField("<ul><li>xxq<blockquote><p>qq</p></blockquote>yyq</li></ul>");
+    await selectWords("xxq", 0, "xxq", undefined);
+    expect(await clipboard("copy")).toEqual({ html: "xxq", text: "xxq" });
+  });
+  test("a whole lined item copies with its list item", async () => {
+    await renderField("<ul><li>xq<hr>yq</li></ul>");
+    await selectWords("xq", 0, "yq", undefined);
+    expect(await clipboard("copy")).toEqual({ html: "<ul><li>xq<hr>yq</li></ul>", text: "xq\nyq" });
+  });
+  test("a cut from the item before to the end of the line before a trailing rule", async () => {
+    const onChange = await renderField(LI("<blockquote><p>Q0w</p></blockquote>T1w<hr>"));
+    await selectWords("Pw", 0, "T1w", undefined);
+    const clip = await clipboard("cut");
+    expect(clip.text).toContain("T1w");
+    expect(written(onChange)).toBe(stored("<ul><li><hr /></li><li>Nw</li></ul>"));
+  });
+});
+
 export { editable };
