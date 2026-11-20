@@ -1149,3 +1149,21 @@ describe("ruled no change: a cut from code text into the line after it", () => {
     expect(written(onChange)).toBe(joined);
   });
 });
+
+describe("round 14 rulings, item 2: D3's second case after a block that ends in an image", () => {
+  const IMG2 = `<img src="https://cdn.example.org/x.png" alt="" width="40" height="20" />`;
+  test("Backspace at T2w's start after a quote of only an image: the image stays, the caret before T2w", async () => {
+    const onChange = await renderField(LI(`T0w<blockquote><p>${IMG2}</p></blockquote>T2w`));
+    await clickInWord("T2w", 0);
+    await keys("{Backspace}");
+    expect(written(onChange)).toBe(stored(LI(`T0w<blockquote><p>${IMG2}T2w</p></blockquote>`)));
+    await keys("k");
+    expect(written(onChange)).toBe(stored(LI(`T0w<blockquote><p>${IMG2}kT2w</p></blockquote>`)));
+  });
+  test("the same after a heading of only an image", async () => {
+    const onChange = await renderField(LI(`T0w<h3>${IMG2}</h3>T2w`));
+    await clickInWord("T2w", 0);
+    await keys("{Backspace}");
+    expect(written(onChange)).toBe(stored(LI(`T0w<h3>${IMG2}T2w</h3>`)));
+  });
+});

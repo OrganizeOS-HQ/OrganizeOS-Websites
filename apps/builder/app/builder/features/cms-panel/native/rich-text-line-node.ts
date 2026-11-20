@@ -2261,6 +2261,67 @@ export const registerLineCommands = (editor: LexicalEditor) =>
         COMMAND_PRIORITY_NORMAL
       )
     ),
+    // D3's second case: Backspace at the start of a line directly after a
+    // block whose last paragraph ends in an image moves the line's content
+    // to the end of that paragraph; the image stays (Lexical's own delete
+    // would take the image first)
+    editor.registerCommand(
+      DELETE_CHARACTER_COMMAND,
+      (isBackward: boolean) => {
+        const selection = $getSelection();
+        if (
+          isBackward === false ||
+          $hasUpdateTag(HEAD_PATH_TAG) ||
+          $isRangeSelection(selection) === false ||
+          selection.isCollapsed() === false
+        ) {
+          return false;
+        }
+        const { anchor } = selection;
+        const node = anchor.getNode();
+        const line = $isCmsLineNode(node) ? node : $findMatchingParent(node, $isCmsLineNode);
+        if ($isCmsLineNode(line) === false || anchor.offset !== 0) {
+          return false;
+        }
+        const first = line.getFirstDescendant();
+        if (node.is(line) === false && first?.is(node) !== true) {
+          return false;
+        }
+        let target: LexicalNode | null = line.getPreviousSibling();
+        while (
+          $isElementNode(target) &&
+          $isCmsLineNode(target) === false &&
+          $isElementNode(target.getLastChild()) &&
+          (target.getLastChild() as ElementNode).isInline() === false
+        ) {
+          target = target.getLastChild();
+        }
+        if (
+          $isElementNode(target) === false ||
+          $isCmsLineNode(target) ||
+          target.isInline() ||
+          isBlockDecorator(target.getLastChild()) ||
+          $isDecoratorNode(target.getLastChild()) === false
+        ) {
+          return false;
+        }
+        const children = line.getChildren();
+        target.append(...children);
+        line.remove();
+        const start = children[0];
+        if ($isTextNode(start)) {
+          start.select(0, 0);
+        } else if (start !== undefined) {
+          const at = start.getIndexWithinParent();
+          selection.anchor.set(target.getKey(), at, "element");
+          selection.focus.set(target.getKey(), at, "element");
+        } else {
+          target.selectEnd();
+        }
+        return true;
+      },
+      COMMAND_PRIORITY_NORMAL
+    ),
     // V9: Delete just after an image that ends a line, or a block's last
     // paragraph, removes the image only
     editor.registerCommand(
