@@ -27,14 +27,6 @@ const keys = async (input: string) => {
   await settle();
 };
 const IMG = `<img src="https://cdn.example.org/x.png" alt="" width="40" height="20" />`;
-/** A range by real input: a click in `from`, then Shift+click in `to`. */
-const selectWords = async (from: string, fromOffset: number | undefined, to: string, toOffset: number | undefined) => {
-  await clickInWord(from, fromOffset);
-  await userEvent.keyboard("{Shift>}");
-  await clickInWord(to, toOffset);
-  await userEvent.keyboard("{/Shift}");
-  await settle();
-};
 
 describe("14.6: D3's first case, an empty block that joins goes whole with no break", () => {
   const EMPTY: [string, string][] = [
@@ -701,4 +693,44 @@ describe("14.2: a click into text while a node is selected puts the caret where 
       }
     }
   }
+});
+
+describe("14.7: the arrow rules take the direction the key moves the caret in the block", () => {
+  const ruleIsSelected = () =>
+    editorOf()!
+      .getEditorState()
+      .read(() => {
+        const selection = $getSelection();
+        return $isNodeSelection(selection) && selection.getNodes()[0]?.getType() === "horizontalrule";
+      });
+  test("a right-to-left quote before a rule: ArrowRight at the text's logical end moves back into the text, as at the head", async () => {
+    const onChange = await renderField(LI("<blockquote><p>אבג</p></blockquote><hr>T2w"));
+    await clickInWord("אבג");
+    await keys("{ArrowRight}");
+    expect(ruleIsSelected()).toBe(false);
+    await keys("k");
+    expect(written(onChange)).toBe(stored(LI("<blockquote><p>אבkג</p></blockquote><hr />T2w")));
+  });
+  test("there ArrowLeft moves forward and selects the rule; a letter lands after it", async () => {
+    const onChange = await renderField(LI("<blockquote><p>אבג</p></blockquote><hr>T2w"));
+    await clickInWord("אבג");
+    await keys("{ArrowLeft}");
+    expect(ruleIsSelected()).toBe(true);
+    await keys("k");
+    expect(written(onChange)).toBe(stored(LI("<blockquote><p>אבג</p></blockquote><hr />kT2w")));
+  });
+  test("a right-to-left quote after a rule: ArrowRight at the text's logical start moves backward and selects the rule", async () => {
+    await renderField(LI("T0w<hr><blockquote><p>אבג</p></blockquote>"));
+    await clickInWord("אבג", 0);
+    await keys("{ArrowRight}");
+    expect(ruleIsSelected()).toBe(true);
+  });
+  test("there ArrowLeft moves forward into the text", async () => {
+    const onChange = await renderField(LI("T0w<hr><blockquote><p>אבג</p></blockquote>"));
+    await clickInWord("אבג", 0);
+    await keys("{ArrowLeft}");
+    expect(ruleIsSelected()).toBe(false);
+    await keys("k");
+    expect(written(onChange)).toBe(stored(LI("T0w<hr /><blockquote><p>אkבג</p></blockquote>")));
+  });
 });

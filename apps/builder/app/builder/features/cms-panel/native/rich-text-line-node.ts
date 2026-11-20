@@ -72,6 +72,7 @@ import {
 import { $isHeadingNode, $isQuoteNode, HeadingNode, QuoteNode } from "@lexical/rich-text";
 import { CodeNode } from "@lexical/code";
 import { $dfs, $findMatchingParent, mergeRegister } from "@lexical/utils";
+import { $isParentElementRTL } from "@lexical/selection";
 import { LinkNode } from "@lexical/link";
 import type { HistoryState } from "@lexical/react/LexicalHistoryPlugin";
 import { $createHorizontalRuleNode, INSERT_HORIZONTAL_RULE_COMMAND } from "@lexical/react/LexicalHorizontalRuleNode";
@@ -1439,6 +1440,24 @@ const $focusPastRule = (selection: RangeSelection, isBackward: boolean) => {
   return true;
 };
 
+/**
+ * 14.7: the direction an arrow key moves the caret, as Lexical's own
+ * character move takes it: by the direction of the block the selection is
+ * in, where ArrowLeft moves forward in right-to-left text. Every arrow rule
+ * of the line code reads its direction here.
+ */
+const $arrowMovesBackward = (isLeftKey: boolean) => {
+  const selection = $getSelection();
+  let isRtl = false;
+  if ($isRangeSelection(selection)) {
+    isRtl = $isParentElementRTL(selection);
+  } else if ($isNodeSelection(selection)) {
+    const parent = selection.getNodes()[0]?.getParent() ?? null;
+    isRtl = parent?.getDirection() === "rtl";
+  }
+  return isLeftKey !== isRtl;
+};
+
 /** The page's caret position at a point of the viewport. */
 const caretAtPoint = (x: number, y: number): { node: Node; offset: number } | null => {
   const withPosition = document as Document & {
@@ -1486,10 +1505,11 @@ export const registerLineCommands = (editor: LexicalEditor) =>
     ...([
       [KEY_ARROW_LEFT_COMMAND, true],
       [KEY_ARROW_RIGHT_COMMAND, false],
-    ] as const).map(([command, isBackward]) =>
+    ] as const).map(([command, isLeftKey]) =>
       editor.registerCommand(
         command,
         (event: KeyboardEvent) => {
+          const isBackward = $arrowMovesBackward(isLeftKey);
           if (event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) {
             return false;
           }
@@ -1527,10 +1547,11 @@ export const registerLineCommands = (editor: LexicalEditor) =>
     ...([
       [KEY_ARROW_LEFT_COMMAND, true],
       [KEY_ARROW_RIGHT_COMMAND, false],
-    ] as const).map(([command, isBackward]) =>
+    ] as const).map(([command, isLeftKey]) =>
       editor.registerCommand(
         command,
         (event: KeyboardEvent) => {
+          const isBackward = $arrowMovesBackward(isLeftKey);
           if (event.altKey || event.ctrlKey || event.metaKey) {
             return false;
           }
