@@ -11,6 +11,8 @@ import {
   $addUpdateTag,
   $copyNode,
   $getEditor,
+  $splitNode,
+  $isRootOrShadowRoot,
   $getCharacterOffsets,
   $hasUpdateTag,
   $getNodeByKey,
@@ -65,7 +67,7 @@ import { $isQuoteNode, HeadingNode, QuoteNode } from "@lexical/rich-text";
 import { CodeNode } from "@lexical/code";
 import { $dfs, $findMatchingParent, mergeRegister } from "@lexical/utils";
 import { LinkNode } from "@lexical/link";
-import { INSERT_HORIZONTAL_RULE_COMMAND } from "@lexical/react/LexicalHorizontalRuleNode";
+import { $createHorizontalRuleNode, INSERT_HORIZONTAL_RULE_COMMAND } from "@lexical/react/LexicalHorizontalRuleNode";
 
 /** SPIKE: VITE_LINES_OFF turns every line rule off (the head's behaviour). */
 const linesOff =
@@ -1492,6 +1494,22 @@ export const registerLineCommands = (editor: LexicalEditor) =>
             }
             // Divider in a line splits as at the head: the container's
             // lines give way to their text for this update (V1)
+            // Divider over a range keeps the head's write: the lines of the
+            // containers its ends stand in give way for this update (A4)
+            if (
+              command === INSERT_HORIZONTAL_RULE_COMMAND &&
+              $isRangeSelection(selection) &&
+              selection.isCollapsed() === false
+            ) {
+              for (const point of [selection.anchor, selection.focus]) {
+                const line = $findMatchingParent(point.getNode(), $isCmsLineNode);
+                const container = line?.getParent() ?? null;
+                if (container !== null && container.isAttached()) {
+                  $unwrapLines(container.getChildren());
+                }
+              }
+              return false;
+            }
             if (command === INSERT_HORIZONTAL_RULE_COMMAND && $isRangeSelection(selection)) {
               const line = $findMatchingParent(selection.anchor.getNode(), $isCmsLineNode);
               const container = line?.getParent() ?? null;
@@ -1525,21 +1543,55 @@ export const registerLineCommands = (editor: LexicalEditor) =>
                   }
                 }
               } else {
-                // at a block's first text start or last text end, Divider
-                // acts beside the block, at the element point there
+                // at the start of the first text, or the end of the last
+                // text, of a quote, heading or code block in a lined list
+                // item, the rule goes directly before or after that block;
+                // at the item's edge that is before or after the item, with
+                // no empty item or list left (A1, A2)
                 const start = $childAtEdge(true);
                 const end = start === null ? $childAtEdge(false) : null;
                 const edge = start ?? end;
-                if (edge !== null && $isCmsLineNode(edge.child) === false) {
+                if (
+                  edge !== null &&
+                  $isListItemNode(edge.container) &&
+                  ["quote", "heading", "code"].includes(edge.child.getType())
+                ) {
                   const block = edge.child;
-                  const holder = edge.container;
-                  $unwrapLines(holder.getChildren());
-                  const at = block.getIndexWithinParent() + (start !== null ? 0 : 1);
-                  const range = $getSelection();
-                  if ($isRangeSelection(range)) {
-                    range.anchor.set(holder.getKey(), at, "element");
-                    range.focus.set(holder.getKey(), at, "element");
+                  const item = edge.container;
+                  const rule = $createHorizontalRuleNode();
+                  let node: ElementNode = item;
+                  let offset = block.getIndexWithinParent() + (start !== null ? 0 : 1);
+                  // climb while the point is at a container's edge
+                  for (;;) {
+                    const parent = node.getParent();
+                    if (parent === null || $isRootOrShadowRoot(parent)) break;
+                    if (offset === 0) {
+                      offset = node.getIndexWithinParent();
+                      node = parent;
+                    } else if (offset >= node.getChildrenSize()) {
+                      offset = node.getIndexWithinParent() + 1;
+                      node = parent;
+                    } else {
+                      break;
+                    }
                   }
+                  const parent = node.getParent();
+                  if (parent !== null && $isRootOrShadowRoot(parent) && (offset === 0 || offset >= node.getChildrenSize())) {
+                    if (offset === 0) node.insertBefore(rule);
+                    else node.insertAfter(rule);
+                  } else {
+                    const [, right] = $splitNode(node, offset);
+                    right.insertBefore(rule);
+                  }
+                  const next = rule.getNextSibling();
+                  if (next !== null) {
+                    next.selectStart();
+                  } else {
+                    const paragraph = $createParagraphNode();
+                    rule.insertAfter(paragraph);
+                    paragraph.select();
+                  }
+                  return true;
                 }
               }
             }
