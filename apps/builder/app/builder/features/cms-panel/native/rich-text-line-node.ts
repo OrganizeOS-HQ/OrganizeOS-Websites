@@ -69,7 +69,7 @@ import {
   $isListNode,
   ListItemNode,
 } from "@lexical/list";
-import { $isQuoteNode, HeadingNode, QuoteNode } from "@lexical/rich-text";
+import { $isHeadingNode, $isQuoteNode, HeadingNode, QuoteNode } from "@lexical/rich-text";
 import { CodeNode } from "@lexical/code";
 import { $dfs, $findMatchingParent, mergeRegister } from "@lexical/utils";
 import { LinkNode } from "@lexical/link";
@@ -1231,6 +1231,92 @@ const $nodeSelectionIntoLine = (replace: boolean, create: boolean) => {
   }
 };
 
+type EndingImageAction = "none" | "image" | "rule" | "nextCharacter" | "head";
+/**
+ * 14.4's cells (the 5.8 row): a caret just after an image that ends a
+ * quote's last paragraph (q), a heading (h) or a line (l) in a lined
+ * container, by what follows the block in the container and the form of
+ * Delete. "image": the image goes; "rule": the rule after goes;
+ * "nextCharacter": the first character of the text after goes, as the
+ * head's line form does there, with no join; "none": nothing; "head": the
+ * head's
+ * own path (the line rules then drop what it emptied). A cell not listed
+ * keeps the line rules' write.
+ */
+const endingImageCells: Record<string, EndingImageAction> = {
+  "del q block": "head",
+  "del q rule": "rule",
+  "del q nested": "head",
+  "del q itemEnd": "head",
+  "del q contentEnd": "none",
+  "del h line": "image",
+  "del l contentEnd": "none",
+  "word q line": "image",
+  "word h line": "image",
+  "word h rule": "head",
+  "word l nested": "image",
+  "word l itemEnd": "image",
+  "line q line": "head",
+  "line h line": "head",
+  "line h rule": "head",
+  "line l rule": "head",
+  "line l nested": "nextCharacter",
+  "line l itemEnd": "nextCharacter",
+};
+
+const $deleteAfterEndingImage = (form: "del" | "word" | "line") => {
+  const selection = $getSelection();
+  if ($isRangeSelection(selection) === false || selection.isCollapsed() === false) {
+    return undefined;
+  }
+  const { anchor } = selection;
+  const holder = anchor.getNode();
+  if (
+    anchor.type !== "element" ||
+    $isElementNode(holder) === false ||
+    anchor.offset !== holder.getChildrenSize()
+  ) {
+    return undefined;
+  }
+  const image = holder.getLastChild();
+  if ($isDecoratorNode(image) === false || image.isInline() === false) {
+    return undefined;
+  }
+  const parent = holder.getParent();
+  let kind: "q" | "h" | "l";
+  let end: ElementNode;
+  if ($isCmsLineNode(holder) && isLinedContainer(parent)) {
+    kind = "l";
+    end = holder;
+  } else if ($isHeadingNode(holder) && isLinedContainer(parent)) {
+    kind = "h";
+    end = holder;
+  } else if (
+    $isQuoteNode(parent) &&
+    holder.getNextSibling() === null &&
+    isLinedContainer(parent.getParent())
+  ) {
+    kind = "q";
+    end = parent;
+  } else {
+    return undefined;
+  }
+  const next = end.getNextSibling();
+  const container = end.getParentOrThrow();
+  const follower = $isCmsLineNode(next)
+    ? "line"
+    : isBlockDecorator(next)
+      ? "rule"
+      : $isListNode(next)
+        ? "nested"
+        : next !== null
+          ? "block"
+          : container.getNextSibling() !== null
+            ? "itemEnd"
+            : "contentEnd";
+  return endingImageCells[`${form} ${kind} ${follower}`];
+};
+
 /**
  * A node selection in a lined container, for a command the head runs
  * well there (a paste of HTML or of the field's own nodes, a cut, a
@@ -1862,6 +1948,9 @@ export const registerLineCommands = (editor: LexicalEditor) =>
       editor.registerCommand(
         command as LexicalCommand<boolean>,
         (isBackward: boolean) => {
+          if ($hasUpdateTag(HEAD_PATH_TAG)) {
+            return false;
+          }
           const beside = $ruleAtEdge(isBackward);
           if (beside === null) {
             return false;
@@ -2037,13 +2126,79 @@ export const registerLineCommands = (editor: LexicalEditor) =>
         COMMAND_PRIORITY_LOW
       )
     ),
+    // 14.4: Delete, its word form and its line form just after an image
+    // that ends a quote's last paragraph, a heading or a line in a lined
+    // container, by what follows in the container (the head's write where
+    // the head's is sound; the head's without an emptied block; else
+    // ordinary content's, with the line rules' joins)
+    ...([
+      [DELETE_CHARACTER_COMMAND, "del"],
+      [DELETE_WORD_COMMAND, "word"],
+      [DELETE_LINE_COMMAND, "line"],
+    ] as const).map(([command, form]) =>
+      editor.registerCommand(
+        command as LexicalCommand<boolean>,
+        (isBackward: boolean) => {
+          if (isBackward) {
+            return false;
+          }
+          const action = $deleteAfterEndingImage(form);
+          if (action === undefined) {
+            return false;
+          }
+          const selection = $getSelection() as RangeSelection;
+          const holder = selection.anchor.getNode() as ElementNode;
+          const image = holder.getLastChild();
+          const end = $isCmsLineNode(holder) || isLinedContainer(holder.getParent())
+            ? holder
+            : holder.getParentOrThrow();
+          if (action === "none") {
+            return true;
+          }
+          if (action === "image") {
+            image?.remove();
+            holder.selectEnd();
+            return true;
+          }
+          if (action === "rule") {
+            end.getNextSibling()?.remove();
+            return true;
+          }
+          if (action === "nextCharacter") {
+            const after = end.getNextSibling() ?? end.getParentOrThrow().getNextSibling();
+            const text = $isElementNode(after) ? after.getFirstDescendant() : null;
+            if ($isTextNode(text) && text.getTextContentSize() > 0) {
+              text.spliceText(0, 1, "");
+            }
+            return true;
+          }
+          // the head's own path over the container's unwrapped lines, from
+          // the point just after the image
+          const container = end.getParentOrThrow();
+          $unwrapLines(container.getChildren());
+          if (image !== null && $isCmsLineNode(holder)) {
+            const at = image.getIndexWithinParent() + 1;
+            selection.anchor.set(container.getKey(), at, "element");
+            selection.focus.set(container.getKey(), at, "element");
+          }
+          $addUpdateTag(HEAD_PATH_TAG);
+          return false;
+        },
+        COMMAND_PRIORITY_NORMAL
+      )
+    ),
     // V9: Delete just after an image that ends a line, or a block's last
     // paragraph, removes the image only
     editor.registerCommand(
       DELETE_CHARACTER_COMMAND,
       (isBackward: boolean) => {
         const selection = $getSelection();
-        if (isBackward || $isRangeSelection(selection) === false || selection.isCollapsed() === false) {
+        if (
+          $hasUpdateTag(HEAD_PATH_TAG) ||
+          isBackward ||
+          $isRangeSelection(selection) === false ||
+          selection.isCollapsed() === false
+        ) {
           return false;
         }
         const { anchor } = selection;

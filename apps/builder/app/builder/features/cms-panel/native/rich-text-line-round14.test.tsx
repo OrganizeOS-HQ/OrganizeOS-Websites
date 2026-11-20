@@ -8,7 +8,7 @@ import { cdp, userEvent } from "@vitest/browser/context";
 import { CAN_REDO_COMMAND, CAN_UNDO_COMMAND, COMMAND_PRIORITY_CRITICAL, type LexicalEditor } from "lexical";
 import { TooltipProvider } from "@webstudio-is/design-system";
 import { RichTextField } from "./rich-text-field";
-import { clickInWord, editorOf, lastHtml, renderField, settle } from "./rich-text-test-harness";
+import { clickInWord, editable, editorOf, lastHtml, renderField, settle } from "./rich-text-test-harness";
 import { sanitizeRichTextHtml } from "./rich-text-sanitize";
 
 const LI = (x: string) => `<ul><li>Pw</li><li>${x}</li><li>Nw</li></ul>`;
@@ -456,4 +456,122 @@ describe("14.3: Shift and an arrow pass a rule beside a block", () => {
     },
     40_000
   );
+});
+
+/**
+ * 14.4: Delete, its word form and its line form just after an image that
+ * ends a quote's last paragraph, a heading or a line, by what follows in
+ * the item. The write in the grid's short form: the item's middle, the
+ * image as I, paragraphs unwrapped, quotes as q; NOOP is no write.
+ */
+const H_IMG = `<img src="https://cdn.example.org/x.png" alt="" width="40" height="20" />`;
+const H_ENDS: Record<string, string> = {
+  quote: `<blockquote><p>X0w${H_IMG}</p></blockquote>`,
+  heading: `<h3>X0w${H_IMG}</h3>`,
+  line: `<blockquote><p>Q0w</p></blockquote>X1w${H_IMG}`,
+};
+const H_FOLLOWERS: Record<string, string> = {
+  line: "T1w",
+  lineBr: "<br>T1w",
+  block: "<blockquote><p>B1w</p></blockquote>",
+  rule: "<hr>",
+  nested: "<ul><li>L1w</li></ul>",
+  itemEnd: "",
+  contentEnd: "",
+};
+const H_FORMS: Record<string, () => Promise<void>> = {
+  del: () => keys("{Delete}"),
+  word: () => keys("{Control>}{Delete}{/Control}"),
+  line: async () => {
+    act(() => {
+      editable()!.dispatchEvent(
+        new InputEvent("beforeinput", { bubbles: true, cancelable: true, inputType: "deleteSoftLineForward" })
+      );
+    });
+    await settle();
+  },
+};
+const H_CELLS: [string, string, string, string][] = [
+  ["quote", "line", "del", "<q>X0w</q>T1w</li>"],
+  ["quote", "line", "word", "<q>X0w</q>T1w</li>"],
+  ["quote", "line", "line", "<q>X0wI</q>1w</li>"],
+  ["quote", "block", "del", "<q>X0wB1w</q></li>"],
+  ["quote", "block", "word", "<q>X0wB1w</q></li>"],
+  ["quote", "block", "line", "<q>X0wI1w</q></li>"],
+  ["quote", "rule", "del", "<q>X0wI</q></li>"],
+  ["quote", "rule", "word", "<q>X0wNw</q></li></ul>"],
+  ["quote", "rule", "line", "<q>X0wI </q><hr /></li>"],
+  ["quote", "nested", "del", "<q>X0wL1w</q></li>"],
+  ["quote", "nested", "word", "<q>X0wL1w</q></li>"],
+  ["quote", "nested", "line", "<q>X0wI1w</q></li>"],
+  ["quote", "itemEnd", "del", "<q>X0wNw</q></li></ul>"],
+  ["quote", "itemEnd", "word", "<q>X0wNw</q></li></ul>"],
+  ["quote", "itemEnd", "line", "<q>X0wIw</q></li></ul>"],
+  ["quote", "contentEnd", "del", "NOOP"],
+  ["quote", "contentEnd", "word", "NOOP"],
+  ["quote", "contentEnd", "line", "NOOP"],
+  ["heading", "line", "del", "<h3>X0w</h3>T1w</li>"],
+  ["heading", "line", "word", "<h3>X0w</h3>T1w</li>"],
+  ["heading", "line", "line", "<h3>X0wI</h3>1w</li>"],
+  ["heading", "block", "del", "<h3>X0wB1w</h3></li>"],
+  ["heading", "block", "word", "<h3>X0wB1w</h3></li>"],
+  ["heading", "block", "line", "<h3>X0wI1w</h3></li>"],
+  ["heading", "rule", "del", "<h3>X0wI</h3></li>"],
+  ["heading", "rule", "word", "<h3>X0w</h3></li>"],
+  ["heading", "rule", "line", "<h3>X0wI </h3></li>"],
+  ["heading", "nested", "del", "<h3>X0wL1w</h3></li>"],
+  ["heading", "nested", "word", "<h3>X0wL1w</h3></li>"],
+  ["heading", "nested", "line", "<h3>X0wI1w</h3></li>"],
+  ["heading", "itemEnd", "del", "<h3>X0wNw</h3></li></ul>"],
+  ["heading", "itemEnd", "word", "<h3>X0wNw</h3></li></ul>"],
+  ["heading", "itemEnd", "line", "<h3>X0wIw</h3></li></ul>"],
+  ["heading", "contentEnd", "del", "NOOP"],
+  ["heading", "contentEnd", "word", "NOOP"],
+  ["heading", "contentEnd", "line", "NOOP"],
+  ["line", "line", "del", "<q>Q0w</q>X1wI1w</li>"],
+  ["line", "line", "word", "<q>Q0w</q>X1wI</li>"],
+  ["line", "line", "line", "<q>Q0w</q>X1wI</li>"],
+  ["line", "lineBr", "del", "<q>Q0w</q>X1wIT1w</li>"],
+  ["line", "lineBr", "word", "<q>Q0w</q>X1wIT1w</li>"],
+  ["line", "lineBr", "line", "<q>Q0w</q>X1wI1w</li>"],
+  ["line", "block", "del", "<q>Q0w</q>X1wB1w</li>"],
+  ["line", "block", "word", "<q>Q0w</q>X1wB1w</li>"],
+  ["line", "block", "line", "<q>Q0w</q>X1wI1w</li>"],
+  ["line", "rule", "del", "<q>Q0w</q>X1wI</li>"],
+  ["line", "rule", "word", "<q>Q0w</q>X1wI</li>"],
+  ["line", "rule", "line", "<q>Q0w</q>X1wI </li>"],
+  ["line", "nested", "del", "<q>Q0w</q>X1w<ul><li>L1w</li></ul></li>"],
+  ["line", "nested", "word", "<q>Q0w</q>X1w<ul><li>L1w</li></ul></li>"],
+  ["line", "nested", "line", "<q>Q0w</q>X1wI<ul><li>1w</li></ul></li>"],
+  ["line", "itemEnd", "del", "<q>Q0w</q>X1w</li>"],
+  ["line", "itemEnd", "word", "<q>Q0w</q>X1w</li>"],
+  ["line", "itemEnd", "line", "<q>Q0w</q>X1wI</li><li>w</li></ul>"],
+  ["line", "contentEnd", "del", "NOOP"],
+  ["line", "contentEnd", "word", "NOOP"],
+  ["line", "contentEnd", "line", "NOOP"],
+];
+
+describe("14.4: a delete just after an image that ends a block or a line", () => {
+  test.each(H_CELLS)("%s, then %s, %s", async (end, follower, form, expected) => {
+    const html =
+      follower === "contentEnd"
+        ? `<ul><li>Pw</li><li>${H_ENDS[end]}</li></ul>`
+        : `<ul><li>Pw</li><li>${H_ENDS[end]}${H_FOLLOWERS[follower]}</li><li>Nw</li></ul>`;
+    const onChange = await renderField(html);
+    await userEvent.click(editable()!.querySelector("img")!);
+    await settle();
+    await keys("{Escape}");
+    await H_FORMS[form]();
+    const write = lastHtml(onChange) === "" ? "" : written(onChange);
+    const short =
+      write === "" || write === stored(html)
+        ? "NOOP"
+        : write
+            .replace(/<img[^>]*>/g, "I")
+            .replace(/<\/?p>/g, "")
+            .replace(/blockquote/g, "q")
+            .replace("<ul><li>Pw</li><li>", "")
+            .replace("<li>Nw</li></ul>", "");
+    expect(short).toBe(expected);
+  });
 });
