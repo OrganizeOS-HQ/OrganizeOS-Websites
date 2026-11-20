@@ -963,6 +963,25 @@ const R10_MEETS: Array<[string, string, number, boolean]> = [
 for (const [name, html, offset, inQuote] of R10_MEETS) {
   RECORDS.push([`R10 click ${name} then k`, html, clickAtPoint(offset, inQuote), keys("k")]);
 }
+// R13 D: Up and Down walks at a line of only a line break beside a block,
+// with the letter at each stop
+const D_SHAPES: Array<[string, string]> = [
+  ["BQ", "<br><blockquote><p>Q1w</p></blockquote>"],
+  ["BR", "<br><hr>"],
+  ["QBR", "<blockquote><p>Q0w</p></blockquote><br><hr>"],
+  ["HB", "<h3>H0w</h3><br>"],
+  ["CB", "<pre><code>C0w</code></pre><br>"],
+  ["BH", "<br><h3>H1w</h3>"],
+  ["BC", "<br><pre><code>C1w</code></pre>"],
+  ["BQT", "<br><blockquote><p>Q1w</p></blockquote>T2w"],
+  ["QB", "<blockquote><p>Q0w</p></blockquote><br>"],
+];
+for (const [name, x] of D_SHAPES) {
+  for (let n = 1; n <= 3; n += 1) {
+    RECORDS.push([`R13 D ${name} Down x${n} then k`, LI(x), at("Pw"), keys(`${"{ArrowDown}".repeat(n)}k`)]);
+    RECORDS.push([`R13 D ${name} Up x${n} then k`, LI(x), at("Nw", 0), keys(`${"{ArrowUp}".repeat(n)}k`)]);
+  }
+}
 const Q1_NODE_SHAPES: Array<[string, string, string]> = [
   ["rule in TRT", TRT, "horizontalrule"],
   ["rule in TR", TR, "horizontalrule"],
