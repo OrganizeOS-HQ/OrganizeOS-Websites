@@ -644,9 +644,6 @@ const HEAD_PATH_TAG = "cms-head-path";
 const REMOVAL_START_TAG = "cms-removal-start:";
 const REMOVAL_END_TAG = "cms-removal-end:";
 const BREAK_AFTER_TAG = "cms-break-after:";
-const HOLD_POINT_TAG = "cms-hold-point";
-/** True while an empty-line delete runs again from its element point. */
-let deletingFromPoint = false;
 
 /**
  * This update removes content (a range, a node selection, a delete, a
@@ -800,8 +797,7 @@ const $keepContainer = (container: ElementNode) => {
   }
   $normaliseLines(container);
   if (container.isAttached()) {
-    // a point held for a delete that runs next stays an element point
-    $liftPointsIntoLines($hasUpdateTag(HOLD_POINT_TAG) === false);
+    $liftPointsIntoLines(true);
   }
 };
 
@@ -1418,7 +1414,7 @@ export const registerLineCommands = (editor: LexicalEditor) =>
     ),
     // in an empty line beside rules: Backspace removes the rule directly
     // before, Delete the one directly after, and nothing else; with no rule
-    // that way, the edit runs from the element point, as at the head
+    // that way, the delete joins as at an ordinary item's text edge
     ...[DELETE_CHARACTER_COMMAND, DELETE_WORD_COMMAND, DELETE_LINE_COMMAND].map((command) =>
       editor.registerCommand(
         command as LexicalCommand<boolean>,
@@ -1430,7 +1426,6 @@ export const registerLineCommands = (editor: LexicalEditor) =>
           const line = selection.anchor.getNode();
           const container = line.getParent();
           if (
-            deletingFromPoint ||
             $isCmsLineNode(line) === false ||
             line.isEmpty() === false ||
             isLinedContainer(container) === false
@@ -1442,39 +1437,33 @@ export const registerLineCommands = (editor: LexicalEditor) =>
             beside.remove();
             return true;
           }
-          // the line goes in an update of its own; the delete then runs from
-          // the element point once the page shows that point, as at the head
-          // (Lexical extends a delete through the page's selection)
-          const at = line.getIndexWithinParent();
-          selection.anchor.set(container.getKey(), at, "element");
-          selection.focus.set(container.getKey(), at, "element");
-          line.remove();
-          $addUpdateTag("history-merge");
-          $addUpdateTag(HOLD_POINT_TAG);
-          const editor = $getEditor();
-          editor.update(() => {}, {
-            onUpdate: () => {
-              deletingFromPoint = true;
-              try {
-                editor.dispatchCommand(command as LexicalCommand<boolean>, isBackward);
-              } finally {
-                deletingFromPoint = false;
-              }
-            },
-          });
-          return true;
+          // no rule that way: the line is the container's first or last
+          // line, and Lexical's own delete runs from it, with D5's join
+          // carrying the item's rest
+          return false;
         },
         COMMAND_PRIORITY_NORMAL
       )
     ),
-    // D3's fourth case: Backspace at a block's start removes a line break
-    // directly before the block; Delete at its end, one directly after
+    // D3's fourth case and D9: Backspace at a block's start removes a line
+    // break or a rule directly before the block; Delete at its end, one
+    // directly after
     editor.registerCommand(
       DELETE_CHARACTER_COMMAND,
       (isBackward: boolean) => {
         const edge = $childAtEdge(isBackward);
         if (edge === null || $isCmsLineNode(edge.child)) {
           return false;
+        }
+        const rule = isBackward
+          ? edge.child.getPreviousSibling()
+          : edge.child.getNextSibling();
+        if (
+          isBlockDecorator(rule) &&
+          ["quote", "heading", "code"].includes(edge.child.getType())
+        ) {
+          rule.remove();
+          return true;
         }
         const line = isBackward
           ? edge.child.getPreviousSibling()

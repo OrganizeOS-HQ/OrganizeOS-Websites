@@ -552,6 +552,10 @@ const V_RECORDS: Rec[] = [
     });
     await settle();
   }],
+  ["R8 ordinary T1w@0 Backspace", LI("T1w"), at("T1w", 0), keys("{Backspace}")],
+  ["R8 ordinary T1w@0 Ctrl+Backspace", LI("T1w"), at("T1w", 0), keys("{Control>}{Backspace}{/Control}")],
+  ["R8 ordinary T1w end Delete", LI("T1w"), at("T1w"), keys("{Delete}")],
+  ["R8 ordinary T1w end Ctrl+Delete", LI("T1w"), at("T1w"), keys("{Control>}{Delete}{/Control}")],
   ["R7 V11 BRR el1 Backspace then k", LI("<br><hr><hr>"), itemPoint(1, 1), keys("{Backspace}k")],
   ["R7 IME at TR item end (click)", LI("T0w<hr>"), async () => {
     await clickInWord("Pw");
