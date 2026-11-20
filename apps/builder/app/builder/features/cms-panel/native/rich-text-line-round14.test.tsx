@@ -361,6 +361,56 @@ describe("14.5 K: a composition's undo steps at quiet timing", () => {
       second.unmount();
     }
   });
+  // interleaved: one field's composition state is live (an empty
+  // composition decided at its next change) while the other field types and
+  // composes; each field's undo and redo are its own
+  const F = (x: string) => stored(LI(x));
+  for (const order of ["empty in the first, then text in the second", "empty in the second, then text in the first"] as const) {
+    test(`two fields interleaved: ${order}`, async () => {
+      const first = await renderField(LI("F1w"));
+      const second = mountSecondField(TQT);
+      try {
+        await settle();
+        const firstHistory = historyOf(editorOf()!);
+        const secondHistory = historyOf(second.editor()!);
+        const inFirst = async (wrote: boolean) => {
+          await clickInWord("F1w");
+          await keys("y");
+          await quiet();
+          await compose(wrote);
+        };
+        const inSecond = async (wrote: boolean) => {
+          await second.clickWord("T2w");
+          await keys("x");
+          await quiet();
+          await compose(wrote);
+        };
+        const emptyFirst = order.startsWith("empty in the first");
+        if (emptyFirst) {
+          await inFirst(false);
+          await inSecond(true);
+        } else {
+          await inSecond(false);
+          await inFirst(true);
+        }
+        if (emptyFirst) {
+          expect(await pressAll(second.onChange, secondHistory, "undo")).toEqual([T("T2wx"), T("T2w")]);
+          expect(await pressAll(second.onChange, secondHistory, "redo")).toEqual([T("T2wx"), T("T2wxab")]);
+          await clickInWord("F1wy");
+          expect(await pressAll(first, firstHistory, "undo")).toEqual([F("F1w")]);
+          expect(await pressAll(first, firstHistory, "redo")).toEqual([F("F1wy")]);
+        } else {
+          expect(await pressAll(first, firstHistory, "undo")).toEqual([F("F1wy"), F("F1w")]);
+          expect(await pressAll(first, firstHistory, "redo")).toEqual([F("F1wy"), F("F1wyab")]);
+          await second.clickWord("T2wx");
+          expect(await pressAll(second.onChange, secondHistory, "undo")).toEqual([T("T2w")]);
+          expect(await pressAll(second.onChange, secondHistory, "redo")).toEqual([T("T2wx")]);
+        }
+      } finally {
+        second.unmount();
+      }
+    });
+  }
 });
 
 /**
