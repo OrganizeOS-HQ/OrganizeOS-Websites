@@ -59,6 +59,7 @@ import {
   type NodeKey,
   type RangeSelection,
   type SerializedElementNode,
+  RootNode,
 } from "lexical";
 import {
   $createListItemNode,
@@ -70,7 +71,6 @@ import { $isQuoteNode, HeadingNode, QuoteNode } from "@lexical/rich-text";
 import { CodeNode } from "@lexical/code";
 import { $dfs, $findMatchingParent, mergeRegister } from "@lexical/utils";
 import { LinkNode } from "@lexical/link";
-import type { HistoryState } from "@lexical/react/LexicalHistoryPlugin";
 import { $createHorizontalRuleNode, INSERT_HORIZONTAL_RULE_COMMAND } from "@lexical/react/LexicalHorizontalRuleNode";
 
 /** SPIKE: VITE_LINES_OFF turns every line rule off (the head's behaviour). */
@@ -648,9 +648,8 @@ const HEAD_PATH_TAG = "cms-head-path";
 const REMOVAL_START_TAG = "cms-removal-start:";
 const REMOVAL_END_TAG = "cms-removal-end:";
 const BREAK_AFTER_TAG = "cms-break-after:";
-/** The field's history, so a composition that changes nothing takes its step back. */
-export const cmsHistory = new WeakMap<LexicalEditor, HistoryState>();
-let pendingCompositionCheck: (() => void) | undefined;
+/** The editors whose current composition has already taken its own step (F12). */
+const compositionStepTaken = new WeakSet<LexicalEditor>();
 /** The last check after a commit left a point on a lined container. */
 let checkFailed = false;
 
@@ -2269,6 +2268,48 @@ export const $caretOffEmptyLine = () => {
 };
 
 /**
+ * F12 (K): a composition that writes text is its own undo step. The first
+ * update of a composition in which the composed text differs from the
+ * committed state carries history-push; an update before it, which leaves
+ * the text as it was, merges as at the head, and a composition that never
+ * changes text takes no step. One mark per editor, cleared when the editor
+ * stops composing. Lexical runs no transform on the node being composed;
+ * the root's transform runs on every update that changes the document.
+ */
+export const registerCompositionStep = (editor: LexicalEditor) =>
+  linesOff
+    ? () => {}
+    : mergeRegister(
+        editor.registerNodeTransform(RootNode, () => {
+          if (editor.isComposing() === false || compositionStepTaken.has(editor)) {
+            return;
+          }
+          const selection = $getSelection();
+          if ($isRangeSelection(selection) === false) {
+            return;
+          }
+          const node = selection.anchor.getNode();
+          if ($isTextNode(node) === false) {
+            return;
+          }
+          const key = node.getKey();
+          const committed = editor
+            .getEditorState()
+            .read(() => $getNodeByKey(key)?.getTextContent() ?? null);
+          if (committed === node.getTextContent()) {
+            return;
+          }
+          compositionStepTaken.add(editor);
+          $addUpdateTag("history-push");
+        }),
+        editor.registerUpdateListener(() => {
+          if (editor.isComposing() === false) {
+            compositionStepTaken.delete(editor);
+          }
+        })
+      );
+
+/**
  * Typed text with a block node-selected in a lined container lands
  * directly after the node, which stays (D15). Lexical leaves text typed
  * over a node selection to the browser, so the field takes the
@@ -2280,36 +2321,6 @@ export const registerTypingAfterSelectedNode = (editor: LexicalEditor) =>
     // before the link, as a typed letter does: the caret stands on the
     // line's start before the composition begins
     const onCompositionStart = () => {
-      // the state before a composition is its own undo step: a composition
-      // into existing text otherwise merges into the step before it. The
-      // update changes nothing and fires no onChange
-      const history = cmsHistory.get(editor);
-      const depthBefore = history?.undoStack.length ?? 0;
-      editor.update(
-        () => {
-          const selection = $getSelection();
-          if ($isRangeSelection(selection) && selection.anchor.type === "text") {
-            selection.anchor.getNode().getParent()?.markDirty();
-            $addUpdateTag("history-push");
-            $addUpdateTag("history-merge");
-          }
-        },
-        { discrete: true }
-      );
-      // K: a composition that changes nothing leaves no step: at its end,
-      // the step made at its start is taken back
-      if (history !== undefined && history.undoStack.length > depthBefore) {
-        const start = JSON.stringify(editor.getEditorState().toJSON());
-        const pushed = history.undoStack.length;
-        pendingCompositionCheck = () => {
-          if (
-            history.undoStack.length === pushed &&
-            JSON.stringify(editor.getEditorState().toJSON()) === start
-          ) {
-            history.undoStack.pop();
-          }
-        };
-      }
       const $atLinkLedLineStart = () => {
         const selection = $getSelection();
         if ($isRangeSelection(selection) === false || selection.isCollapsed() === false) {
@@ -2362,15 +2373,6 @@ export const registerTypingAfterSelectedNode = (editor: LexicalEditor) =>
     };
     previous?.removeEventListener("compositionstart", onCompositionStart, true);
     root?.addEventListener("compositionstart", onCompositionStart, true);
-    const onCompositionEnd = () => {
-      // after Lexical has applied the composition's end
-      setTimeout(() => {
-        const check = pendingCompositionCheck;
-        pendingCompositionCheck = undefined;
-        check?.();
-      }, 0);
-    };
-    root?.addEventListener("compositionend", onCompositionEnd);
     const onBeforeInput = (event: InputEvent) => {
       // Safari's text replacement over a range: the controlled text
       // insertion, so the removal is marked like typed text (5.4)
