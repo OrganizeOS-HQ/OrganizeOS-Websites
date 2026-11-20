@@ -695,6 +695,22 @@ export const $removeRangeWithBreak = (selection: RangeSelection) => {
   }
 };
 
+/**
+ * D3: a caret delete puts inline content of a block into the line only when
+ * the block's first leaf block (the one that joins) holds a node; an empty
+ * block goes whole with no break.
+ */
+const $joinsInlineContent = (block: ElementNode) => {
+  let joined: ElementNode = block;
+  for (;;) {
+    const first: LexicalNode | null = joined.getFirstChild();
+    if ($isElementNode(first) === false || first.isInline()) {
+      return first !== null;
+    }
+    joined = first;
+  }
+};
+
 export const $tagRemoval = (isBackward?: boolean) => {
   $addUpdateTag(REMOVAL_TAG);
   const selection = $getSelection();
@@ -716,7 +732,8 @@ export const $tagRemoval = (isBackward?: boolean) => {
         $isElementNode(block) &&
         $isCmsLineNode(block) === false &&
         block.isInline() === false &&
-        $isCmsLineNode(after)
+        $isCmsLineNode(after) &&
+        $joinsInlineContent(block)
       ) {
         $addUpdateTag(`${BREAK_AFTER_TAG}${line.getKey()}`);
       }
@@ -752,10 +769,10 @@ export const $tagRemoval = (isBackward?: boolean) => {
     from.getParent()?.is(to.getParent()) === true
   ) {
     const last = to.getLastDescendant();
+    // a block with no node left after the range's end puts nothing into the line
     const atEnd =
-      last !== null &&
-      end.getNode().is(last) &&
-      end.offset === last.getTextContentSize();
+      last === null ||
+      (end.getNode().is(last) && end.offset === last.getTextContentSize());
     if (atEnd === false) {
       $addUpdateTag(`${BREAK_AFTER_TAG}${from.getKey()}`);
     }
