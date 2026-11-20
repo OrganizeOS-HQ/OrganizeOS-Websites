@@ -1341,6 +1341,42 @@ export const registerLineCommands = (editor: LexicalEditor) =>
         COMMAND_PRIORITY_NORMAL
       )
     ),
+    // the caret's line: while a point stands after the last line break of a
+    // line that has something after it, the line's element is marked, so
+    // the break Lexical adds is drawn and the caret stands on the line the
+    // next letter lands on. The mark is on the page only, never in the
+    // editor's state
+    editor.registerUpdateListener(({ editorState }) => {
+      const marked = new Set<string>();
+      editorState.read(() => {
+        const selection = $getSelection();
+        if ($isRangeSelection(selection) === false) {
+          return;
+        }
+        for (const point of [selection.anchor, selection.focus]) {
+          const line = point.getNode();
+          if (
+            $isCmsLineNode(line) &&
+            point.type === "element" &&
+            point.offset === line.getChildrenSize() &&
+            isLineBreak(line.getLastChild()) &&
+            line.getNextSibling() !== null
+          ) {
+            marked.add(line.getKey());
+          }
+        }
+      });
+      const root = editor.getRootElement();
+      if (root === null) {
+        return;
+      }
+      for (const element of Array.from(root.querySelectorAll("[data-cms-caret]"))) {
+        element.removeAttribute("data-cms-caret");
+      }
+      for (const key of marked) {
+        editor.getElementByKey(key)?.setAttribute("data-cms-caret", "");
+      }
+    }),
     // the third place of 5.3: after every commit, a point that rests on a
     // lined container resolves at once, in an update of its own that makes
     // no undo step and fires no onChange; the rule then holds (5.3, 5.5)

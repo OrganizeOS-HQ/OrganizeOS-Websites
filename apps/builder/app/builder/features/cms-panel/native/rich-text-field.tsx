@@ -285,8 +285,9 @@ const contentStyle = css(textVariants.regular, {
   // a line adds no space of its own: the break Lexical adds after a stored
   // break that ends a line draws nothing where something follows the line,
   // as the stored break draws nothing at the head before a block. An empty
-  // line's single break stays
-  "& [data-cms-line]:has(+ *) > br + br:last-child": {
+  // line's single break stays, and so does the added break of the line
+  // that holds the caret after its last break
+  "& [data-cms-line]:not([data-cms-caret]):has(+ *) > br + br:last-child": {
     display: "none",
   },
 });

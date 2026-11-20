@@ -8,6 +8,7 @@ import {
   $createRangeSelection,
   $getRoot,
   $getSelection,
+  $isDecoratorNode,
   $isElementNode,
   $isNodeSelection,
   $isRangeSelection,
@@ -404,7 +405,33 @@ const RECORDS: Rec[] = [
 
 // Q1: Enter and Block type at every element point of these item shapes.
 /** An element point on the list's `item`-th item (0-based) at `offset`. */
-const itemPoint = (item: number, offset: number): Step => async () => {
+/**
+ * A point named by structure, resolved in each build: before or after the
+ * container's Nth block child (a rule, image figure, quote, heading, code
+ * block or list counts; inline content and lines do not), or its end. A
+ * raw index names different places in the two builds wherever an inline
+ * run holds more than one node.
+ */
+type Where = number | { before: number } | { after: number } | "end";
+const resolveWhere = (target: import("lexical").ElementNode, where: Where) => {
+  if (typeof where === "number") {
+    return Math.min(where, target.getChildrenSize());
+  }
+  if (where === "end") {
+    return target.getChildrenSize();
+  }
+  const children = target.getChildren();
+  const blocks = children.filter(
+    (child) =>
+      child.getType() !== "cms-line" &&
+      ($isElementNode(child) || $isDecoratorNode(child)) &&
+      child.isInline() === false
+  );
+  const n = "before" in where ? where.before : where.after;
+  const block = blocks[n];
+  return block.getIndexWithinParent() + ("after" in where ? 1 : 0);
+};
+const itemPoint = (item: number, offset: Where): Step => async () => {
   await click(editable());
   await act(async () => {
     editorOf()!.update(() => {
@@ -414,7 +441,7 @@ const itemPoint = (item: number, offset: number): Step => async () => {
       const target = items[item];
       if ($isElementNode(target) === false) return;
       const selection = $createRangeSelection();
-      const index = Math.min(offset, target.getChildrenSize());
+      const index = resolveWhere(target, offset);
       selection.anchor.set(target.getKey(), index, "element");
       selection.focus.set(target.getKey(), index, "element");
       $setSelection(selection);
@@ -726,11 +753,29 @@ const V_RECORDS: Rec[] = [
   ["R10 cancelled composition (escape) after x, at TR@2", LI("T0w<hr>"), itemPoint(1, 2), then(keys("x"), imeCancel("escape"))],
   ["R10 cancelled composition (escape) alone, at T0w end", LI("T0w"), at("T0w"), imeCancel("escape")],
   ["R11 caret at BQ el1 then k", LI("<br><blockquote><p>Q1w</p></blockquote>"), itemPoint(1, 1), then(logCaret("BQ el1"), keys("k"))],
-  ["R11 caret after T0w's break before a quote then k", LI("T0w<br><blockquote><p>Q2w</p></blockquote>"), itemPoint(1, 1), then(logCaret("TBQ el1"), keys("k"))],
+  ["R11 caret after T0w's break before a quote then k", LI("T0w<br><blockquote><p>Q2w</p></blockquote>"), itemPoint(1, { before: 0 }), then(logCaret("TBQ el1"), keys("k"))],
   ["R11 caret at TR@2 then k", LI("T0w<hr>"), itemPoint(1, 2), then(logCaret("TR@2"), keys("k"))],
   ["R11 caret at RT@0 then k", LI("<hr>T1w"), itemPoint(1, 0), then(logCaret("RT@0"), keys("k"))],
   ["R11 caret at RR@1 then k", LI("<hr><hr>"), itemPoint(1, 1), then(logCaret("RR@1"), keys("k"))],
   ["R11 composition at BQ el1", LI("<br><blockquote><p>Q1w</p></blockquote>"), itemPoint(1, 1), ime("a")],
+  ["R12 before-block letter, TBB then a quote", LI(`T0w<br><br><blockquote><p>Q9w</p></blockquote>`), itemPoint(1, { before: 0 }), keys("k")],
+  ["R12 before-block letter, TBB then a heading", LI(`T0w<br><br><h3>H9w</h3>`), itemPoint(1, { before: 0 }), keys("k")],
+  ["R12 before-block letter, TBB then a code", LI(`T0w<br><br><pre><code>C9w</code></pre>`), itemPoint(1, { before: 0 }), keys("k")],
+  ["R12 before-block letter, IB then a quote", LI(`${IMGTAG}<br><blockquote><p>Q9w</p></blockquote>`), itemPoint(1, { before: 0 }), keys("k")],
+  ["R12 before-block letter, IB then a heading", LI(`${IMGTAG}<br><h3>H9w</h3>`), itemPoint(1, { before: 0 }), keys("k")],
+  ["R12 before-block letter, IB then a code", LI(`${IMGTAG}<br><pre><code>C9w</code></pre>`), itemPoint(1, { before: 0 }), keys("k")],
+  ["R12 before-block letter, AB then a quote", LI(`<a href="https://example.org/a">Lw</a><br><blockquote><p>Q9w</p></blockquote>`), itemPoint(1, { before: 0 }), keys("k")],
+  ["R12 before-block letter, AB then a heading", LI(`<a href="https://example.org/a">Lw</a><br><h3>H9w</h3>`), itemPoint(1, { before: 0 }), keys("k")],
+  ["R12 before-block letter, AB then a code", LI(`<a href="https://example.org/a">Lw</a><br><pre><code>C9w</code></pre>`), itemPoint(1, { before: 0 }), keys("k")],
+  ["R12 before-block letter, BTB then a quote", LI(`<br>T0w<br><blockquote><p>Q9w</p></blockquote>`), itemPoint(1, { before: 0 }), keys("k")],
+  ["R12 before-block letter, BTB then a heading", LI(`<br>T0w<br><h3>H9w</h3>`), itemPoint(1, { before: 0 }), keys("k")],
+  ["R12 before-block letter, BTB then a code", LI(`<br>T0w<br><pre><code>C9w</code></pre>`), itemPoint(1, { before: 0 }), keys("k")],
+  ["R12 before-block letter, TB then a quote", LI(`T0w<br><blockquote><p>Q9w</p></blockquote>`), itemPoint(1, { before: 0 }), keys("k")],
+  ["R12 before-block letter, TB then a heading", LI(`T0w<br><h3>H9w</h3>`), itemPoint(1, { before: 0 }), keys("k")],
+  ["R12 before-block letter, TB then a code", LI(`T0w<br><pre><code>C9w</code></pre>`), itemPoint(1, { before: 0 }), keys("k")],
+  ["R12 before-block letter, B then a quote", LI(`<br><blockquote><p>Q9w</p></blockquote>`), itemPoint(1, { before: 0 }), keys("k")],
+  ["R12 before-block letter, B then a heading", LI(`<br><h3>H9w</h3>`), itemPoint(1, { before: 0 }), keys("k")],
+  ["R12 before-block letter, B then a code", LI(`<br><pre><code>C9w</code></pre>`), itemPoint(1, { before: 0 }), keys("k")],
   ["R8 ordinary T1w@0 Backspace", LI("T1w"), at("T1w", 0), keys("{Backspace}")],
   ["R8 ordinary T1w@0 Ctrl+Backspace", LI("T1w"), at("T1w", 0), keys("{Control>}{Backspace}{/Control}")],
   ["R8 ordinary T1w end Delete", LI("T1w"), at("T1w"), keys("{Delete}")],
