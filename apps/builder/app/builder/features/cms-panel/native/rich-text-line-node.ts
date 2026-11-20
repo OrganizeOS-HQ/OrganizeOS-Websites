@@ -60,6 +60,8 @@ import {
   type RangeSelection,
   type SerializedElementNode,
   type EditorState,
+  type TextNode,
+  $createTextNode,
   CAN_REDO_COMMAND,
   CAN_UNDO_COMMAND,
 } from "lexical";
@@ -69,7 +71,7 @@ import {
   $isListNode,
   ListItemNode,
 } from "@lexical/list";
-import { $isHeadingNode, $isQuoteNode, HeadingNode, QuoteNode } from "@lexical/rich-text";
+import { $isQuoteNode, HeadingNode, QuoteNode } from "@lexical/rich-text";
 import { CodeNode } from "@lexical/code";
 import { $dfs, $findMatchingParent, mergeRegister } from "@lexical/utils";
 import { $isParentElementRTL } from "@lexical/selection";
@@ -91,40 +93,6 @@ export const lineSpike = {
   noEmptied: true,
   /** Tests: the head-form clipboard's scratch write throws. */
   scratchClipboardFails: false,
-};
-
-/**
- * 5.4: a removal removes what its range holds and nothing else. A range
- * whose first point is an element point at the end of a node with children
- * holds none of those children, but Lexical's node walk resolves that point
- * to the node's last child (getDescendantByIndex past the end), and its
- * removal takes it. Every removal in the field goes through removeText;
- * there the walk's nodes are given without that child.
- */
-const rangePrototype = Object.getPrototypeOf($createRangeSelection()) as {
-  removeText: (this: RangeSelection) => void;
-};
-const removeTextOfLexical = rangePrototype.removeText;
-rangePrototype.removeText = function (this: RangeSelection) {
-  if (lineSpike.on && this.isCollapsed() === false) {
-    const first = this.anchor.isBefore(this.focus) ? this.anchor : this.focus;
-    const holder = first.getNode();
-    if (
-      first.type === "element" &&
-      $isElementNode(holder) &&
-      holder.getChildrenSize() > 0 &&
-      first.offset === holder.getChildrenSize()
-    ) {
-      const outside = holder.getLastChild() as LexicalNode;
-      const nodes = this.getNodes().filter(
-        (node) =>
-          node.is(outside) === false &&
-          ($isElementNode(outside) && outside.isParentOf(node)) === false
-      );
-      this.setCachedNodes(nodes);
-    }
-  }
-  removeTextOfLexical.call(this);
 };
 
 export class CmsLineNode extends ElementNode {
@@ -753,12 +721,55 @@ const $joinsInlineContent = (block: ElementNode) => {
   }
 };
 
+/**
+ * 5.4: a removal removes what its range holds and nothing else. A range
+ * whose first point is an element point at the end of a node with children
+ * holds none of those children, but Lexical's node walk resolves that point
+ * to the node's last child (getDescendantByIndex past the end), and its
+ * removal takes it; a caret there is the start of the range a delete
+ * extends to. The point moves to the same place in text: the end of a text
+ * last child, else an empty text node appended after the last child, which
+ * Lexical drops when the update ends. A point on a lined container is
+ * resolved by D18 instead.
+ */
+const $pointOffNodeEnd = (selection: RangeSelection) => {
+  const first = selection.isCollapsed()
+    ? selection.anchor
+    : selection.anchor.isBefore(selection.focus)
+      ? selection.anchor
+      : selection.focus;
+  const holder = first.getNode();
+  if (first.type !== "element" || $isElementNode(holder) === false) {
+    return;
+  }
+  const lined = isLinedContainer(holder as LexicalNode);
+  if (lined || holder.getChildrenSize() === 0 || first.offset !== holder.getChildrenSize()) {
+    return;
+  }
+  const last = holder.getLastChild();
+  let text: TextNode;
+  if ($isTextNode(last)) {
+    text = last;
+  } else {
+    text = $createTextNode("");
+    holder.append(text);
+  }
+  const offset = text.getTextContentSize();
+  if (selection.isCollapsed()) {
+    selection.anchor.set(text.getKey(), offset, "text");
+    selection.focus.set(text.getKey(), offset, "text");
+  } else {
+    first.set(text.getKey(), offset, "text");
+  }
+};
+
 export const $tagRemoval = (isBackward?: boolean) => {
   $addUpdateTag(REMOVAL_TAG);
   const selection = $getSelection();
   if ($isRangeSelection(selection) === false) {
     return;
   }
+  $pointOffNodeEnd(selection);
   // E3: D3's break is decided here, before the edit, from the selection:
   // a delete at a caret that joins a block's text into the line before it
   // (Backspace at the block's start) or into this line (Delete at the
@@ -1267,92 +1278,6 @@ const $nodeSelectionIntoLine = (replace: boolean, create: boolean) => {
       node.remove();
     }
   }
-};
-
-type EndingImageAction = "none" | "image" | "rule" | "nextCharacter" | "head";
-/**
- * 14.4's cells (the 5.8 row): a caret just after an image that ends a
- * quote's last paragraph (q), a heading (h) or a line (l) in a lined
- * container, by what follows the block in the container and the form of
- * Delete. "image": the image goes; "rule": the rule after goes;
- * "nextCharacter": the first character of the text after goes, as the
- * head's line form does there, with no join; "none": nothing; "head": the
- * head's
- * own path (the line rules then drop what it emptied). A cell not listed
- * keeps the line rules' write.
- */
-const endingImageCells: Record<string, EndingImageAction> = {
-  "del q block": "head",
-  "del q rule": "rule",
-  "del q nested": "head",
-  "del q itemEnd": "head",
-  "del q contentEnd": "none",
-  "del h line": "image",
-  "del l contentEnd": "none",
-  "word q line": "image",
-  "word h line": "image",
-  "word h rule": "head",
-  "word l nested": "image",
-  "word l itemEnd": "image",
-  "line q line": "head",
-  "line h line": "head",
-  "line h rule": "head",
-  "line l rule": "head",
-  "line l nested": "nextCharacter",
-  "line l itemEnd": "nextCharacter",
-};
-
-const $deleteAfterEndingImage = (form: "del" | "word" | "line") => {
-  const selection = $getSelection();
-  if ($isRangeSelection(selection) === false || selection.isCollapsed() === false) {
-    return undefined;
-  }
-  const { anchor } = selection;
-  const holder = anchor.getNode();
-  if (
-    anchor.type !== "element" ||
-    $isElementNode(holder) === false ||
-    anchor.offset !== holder.getChildrenSize()
-  ) {
-    return undefined;
-  }
-  const image = holder.getLastChild();
-  if ($isDecoratorNode(image) === false || image.isInline() === false) {
-    return undefined;
-  }
-  const parent = holder.getParent();
-  let kind: "q" | "h" | "l";
-  let end: ElementNode;
-  if ($isCmsLineNode(holder) && isLinedContainer(parent)) {
-    kind = "l";
-    end = holder;
-  } else if ($isHeadingNode(holder) && isLinedContainer(parent)) {
-    kind = "h";
-    end = holder;
-  } else if (
-    $isQuoteNode(parent) &&
-    holder.getNextSibling() === null &&
-    isLinedContainer(parent.getParent())
-  ) {
-    kind = "q";
-    end = parent;
-  } else {
-    return undefined;
-  }
-  const next = end.getNextSibling();
-  const container = end.getParentOrThrow();
-  const follower = $isCmsLineNode(next)
-    ? "line"
-    : isBlockDecorator(next)
-      ? "rule"
-      : $isListNode(next)
-        ? "nested"
-        : next !== null
-          ? "block"
-          : container.getNextSibling() !== null
-            ? "itemEnd"
-            : "contentEnd";
-  return endingImageCells[`${form} ${kind} ${follower}`];
 };
 
 /**
@@ -2056,9 +1981,6 @@ export const registerLineCommands = (editor: LexicalEditor) =>
       editor.registerCommand(
         command as LexicalCommand<boolean>,
         (isBackward: boolean) => {
-          if ($hasUpdateTag(HEAD_PATH_TAG)) {
-            return false;
-          }
           const beside = $ruleAtEdge(isBackward);
           if (beside === null) {
             return false;
@@ -2234,67 +2156,6 @@ export const registerLineCommands = (editor: LexicalEditor) =>
         COMMAND_PRIORITY_LOW
       )
     ),
-    // 14.4: Delete, its word form and its line form just after an image
-    // that ends a quote's last paragraph, a heading or a line in a lined
-    // container, by what follows in the container (the head's write where
-    // the head's is sound; the head's without an emptied block; else
-    // ordinary content's, with the line rules' joins)
-    ...([
-      [DELETE_CHARACTER_COMMAND, "del"],
-      [DELETE_WORD_COMMAND, "word"],
-      [DELETE_LINE_COMMAND, "line"],
-    ] as const).map(([command, form]) =>
-      editor.registerCommand(
-        command as LexicalCommand<boolean>,
-        (isBackward: boolean) => {
-          if (isBackward) {
-            return false;
-          }
-          const action = $deleteAfterEndingImage(form);
-          if (action === undefined) {
-            return false;
-          }
-          const selection = $getSelection() as RangeSelection;
-          const holder = selection.anchor.getNode() as ElementNode;
-          const image = holder.getLastChild();
-          const end = $isCmsLineNode(holder) || isLinedContainer(holder.getParent())
-            ? holder
-            : holder.getParentOrThrow();
-          if (action === "none") {
-            return true;
-          }
-          if (action === "image") {
-            image?.remove();
-            holder.selectEnd();
-            return true;
-          }
-          if (action === "rule") {
-            end.getNextSibling()?.remove();
-            return true;
-          }
-          if (action === "nextCharacter") {
-            const after = end.getNextSibling() ?? end.getParentOrThrow().getNextSibling();
-            const text = $isElementNode(after) ? after.getFirstDescendant() : null;
-            if ($isTextNode(text) && text.getTextContentSize() > 0) {
-              text.spliceText(0, 1, "");
-            }
-            return true;
-          }
-          // the head's own path over the container's unwrapped lines, from
-          // the point just after the image
-          const container = end.getParentOrThrow();
-          $unwrapLines(container.getChildren());
-          if (image !== null && $isCmsLineNode(holder)) {
-            const at = image.getIndexWithinParent() + 1;
-            selection.anchor.set(container.getKey(), at, "element");
-            selection.focus.set(container.getKey(), at, "element");
-          }
-          $addUpdateTag(HEAD_PATH_TAG);
-          return false;
-        },
-        COMMAND_PRIORITY_NORMAL
-      )
-    ),
     // D3's second case: Backspace at the start of a line directly after a
     // block whose last paragraph ends in an image moves the line's content
     // to the end of that paragraph; the image stays (Lexical's own delete
@@ -2355,51 +2216,6 @@ export const registerLineCommands = (editor: LexicalEditor) =>
         return true;
       },
       COMMAND_PRIORITY_NORMAL
-    ),
-    // V9: Delete just after an image that ends a line, or a block's last
-    // paragraph, removes the image only
-    editor.registerCommand(
-      DELETE_CHARACTER_COMMAND,
-      (isBackward: boolean) => {
-        const selection = $getSelection();
-        if (
-          $hasUpdateTag(HEAD_PATH_TAG) ||
-          isBackward ||
-          $isRangeSelection(selection) === false ||
-          selection.isCollapsed() === false
-        ) {
-          return false;
-        }
-        const { anchor } = selection;
-        const line = anchor.getNode();
-        if (
-          anchor.type !== "element" ||
-          $isElementNode(line) === false ||
-          anchor.offset !== line.getChildrenSize()
-        ) {
-          return false;
-        }
-        const last = line.getLastChild();
-        // H: the same just after an image that ends the last paragraph of a
-        // block in a lined container
-        const holder = line.getParent();
-        const endsBlock =
-          $isCmsLineNode(line) === false &&
-          line.getNextSibling() === null &&
-          $isElementNode(holder) &&
-          holder.isInline() === false &&
-          isLinedContainer(holder.getParent());
-        if (
-          $isDecoratorNode(last) === false ||
-          ($isCmsLineNode(line) === false && endsBlock === false) ||
-          ($isCmsLineNode(line) && line.getNextSibling() !== null)
-        ) {
-          return false;
-        }
-        last.remove();
-        return true;
-      },
-      COMMAND_PRIORITY_LOW
     ),
     ...[DELETE_CHARACTER_COMMAND, DELETE_WORD_COMMAND, DELETE_LINE_COMMAND].map((command) =>
       editor.registerCommand(
