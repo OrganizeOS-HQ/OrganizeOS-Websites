@@ -1375,6 +1375,24 @@ const Toolbar = ({
           })
         : [];
       if (state.list === type) {
+        // the list's lines give way to their children first, so the list
+        // comes off as at the head; the paragraphs it leaves hold no line
+        const at = $isRangeSelection(selection) ? selection.anchor.getNode() : null;
+        let list = at === null ? null : $findMatchingParent(at, $isListNode);
+        while (list !== null) {
+          const outer = $findMatchingParent(list.getParentOrThrow(), $isListNode);
+          if (outer === null) {
+            break;
+          }
+          list = outer;
+        }
+        if (list !== null) {
+          for (const { node } of $dfs(list)) {
+            if ($isListItemNode(node)) {
+              $unwrapLines(node.getChildren());
+            }
+          }
+        }
         editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
       } else {
         // a quote holding paragraphs gives up the ones the list covers

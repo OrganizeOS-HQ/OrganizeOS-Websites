@@ -30,7 +30,7 @@ import {
   undo,
   unmountField,
 } from "./rich-text-test-harness";
-import { $createNodeSelection, SELECTION_CHANGE_COMMAND } from "lexical";
+import { $createNodeSelection } from "lexical";
 import { lineRuleViolations } from "./rich-text-line-node";
 import {
   clearRichTextReadOnlyMemo,
@@ -81,10 +81,6 @@ const nodeSelectAfter = (word: string): Step => async () => {
 };
 
 /** An element point on the `nth` list item or quote holding `word`. */
-/** The selection change a click's DOM selection would dispatch. */
-const announce = () => {
-  editorOf()!.dispatchCommand(SELECTION_CHANGE_COMMAND, undefined);
-};
 const elementPoint = (word: string, offset: number): Step => async () => {
   await clickInWord(word);
   await act(async () => {
@@ -104,7 +100,6 @@ const elementPoint = (word: string, offset: number): Step => async () => {
       selection.anchor.set(container!.getKey(), offset, "element");
       selection.focus.set(container!.getKey(), offset, "element");
       $setSelection(selection);
-      announce();
     });
   });
   await settle();
@@ -198,7 +193,6 @@ const nodeSelect = (type: string): Step => async () => {
       const selection = $createNodeSelection();
       selection.add(target.getKey());
       $setSelection(selection);
-      announce();
     });
   });
   await settle();
@@ -349,7 +343,6 @@ const RECORDS: Rec[] = [
         selection.anchor.set(host.getKey(), host.getChildrenSize(), "element");
         selection.focus.set(host.getKey(), host.getChildrenSize(), "element");
         $setSelection(selection);
-      announce();
       });
     });
     await settle();
@@ -425,7 +418,6 @@ const itemPoint = (item: number, offset: number): Step => async () => {
       selection.anchor.set(target.getKey(), index, "element");
       selection.focus.set(target.getKey(), index, "element");
       $setSelection(selection);
-      announce();
     });
   });
   await settle();
@@ -527,6 +519,7 @@ const V_RECORDS: Rec[] = [
   ["V15 TR item end Link", LI("T0w<hr>"), itemPoint(1, 2), linkButton],
   ["V15 rule node-selected Link", "<ul><li>xq<hr>yq</li></ul>", nodeSelectAfter("xq"), linkButton],
   ["V16 TR item end Bulleted then k", LI("T0w<hr>"), itemPoint(1, 2), then(button("Bulleted list"), keys("k"))],
+  ["R8 V16 TR item end Bulleted", LI("T0w<hr>"), itemPoint(1, 2), button("Bulleted list")],
   ["V17 root quote line break by beforeinput", "<blockquote><p>X1w</p>X2w<br></blockquote>", async () => {
     await clickInWord("X2w");
     await userEvent.keyboard("{ArrowRight}");
@@ -697,7 +690,6 @@ for (const [name, html, , size] of Q1_SHAPES) {
           selection.anchor.set(item.getKey(), index, "element");
           selection.focus.set(item.getKey(), index, "element");
           $setSelection(selection);
-      announce();
         });
       });
       await settle();
