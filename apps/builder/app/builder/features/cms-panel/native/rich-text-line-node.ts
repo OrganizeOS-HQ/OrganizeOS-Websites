@@ -59,7 +59,9 @@ import {
   type NodeKey,
   type RangeSelection,
   type SerializedElementNode,
-  RootNode,
+  type EditorState,
+  CAN_REDO_COMMAND,
+  CAN_UNDO_COMMAND,
 } from "lexical";
 import {
   $createListItemNode,
@@ -71,6 +73,7 @@ import { $isQuoteNode, HeadingNode, QuoteNode } from "@lexical/rich-text";
 import { CodeNode } from "@lexical/code";
 import { $dfs, $findMatchingParent, mergeRegister } from "@lexical/utils";
 import { LinkNode } from "@lexical/link";
+import type { HistoryState } from "@lexical/react/LexicalHistoryPlugin";
 import { $createHorizontalRuleNode, INSERT_HORIZONTAL_RULE_COMMAND } from "@lexical/react/LexicalHorizontalRuleNode";
 
 /** SPIKE: VITE_LINES_OFF turns every line rule off (the head's behaviour). */
@@ -648,8 +651,10 @@ const HEAD_PATH_TAG = "cms-head-path";
 const REMOVAL_START_TAG = "cms-removal-start:";
 const REMOVAL_END_TAG = "cms-removal-end:";
 const BREAK_AFTER_TAG = "cms-break-after:";
-/** The editors whose current composition has already taken its own step (F12). */
-const compositionStepTaken = new WeakSet<LexicalEditor>();
+/** The field's history (Lexical's HistoryPlugin state), for K. */
+export const cmsHistory = new WeakMap<LexicalEditor, HistoryState>();
+/** Per editor, the composition under way: the state before it and the undo stack's length then. */
+const compositionStarts = new WeakMap<LexicalEditor, { before: EditorState; index: number }>();
 /** The last check after a commit left a point on a lined container. */
 let checkFailed = false;
 
@@ -2311,47 +2316,71 @@ export const $caretOffEmptyLine = () => {
   selection.focus.set(container.getKey(), index, "element");
 };
 
+/** D7's document: `direction` and empty lines left out. */
+const d7Document = (state: EditorState) => {
+  const strip = (node: Record<string, unknown>): Record<string, unknown> => {
+    const { direction: _direction, ...rest } = node;
+    if (Array.isArray(rest.children)) {
+      rest.children = (rest.children as Record<string, unknown>[])
+        .filter(
+          (child) =>
+            (child.type === CmsLineNode.getType() &&
+              (child.children as unknown[]).length === 0) === false
+        )
+        .map(strip);
+    }
+    return rest;
+  };
+  return JSON.stringify(strip(state.toJSON().root as unknown as Record<string, unknown>));
+};
+
 /**
- * F12 (K): a composition that writes text is its own undo step. The first
- * update of a composition in which the composed text differs from the
- * committed state carries history-push; an update before it, which leaves
- * the text as it was, merges as at the head, and a composition that never
- * changes text takes no step. One mark per editor, cleared when the editor
- * stops composing. Lexical runs no transform on the node being composed;
- * the root's transform runs on every update that changes the document.
+ * F12 (K): a composition that changes the document is its own undo step,
+ * decided at the composition's end from state. At the commit in which the
+ * editor starts composing, the state before it (S0) and the undo stack's
+ * length (n0) are kept per editor; at the commit in which it stops, a
+ * document equal to S0's leaves the history as it is, and a changed one
+ * gets S0 as a step at n0 unless the history already holds it there.
  */
 export const registerCompositionStep = (editor: LexicalEditor) =>
   linesOff
     ? () => {}
-    : mergeRegister(
-        editor.registerNodeTransform(RootNode, () => {
-          if (editor.isComposing() === false || compositionStepTaken.has(editor)) {
-            return;
+    : editor.registerUpdateListener(({ editorState, prevEditorState }) => {
+        const history = cmsHistory.get(editor);
+        if (history === undefined) {
+          return;
+        }
+        const start = compositionStarts.get(editor);
+        if (editor.isComposing()) {
+          if (start === undefined) {
+            // the history may already have taken this commit's step: its
+            // newest entry is then the state before this commit
+            const length = history.undoStack.length;
+            const pushedHere = history.undoStack.at(-1)?.editorState === prevEditorState;
+            compositionStarts.set(editor, {
+              before: prevEditorState,
+              index: pushedHere ? length - 1 : length,
+            });
           }
-          const selection = $getSelection();
-          if ($isRangeSelection(selection) === false) {
-            return;
-          }
-          const node = selection.anchor.getNode();
-          if ($isTextNode(node) === false) {
-            return;
-          }
-          const key = node.getKey();
-          const committed = editor
-            .getEditorState()
-            .read(() => $getNodeByKey(key)?.getTextContent() ?? null);
-          if (committed === node.getTextContent()) {
-            return;
-          }
-          compositionStepTaken.add(editor);
-          $addUpdateTag("history-push");
-        }),
-        editor.registerUpdateListener(() => {
-          if (editor.isComposing() === false) {
-            compositionStepTaken.delete(editor);
-          }
-        })
-      );
+          return;
+        }
+        if (start === undefined) {
+          return;
+        }
+        compositionStarts.delete(editor);
+        const before = d7Document(start.before);
+        if (d7Document(editorState) === before) {
+          return;
+        }
+        const entry = history.undoStack[start.index];
+        if (entry !== undefined && d7Document(entry.editorState) === before) {
+          return;
+        }
+        history.undoStack.splice(start.index, 0, { editor, editorState: start.before });
+        history.redoStack.length = 0;
+        editor.dispatchCommand(CAN_UNDO_COMMAND, true);
+        editor.dispatchCommand(CAN_REDO_COMMAND, false);
+      });
 
 /**
  * Typed text with a block node-selected in a lined container lands

@@ -138,7 +138,8 @@ const historyOf = (editor: LexicalEditor) => {
 const pressAll = async (
   onChange: Parameters<typeof lastHtml>[0],
   history: { canUndo: boolean; canRedo: boolean },
-  direction: "undo" | "redo"
+  direction: "undo" | "redo",
+  unchangedAllowed: number[] = []
 ) => {
   const values: string[] = [];
   for (let press = 0; press < 8; press += 1) {
@@ -150,6 +151,9 @@ const pressAll = async (
     await userEvent.keyboard(direction === "undo" ? "{Control>}z{/Control}" : "{Control>}{Shift>}z{/Shift}{/Control}");
     await settle();
     for (const [value] of onChange.mock.calls.slice(calls)) {
+      if (unchangedAllowed.includes(press + 1)) {
+        continue;
+      }
       expect(sanitizeRichTextHtml((value as { html: string }).html), `${direction} ${press + 1}`).not.toBe(before);
     }
     values.push(written(onChange));
@@ -279,6 +283,77 @@ describe("14.5 K: a composition's undo steps at quiet timing", () => {
       expect(await pressAll(onChange, history, "redo")).toEqual([T("T2wx")]);
     });
   }
+  test("a slow composition: a pause of more than 1 s after the first composed character; the head's step for the half-composed text, plus F12's", async () => {
+    const onChange = await renderField(TQT);
+    const history = historyOf(editorOf()!);
+    await clickInWord("T2w");
+    await keys("x");
+    await quiet();
+    await imeSet("a");
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    await imeSet("ab");
+    await imeCommit("ab");
+    await quiet();
+    expect(await pressAll(onChange, history, "undo")).toEqual([T("T2wxa"), T("T2wx"), T("T2w")]);
+    expect(await pressAll(onChange, history, "redo")).toEqual([T("T2wx"), T("T2wxa"), T("T2wxab")]);
+  });
+  test("undo, then a composition that writes text at a plain caret: nothing to redo, as after a typed letter", async () => {
+    const onChange = await renderField(TQT);
+    const history = historyOf(editorOf()!);
+    await clickInWord("T2w");
+    await keys("x");
+    await quiet();
+    await keys("{Control>}z{/Control}");
+    await compose(true);
+    expect(written(onChange)).toBe(T("T2wab"));
+    expect(history.canRedo).toBe(false);
+    expect(await pressAll(onChange, history, "undo")).toEqual([T("T2w")]);
+  });
+  /** A composition that starts within 30 ms of the letter's keydown (Lexical's zero-width heuristic on). */
+  const composeFast = async (wrote: boolean) => {
+    let lastKeyDown = 0;
+    let started = 0;
+    const onKeyDown = (event: KeyboardEvent) => {
+      lastKeyDown = event.timeStamp;
+    };
+    const onStart = (event: CompositionEvent) => {
+      started = event.timeStamp;
+    };
+    document.addEventListener("keydown", onKeyDown, true);
+    document.addEventListener("compositionstart", onStart, true);
+    await userEvent.keyboard("x");
+    await session().send("Input.imeSetComposition", { text: "a", selectionStart: 1, selectionEnd: 1 });
+    await settle();
+    if (wrote) {
+      await imeSet("ab");
+      await imeCommit("ab");
+    } else {
+      await imeSet("");
+      await imeCommit("");
+    }
+    document.removeEventListener("keydown", onKeyDown, true);
+    document.removeEventListener("compositionstart", onStart, true);
+    expect(started - lastKeyDown).toBeLessThan(30);
+    await quiet();
+  };
+  test("a composition within 30 ms of a key, writing text: the head's steps", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const onChange = await renderField(TQT);
+    const history = historyOf(editorOf()!);
+    await clickInWord("T2w");
+    await composeFast(true);
+    expect(await pressAll(onChange, history, "undo")).toEqual([T("T2wx"), T("T2w")]);
+    expect(await pressAll(onChange, history, "redo")).toEqual([T("T2wx"), T("T2wxab")]);
+  });
+  test("a composition within 30 ms of a key, cancelled: the head's steps, with the head's own unchanged press", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const onChange = await renderField(TQT);
+    const history = historyOf(editorOf()!);
+    await clickInWord("T2w");
+    await composeFast(false);
+    expect(await pressAll(onChange, history, "undo", [1])).toEqual([T("T2wx"), T("T2w")]);
+    expect(await pressAll(onChange, history, "redo", [2])).toEqual([T("T2wx"), T("T2wx")]);
+  });
   test.each(CELLS.slice(0, 2))("two fields: %s, wrote text %s, composing in the second after typing in the first", async (_start, wrote, undoValues, redoValues) => {
     const first = await renderField(LI("F1w"));
     const second = mountSecondField(TQT);
