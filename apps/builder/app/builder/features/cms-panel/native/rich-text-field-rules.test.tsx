@@ -709,11 +709,12 @@ describe("pastes and drops that start in code or at a heading's start (K3, K14, 
     await paste(data);
     const written = lastHtml(onChange);
     expect(imagesIn(written)).toHaveLength(2);
-    // the copy reaches the heading's start (15.11 E: the end directly
-    // before the heading takes its content start): the copied heading holds
-    // nothing and stands empty before the heading pasted into
+    // the range holds a paragraph and a figure and nothing of the heading:
+    // the clipboard ends before the heading and carries no shell of it
+    // (K14; the head copies the heading's text with a range that ends
+    // before it, D6)
     expect(sanitizeRichTextHtml(written)).toMatch(
-      /^<p>xx<\/p><figure>.*<\/figure><p>xx<\/p><figure>.*<\/figure><h2><\/h2><h2>hh<\/h2>$/
+      /^<p>xx<\/p><figure>.*<\/figure><p>xx<\/p><figure>.*<\/figure><h2>hh<\/h2>$/
     );
     expect(reopenReason(written)).toBeUndefined();
   });

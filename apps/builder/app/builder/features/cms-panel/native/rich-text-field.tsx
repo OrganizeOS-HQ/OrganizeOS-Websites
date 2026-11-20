@@ -2731,12 +2731,17 @@ const ImageEditingPlugin = () => {
             // 15.10: the writer takes the place the removal takes for a
             // range's last point on a container after a nested block; a cut
             // removes from there
+            // K14: the writer's ends part from the removal's at a last
+            // point directly before a block (it stays)
             if ($isRangeSelection(selection)) {
-              const moved = selection.clone();
-              if ($lastPointToBlockEnd(moved)) {
-                if (command === CUT_COMMAND) {
-                  $setSelection(moved);
+              if (command === CUT_COMMAND) {
+                const removal = selection.clone();
+                if ($lastPointToBlockEnd(removal)) {
+                  $setSelection(removal);
                 }
+              }
+              const moved = selection.clone();
+              if ($lastPointToBlockEnd(moved, "writer")) {
                 selection = moved;
               }
             }

@@ -1193,10 +1193,14 @@ const $lineFormHasNothing = () => {
  * 15.10: a range's last point on a container where no text can stand (the
  * root, a list, a quote) directly after a nested block holds what the
  * range ending at that block's content end holds, and moves there: its
- * last text's end, else the place after its last child. A first point,
- * and a last point after a rule, stay. True when it moved.
+ * last text's end, else the place after its last child. A last point
+ * after a rule stays. E: an end directly before a block takes its content
+ * start (for the writer, a first point only). True when it moved.
  */
-export const $lastPointToBlockEnd = (selection: RangeSelection) => {
+export const $lastPointToBlockEnd = (
+  selection: RangeSelection,
+  use: "removal" | "writer" = "removal"
+) => {
   if (lineSpike.on === false || selection.isCollapsed()) {
     return false;
   }
@@ -1225,8 +1229,10 @@ export const $lastPointToBlockEnd = (selection: RangeSelection) => {
     }
   }
   // E (15.10's mirror): an end, first or last, directly before a block
-  // takes that block's content start
-  for (const point of lastDone ? [start] : [start, last]) {
+  // takes that block's content start. K14: for the writer only a first
+  // point does; a last point directly before a block stays, so the
+  // clipboard ends before the block and never carries its shell
+  for (const point of lastDone || use === "writer" ? [start] : [start, last]) {
     if (point.type !== "element" || noText(point.getNode()) === false) {
       continue;
     }
