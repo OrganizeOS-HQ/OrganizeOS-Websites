@@ -732,7 +732,7 @@ const $joinsInlineContent = (block: ElementNode) => {
  * Lexical drops when the update ends. A point on a lined container is
  * resolved by D18 instead.
  */
-const $pointOffNodeEnd = (selection: RangeSelection) => {
+const $pointOffNodeEnd = (selection: RangeSelection, isBackward?: boolean) => {
   const first = selection.isCollapsed()
     ? selection.anchor
     : selection.anchor.isBefore(selection.focus)
@@ -744,6 +744,16 @@ const $pointOffNodeEnd = (selection: RangeSelection) => {
   }
   const lined = isLinedContainer(holder as LexicalNode);
   if (lined || holder.getChildrenSize() === 0 || first.offset !== holder.getChildrenSize()) {
+    return;
+  }
+  // a caret moves only for a delete whose direction is known (a key's own
+  // command dispatches the directed delete next); a forward delete with
+  // nothing after it in the content has nothing to remove: the caret stays
+  // and the update changes nothing
+  if (
+    selection.isCollapsed() &&
+    (isBackward === undefined || (isBackward === false && $nothingAfter(holder)))
+  ) {
     return;
   }
   const last = holder.getLastChild();
@@ -763,13 +773,64 @@ const $pointOffNodeEnd = (selection: RangeSelection) => {
   }
 };
 
+/** No node after this one, its ancestors' included: the content's end. */
+const $nothingAfter = (node: LexicalNode) => {
+  for (let at: LexicalNode | null = node; at !== null; at = at.getParent()) {
+    if (at.getNextSibling() !== null) {
+      return false;
+    }
+  }
+  return true;
+};
+
+/**
+ * The line form forward at a caret at the end of its block or line, after
+ * a last child that is not text: the line's rest is empty, so it removes
+ * nothing, as at the end of the same block ending in text. A rule directly
+ * after is D5's. Decided here, so Lexical's extension by the page's
+ * selection does not run.
+ */
+const $lineFormHasNothing = () => {
+  const selection = $getSelection();
+  if ($isRangeSelection(selection) === false || selection.isCollapsed() === false) {
+    return false;
+  }
+  const { anchor } = selection;
+  const holder = anchor.getNode();
+  if (anchor.type !== "element" || $isElementNode(holder) === false || holder.isInline()) {
+    return false;
+  }
+  const last = holder.getLastChild();
+  if (
+    isLinedContainer(holder as LexicalNode) ||
+    last === null ||
+    $isTextNode(last) ||
+    anchor.offset !== holder.getChildrenSize()
+  ) {
+    return false;
+  }
+  // a rule directly after the block the caret ends (its last-child ancestors
+  // included) is the line form's to remove
+  for (let at: LexicalNode = holder; ; ) {
+    const next = at.getNextSibling();
+    if (next !== null) {
+      return isBlockDecorator(next) === false;
+    }
+    const parent = at.getParent();
+    if (parent === null || isLinedContainer(parent) || $isRootOrShadowRoot(parent)) {
+      return true;
+    }
+    at = parent;
+  }
+};
+
 export const $tagRemoval = (isBackward?: boolean) => {
   $addUpdateTag(REMOVAL_TAG);
   const selection = $getSelection();
   if ($isRangeSelection(selection) === false) {
     return;
   }
-  $pointOffNodeEnd(selection);
+  $pointOffNodeEnd(selection, isBackward);
   // E3: D3's break is decided here, before the edit, from the selection:
   // a delete at a caret that joins a block's text into the line before it
   // (Backspace at the block's start) or into this line (Delete at the
@@ -1962,6 +2023,9 @@ export const registerLineCommands = (editor: LexicalEditor) =>
             (command !== CUT_COMMAND && $headPathOverNodeSelection())
           ) {
             return false;
+          }
+          if (command === DELETE_LINE_COMMAND && payload === false && $lineFormHasNothing()) {
+            return true;
           }
           $tagRemoval(
             command === DELETE_CHARACTER_COMMAND ||

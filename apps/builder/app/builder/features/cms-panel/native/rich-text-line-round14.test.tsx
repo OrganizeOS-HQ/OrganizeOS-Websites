@@ -475,122 +475,230 @@ describe("14.3: Shift and an arrow pass a rule beside a block", () => {
 });
 
 /**
- * 14.4: Delete, its word form and its line form just after an image that
- * ends a quote's last paragraph, a heading or a line, by what follows in
- * the item. The write in the grid's short form: the item's middle, the
- * image as I, paragraphs unwrapped, quotes as q; NOOP is no write.
+ * Round 14 rulings (14.4 withdrawn): a caret just after an image that ends
+ * its block or line is that block's or line's end. Delete, the word form
+ * and the line form there do what they do at the end of the same block ending in a word (the
+ * twin: the image replaced by the word Zw, the caret after it), and so
+ * does the line form; a forward delete never removes the image. The write in the twin's form: the image
+ * written as Zw.
  */
-const H_IMG = `<img src="https://cdn.example.org/x.png" alt="" width="40" height="20" />`;
-const H_ENDS: Record<string, string> = {
-  quote: `<blockquote><p>X0w${H_IMG}</p></blockquote>`,
-  heading: `<h3>X0w${H_IMG}</h3>`,
-  line: `<blockquote><p>Q0w</p></blockquote>X1w${H_IMG}`,
+const E_IMG = `<img src="https://cdn.example.org/x.png" alt="" width="40" height="20" />`;
+const E_ENDS: Record<string, (x: string) => string> = {
+  quote: (x) => `<blockquote><p>X0w${x}</p></blockquote>`,
+  heading: (x) => `<h3>X0w${x}</h3>`,
+  line: (x) => `<blockquote><p>Q0w</p></blockquote>X1w${x}`,
 };
-const H_FOLLOWERS: Record<string, string> = {
+const E_ORDINARY_ENDS: Record<string, (x: string) => string> = {
+  quote: (x) => `<blockquote><p>X0w${x}</p></blockquote>`,
+  heading: (x) => `<h3>X0w${x}</h3>`,
+  line: (x) => `<p>X1w${x}</p>`,
+};
+const E_LINED_FOLLOWERS: Record<string, string> = {
   line: "T1w",
-  lineBr: "<br>T1w",
   block: "<blockquote><p>B1w</p></blockquote>",
   rule: "<hr>",
   nested: "<ul><li>L1w</li></ul>",
   itemEnd: "",
   contentEnd: "",
 };
-const H_FORMS: Record<string, () => Promise<void>> = {
-  del: () => keys("{Delete}"),
-  word: () => keys("{Control>}{Delete}{/Control}"),
-  line: async () => {
-    act(() => {
-      editable()!.dispatchEvent(
-        new InputEvent("beforeinput", { bubbles: true, cancelable: true, inputType: "deleteSoftLineForward" })
-      );
-    });
-    await settle();
-  },
+const E_ORDINARY_FOLLOWERS: Record<string, string> = {
+  line: "<p>T1w</p>",
+  block: "<blockquote><p>B1w</p></blockquote>",
+  rule: "<hr>",
+  nested: "<ul><li>L1w</li></ul>",
+  contentEnd: "",
 };
-const H_CELLS: [string, string, string, string][] = [
-  ["quote", "line", "del", "<q>X0w</q>T1w</li>"],
-  ["quote", "line", "word", "<q>X0w</q>T1w</li>"],
-  ["quote", "line", "line", "<q>X0wI</q>1w</li>"],
-  ["quote", "block", "del", "<q>X0wB1w</q></li>"],
-  ["quote", "block", "word", "<q>X0wB1w</q></li>"],
-  ["quote", "block", "line", "<q>X0wI1w</q></li>"],
-  ["quote", "rule", "del", "<q>X0wI</q></li>"],
-  ["quote", "rule", "word", "<q>X0wNw</q></li></ul>"],
-  ["quote", "rule", "line", "<q>X0wI </q><hr /></li>"],
-  ["quote", "nested", "del", "<q>X0wL1w</q></li>"],
-  ["quote", "nested", "word", "<q>X0wL1w</q></li>"],
-  ["quote", "nested", "line", "<q>X0wI1w</q></li>"],
-  ["quote", "itemEnd", "del", "<q>X0wNw</q></li></ul>"],
-  ["quote", "itemEnd", "word", "<q>X0wNw</q></li></ul>"],
-  ["quote", "itemEnd", "line", "<q>X0wIw</q></li></ul>"],
-  ["quote", "contentEnd", "del", "NOOP"],
-  ["quote", "contentEnd", "word", "NOOP"],
-  ["quote", "contentEnd", "line", "NOOP"],
-  ["heading", "line", "del", "<h3>X0w</h3>T1w</li>"],
-  ["heading", "line", "word", "<h3>X0w</h3>T1w</li>"],
-  ["heading", "line", "line", "<h3>X0wI</h3>1w</li>"],
-  ["heading", "block", "del", "<h3>X0wB1w</h3></li>"],
-  ["heading", "block", "word", "<h3>X0wB1w</h3></li>"],
-  ["heading", "block", "line", "<h3>X0wI1w</h3></li>"],
-  ["heading", "rule", "del", "<h3>X0wI</h3></li>"],
-  ["heading", "rule", "word", "<h3>X0w</h3></li>"],
-  ["heading", "rule", "line", "<h3>X0wI </h3></li>"],
-  ["heading", "nested", "del", "<h3>X0wL1w</h3></li>"],
-  ["heading", "nested", "word", "<h3>X0wL1w</h3></li>"],
-  ["heading", "nested", "line", "<h3>X0wI1w</h3></li>"],
-  ["heading", "itemEnd", "del", "<h3>X0wNw</h3></li></ul>"],
-  ["heading", "itemEnd", "word", "<h3>X0wNw</h3></li></ul>"],
-  ["heading", "itemEnd", "line", "<h3>X0wIw</h3></li></ul>"],
-  ["heading", "contentEnd", "del", "NOOP"],
-  ["heading", "contentEnd", "word", "NOOP"],
-  ["heading", "contentEnd", "line", "NOOP"],
-  ["line", "line", "del", "<q>Q0w</q>X1wI1w</li>"],
-  ["line", "line", "word", "<q>Q0w</q>X1wI</li>"],
-  ["line", "line", "line", "<q>Q0w</q>X1wI</li>"],
-  ["line", "lineBr", "del", "<q>Q0w</q>X1wIT1w</li>"],
-  ["line", "lineBr", "word", "<q>Q0w</q>X1wIT1w</li>"],
-  ["line", "lineBr", "line", "<q>Q0w</q>X1wI1w</li>"],
-  ["line", "block", "del", "<q>Q0w</q>X1wB1w</li>"],
-  ["line", "block", "word", "<q>Q0w</q>X1wB1w</li>"],
-  ["line", "block", "line", "<q>Q0w</q>X1wI1w</li>"],
-  ["line", "rule", "del", "<q>Q0w</q>X1wI</li>"],
-  ["line", "rule", "word", "<q>Q0w</q>X1wI</li>"],
-  ["line", "rule", "line", "<q>Q0w</q>X1wI </li>"],
-  ["line", "nested", "del", "<q>Q0w</q>X1w<ul><li>L1w</li></ul></li>"],
-  ["line", "nested", "word", "<q>Q0w</q>X1w<ul><li>L1w</li></ul></li>"],
-  ["line", "nested", "line", "<q>Q0w</q>X1wI<ul><li>1w</li></ul></li>"],
-  ["line", "itemEnd", "del", "<q>Q0w</q>X1w</li>"],
-  ["line", "itemEnd", "word", "<q>Q0w</q>X1w</li>"],
-  ["line", "itemEnd", "line", "<q>Q0w</q>X1wI</li><li>w</li></ul>"],
-  ["line", "contentEnd", "del", "NOOP"],
-  ["line", "contentEnd", "word", "NOOP"],
-  ["line", "contentEnd", "line", "NOOP"],
+const eShape = (context: string, end: string, follower: string) => {
+  if (context === "ordinary") {
+    return `${E_ORDINARY_ENDS[end](E_IMG)}${E_ORDINARY_FOLLOWERS[follower]}`;
+  }
+  const inner = `${context === "lineLed" ? "T9w" : ""}${E_ENDS[end](E_IMG)}${E_LINED_FOLLOWERS[follower]}`;
+  return follower === "contentEnd"
+    ? `<ul><li>Pw</li><li>${inner}</li></ul>`
+    : `<ul><li>Pw</li><li>${inner}</li><li>Nw</li></ul>`;
+};
+/** The caret just after the image: a click on it, then Escape. */
+const caretAfterImage = async () => {
+  await userEvent.click(editable()!.querySelector("img")!);
+  await settle();
+  await keys("{Escape}");
+};
+const E_CELLS: [string, string, string, string, string][] = [
+  ["blockLed", "quote", "line", "del", "<ul><li>Pw</li><li><blockquote><p>X0wZwT1w</p></blockquote></li><li>Nw</li></ul>"],
+  ["blockLed", "quote", "line", "word", "<ul><li>Pw</li><li><blockquote><p>X0wZwT1w</p></blockquote></li><li>Nw</li></ul>"],
+  ["blockLed", "quote", "line", "line", "NOOP"],
+  ["blockLed", "quote", "block", "del", "<ul><li>Pw</li><li><blockquote><p>X0wZwB1w</p></blockquote></li><li>Nw</li></ul>"],
+  ["blockLed", "quote", "block", "word", "<ul><li>Pw</li><li><blockquote><p>X0wZwB1w</p></blockquote></li><li>Nw</li></ul>"],
+  ["blockLed", "quote", "block", "line", "NOOP"],
+  ["blockLed", "quote", "rule", "del", "<ul><li>Pw</li><li><blockquote><p>X0wZw</p></blockquote></li><li>Nw</li></ul>"],
+  ["blockLed", "quote", "rule", "word", "<ul><li>Pw</li><li><blockquote><p>X0wZw</p></blockquote></li><li>Nw</li></ul>"],
+  ["blockLed", "quote", "rule", "line", "<ul><li>Pw</li><li><blockquote><p>X0wZw</p></blockquote></li><li>Nw</li></ul>"],
+  ["blockLed", "quote", "nested", "del", "<ul><li>Pw</li><li><blockquote><p>X0wZwL1w</p></blockquote></li><li>Nw</li></ul>"],
+  ["blockLed", "quote", "nested", "word", "<ul><li>Pw</li><li><blockquote><p>X0wZwL1w</p></blockquote></li><li>Nw</li></ul>"],
+  ["blockLed", "quote", "nested", "line", "NOOP"],
+  ["blockLed", "quote", "itemEnd", "del", "<ul><li>Pw</li><li><blockquote><p>X0wZwNw</p></blockquote></li></ul>"],
+  ["blockLed", "quote", "itemEnd", "word", "<ul><li>Pw</li><li><blockquote><p>X0wZwNw</p></blockquote></li></ul>"],
+  ["blockLed", "quote", "itemEnd", "line", "NOOP"],
+  ["blockLed", "quote", "contentEnd", "del", "NOOP"],
+  ["blockLed", "quote", "contentEnd", "word", "NOOP"],
+  ["blockLed", "quote", "contentEnd", "line", "NOOP"],
+  ["blockLed", "heading", "line", "del", "<ul><li>Pw</li><li><h3>X0wZwT1w</h3></li><li>Nw</li></ul>"],
+  ["blockLed", "heading", "line", "word", "<ul><li>Pw</li><li><h3>X0wZwT1w</h3></li><li>Nw</li></ul>"],
+  ["blockLed", "heading", "line", "line", "NOOP"],
+  ["blockLed", "heading", "block", "del", "<ul><li>Pw</li><li><h3>X0wZwB1w</h3></li><li>Nw</li></ul>"],
+  ["blockLed", "heading", "block", "word", "<ul><li>Pw</li><li><h3>X0wZwB1w</h3></li><li>Nw</li></ul>"],
+  ["blockLed", "heading", "block", "line", "NOOP"],
+  ["blockLed", "heading", "rule", "del", "<ul><li>Pw</li><li><h3>X0wZw</h3></li><li>Nw</li></ul>"],
+  ["blockLed", "heading", "rule", "word", "<ul><li>Pw</li><li><h3>X0wZw</h3></li><li>Nw</li></ul>"],
+  ["blockLed", "heading", "rule", "line", "<ul><li>Pw</li><li><h3>X0wZw</h3></li><li>Nw</li></ul>"],
+  ["blockLed", "heading", "nested", "del", "<ul><li>Pw</li><li><h3>X0wZwL1w</h3></li><li>Nw</li></ul>"],
+  ["blockLed", "heading", "nested", "word", "<ul><li>Pw</li><li><h3>X0wZwL1w</h3></li><li>Nw</li></ul>"],
+  ["blockLed", "heading", "nested", "line", "NOOP"],
+  ["blockLed", "heading", "itemEnd", "del", "<ul><li>Pw</li><li><h3>X0wZwNw</h3></li></ul>"],
+  ["blockLed", "heading", "itemEnd", "word", "<ul><li>Pw</li><li><h3>X0wZwNw</h3></li></ul>"],
+  ["blockLed", "heading", "itemEnd", "line", "NOOP"],
+  ["blockLed", "heading", "contentEnd", "del", "NOOP"],
+  ["blockLed", "heading", "contentEnd", "word", "NOOP"],
+  ["blockLed", "heading", "contentEnd", "line", "NOOP"],
+  ["blockLed", "line", "line", "del", "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>X1wZw1w</li><li>Nw</li></ul>"],
+  ["blockLed", "line", "line", "word", "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>X1wZw</li><li>Nw</li></ul>"],
+  ["blockLed", "line", "line", "line", "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>X1wZw</li><li>Nw</li></ul>"],
+  ["blockLed", "line", "block", "del", "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>X1wZwB1w</li><li>Nw</li></ul>"],
+  ["blockLed", "line", "block", "word", "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>X1wZwB1w</li><li>Nw</li></ul>"],
+  ["blockLed", "line", "block", "line", "NOOP"],
+  ["blockLed", "line", "rule", "del", "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>X1wZw</li><li>Nw</li></ul>"],
+  ["blockLed", "line", "rule", "word", "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>X1wZw</li><li>Nw</li></ul>"],
+  ["blockLed", "line", "rule", "line", "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>X1wZw</li><li>Nw</li></ul>"],
+  ["blockLed", "line", "nested", "del", "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>X1wZwL1w</li><li>Nw</li></ul>"],
+  ["blockLed", "line", "nested", "word", "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>X1wZwL1w</li><li>Nw</li></ul>"],
+  ["blockLed", "line", "nested", "line", "NOOP"],
+  ["blockLed", "line", "itemEnd", "del", "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>X1wZwNw</li></ul>"],
+  ["blockLed", "line", "itemEnd", "word", "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>X1wZwNw</li></ul>"],
+  ["blockLed", "line", "itemEnd", "line", "NOOP"],
+  ["blockLed", "line", "contentEnd", "del", "NOOP"],
+  ["blockLed", "line", "contentEnd", "word", "NOOP"],
+  ["blockLed", "line", "contentEnd", "line", "NOOP"],
+  ["lineLed", "quote", "line", "del", "<ul><li>Pw</li><li>T9w<blockquote><p>X0wZwT1w</p></blockquote></li><li>Nw</li></ul>"],
+  ["lineLed", "quote", "line", "word", "<ul><li>Pw</li><li>T9w<blockquote><p>X0wZwT1w</p></blockquote></li><li>Nw</li></ul>"],
+  ["lineLed", "quote", "line", "line", "NOOP"],
+  ["lineLed", "quote", "block", "del", "<ul><li>Pw</li><li>T9w<blockquote><p>X0wZwB1w</p></blockquote></li><li>Nw</li></ul>"],
+  ["lineLed", "quote", "block", "word", "<ul><li>Pw</li><li>T9w<blockquote><p>X0wZwB1w</p></blockquote></li><li>Nw</li></ul>"],
+  ["lineLed", "quote", "block", "line", "NOOP"],
+  ["lineLed", "quote", "rule", "del", "<ul><li>Pw</li><li>T9w<blockquote><p>X0wZw</p></blockquote></li><li>Nw</li></ul>"],
+  ["lineLed", "quote", "rule", "word", "<ul><li>Pw</li><li>T9w<blockquote><p>X0wZw</p></blockquote></li><li>Nw</li></ul>"],
+  ["lineLed", "quote", "rule", "line", "<ul><li>Pw</li><li>T9w<blockquote><p>X0wZw</p></blockquote></li><li>Nw</li></ul>"],
+  ["lineLed", "quote", "nested", "del", "<ul><li>Pw</li><li>T9w<blockquote><p>X0wZwL1w</p></blockquote></li><li>Nw</li></ul>"],
+  ["lineLed", "quote", "nested", "word", "<ul><li>Pw</li><li>T9w<blockquote><p>X0wZwL1w</p></blockquote></li><li>Nw</li></ul>"],
+  ["lineLed", "quote", "nested", "line", "NOOP"],
+  ["lineLed", "quote", "itemEnd", "del", "<ul><li>Pw</li><li>T9w<blockquote><p>X0wZwNw</p></blockquote></li></ul>"],
+  ["lineLed", "quote", "itemEnd", "word", "<ul><li>Pw</li><li>T9w<blockquote><p>X0wZwNw</p></blockquote></li></ul>"],
+  ["lineLed", "quote", "itemEnd", "line", "NOOP"],
+  ["lineLed", "quote", "contentEnd", "del", "NOOP"],
+  ["lineLed", "quote", "contentEnd", "word", "NOOP"],
+  ["lineLed", "quote", "contentEnd", "line", "NOOP"],
+  ["lineLed", "heading", "line", "del", "<ul><li>Pw</li><li>T9w<h3>X0wZwT1w</h3></li><li>Nw</li></ul>"],
+  ["lineLed", "heading", "line", "word", "<ul><li>Pw</li><li>T9w<h3>X0wZwT1w</h3></li><li>Nw</li></ul>"],
+  ["lineLed", "heading", "line", "line", "NOOP"],
+  ["lineLed", "heading", "block", "del", "<ul><li>Pw</li><li>T9w<h3>X0wZwB1w</h3></li><li>Nw</li></ul>"],
+  ["lineLed", "heading", "block", "word", "<ul><li>Pw</li><li>T9w<h3>X0wZwB1w</h3></li><li>Nw</li></ul>"],
+  ["lineLed", "heading", "block", "line", "NOOP"],
+  ["lineLed", "heading", "rule", "del", "<ul><li>Pw</li><li>T9w<h3>X0wZw</h3></li><li>Nw</li></ul>"],
+  ["lineLed", "heading", "rule", "word", "<ul><li>Pw</li><li>T9w<h3>X0wZw</h3></li><li>Nw</li></ul>"],
+  ["lineLed", "heading", "rule", "line", "<ul><li>Pw</li><li>T9w<h3>X0wZw</h3></li><li>Nw</li></ul>"],
+  ["lineLed", "heading", "nested", "del", "<ul><li>Pw</li><li>T9w<h3>X0wZwL1w</h3></li><li>Nw</li></ul>"],
+  ["lineLed", "heading", "nested", "word", "<ul><li>Pw</li><li>T9w<h3>X0wZwL1w</h3></li><li>Nw</li></ul>"],
+  ["lineLed", "heading", "nested", "line", "NOOP"],
+  ["lineLed", "heading", "itemEnd", "del", "<ul><li>Pw</li><li>T9w<h3>X0wZwNw</h3></li></ul>"],
+  ["lineLed", "heading", "itemEnd", "word", "<ul><li>Pw</li><li>T9w<h3>X0wZwNw</h3></li></ul>"],
+  ["lineLed", "heading", "itemEnd", "line", "NOOP"],
+  ["lineLed", "heading", "contentEnd", "del", "NOOP"],
+  ["lineLed", "heading", "contentEnd", "word", "NOOP"],
+  ["lineLed", "heading", "contentEnd", "line", "NOOP"],
+  ["lineLed", "line", "line", "del", "<ul><li>Pw</li><li>T9w<blockquote><p>Q0w</p></blockquote>X1wZw1w</li><li>Nw</li></ul>"],
+  ["lineLed", "line", "line", "word", "<ul><li>Pw</li><li>T9w<blockquote><p>Q0w</p></blockquote>X1wZw</li><li>Nw</li></ul>"],
+  ["lineLed", "line", "line", "line", "<ul><li>Pw</li><li>T9w<blockquote><p>Q0w</p></blockquote>X1wZw</li><li>Nw</li></ul>"],
+  ["lineLed", "line", "block", "del", "<ul><li>Pw</li><li>T9w<blockquote><p>Q0w</p></blockquote>X1wZwB1w</li><li>Nw</li></ul>"],
+  ["lineLed", "line", "block", "word", "<ul><li>Pw</li><li>T9w<blockquote><p>Q0w</p></blockquote>X1wZwB1w</li><li>Nw</li></ul>"],
+  ["lineLed", "line", "block", "line", "NOOP"],
+  ["lineLed", "line", "rule", "del", "<ul><li>Pw</li><li>T9w<blockquote><p>Q0w</p></blockquote>X1wZw</li><li>Nw</li></ul>"],
+  ["lineLed", "line", "rule", "word", "<ul><li>Pw</li><li>T9w<blockquote><p>Q0w</p></blockquote>X1wZw</li><li>Nw</li></ul>"],
+  ["lineLed", "line", "rule", "line", "<ul><li>Pw</li><li>T9w<blockquote><p>Q0w</p></blockquote>X1wZw</li><li>Nw</li></ul>"],
+  ["lineLed", "line", "nested", "del", "<ul><li>Pw</li><li>T9w<blockquote><p>Q0w</p></blockquote>X1wZwL1w</li><li>Nw</li></ul>"],
+  ["lineLed", "line", "nested", "word", "<ul><li>Pw</li><li>T9w<blockquote><p>Q0w</p></blockquote>X1wZwL1w</li><li>Nw</li></ul>"],
+  ["lineLed", "line", "nested", "line", "NOOP"],
+  ["lineLed", "line", "itemEnd", "del", "<ul><li>Pw</li><li>T9w<blockquote><p>Q0w</p></blockquote>X1wZwNw</li></ul>"],
+  ["lineLed", "line", "itemEnd", "word", "<ul><li>Pw</li><li>T9w<blockquote><p>Q0w</p></blockquote>X1wZwNw</li></ul>"],
+  ["lineLed", "line", "itemEnd", "line", "NOOP"],
+  ["lineLed", "line", "contentEnd", "del", "NOOP"],
+  ["lineLed", "line", "contentEnd", "word", "NOOP"],
+  ["lineLed", "line", "contentEnd", "line", "NOOP"],
+  ["ordinary", "quote", "line", "del", "<blockquote><p>X0wZwT1w</p></blockquote>"],
+  ["ordinary", "quote", "line", "word", "<blockquote><p>X0wZwT1w</p></blockquote>"],
+  ["ordinary", "quote", "line", "line", "NOOP"],
+  ["ordinary", "quote", "block", "del", "<blockquote><p>X0wZwB1w</p></blockquote>"],
+  ["ordinary", "quote", "block", "word", "<blockquote><p>X0wZwB1w</p></blockquote>"],
+  ["ordinary", "quote", "block", "line", "NOOP"],
+  ["ordinary", "quote", "rule", "del", "NOOP"],
+  ["ordinary", "quote", "rule", "word", "<blockquote><p>X0wZw</p></blockquote>"],
+  ["ordinary", "quote", "rule", "line", "NOOP"],
+  ["ordinary", "quote", "nested", "del", "<blockquote><p>X0wZwL1w</p></blockquote>"],
+  ["ordinary", "quote", "nested", "word", "<blockquote><p>X0wZwL1w</p></blockquote>"],
+  ["ordinary", "quote", "nested", "line", "NOOP"],
+  ["ordinary", "quote", "contentEnd", "del", "NOOP"],
+  ["ordinary", "quote", "contentEnd", "word", "NOOP"],
+  ["ordinary", "quote", "contentEnd", "line", "NOOP"],
+  ["ordinary", "heading", "line", "del", "<h3>X0wZwT1w</h3>"],
+  ["ordinary", "heading", "line", "word", "<h3>X0wZwT1w</h3>"],
+  ["ordinary", "heading", "line", "line", "NOOP"],
+  ["ordinary", "heading", "block", "del", "<h3>X0wZwB1w</h3>"],
+  ["ordinary", "heading", "block", "word", "<h3>X0wZwB1w</h3>"],
+  ["ordinary", "heading", "block", "line", "NOOP"],
+  ["ordinary", "heading", "rule", "del", "<h3>X0wZw</h3>"],
+  ["ordinary", "heading", "rule", "word", "<h3>X0wZw</h3>"],
+  ["ordinary", "heading", "rule", "line", "<h3>X0wZw</h3>"],
+  ["ordinary", "heading", "nested", "del", "<h3>X0wZwL1w</h3>"],
+  ["ordinary", "heading", "nested", "word", "<h3>X0wZwL1w</h3>"],
+  ["ordinary", "heading", "nested", "line", "NOOP"],
+  ["ordinary", "heading", "contentEnd", "del", "NOOP"],
+  ["ordinary", "heading", "contentEnd", "word", "NOOP"],
+  ["ordinary", "heading", "contentEnd", "line", "NOOP"],
+  ["ordinary", "line", "line", "del", "<p>X1wZwT1w</p>"],
+  ["ordinary", "line", "line", "word", "<p>X1wZwT1w</p>"],
+  ["ordinary", "line", "line", "line", "NOOP"],
+  ["ordinary", "line", "block", "del", "<p>X1wZwB1w</p>"],
+  ["ordinary", "line", "block", "word", "<p>X1wZwB1w</p>"],
+  ["ordinary", "line", "block", "line", "NOOP"],
+  ["ordinary", "line", "rule", "del", "<p>X1wZw</p>"],
+  ["ordinary", "line", "rule", "word", "<p>X1wZw</p>"],
+  ["ordinary", "line", "rule", "line", "<p>X1wZw</p>"],
+  ["ordinary", "line", "nested", "del", "<p>X1wZwL1w</p>"],
+  ["ordinary", "line", "nested", "word", "<p>X1wZwL1w</p>"],
+  ["ordinary", "line", "nested", "line", "NOOP"],
+  ["ordinary", "line", "contentEnd", "del", "NOOP"],
+  ["ordinary", "line", "contentEnd", "word", "NOOP"],
+  ["ordinary", "line", "contentEnd", "line", "NOOP"],
 ];
 
-describe("14.4: a delete just after an image that ends a block or a line", () => {
-  test.each(H_CELLS)("%s, then %s, %s", async (end, follower, form, expected) => {
-    const html =
-      follower === "contentEnd"
-        ? `<ul><li>Pw</li><li>${H_ENDS[end]}</li></ul>`
-        : `<ul><li>Pw</li><li>${H_ENDS[end]}${H_FOLLOWERS[follower]}</li><li>Nw</li></ul>`;
+describe("a caret just after an image that ends its block or line is its end", () => {
+  test.each(E_CELLS)("%s, %s then %s, %s", async (context, end, follower, form, expected) => {
+    const html = eShape(context, end, follower);
     const onChange = await renderField(html);
-    await userEvent.click(editable()!.querySelector("img")!);
-    await settle();
-    await keys("{Escape}");
-    await H_FORMS[form]();
-    const write = lastHtml(onChange) === "" ? "" : written(onChange);
-    const short =
-      write === "" || write === stored(html)
-        ? "NOOP"
-        : write
-            .replace(/<img[^>]*>/g, "I")
-            .replace(/<\/?p>/g, "")
-            .replace(/blockquote/g, "q")
-            .replace("<ul><li>Pw</li><li>", "")
-            .replace("<li>Nw</li></ul>", "");
-    expect(short).toBe(expected);
+    await caretAfterImage();
+    if (form === "line") {
+      act(() => {
+        editable()!.dispatchEvent(
+          new InputEvent("beforeinput", { bubbles: true, cancelable: true, inputType: "deleteSoftLineForward" })
+        );
+      });
+      await settle();
+    } else {
+      await keys(form === "del" ? "{Delete}" : "{Control>}{Delete}{/Control}");
+    }
+    const write = lastHtml(onChange) === "" ? "NOOP" : written(onChange);
+    expect(write === stored(html) ? "NOOP" : write.replace(/<img[^>]*>/g, "Zw")).toBe(expected);
   });
 });
+
 
 /** 14.2: a click after a node selection, in ordinary content and in a lined item. */
 const C_IMG = `<img src="https://cdn.example.org/x.png" alt="" width="40" height="20" />`;
@@ -1312,5 +1420,93 @@ describe("round 14 rulings, b.2: a removal removes what its range holds", () => 
       await settle();
     }
     expect(b2Write(onChange)).toBe("<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>T1wIMGNEW2w</li><li>Nw</li></ul>");
+  });
+});
+
+describe("the caret's move into text inside a delete", () => {
+  const lineForm = async () => {
+    act(() => {
+      editable()!.dispatchEvent(
+        new InputEvent("beforeinput", { bubbles: true, cancelable: true, inputType: "deleteSoftLineForward" })
+      );
+    });
+    await settle();
+  };
+  const FORMS: [string, () => Promise<void>][] = [
+    ["Delete", () => keys("{Delete}")],
+    ["the word form", () => keys("{Control>}{Delete}{/Control}")],
+    ["the line form", lineForm],
+  ];
+  /** D7's state: direction and empty lines left out. */
+  const d7 = () => {
+    const strip = (node: Record<string, unknown>): Record<string, unknown> => {
+      const { direction: _direction, ...rest } = node;
+      if (Array.isArray(rest.children)) {
+        rest.children = (rest.children as Record<string, unknown>[])
+          .filter((child) => (child.type === "cms-line" && (child.children as unknown[]).length === 0) === false)
+          .map(strip);
+      }
+      return rest;
+    };
+    return JSON.stringify(strip(editorOf()!.getEditorState().toJSON().root as unknown as Record<string, unknown>));
+  };
+  const emptyTexts = () =>
+    editorOf()!
+      .getEditorState()
+      .read(() => $getRoot().getAllTextNodes().filter((node) => node.getTextContent() === "").length);
+
+  test("the cell that hung at b9c3ad75b: a line-led item, the line form after an image ending a quote, then a line", async () => {
+    const onChange = await renderField(LI(`T0w<blockquote><p>X0w${E_IMG}</p></blockquote>T1w`));
+    await caretAfterImage();
+    const calls = onChange.mock.calls.length;
+    const started = performance.now();
+    await lineForm();
+    expect(performance.now() - started).toBeLessThan(2000);
+    // the twin: the line form at the end of a block has nothing to remove
+    expect(onChange.mock.calls.length).toBe(calls);
+  });
+
+  const AT_CONTENT_END: [string, string][] = [
+    ["a lined item", `<ul><li>Pw</li><li><blockquote><p>X0w${E_IMG}</p></blockquote></li></ul>`],
+    ["ordinary content", `<blockquote><p>X0w${E_IMG}</p></blockquote>`],
+  ];
+  for (const [where, html] of AT_CONTENT_END) {
+    for (const [name, form] of FORMS) {
+      test(`at the content's end, ${where}, ${name}: no onChange, no undo step, nothing left behind`, async () => {
+        const onChange = await renderField(html);
+        await clickInWord("X0w");
+        await keys("a");
+        const typed = written(onChange);
+        await caretAfterImage();
+        const before = d7();
+        const calls = onChange.mock.calls.length;
+        await form();
+        expect(onChange.mock.calls.length).toBe(calls);
+        expect(emptyTexts()).toBe(0);
+        expect(d7()).toBe(before);
+        expect(typed).toBe(stored(html.replace("X0w", "X0wa")));
+        await keys("{Control>}z{/Control}");
+        expect(written(onChange)).toBe(stored(html));
+      });
+      test(`at the content's end, ${where}, ${name}: the caret stays after the image`, async () => {
+        const onChange = await renderField(html);
+        await caretAfterImage();
+        await form();
+        await keys("k");
+        expect(written(onChange)).toBe(stored(html.replace(`${E_IMG}`, `${E_IMG}k`)));
+      });
+    }
+  }
+  test("a caret just after an image with text after it: Delete takes the next character", async () => {
+    const onChange = await renderField(LI(`T0w${E_IMG}T1w`));
+    await caretAfterImage();
+    await keys("{Delete}");
+    expect(written(onChange)).toBe(stored(LI(`T0w${E_IMG}1w`)));
+  });
+  test("Backspace just after an image that ends a quote's paragraph removes the image", async () => {
+    const onChange = await renderField(LI(`<blockquote><p>X0w${E_IMG}</p></blockquote>T1w`));
+    await caretAfterImage();
+    await keys("{Backspace}");
+    expect(written(onChange)).toBe(stored(LI("<blockquote><p>X0w</p></blockquote>T1w")));
   });
 });

@@ -334,14 +334,18 @@ describe("G: the clipboard holds what the selection holds, and a cut removes tha
 });
 
 describe("H, I, J, K", () => {
-  test("H: Delete after an image that ends a quote's last paragraph removes the image only", async () => {
+  test("H (withdrawn in round 14): Delete after an image that ends a quote's last paragraph joins the line, the image kept", async () => {
     const onChange = await renderField(
       '<ul><li><blockquote><p>X0w<img src="https://cdn.example.org/x.png" alt="" width="40" height="20" /></p></blockquote>T1w</li></ul>'
     );
     await userEvent.click(editable()!.querySelector("img")!);
     await settle();
     await keys("{Escape}{Delete}");
-    expect(written(onChange)).toBe(stored("<ul><li><blockquote><p>X0w</p></blockquote>T1w</li></ul>"));
+    expect(written(onChange)).toBe(
+      stored(
+        '<ul><li><blockquote><p>X0w<img src="https://cdn.example.org/x.png" alt="" width="40" height="20" />T1w</p></blockquote></li></ul>'
+      )
+    );
   });
   test("I: a plain-text paste over a selected rule leaves the caret after the paste", async () => {
     const onChange = await renderField("<ul><li>xq<hr>yq</li></ul>");
