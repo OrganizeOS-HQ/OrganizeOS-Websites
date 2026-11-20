@@ -1385,7 +1385,7 @@ export const registerLineCommands = (editor: LexicalEditor) =>
           if (event.shiftKey === false && selection.isCollapsed()) {
             const edge = $childAtEdge(isBackward);
             const rule =
-              edge === null || $isCmsLineNode(edge.child)
+              edge === null
                 ? null
                 : isBackward
                   ? edge.child.getPreviousSibling()
@@ -1395,6 +1395,36 @@ export const registerLineCommands = (editor: LexicalEditor) =>
               const nodes = $createNodeSelection();
               nodes.add(rule.getKey());
               $setSelection(nodes);
+              return true;
+            }
+          }
+          // going right from the end of a line that ends in a break, with a
+          // block directly after the line: the block's start is the same
+          // place, so the next stop is one character into the block, as at
+          // the head
+          if (event.shiftKey === false && isBackward === false && selection.isCollapsed()) {
+            const at = selection.anchor;
+            const atNode = at.getNode();
+            const line = $isCmsLineNode(atNode) ? atNode : $findMatchingParent(atNode, $isCmsLineNode);
+            const last = $isCmsLineNode(line) ? line.getLastChild() : null;
+            const block = line?.getNextSibling() ?? null;
+            const atEnd =
+              $isCmsLineNode(line) &&
+              isLineBreak(last) &&
+              at.type === "element" &&
+              atNode.is(line) &&
+              at.offset === line.getChildrenSize();
+            const first = $isElementNode(block) ? block.getFirstDescendant() : null;
+            if (
+              atEnd &&
+              $isElementNode(block) &&
+              $isCmsLineNode(block) === false &&
+              block.isInline() === false &&
+              $isTextNode(first) &&
+              first.getTextContentSize() > 0
+            ) {
+              event.preventDefault();
+              first.select(1, 1);
               return true;
             }
           }
@@ -1427,8 +1457,13 @@ export const registerLineCommands = (editor: LexicalEditor) =>
           event.preventDefault();
           // with Shift going right the focus stops before the break, where
           // the head's does (the container's point beside the block)
-          const offset =
-            isBackward ? line.getChildrenSize() - 1 : event.shiftKey ? 0 : 1;
+          // going right the walk stops before the break after a quote and
+          // past it after a heading or code block, as the head's does
+          const offset = isBackward
+            ? line.getChildrenSize() - 1
+            : $isQuoteNode(child) || event.shiftKey
+              ? 0
+              : 1;
           focus.set(line.getKey(), offset, "element");
           if (event.shiftKey === false) {
             selection.anchor.set(line.getKey(), offset, "element");

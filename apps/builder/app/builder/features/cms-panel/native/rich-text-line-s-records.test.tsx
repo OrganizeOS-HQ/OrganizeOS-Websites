@@ -575,6 +575,23 @@ const logCaret = (label: string): Step => async () => {
   const drawn = box === null ? "none" : `${box[0]},${box[1]},${box[2] - box[0] + 1},${box[3] - box[1] + 1}`;
   console.log(`CARET ${JSON.stringify({ label, rects, drawn, at: `${node?.nodeName}@${selection?.anchorOffset}` })}`);
 };
+/** The typed letter's rectangle, against the editable root. */
+const logLetter = (label: string): Step => async () => {
+  const root = editable()!;
+  const base = root.getBoundingClientRect();
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let found = "none";
+  for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+    const at = (node.textContent ?? "").indexOf("k");
+    if (at === -1) continue;
+    const range = document.createRange();
+    range.setStart(node, at);
+    range.setEnd(node, at + 1);
+    const r = range.getBoundingClientRect();
+    found = `${Math.round(r.left - base.left)},${Math.round(r.top - base.top)},${Math.round(r.width)},${Math.round(r.height)}`;
+  }
+  console.log(`LETTER ${JSON.stringify({ label, rect: found })}`);
+};
 const then = (...steps: Step[]): Step => async () => {
   for (const step of steps) await step();
 };
@@ -786,6 +803,7 @@ const V_RECORDS: Rec[] = [
   ["R13 M2 rule-led root quote el0 Shift+Enter", "<blockquote><hr>X2w</blockquote>", elementPoint("X2w", 0), keys("{Shift>}{Enter}{/Shift}")],
   ["R13 M2 rule-led root quote el0 Shift+Enter then k", "<blockquote><hr>X2w</blockquote>", elementPoint("X2w", 0), keys("{Shift>}{Enter}{/Shift}k")],
   ["R13 F reference: two paragraphs at xq@1 in xq<br>yyq", "<ul><li>xq<br>yyq</li><li>nq</li></ul><p>sepq</p>", at("xq", 1), pasteHtml("<p>Aq</p><p>Bq</p>")],
+  ["R13 caret at QB el1 then k", LI("<blockquote><p>Q0w</p></blockquote><br>"), itemPoint(1, { after: 0 }), then(logCaret("QB el1"), keys("k"), logLetter("QB el1"))],
   ["R8 ordinary T1w@0 Backspace", LI("T1w"), at("T1w", 0), keys("{Backspace}")],
   ["R8 ordinary T1w@0 Ctrl+Backspace", LI("T1w"), at("T1w", 0), keys("{Control>}{Backspace}{/Control}")],
   ["R8 ordinary T1w end Delete", LI("T1w"), at("T1w"), keys("{Delete}")],
@@ -980,6 +998,10 @@ for (const [name, x] of D_SHAPES) {
   for (let n = 1; n <= 3; n += 1) {
     RECORDS.push([`R13 D ${name} Down x${n} then k`, LI(x), at("Pw"), keys(`${"{ArrowDown}".repeat(n)}k`)]);
     RECORDS.push([`R13 D ${name} Up x${n} then k`, LI(x), at("Nw", 0), keys(`${"{ArrowUp}".repeat(n)}k`)]);
+  }
+  for (let n = 1; n <= 5; n += 1) {
+    RECORDS.push([`R13 D ${name} Right x${n} then k`, LI(x), at("Pw"), keys(`${"{ArrowRight}".repeat(n)}k`)]);
+    RECORDS.push([`R13 D ${name} Left x${n} then k`, LI(x), at("Nw", 0), keys(`${"{ArrowLeft}".repeat(n)}k`)]);
   }
 }
 const Q1_NODE_SHAPES: Array<[string, string, string]> = [

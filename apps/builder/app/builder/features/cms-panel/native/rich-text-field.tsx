@@ -501,9 +501,7 @@ const setBlockType = (editor: LexicalEditor, block: BlockType) => {
         return;
       }
     }
-    const before = new Set(
-      $dfs().map(({ node }) => node.getKey())
-    );
+    const before = new Set($dfs().map(({ node }) => node.getKey()));
     // the inline content of lines that stand in quotes
     const quotedLineContent = new Set(
       $dfs()
@@ -1403,10 +1401,15 @@ const Toolbar = ({
       if (state.list === type) {
         // the list's lines give way to their children first, so the list
         // comes off as at the head; the paragraphs it leaves hold no line
-        const at = $isRangeSelection(selection) ? selection.anchor.getNode() : null;
+        const at = $isRangeSelection(selection)
+          ? selection.anchor.getNode()
+          : null;
         let list = at === null ? null : $findMatchingParent(at, $isListNode);
         while (list !== null) {
-          const outer = $findMatchingParent(list.getParentOrThrow(), $isListNode);
+          const outer = $findMatchingParent(
+            list.getParentOrThrow(),
+            $isListNode
+          );
           if (outer === null) {
             break;
           }
@@ -2015,8 +2018,8 @@ const $caretInLeaves = (point: PointType) => {
     after === null
       ? undefined
       : $isElementNode(after)
-        ? after.getFirstDescendant()
-        : after;
+      ? after.getFirstDescendant()
+      : after;
   if (following !== null && following !== undefined) {
     const index = leaves.findIndex((leaf) => leaf.is(following));
     if (index !== -1) {
@@ -2046,7 +2049,7 @@ const caretLineBox = (
   const at = leaves[index];
   if (at !== undefined && $isLineBreakNode(at) === false) {
     const box = $isTextNode(at)
-      ? (charBox(editor, at, offset) ?? charBox(editor, at, offset - 1))
+      ? charBox(editor, at, offset) ?? charBox(editor, at, offset - 1)
       : lineBox(editor, at, false);
     if (box !== undefined) {
       return box;
@@ -2309,13 +2312,13 @@ const ImageEditingPlugin = () => {
               $isCmsImageNode(node) || $isCmsFigureNode(node)
                 ? [node]
                 : $isElementNode(node)
-                  ? node
-                      .getChildren()
-                      .filter(
-                        (child) =>
-                          $isCmsImageNode(child) || $isCmsFigureNode(child)
-                      )
-                  : []
+                ? node
+                    .getChildren()
+                    .filter(
+                      (child) =>
+                        $isCmsImageNode(child) || $isCmsFigureNode(child)
+                    )
+                : []
             );
           if (payload === null) {
             $toggleLink(null);
@@ -2698,9 +2701,10 @@ const ImageEditingPlugin = () => {
               selection.isCollapsed() === false &&
               selection.anchor.type === "text" &&
               selection.focus.type === "text";
-            const data = textEnds
-              ? $headFormClipboard(editor, selection as RangeSelection)
-              : $getClipboardDataFromSelection(mapped);
+            const data =
+              (textEnds
+                ? $headFormClipboard(editor, selection as RangeSelection)
+                : null) ?? $getClipboardDataFromSelection(mapped);
             data["text/plain"] = $plainTextOf(textEnds ? selection : mapped);
             setLexicalClipboardDataTransfer(event.clipboardData, data);
             if (command === CUT_COMMAND) {
@@ -2730,7 +2734,10 @@ const ImageEditingPlugin = () => {
  * same state with every line replaced by its children, the selection
  * carried over by path.
  */
-const $headFormClipboard = (editor: LexicalEditor, selection: RangeSelection) => {
+const $headFormClipboard = (
+  editor: LexicalEditor,
+  selection: RangeSelection
+) => {
   const pathOf = (node: LexicalNode) => {
     const path: number[] = [];
     let at: LexicalNode = node;
@@ -2742,6 +2749,7 @@ const $headFormClipboard = (editor: LexicalEditor, selection: RangeSelection) =>
   };
   const ends = [selection.anchor, selection.focus].map((point) => ({
     path: pathOf(point.getNode()),
+    kind: point.getNode().getType(),
     offset: point.offset,
     type: point.type,
   }));
@@ -2754,28 +2762,47 @@ const $headFormClipboard = (editor: LexicalEditor, selection: RangeSelection) =>
       throw error;
     },
   });
-  scratch.setEditorState(scratch.parseEditorState(editor.getEditorState().toJSON()));
-  let data = { "text/plain": "" } as ReturnType<typeof $getClipboardDataFromSelection>;
-  scratch.update(
-    () => {
-      const resolve = (path: number[]) =>
-        path.reduce<LexicalNode>(
-          (node, index) => (node as ElementNode).getChildAtIndex(index)!,
-          $getRoot()
-        );
-      const range = $createRangeSelection();
-      range.anchor.set(resolve(ends[0].path).getKey(), ends[0].offset, ends[0].type);
-      range.focus.set(resolve(ends[1].path).getKey(), ends[1].offset, ends[1].type);
-      $setSelection(range);
-      for (const { node } of $dfs()) {
-        if ($isCmsLineNode(node) && node.isAttached()) {
-          $unwrapLines([node]);
-        }
-      }
-      data = { ...$getClipboardDataFromSelection($getSelection()) };
-    },
-    { discrete: true }
+  scratch.setEditorState(
+    scratch.parseEditorState(editor.getEditorState().toJSON())
   );
+  let data: ReturnType<typeof $getClipboardDataFromSelection> | null = null;
+  try {
+    scratch.update(
+      () => {
+        const resolve = (path: number[]) =>
+          path.reduce<LexicalNode | null>(
+            (node, index) =>
+              $isElementNode(node) ? node.getChildAtIndex(index) : null,
+            $getRoot()
+          );
+        const range = $createRangeSelection();
+        const anchorNode = resolve(ends[0].path);
+        const focusNode = resolve(ends[1].path);
+        // a path that does not carry over (a code block's text is split
+        // differently) falls back to the field's own writer
+        if (
+          anchorNode === null ||
+          focusNode === null ||
+          anchorNode.getType() !== ends[0].kind ||
+          focusNode.getType() !== ends[1].kind
+        ) {
+          return;
+        }
+        range.anchor.set(anchorNode.getKey(), ends[0].offset, ends[0].type);
+        range.focus.set(focusNode.getKey(), ends[1].offset, ends[1].type);
+        $setSelection(range);
+        for (const { node } of $dfs()) {
+          if ($isCmsLineNode(node) && node.isAttached()) {
+            $unwrapLines([node]);
+          }
+        }
+        data = { ...$getClipboardDataFromSelection($getSelection()) };
+      },
+      { discrete: true }
+    );
+  } catch {
+    return null;
+  }
   return data;
 };
 
@@ -2947,8 +2974,8 @@ const splitItemsAfterNestedList = (body: HTMLElement) => {
     node instanceof Element && /^(STYLE|SCRIPT|TEMPLATE)$/.test(node.tagName)
       ? ""
       : node.nodeType === Node.TEXT_NODE
-        ? (node.textContent ?? "")
-        : Array.from(node.childNodes).map(textOf).join("");
+      ? node.textContent ?? ""
+      : Array.from(node.childNodes).map(textOf).join("");
   // only what imports to content: text past white space and format and
   // ignorable characters (a pasted image does not, nor a rule on its own)
   const isContent = (node: Node) =>
@@ -3350,8 +3377,7 @@ const $placeAfterCode = (code: LexicalNode, images: LexicalNode[]) => {
 /** SPIKE: guards made no-ops, from VITE_GUARDS_OFF (comma separated). */
 const guardOff = (name: string) =>
   String(
-    (import.meta as { env?: Record<string, string> }).env?.VITE_GUARDS_OFF ??
-      ""
+    (import.meta as { env?: Record<string, string> }).env?.VITE_GUARDS_OFF ?? ""
   )
     .split(",")
     .includes(name);
@@ -3510,7 +3536,7 @@ const $insertIntoListItem = (
     ($isElementNode(node) || $isDecoratorNode(node)) &&
     node.isInline() === false;
   const tail = nodes.at(-1) ?? null;
-  const last = $isElementNode(tail) ? (tail.getLastDescendant() ?? tail) : tail;
+  const last = $isElementNode(tail) ? tail.getLastDescendant() ?? tail : tail;
   const lastItem =
     last === null ? null : $findMatchingParent(last, $isListItemNode);
   let lead: TextNode | undefined;
@@ -3580,7 +3606,8 @@ const $intoLine = (
   // then runs at the caret that leaves. The head's path never runs over
   // such a range
   const inLined = (point: PointType) =>
-    $findMatchingParent(point.getNode(), (node) => isLinedContainer(node)) !== null;
+    $findMatchingParent(point.getNode(), (node) => isLinedContainer(node)) !==
+    null;
   // (a range that starts outside a lined container keeps the first check's
   // V2 and V3 writes, below)
   if (selection.isCollapsed() === false && inLined(start)) {
@@ -3604,7 +3631,8 @@ const $intoLine = (
       (before.is(startNode) || before.isParentOf(startNode)) &&
       nodes.some(
         (node) =>
-          ($isElementNode(node) || $isDecoratorNode(node)) && node.isInline() === false
+          ($isElementNode(node) || $isDecoratorNode(node)) &&
+          node.isInline() === false
       )
     ) {
       selection.removeText();
