@@ -44,6 +44,7 @@ import {
   KEY_ARROW_LEFT_COMMAND,
   KEY_ARROW_RIGHT_COMMAND,
   KEY_ARROW_UP_COMMAND,
+  KEY_ENTER_COMMAND,
   KEY_BACKSPACE_COMMAND,
   KEY_DELETE_COMMAND,
   PASTE_COMMAND,
@@ -2145,16 +2146,28 @@ export const registerLineCommands = (editor: LexicalEditor) => {
         editor.getElementByKey(key)?.setAttribute("data-cms-caret", "");
       }
     }),
-    // 15.12: an arrow key reads the page's caret first. A step the page took
-    // itself (a caret move inside text) reaches Lexical only when the page's
-    // selectionchange is read back; a key that comes before that read would
-    // see the place before the step, and the field's rules would decide
-    // from there. So an arrow key at a caret in text starts from where the
-    // page's caret is
-    ...[KEY_ARROW_LEFT_COMMAND, KEY_ARROW_RIGHT_COMMAND, KEY_ARROW_UP_COMMAND, KEY_ARROW_DOWN_COMMAND].map((command) =>
+    // 15.12: a key handled from its keydown reads the page's caret first.
+    // A step the page took itself (a caret move inside text) reaches Lexical
+    // only when the page's selectionchange is read back, and Lexical's
+    // keydown update keeps its last selection; a key that comes before that
+    // read would act at the place the page has left (an Enter splitting
+    // there, a delete deciding from there). So a key at a caret in text, not
+    // while composing, starts from where the page's caret is
+    ...([
+      KEY_ARROW_LEFT_COMMAND,
+      KEY_ARROW_RIGHT_COMMAND,
+      KEY_ARROW_UP_COMMAND,
+      KEY_ARROW_DOWN_COMMAND,
+      KEY_BACKSPACE_COMMAND,
+      KEY_DELETE_COMMAND,
+      KEY_ENTER_COMMAND,
+    ] as LexicalCommand<unknown>[]).map((command) =>
       editor.registerCommand(
         command,
         () => {
+          if (editor.isComposing()) {
+            return false;
+          }
           const selection = $getSelection();
           const dom = window.getSelection();
           const root = editor.getRootElement();
@@ -2419,42 +2432,63 @@ export const registerLineCommands = (editor: LexicalEditor) => {
                   }
                 }
               } else {
-                // at the start of the first text, or the end of the last
-                // text, of a quote, heading or code block in a lined list
-                // item, the rule goes directly before or after that block;
-                // at the item's edge that is before or after the item, with
-                // no empty item or list left (A1, A2)
-                const start = $childAtEdge(true);
-                const end = start === null ? $childAtEdge(false) : null;
-                const edge = start ?? end;
+                // any caret in a quote, heading or code block of a lined
+                // list item: the split goes up to the root at the caret, and
+                // nothing empty is left; at the block's edge the rule goes
+                // directly before or after it, at the item's edge before or
+                // after the item (A1, A2), and between a quote's paragraphs
+                // the quote splits there (15.8)
+                const range = $getSelection();
+                let child: LexicalNode | null = $isRangeSelection(range) && range.isCollapsed() ? range.anchor.getNode() : null;
+                while (child !== null && isLinedContainer(child.getParent()) === false) {
+                  child = child.getParent();
+                }
+                const item = child?.getParent() ?? null;
                 if (
-                  edge !== null &&
-                  $isListItemNode(edge.container) &&
-                  ["quote", "heading", "code"].includes(edge.child.getType())
+                  $isRangeSelection(range) &&
+                  child !== null &&
+                  $isListItemNode(item) &&
+                  ["quote", "heading", "code"].includes(child.getType())
                 ) {
-                  const block = edge.child;
-                  const item = edge.container;
                   const rule = $createHorizontalRuleNode();
-                  let node: ElementNode = item;
-                  let offset = block.getIndexWithinParent() + (start !== null ? 0 : 1);
-                  // climb while the point is at a container's edge
+                  const point = range.anchor;
+                  let node: ElementNode;
+                  let offset: number;
+                  const at = point.getNode();
+                  if (point.type === "text") {
+                    const parentOfText = at.getParentOrThrow();
+                    if (point.offset === 0) {
+                      offset = at.getIndexWithinParent();
+                    } else if (point.offset >= at.getTextContentSize()) {
+                      offset = at.getIndexWithinParent() + 1;
+                    } else {
+                      const [left] = ($isTextNode(at) ? at.splitText(point.offset) : [at]) as LexicalNode[];
+                      offset = left.getIndexWithinParent() + 1;
+                    }
+                    node = parentOfText;
+                  } else {
+                    node = at as ElementNode;
+                    offset = point.offset;
+                  }
+                  // climb while the point is at a container's edge; where it
+                  // stands inside one, Lexical's split takes it up to the root
                   for (;;) {
                     const parent = node.getParent();
                     if (parent === null || $isRootOrShadowRoot(parent)) break;
                     if (offset === 0) {
                       offset = node.getIndexWithinParent();
-                      node = parent;
                     } else if (offset >= node.getChildrenSize()) {
                       offset = node.getIndexWithinParent() + 1;
-                      node = parent;
                     } else {
                       break;
                     }
+                    node = parent;
                   }
                   const parent = node.getParent();
-                  if (parent !== null && $isRootOrShadowRoot(parent) && (offset === 0 || offset >= node.getChildrenSize())) {
-                    if (offset === 0) node.insertBefore(rule);
-                    else node.insertAfter(rule);
+                  if (parent !== null && $isRootOrShadowRoot(parent) && offset === 0) {
+                    node.insertBefore(rule);
+                  } else if (parent !== null && $isRootOrShadowRoot(parent) && offset >= node.getChildrenSize()) {
+                    node.insertAfter(rule);
                   } else {
                     const [, right] = $splitNode(node, offset);
                     right.insertBefore(rule);

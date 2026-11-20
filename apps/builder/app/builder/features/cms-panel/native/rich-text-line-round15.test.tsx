@@ -7,8 +7,8 @@
 import { expect, test } from "vitest";
 import { act } from "react-dom/test-utils";
 import { cdp, userEvent } from "@vitest/browser/context";
-import { $getRoot, $getSelection, $isElementNode, $isNodeSelection, $isRangeSelection, $isTextNode, type PointType, CAN_REDO_COMMAND, CAN_UNDO_COMMAND, COMMAND_PRIORITY_CRITICAL, type LexicalEditor } from "lexical";
-import { clickInWord, editable, editorOf, lastHtml, renderField, settle, unmountField } from "./rich-text-test-harness";
+import { $createRangeSelection, $setSelection, type LexicalNode, $getRoot, $getSelection, $isElementNode, $isNodeSelection, $isRangeSelection, $isTextNode, type PointType, CAN_REDO_COMMAND, CAN_UNDO_COMMAND, COMMAND_PRIORITY_CRITICAL, type LexicalEditor } from "lexical";
+import { byLabel, click, clickInWord, editable, editorOf, lastHtml, renderField, settle, unmountField } from "./rich-text-test-harness";
 import { sanitizeRichTextHtml } from "./rich-text-sanitize";
 import { cmsHistory } from "./rich-text-line-node";
 const UNDO = "{Control>}z{/Control}";
@@ -677,3 +677,120 @@ for (const shape of Object.keys(SC_SHAPES)) for (const nodeName of ["rule", "ima
     expect(`${sel0}|${sanitizeRichTextHtml(lastHtml(onChange))}`).toBe(`true|${sanitizeRichTextHtml(html.replace(`>${word}<`, `>${word[0]}k${word[1]}<`))}`);
   }, 60_000);
 }
+
+const all = (): LexicalNode[] => {
+  const out: LexicalNode[] = [];
+  const walk = (node: LexicalNode) => {
+    out.push(node);
+    if ($isElementNode(node)) node.getChildren().forEach(walk);
+  };
+  walk($getRoot());
+  return out;
+};
+
+// 15.8: Divider at any caret in a quote, heading or code block of a lined
+// item splits up to the root at the caret, nothing empty left; between a
+// quote's paragraphs the quote splits there; a caret after an image that
+// ends a quote is the quote's end (A1)
+const DIV_IMG = `<img src="https://cdn.example.org/x.png" alt="" width="40" height="20" />`;
+const DIVIDER_CELLS: [string, string, () => Promise<void>][] = [
+  ["QQ at Q0w end", LI("<blockquote><p>Q0w</p><p>Q1w</p></blockquote>T2w"), () => clickInWord("Q0w")],
+  ["QQ at Q1w start", LI("<blockquote><p>Q0w</p><p>Q1w</p></blockquote>T2w"), () => clickInWord("Q1w", 0)],
+  ["QQ mid Q0w", LI("<blockquote><p>Q0w</p><p>Q1w</p></blockquote>T2w"), () => clickInWord("Q0w", 1)],
+  ["Q at end", LI("<blockquote><p>Q0w</p></blockquote>T1w"), () => clickInWord("Q0w")],
+  ["Q at start", LI("T0w<blockquote><p>Q1w</p></blockquote>"), () => clickInWord("Q1w", 0)],
+  ["H mid", LI("T0w<h3>H1w</h3>T2w"), () => clickInWord("H1w", 1)],
+  ["Q image end", LI(`<blockquote><p>Q0w${DIV_IMG}</p></blockquote>T1w`), async () => { await click(editable()); await act(async () => { editorOf()!.update(() => { const img = all().find((n) => n.getType() === "cms-image")!; const r = $createRangeSelection(); const p = img.getParentOrThrow(); r.anchor.set(p.getKey(), p.getChildrenSize(), "element"); r.focus.set(p.getKey(), p.getChildrenSize(), "element"); $setSelection(r); }); }); await settle(); }],
+  ["QQ image end of first", LI(`<blockquote><p>Q0w${DIV_IMG}</p><p>Q1w</p></blockquote>T2w`), async () => { await click(editable()); await act(async () => { editorOf()!.update(() => { const img = all().find((n) => n.getType() === "cms-image")!; const r = $createRangeSelection(); const p = img.getParentOrThrow(); r.anchor.set(p.getKey(), p.getChildrenSize(), "element"); r.focus.set(p.getKey(), p.getChildrenSize(), "element"); $setSelection(r); }); }); await settle(); }],
+];
+const DIVIDER_WRITES: Record<string, { w: string; k: string }> = {
+ "H mid": {
+  "w": "<ul><li>Pw</li><li>T0w<h3>H</h3></li></ul><hr /><ul><li><h3>1w</h3>T2w</li><li>Nw</li></ul>",
+  "k": "<ul><li>Pw</li><li>T0w<h3>H</h3></li></ul><hr /><ul><li><h3>k1w</h3>T2w</li><li>Nw</li></ul>"
+ },
+ "Q at end": {
+  "w": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote></li></ul><hr /><ul><li>T1w</li><li>Nw</li></ul>",
+  "k": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote></li></ul><hr /><ul><li>kT1w</li><li>Nw</li></ul>"
+ },
+ "Q at start": {
+  "w": "<ul><li>Pw</li><li>T0w</li></ul><hr /><ul><li><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+  "k": "<ul><li>Pw</li><li>T0w</li></ul><hr /><ul><li><blockquote><p>kQ1w</p></blockquote></li><li>Nw</li></ul>"
+ },
+ "Q image end": {
+  "w": "<ul><li>Pw</li><li><blockquote><p>Q0w<img src=\"https://cdn.example.org/x.png\" alt=\"\" width=\"40\" height=\"20\" /></p></blockquote></li></ul><hr /><ul><li>T1w</li><li>Nw</li></ul>",
+  "k": "<ul><li>Pw</li><li><blockquote><p>Q0w<img src=\"https://cdn.example.org/x.png\" alt=\"\" width=\"40\" height=\"20\" /></p></blockquote></li></ul><hr /><ul><li>kT1w</li><li>Nw</li></ul>"
+ },
+ "QQ at Q0w end": {
+  "w": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote></li></ul><hr /><ul><li><blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>",
+  "k": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote></li></ul><hr /><ul><li><blockquote><p>kQ1w</p></blockquote>T2w</li><li>Nw</li></ul>"
+ },
+ "QQ at Q1w start": {
+  "w": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote></li></ul><hr /><ul><li><blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>",
+  "k": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote></li></ul><hr /><ul><li><blockquote><p>kQ1w</p></blockquote>T2w</li><li>Nw</li></ul>"
+ },
+ "QQ image end of first": {
+  "w": "<ul><li>Pw</li><li><blockquote><p>Q0w<img src=\"https://cdn.example.org/x.png\" alt=\"\" width=\"40\" height=\"20\" /></p></blockquote></li></ul><hr /><ul><li><blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>",
+  "k": "<ul><li>Pw</li><li><blockquote><p>Q0w<img src=\"https://cdn.example.org/x.png\" alt=\"\" width=\"40\" height=\"20\" /></p></blockquote></li></ul><hr /><ul><li><blockquote><p>kQ1w</p></blockquote>T2w</li><li>Nw</li></ul>"
+ },
+ "QQ mid Q0w": {
+  "w": "<ul><li>Pw</li><li><blockquote><p>Q</p></blockquote></li></ul><hr /><ul><li><blockquote><p>0w</p><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>",
+  "k": "<ul><li>Pw</li><li><blockquote><p>Q</p></blockquote></li></ul><hr /><ul><li><blockquote><p>k0w</p><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>"
+ }
+};
+for (const [id, html, place] of DIVIDER_CELLS) test(`15.8 Divider: ${id}`, async () => {
+  const onChange = await renderField(html);
+  await place();
+  await click(byLabel("Divider")); await settle();
+  const w = onChange.mock.calls.length ? sanitizeRichTextHtml(lastHtml(onChange)) : "NOOP";
+  await userEvent.keyboard("k"); await settle();
+  expect({ w, k: sanitizeRichTextHtml(lastHtml(onChange)) }).toEqual(DIVIDER_WRITES[id]);
+}, 30_000);
+
+// 15.12: a key handled from its keydown (an arrow, Backspace, Delete, Enter)
+// at a caret in text starts from the page's caret: the page's step read back
+// first, or the key first, the write is the same
+type KeyCell = [string, string, string, number, "Right" | "Down" | "Up", string];
+const KEY_CELLS: KeyCell[] = [
+  ["ord Abcw Right Backspace", "<p>Abcw</p>", "Abcw", 1, "Right", "Backspace"],
+  ["ord Abcw Right Delete", "<p>Abcw</p>", "Abcw", 1, "Right", "Delete"],
+  ["ord Abcw Right Enter", "<p>Abcw</p>", "Abcw", 1, "Right", "Enter"],
+  ["lined HB Right Delete", LI("<h3>Bw</h3><br>"), "Bw", 1, "Right", "Delete"],
+  ["lined HB Right Enter", LI("<h3>Bw</h3><br>"), "Bw", 1, "Right", "Enter"],
+  ["ord heading Right Enter", "<h3>Bw</h3><p>Cw</p>", "Bw", 1, "Right", "Enter"],
+  ["ord two lines Down Backspace", "<p>A0w</p><p>B1w</p>", "A0w", 3, "Down", "Backspace"],
+  ["ord two lines Up Backspace", "<p>A0w</p><p>B1w</p>", "B1w", 3, "Up", "Backspace"],
+  ["lined two lines Down Backspace", LI("T0w<br>T1w"), "T0w", 3, "Down", "Backspace"],
+  ["lined two lines Up Backspace", LI("T0w<br>T1w"), "T1w", 3, "Up", "Backspace"],
+];
+const placeIn = async (word: string, at: number) => {
+  const span = [...editable()!.querySelectorAll<HTMLElement>("[data-lexical-text]")].find((e) => e.textContent === word)!;
+  await userEvent.click(span); await settle();
+  await act(async () => { editorOf()!.update(() => { const t = all().find((nd) => $isTextNode(nd) && nd.getTextContent() === word)!; (t as unknown as { select: (a: number, b: number) => void }).select(at, at); }); });
+  await settle();
+};
+const writeOf = (onChange: Parameters<typeof lastHtml>[0]) => (onChange.mock.calls.length ? sanitizeRichTextHtml(lastHtml(onChange)) : "NOOP");
+const modifyFor = { Right: ["forward", "character"], Down: ["forward", "line"], Up: ["backward", "line"] } as const;
+const KEY_WRITES: Record<string, string> = {
+ "lined HB Right Delete": "<ul><li>Pw</li><li><h3>Bw</h3></li><li>Nw</li></ul>",
+ "lined HB Right Enter": "<ul><li>Pw</li><li><h3>Bw</h3><br /><br /></li><li>Nw</li></ul>",
+ "lined two lines Down Backspace": "<ul><li>Pw</li><li>T0w<br />T1</li><li>Nw</li></ul>",
+ "lined two lines Up Backspace": "<ul><li>Pw</li><li>T0<br />T1w</li><li>Nw</li></ul>",
+ "ord Abcw Right Backspace": "<p>Acw</p>",
+ "ord Abcw Right Delete": "<p>Abw</p>",
+ "ord Abcw Right Enter": "<p>Ab</p><p>cw</p>",
+ "ord heading Right Enter": "<h3>Bw</h3><p></p><p>Cw</p>",
+ "ord two lines Down Backspace": "<p>A0w</p><p>B1</p>",
+ "ord two lines Up Backspace": "<p>A0</p><p>B1w</p>"
+};
+for (const [id, html, word, at, step, key] of KEY_CELLS) for (const order of ["keydownFirst", "readbackFirst"]) test(`15.12 ${id}, ${order}`, async () => {
+  const onChange = await renderField(html);
+  await placeIn(word, at);
+  await act(async () => {
+    const [dir, gran] = modifyFor[step];
+    (window.getSelection() as unknown as { modify: (a: string, b: string, c: string) => void }).modify("move", dir, gran);
+    if (order === "readbackFirst") await new Promise((r) => setTimeout(r, 30));
+    editable()!.dispatchEvent(new KeyboardEvent("keydown", { key, code: key, bubbles: true, cancelable: true }));
+  });
+  await settle();
+  expect(writeOf(onChange)).toBe(KEY_WRITES[id]);
+}, 30_000);
