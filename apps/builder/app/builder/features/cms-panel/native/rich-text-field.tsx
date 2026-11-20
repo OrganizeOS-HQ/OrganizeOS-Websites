@@ -123,6 +123,7 @@ import {
   registerTypingAfterSelectedNode,
   $liftPointsIntoLines,
   $mapLineEdges,
+  $plainTextOf,
   $tagRemoval,
   isLinedContainer,
   $unwrapLines,
@@ -2674,9 +2675,7 @@ const ImageEditingPlugin = () => {
             markRichTextCopy(mapped);
             event.preventDefault();
             const data = $getClipboardDataFromSelection(mapped);
-            if (selection.getNodes().some((node) => $isCmsLineNode(node))) {
-              data["text/plain"] = data["text/plain"].replace(/\n{3,}/g, "\n\n");
-            }
+            data["text/plain"] = $plainTextOf(mapped);
             setLexicalClipboardDataTransfer(event.clipboardData, data);
             if (command === CUT_COMMAND) {
               $tagRemoval();

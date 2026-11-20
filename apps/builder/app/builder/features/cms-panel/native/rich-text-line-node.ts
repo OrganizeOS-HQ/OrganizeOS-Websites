@@ -11,6 +11,7 @@ import {
   $addUpdateTag,
   $copyNode,
   $getEditor,
+  $getCharacterOffsets,
   $hasUpdateTag,
   $getNodeByKey,
   $getSelection,
@@ -1327,7 +1328,10 @@ export const registerLineCommands = (editor: LexicalEditor) =>
             return false;
           }
           event.preventDefault();
-          const offset = isBackward ? line.getChildrenSize() - 1 : 1;
+          // with Shift going right the focus stops before the break, where
+          // the head's does (the container's point beside the block)
+          const offset =
+            isBackward ? line.getChildrenSize() - 1 : event.shiftKey ? 0 : 1;
           focus.set(line.getKey(), offset, "element");
           if (event.shiftKey === false) {
             selection.anchor.set(line.getKey(), offset, "element");
@@ -1776,6 +1780,78 @@ export const $unwrapLines = (nodes: LexicalNode[]): LexicalNode[] =>
   });
 
 const queueLinePoints: ElementPoint[] = [];
+
+/**
+ * The text/plain of a copy or a cut (D6, F7): the head's for the same
+ * selection, read with each line's children standing in its container as
+ * at the head, plus one new line where a line's text meets the text of a
+ * block before it, which the head runs together.
+ */
+export const $plainTextOf = (selection: BaseSelection): string => {
+  if ($isRangeSelection(selection) === false) {
+    return selection.getTextContent();
+  }
+  const nodes = selection.getNodes();
+  if (nodes.length === 0) {
+    return "";
+  }
+  const first = nodes[0];
+  const last = nodes[nodes.length - 1];
+  const { anchor, focus } = selection;
+  const isBefore = anchor.isBefore(focus);
+  const [anchorOffset, focusOffset] = $getCharacterOffsets(selection);
+  let text = "";
+  let prevWasElement = true;
+  // whether the last leaf read stood in a block's text, not in a line
+  let lastInBlockText = false;
+  for (const node of nodes) {
+    if ($isCmsLineNode(node)) {
+      continue;
+    }
+    if ($isElementNode(node) && node.isInline() === false) {
+      if (prevWasElement === false) {
+        text += "\n";
+      }
+      prevWasElement = node.isEmpty() === false;
+      continue;
+    }
+    const line = $findMatchingParent(node, $isCmsLineNode);
+    if (
+      line !== null &&
+      prevWasElement === false &&
+      lastInBlockText &&
+      isLineBreak(node) === false &&
+      text.endsWith("\n") === false
+    ) {
+      text += "\n";
+    }
+    lastInBlockText = line === null;
+    prevWasElement = false;
+    if ($isTextNode(node)) {
+      let part = node.getTextContent();
+      if (node === first) {
+        if (node === last) {
+          if (anchor.type !== "element" || focus.type !== "element" || focus.offset === anchor.offset) {
+            part = anchorOffset < focusOffset
+              ? part.slice(anchorOffset, focusOffset)
+              : part.slice(focusOffset, anchorOffset);
+          }
+        } else {
+          part = isBefore ? part.slice(anchorOffset) : part.slice(focusOffset);
+        }
+      } else if (node === last) {
+        part = isBefore ? part.slice(0, focusOffset) : part.slice(0, anchorOffset);
+      }
+      text += part;
+    } else if (
+      ($isDecoratorNode(node) || isLineBreak(node)) &&
+      (node !== last || selection.isCollapsed() === false)
+    ) {
+      text += node.getTextContent();
+    }
+  }
+  return text;
+};
 
 /**
  * The selection a copy, a cut or a drag writes from: a point at the edge

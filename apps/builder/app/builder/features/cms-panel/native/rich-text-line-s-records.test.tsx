@@ -474,6 +474,23 @@ const ime = (text: string): Step => async () => {
   await session.send("Input.insertText", { text });
   await settle();
 };
+/** A composition that ends with nothing: emptied, or committed empty. */
+const imeCancel = (how: "empty" | "commit" | "escape"): Step => async () => {
+  const session = cdp() as unknown as {
+    send: (method: string, params?: object) => Promise<unknown>;
+  };
+  await session.send("Input.imeSetComposition", { text: "a", selectionStart: 1, selectionEnd: 1 });
+  await settle();
+  if (how === "empty") {
+    await session.send("Input.imeSetComposition", { text: "", selectionStart: 0, selectionEnd: 0 });
+  } else if (how === "commit") {
+    await session.send("Input.imeSetComposition", { text: "", selectionStart: 0, selectionEnd: 0 });
+    await session.send("Input.insertText", { text: "" });
+  } else {
+    await userEvent.keyboard("{Escape}");
+  }
+  await settle();
+};
 const then = (...steps: Step[]): Step => async () => {
   for (const step of steps) await step();
 };
@@ -525,6 +542,16 @@ const V_RECORDS: Rec[] = [
   ["V10 BQ ArrowLeft x5 then k", LI("<br><blockquote><p>Q1w</p></blockquote>"), at("Nw", 0), keys("{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}k")],
   ["V10 CB ArrowRight x5 then k", LI("<pre><code>C0w</code></pre><br>"), at("C0w", 2), keys("{ArrowRight}{ArrowRight}{ArrowRight}k")],
   ["V10 TBQ ArrowLeft x3 then k", LI("T0w<br><blockquote><p>Q2w</p></blockquote>"), at("Q2w", 0), keys("{ArrowLeft}{ArrowLeft}k")],
+  ["R10 V10 BQ Shift+ArrowLeft x1 then copy", LI("<br><blockquote><p>Q1w</p></blockquote>"), at("Nw", 0), then(keys("{Shift>}{ArrowLeft}{/Shift}"), () => clipboardEvent("copy"))],
+  ["R10 V10 BQ Shift+ArrowLeft x2 then copy", LI("<br><blockquote><p>Q1w</p></blockquote>"), at("Nw", 0), then(keys("{Shift>}{ArrowLeft}{ArrowLeft}{/Shift}"), () => clipboardEvent("copy"))],
+  ["R10 V10 BQ Shift+ArrowLeft x3 then copy", LI("<br><blockquote><p>Q1w</p></blockquote>"), at("Nw", 0), then(keys("{Shift>}{ArrowLeft}{ArrowLeft}{ArrowLeft}{/Shift}"), () => clipboardEvent("copy"))],
+  ["R10 V10 BQ Shift+ArrowLeft x4 then copy", LI("<br><blockquote><p>Q1w</p></blockquote>"), at("Nw", 0), then(keys("{Shift>}{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}{/Shift}"), () => clipboardEvent("copy"))],
+  ["R10 V10 BQ Shift+ArrowLeft x5 then copy", LI("<br><blockquote><p>Q1w</p></blockquote>"), at("Nw", 0), then(keys("{Shift>}{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}{/Shift}"), () => clipboardEvent("copy"))],
+  ["R10 V10 CB Shift+ArrowRight x1 then copy", LI("<pre><code>C0w</code></pre><br>"), at("C0w", 2), then(keys("{Shift>}{ArrowRight}{/Shift}"), () => clipboardEvent("copy"))],
+  ["R10 V10 CB Shift+ArrowRight x2 then copy", LI("<pre><code>C0w</code></pre><br>"), at("C0w", 2), then(keys("{Shift>}{ArrowRight}{ArrowRight}{/Shift}"), () => clipboardEvent("copy"))],
+  ["R10 V10 CB Shift+ArrowRight x3 then copy", LI("<pre><code>C0w</code></pre><br>"), at("C0w", 2), then(keys("{Shift>}{ArrowRight}{ArrowRight}{ArrowRight}{/Shift}"), () => clipboardEvent("copy"))],
+  ["R10 V10 TBQ Shift+ArrowLeft x1 then copy", LI("T0w<br><blockquote><p>Q2w</p></blockquote>"), at("Q2w", 0), then(keys("{Shift>}{ArrowLeft}{/Shift}"), () => clipboardEvent("copy"))],
+  ["R10 V10 TBQ Shift+ArrowLeft x2 then copy", LI("T0w<br><blockquote><p>Q2w</p></blockquote>"), at("Q2w", 0), then(keys("{Shift>}{ArrowLeft}{ArrowLeft}{/Shift}"), () => clipboardEvent("copy"))],
   ["V11 BRR click first rule Backspace k", LI("<br><hr><hr>"), async () => {
     await clickInWord("Pw");
     const hr = editable()!.querySelectorAll("hr")[0] as HTMLElement;
@@ -632,6 +659,15 @@ const V_RECORDS: Rec[] = [
   ["R9 root quote X1w end Paragraph", "<blockquote>X1w<p>X2w</p></blockquote>", at("X1w"), blockType("Paragraph")],
   ["R9 FS9 programmatic Q0w@3 to after the break, copy", "<ul><li><blockquote><p>Q0w</p></blockquote><br></li></ul>", fs9Range(false), () => clipboardEvent("copy")],
   ["R9 FS9 programmatic Q0w@3 to Iw@0, copy", "<ul><li><blockquote><p>Q0w</p></blockquote><br></li><li>Iw</li></ul>", fs9Range(true), () => clipboardEvent("copy")],
+  ["R10 cancelled composition (empty) after x, at T0w end", LI("T0w"), at("T0w"), then(keys("x"), imeCancel("empty"))],
+  ["R10 cancelled composition (empty) after x, at TR@2", LI("T0w<hr>"), itemPoint(1, 2), then(keys("x"), imeCancel("empty"))],
+  ["R10 cancelled composition (empty) alone, at T0w end", LI("T0w"), at("T0w"), imeCancel("empty")],
+  ["R10 cancelled composition (commit) after x, at T0w end", LI("T0w"), at("T0w"), then(keys("x"), imeCancel("commit"))],
+  ["R10 cancelled composition (commit) after x, at TR@2", LI("T0w<hr>"), itemPoint(1, 2), then(keys("x"), imeCancel("commit"))],
+  ["R10 cancelled composition (commit) alone, at T0w end", LI("T0w"), at("T0w"), imeCancel("commit")],
+  ["R10 cancelled composition (escape) after x, at T0w end", LI("T0w"), at("T0w"), then(keys("x"), imeCancel("escape"))],
+  ["R10 cancelled composition (escape) after x, at TR@2", LI("T0w<hr>"), itemPoint(1, 2), then(keys("x"), imeCancel("escape"))],
+  ["R10 cancelled composition (escape) alone, at T0w end", LI("T0w"), at("T0w"), imeCancel("escape")],
   ["R8 ordinary T1w@0 Backspace", LI("T1w"), at("T1w", 0), keys("{Backspace}")],
   ["R8 ordinary T1w@0 Ctrl+Backspace", LI("T1w"), at("T1w", 0), keys("{Control>}{Backspace}{/Control}")],
   ["R8 ordinary T1w end Delete", LI("T1w"), at("T1w"), keys("{Delete}")],
