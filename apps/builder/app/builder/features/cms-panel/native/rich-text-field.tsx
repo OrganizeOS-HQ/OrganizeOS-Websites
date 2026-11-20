@@ -130,6 +130,8 @@ import {
   registerTypingAfterSelectedNode,
   registerCompositionStep,
   cmsHistory,
+  $heldContent,
+  type HeldContent,
   $liftPointsIntoLines,
   $mapLineEdges,
   $plainTextOf,
@@ -2706,27 +2708,41 @@ const ImageEditingPlugin = () => {
               selection.isCollapsed() === false &&
               selection.anchor.type === "text" &&
               selection.focus.type === "text";
+            let data: ReturnType<typeof $getClipboardDataFromSelection> | null;
+            let plain: string;
             if (textEnds) {
-              const data = $headFormClipboard(editor, selection as RangeSelection);
-              const plain = $plainTextOf(selection);
-              if (data === null) {
-                // the safe result: text/plain only, and a cut removes nothing
-                if (import.meta.env.DEV) {
-                  console.error("cms-line clipboard: the head-form copy could not be written");
-                }
-                markRichTextCopy(null);
-                setLexicalClipboardDataTransfer(event.clipboardData, { "text/plain": plain });
-                return true;
+              data = $headFormClipboard(editor, selection as RangeSelection);
+              plain = $plainTextOf(selection);
+              if (data === null && import.meta.env.DEV) {
+                console.error("cms-line clipboard: the head-form copy could not be written");
               }
-              data["text/plain"] = plain;
-              setLexicalClipboardDataTransfer(event.clipboardData, data);
             } else {
               const mapped = $mapLineEdges(selection);
               markRichTextCopy(mapped);
-              const data = $getClipboardDataFromSelection(mapped);
-              data["text/plain"] = $plainTextOf(mapped);
-              setLexicalClipboardDataTransfer(event.clipboardData, data);
+              data = $getClipboardDataFromSelection(mapped);
+              plain = $plainTextOf(mapped);
             }
+            // 14.9 (b): a cut writes, and removes, only when its clipboard
+            // holds what its selection holds (text without new lines, images
+            // and rules, read by the structure reader)
+            if (
+              data !== null &&
+              command === CUT_COMMAND &&
+              sameContent(data, $heldContent(selection)) === false
+            ) {
+              if (import.meta.env.DEV) {
+                console.error("cms-line clipboard: the cut's clipboard does not hold its selection");
+              }
+              data = null;
+            }
+            if (data === null) {
+              // the safe result: text/plain only, and a cut removes nothing
+              markRichTextCopy(null);
+              setLexicalClipboardDataTransfer(event.clipboardData, { "text/plain": plain });
+              return true;
+            }
+            data["text/plain"] = plain;
+            setLexicalClipboardDataTransfer(event.clipboardData, data);
             if (command === CUT_COMMAND) {
               $tagRemoval();
               if ($isRangeSelection(selection)) {
@@ -2746,6 +2762,39 @@ const ImageEditingPlugin = () => {
     );
   }, [editor]);
   return null;
+};
+
+/** Whether a clipboard's editor data holds the given content. */
+const sameContent = (
+  data: ReturnType<typeof $getClipboardDataFromSelection>,
+  held: HeldContent
+) => {
+  const json = data["application/x-lexical-editor"];
+  if (json === undefined || json === "" || lineSpike.cutCheckFails) {
+    return false;
+  }
+  const found: HeldContent = { text: "", images: 0, rules: 0 };
+  const walk = (node: { type?: string; text?: string; children?: unknown[] }) => {
+    if (typeof node.text === "string") {
+      found.text += node.text;
+    }
+    if (node.type === "cms-image") {
+      found.images += 1;
+    } else if (node.type === "horizontalrule") {
+      found.rules += 1;
+    }
+    for (const child of node.children ?? []) {
+      walk(child as typeof node);
+    }
+  };
+  try {
+    for (const node of (JSON.parse(json) as { nodes: unknown[] }).nodes) {
+      walk(node as Parameters<typeof walk>[0]);
+    }
+  } catch {
+    return false;
+  }
+  return found.text === held.text && found.images === held.images && found.rules === held.rules;
 };
 
 /** A node and its descendants as the editor state's JSON holds them. */

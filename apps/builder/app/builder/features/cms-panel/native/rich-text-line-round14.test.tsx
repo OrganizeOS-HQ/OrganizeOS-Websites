@@ -1751,3 +1751,47 @@ describe("a caret just before an image that starts its block or line is its star
     expect(emptyTexts()).toBe(0);
   });
 });
+
+describe("14.9 (b): every cut checks that its clipboard holds its selection", () => {
+  const html = LI("T0w<blockquote><p>Q1w</p></blockquote>T2w");
+  const select = async () => {
+    await clickInWord("T0w", 1);
+    await userEvent.keyboard("{Shift>}");
+    await clickInWord("T2w", 2);
+    await userEvent.keyboard("{/Shift}");
+    await settle();
+  };
+  const cut = () => {
+    const data = new DataTransfer();
+    act(() => {
+      editable()!.dispatchEvent(new ClipboardEvent("cut", { bubbles: true, cancelable: true, clipboardData: data }));
+    });
+    return data;
+  };
+  test("a clipboard that holds the selection: the cut writes it and removes the range", async () => {
+    const onChange = await renderField(html);
+    await select();
+    const data = cut();
+    await settle();
+    expect(data.getData("application/x-lexical-editor")).not.toBe("");
+    expect(written(onChange)).toBe(stored(LI("Tw")));
+  });
+  test("a clipboard that does not: the assertion reports it, text/plain only, nothing removed", async () => {
+    const onChange = await renderField(html);
+    await select();
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const calls = onChange.mock.calls.length;
+    lineSpike.cutCheckFails = true;
+    try {
+      const data = cut();
+      await settle();
+      expect(data.getData("text/html")).toBe("");
+      expect(data.getData("application/x-lexical-editor")).toBe("");
+      expect(data.getData("text/plain")).toBe("0w\nQ1w\nT2");
+      expect(onChange.mock.calls.length).toBe(calls);
+      expect(errors.mock.calls.some((args) => String(args[0]).includes("does not hold its selection"))).toBe(true);
+    } finally {
+      lineSpike.cutCheckFails = false;
+    }
+  });
+});

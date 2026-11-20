@@ -93,6 +93,8 @@ export const lineSpike = {
   noEmptied: true,
   /** Tests: the head-form clipboard's scratch write throws. */
   scratchClipboardFails: false,
+  /** Tests: the per-cut check finds the clipboard not holding the selection. */
+  cutCheckFails: false,
 };
 
 export class CmsLineNode extends ElementNode {
@@ -2540,6 +2542,46 @@ const $nodesInRange = (selection: RangeSelection) => {
   };
   walk($getRoot());
   return { nodes, start, end };
+};
+
+/** What a range or node selection holds: its text (no new lines), images and rules. */
+export type HeldContent = { text: string; images: number; rules: number };
+
+export const $heldContent = (selection: BaseSelection): HeldContent => {
+  const held: HeldContent = { text: "", images: 0, rules: 0 };
+  const count = (node: LexicalNode) => {
+    if (node.getType() === "cms-image") {
+      held.images += 1;
+    } else if (node.getType() === "horizontalrule") {
+      held.rules += 1;
+    }
+  };
+  if ($isRangeSelection(selection)) {
+    const { nodes, start, end } = $nodesInRange(selection);
+    for (const node of nodes) {
+      if ($isTextNode(node)) {
+        const text = node.getTextContent();
+        const from = start.type === "text" && start.key === node.getKey() ? start.offset : 0;
+        const to = end.type === "text" && end.key === node.getKey() ? end.offset : text.length;
+        held.text += text.slice(from, to);
+      } else {
+        count(node);
+      }
+    }
+    return held;
+  }
+  const walk = (node: LexicalNode) => {
+    if ($isTextNode(node)) {
+      held.text += node.getTextContent();
+      return;
+    }
+    count(node);
+    if ($isElementNode(node)) {
+      node.getChildren().forEach(walk);
+    }
+  };
+  selection.getNodes().forEach(walk);
+  return held;
 };
 
 export const $plainTextOf = (selection: BaseSelection): string => {
