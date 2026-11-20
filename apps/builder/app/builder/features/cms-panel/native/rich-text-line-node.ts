@@ -405,11 +405,10 @@ const $linesNeedingBreak = (container: ElementNode, children: LexicalNode[]) => 
       }));
     const now = first.getTextContent();
     const grown = now.startsWith(before.line) ? now.slice(before.line.length) : "";
-    const endedIn = between.some((key) => $hasUpdateTag(`${REMOVAL_END_TAG}${key}`));
     if (
       (grown !== "" &&
         before.blocks.some((text) => text !== "" && text.endsWith(grown))) ||
-      (endedIn && now !== before.line)
+      $hasUpdateTag(`${BREAK_AFTER_TAG}${first.getKey()}`)
     ) {
       result.add(child.getKey());
     }
@@ -644,6 +643,7 @@ const HEAD_PATH_TAG = "cms-head-path";
 
 const REMOVAL_START_TAG = "cms-removal-start:";
 const REMOVAL_END_TAG = "cms-removal-end:";
+const BREAK_AFTER_TAG = "cms-break-after:";
 
 /**
  * This update removes content (a range, a node selection, a delete, a
@@ -667,6 +667,32 @@ export const $tagRemoval = () => {
   }
   if (selection.isCollapsed()) {
     return;
+  }
+  const startPoint = selection.isBackward() ? selection.focus : selection.anchor;
+  const childOf = (node: LexicalNode) => {
+    let child: LexicalNode | null = node;
+    while (child !== null && isLinedContainer(child.getParent()) === false) {
+      child = child.getParent();
+    }
+    return child;
+  };
+  const from = childOf(startPoint.getNode());
+  const to = childOf(end.getNode());
+  if (
+    $isCmsLineNode(from) &&
+    to !== null &&
+    $isElementNode(to) &&
+    $isCmsLineNode(to) === false &&
+    from.getParent()?.is(to.getParent()) === true
+  ) {
+    const last = to.getLastDescendant();
+    const atEnd =
+      last !== null &&
+      end.getNode().is(last) &&
+      end.offset === last.getTextContentSize();
+    if (atEnd === false) {
+      $addUpdateTag(`${BREAK_AFTER_TAG}${from.getKey()}`);
+    }
   }
   const start = selection.isBackward() ? selection.focus : selection.anchor;
   for (
@@ -948,6 +974,19 @@ export const $pointIntoBlockBeside = (point: PointType) => {
   }
 };
 
+/**
+ * Whether this update already changed a node: a selection change Lexical
+ * dispatches inside an edit keeps the edit's undo step and onChange.
+ * SPIKE: reads the editor's dirty sets, which Lexical keeps private.
+ */
+const $updateHasEdits = () => {
+  const editor = $getEditor() as unknown as {
+    _dirtyElements: Map<string, boolean>;
+    _dirtyLeaves: Set<string>;
+  };
+  return editor._dirtyElements.size > 0 || editor._dirtyLeaves.size > 0;
+};
+
 /** Empty lines that hold no point of the selection go. True when any did. */
 const $removeLeftEmptyLines = () => {
   let removed = false;
@@ -1120,9 +1159,10 @@ export const registerLineCommands = (editor: LexicalEditor) =>
     editor.registerCommand(
       SELECTION_CHANGE_COMMAND,
       () => {
+        const edited = $updateHasEdits();
         const made = $liftPointsIntoLines(true);
         const removed = $removeLeftEmptyLines();
-        if (made || removed) {
+        if ((made || removed) && edited === false) {
           $addUpdateTag("history-merge");
         }
         return false;
@@ -1160,7 +1200,8 @@ export const registerLineCommands = (editor: LexicalEditor) =>
             node.selectNext();
           }
           // a caret move, not an edit
-          if ($liftPointsIntoLines(true)) {
+          const edited = $updateHasEdits();
+          if ($liftPointsIntoLines(true) && edited === false) {
             $addUpdateTag("history-merge");
           }
           return true;
@@ -1392,11 +1433,13 @@ export const registerLineCommands = (editor: LexicalEditor) =>
             beside.remove();
             return true;
           }
+          // the point stands on the container first, so nothing points at
+          // the line once it goes
           const at = line.getIndexWithinParent();
+          selection.anchor.set(container.getKey(), at, "element");
+          selection.focus.set(container.getKey(), at, "element");
           line.remove();
           $unwrapLines(container.getChildren());
-          selection.anchor.set(container.getKey(), Math.min(at, container.getChildrenSize()), "element");
-          selection.focus.set(container.getKey(), Math.min(at, container.getChildrenSize()), "element");
           return false;
         },
         COMMAND_PRIORITY_NORMAL
