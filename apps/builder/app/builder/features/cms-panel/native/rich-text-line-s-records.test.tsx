@@ -697,6 +697,7 @@ for (const [name, html, , size] of Q1_SHAPES) {
     RECORDS.push([`Q1 ${name} item@${offset} Enter`, html, place, keys("{Enter}")]);
     RECORDS.push([`Q1 ${name} item@${offset} Heading 2`, html, place, blockType("Heading 2")]);
     RECORDS.push([`Q1 ${name} item@${offset} letter`, html, place, keys("k")]);
+    RECORDS.push([`Q1 ${name} item@${offset} IME`, html, place, ime("a")]);
     for (const [label, step] of Q1_COMMANDS) {
       RECORDS.push([`Q1 ${name} item@${offset} ${label}`, html, place, step]);
     }
