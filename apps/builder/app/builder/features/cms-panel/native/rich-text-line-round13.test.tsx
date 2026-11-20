@@ -1,8 +1,16 @@
 // SPIKE: the named writes of the second record-set check (prototype round
 // 13), one assertion each, with real input.
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
+import { act } from "react-dom/test-utils";
 import { userEvent } from "@vitest/browser/context";
-import { $getSelection, $isNodeSelection } from "lexical";
+import {
+  $createRangeSelection,
+  $getRoot,
+  $getSelection,
+  $isNodeSelection,
+  $setSelection,
+  type ElementNode,
+} from "lexical";
 import {
   byLabel,
   click,
@@ -269,6 +277,81 @@ describe("G: the clipboard holds what the selection holds, and a cut removes tha
     const clip = await clipboard("cut");
     expect(clip.text).toContain("T1w");
     expect(written(onChange)).toBe(stored("<ul><li><hr /></li><li>Nw</li></ul>"));
+  });
+});
+
+describe("H, I, J, K", () => {
+  test("H: Delete after an image that ends a quote's last paragraph removes the image only", async () => {
+    const onChange = await renderField(
+      '<ul><li><blockquote><p>X0w<img src="https://cdn.example.org/x.png" alt="" width="40" height="20" /></p></blockquote>T1w</li></ul>'
+    );
+    await userEvent.click(editable()!.querySelector("img")!);
+    await settle();
+    await keys("{Escape}{Delete}");
+    expect(written(onChange)).toBe(stored("<ul><li><blockquote><p>X0w</p></blockquote>T1w</li></ul>"));
+  });
+  test("I: a plain-text paste over a selected rule leaves the caret after the paste", async () => {
+    const onChange = await renderField("<ul><li>xq<hr>yq</li></ul>");
+    await clickInWord("xq");
+    await keys("{ArrowRight}");
+    expect(ruleSelected()).toBe(true);
+    paste({ "text/plain": "Aq" });
+    await settle();
+    await keys("Z");
+    expect(written(onChange)).toBe(stored("<ul><li>xqAqZyq</li></ul>"));
+  });
+  test("J: a point on an item that holds only a nested list logs no error", async () => {
+    await renderField("<ul><li>a1q</li><li><ul><li><hr>T1q</li></ul></li></ul>");
+    await click(editable());
+    const errors = vi.spyOn(console, "error");
+    await act(async () => {
+      editorOf()!.update(() => {
+        const item = $getRoot().getFirstChildOrThrow<ElementNode>().getChildAtIndex(1) as ElementNode;
+        const selection = $createRangeSelection();
+        selection.anchor.set(item.getKey(), 0, "element");
+        selection.focus.set(item.getKey(), 0, "element");
+        $setSelection(selection);
+      });
+    });
+    await settle();
+    expect(errors.mock.calls.map((args) => String(args[0])).filter((m) => m.includes("cms-line"))).toEqual([]);
+  });
+  const composeEmpty = async () => {
+    const element = editable()!;
+    act(() => {
+      element.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true, cancelable: true, data: "" }));
+    });
+    await settle();
+    act(() => {
+      element.dispatchEvent(new CompositionEvent("compositionupdate", { bubbles: true, data: "a" }));
+      element.dispatchEvent(
+        new InputEvent("beforeinput", { bubbles: true, cancelable: true, inputType: "insertCompositionText", data: "a" })
+      );
+    });
+    await settle();
+    act(() => {
+      element.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "a" }));
+    });
+    await settle();
+  };
+  const TQT = LI("T0w<blockquote><p>Q1w</p></blockquote>T2w");
+  test("K: undo, redo, undo after a composition that wrote nothing fire no onChange", async () => {
+    const onChange = await renderField(TQT);
+    await clickInWord("T2w", 1);
+    await composeEmpty();
+    const calls = onChange.mock.calls.length;
+    await keys("{Control>}z{/Control}");
+    await keys("{Control>}{Shift>}z{/Shift}{/Control}");
+    await keys("{Control>}z{/Control}");
+    expect(onChange.mock.calls.length).toBe(calls);
+  });
+  test("K: a letter, a composition that wrote nothing, one undo: the letter goes", async () => {
+    const onChange = await renderField(TQT);
+    await clickInWord("T2w");
+    await keys("x");
+    await composeEmpty();
+    await keys("{Control>}z{/Control}");
+    expect(written(onChange)).toBe(stored(TQT));
   });
 });
 

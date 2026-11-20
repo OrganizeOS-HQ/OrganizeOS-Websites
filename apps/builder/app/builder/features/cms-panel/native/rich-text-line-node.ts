@@ -68,6 +68,7 @@ import { $isQuoteNode, HeadingNode, QuoteNode } from "@lexical/rich-text";
 import { CodeNode } from "@lexical/code";
 import { $dfs, $findMatchingParent, mergeRegister } from "@lexical/utils";
 import { LinkNode } from "@lexical/link";
+import type { HistoryState } from "@lexical/react/LexicalHistoryPlugin";
 import { $createHorizontalRuleNode, INSERT_HORIZONTAL_RULE_COMMAND } from "@lexical/react/LexicalHorizontalRuleNode";
 
 /** SPIKE: VITE_LINES_OFF turns every line rule off (the head's behaviour). */
@@ -645,6 +646,9 @@ const HEAD_PATH_TAG = "cms-head-path";
 const REMOVAL_START_TAG = "cms-removal-start:";
 const REMOVAL_END_TAG = "cms-removal-end:";
 const BREAK_AFTER_TAG = "cms-break-after:";
+/** The field's history, so a composition that changes nothing takes its step back. */
+export const cmsHistory = new WeakMap<LexicalEditor, HistoryState>();
+let pendingCompositionCheck: (() => void) | undefined;
 /** The last check after a commit left a point on a lined container. */
 let checkFailed = false;
 
@@ -983,7 +987,7 @@ export const isLinedContainer = (
  * `create`, a point with no line beside it gets an empty line of its own
  * there.
  */
-export const $liftPointsIntoLines = (create: boolean): boolean => {
+export const $liftPointsIntoLines = (create: boolean, depth = 0): boolean => {
   if (lineSpike.on === false) {
     return false;
   }
@@ -1104,7 +1108,16 @@ export const $liftPointsIntoLines = (create: boolean): boolean => {
       focus.set(anchor.key, anchor.offset, anchor.type);
     }
   }
-  return made.size > 0 || gaveBack;
+  // J: a point moved into a nested container (an item that holds only a
+  // nested list) resolves there in turn, so one resolver serves all three
+  // places
+  const again =
+    depth < 4 &&
+    [selection.anchor, selection.focus].some(
+      (point) => point.type === "element" && isLinedContainer(point.getNode())
+    );
+  const deeper = again ? $liftPointsIntoLines(create, depth + 1) : false;
+  return made.size > 0 || gaveBack || deeper;
 };
 
 /**
@@ -2183,6 +2196,8 @@ export const registerTypingAfterSelectedNode = (editor: LexicalEditor) =>
       // the state before a composition is its own undo step: a composition
       // into existing text otherwise merges into the step before it. The
       // update changes nothing and fires no onChange
+      const history = cmsHistory.get(editor);
+      const depthBefore = history?.undoStack.length ?? 0;
       editor.update(
         () => {
           const selection = $getSelection();
@@ -2194,6 +2209,20 @@ export const registerTypingAfterSelectedNode = (editor: LexicalEditor) =>
         },
         { discrete: true }
       );
+      // K: a composition that changes nothing leaves no step: at its end,
+      // the step made at its start is taken back
+      if (history !== undefined && history.undoStack.length > depthBefore) {
+        const start = JSON.stringify(editor.getEditorState().toJSON());
+        const pushed = history.undoStack.length;
+        pendingCompositionCheck = () => {
+          if (
+            history.undoStack.length === pushed &&
+            JSON.stringify(editor.getEditorState().toJSON()) === start
+          ) {
+            history.undoStack.pop();
+          }
+        };
+      }
       const $atLinkLedLineStart = () => {
         const selection = $getSelection();
         if ($isRangeSelection(selection) === false || selection.isCollapsed() === false) {
@@ -2246,6 +2275,15 @@ export const registerTypingAfterSelectedNode = (editor: LexicalEditor) =>
     };
     previous?.removeEventListener("compositionstart", onCompositionStart, true);
     root?.addEventListener("compositionstart", onCompositionStart, true);
+    const onCompositionEnd = () => {
+      // after Lexical has applied the composition's end
+      setTimeout(() => {
+        const check = pendingCompositionCheck;
+        pendingCompositionCheck = undefined;
+        check?.();
+      }, 0);
+    };
+    root?.addEventListener("compositionend", onCompositionEnd);
     const onBeforeInput = (event: InputEvent) => {
       // Safari's text replacement over a range: the controlled text
       // insertion, so the removal is marked like typed text (5.4)

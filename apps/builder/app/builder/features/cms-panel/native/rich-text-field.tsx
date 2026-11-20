@@ -111,7 +111,10 @@ import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
-import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
+import {
+  HistoryPlugin,
+  createEmptyHistoryState,
+} from "@lexical/react/LexicalHistoryPlugin";
 import { LinkPlugin } from "@lexical/react/LexicalLinkPlugin";
 import { ListPlugin } from "@lexical/react/LexicalListPlugin";
 import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
@@ -126,6 +129,7 @@ import {
   $liftPointsIntoLines,
   $mapLineEdges,
   $plainTextOf,
+  cmsHistory,
   $removeRangeWithBreak,
   $tagRemoval,
   isLinedContainer,
@@ -2775,6 +2779,19 @@ const $headFormClipboard = (editor: LexicalEditor, selection: RangeSelection) =>
   return data;
 };
 
+/** Lexical's history, held where the line rules can reach it (K). */
+const CmsHistoryPlugin = () => {
+  const [editor] = useLexicalComposerContext();
+  const [historyState] = useState(createEmptyHistoryState);
+  useEffect(() => {
+    cmsHistory.set(editor, historyState);
+    return () => {
+      cmsHistory.delete(editor);
+    };
+  }, [editor, historyState]);
+  return <HistoryPlugin externalHistoryState={historyState} />;
+};
+
 const LinkRulePlugin = () => {
   const [editor] = useLexicalComposerContext();
   useEffect(
@@ -4151,7 +4168,7 @@ export const RichTextField = ({
           ErrorBoundary={LexicalErrorBoundary}
         />
         <EditablePlugin editable={disabled === false} />
-        <HistoryPlugin />
+        <CmsHistoryPlugin />
         <ListPlugin />
         <LinkPlugin />
         <LinkRulePlugin />
