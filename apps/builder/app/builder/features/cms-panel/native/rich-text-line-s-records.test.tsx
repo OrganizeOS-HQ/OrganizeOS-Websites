@@ -434,6 +434,33 @@ const replaceText = (text: string): Step => async () => {
   });
   await settle();
 };
+/** Q0w's end to after the item's line break, or to Iw's start (FS9). */
+const fs9Range = (toNext: boolean): Step => async () => {
+  await click(editable());
+  await act(async () => {
+    editorOf()!.update(() => {
+      const texts = $getRoot().getAllTextNodes();
+      const q = texts.find((text) => text.getTextContent() === "Q0w")!;
+      const selection = $createRangeSelection();
+      selection.anchor.set(q.getKey(), 3, "text");
+      if (toNext) {
+        const next = texts.find((text) => text.getTextContent() === "Iw")!;
+        selection.focus.set(next.getKey(), 0, "text");
+      } else {
+        let brk: LexicalNode | null = null;
+        const walk = (node: LexicalNode) => {
+          if (node.getType() === "linebreak") brk = node;
+          if ($isElementNode(node)) node.getChildren().forEach(walk);
+        };
+        walk($getRoot());
+        const parent = (brk as unknown as LexicalNode).getParentOrThrow();
+        selection.focus.set(parent.getKey(), (brk as unknown as LexicalNode).getIndexWithinParent() + 1, "element");
+      }
+      $setSelection(selection);
+    });
+  });
+  await settle();
+};
 const ime = (text: string): Step => async () => {
   const session = cdp() as unknown as {
     send: (method: string, params?: object) => Promise<unknown>;
@@ -603,6 +630,8 @@ const V_RECORDS: Rec[] = [
   ["R8 B7 TCT Delete at T0w end", LI("T0w<pre><code>C1w</code></pre>T2w"), at("T0w"), keys("{Delete}")],
   ["R8 B8 root quote Shift+Enter at X2w end", "<blockquote><p>X1w</p>X2w</blockquote>", at("X2w"), keys("{Shift>}{Enter}{/Shift}")],
   ["R9 root quote X1w end Paragraph", "<blockquote>X1w<p>X2w</p></blockquote>", at("X1w"), blockType("Paragraph")],
+  ["R9 FS9 programmatic Q0w@3 to after the break, copy", "<ul><li><blockquote><p>Q0w</p></blockquote><br></li></ul>", fs9Range(false), () => clipboardEvent("copy")],
+  ["R9 FS9 programmatic Q0w@3 to Iw@0, copy", "<ul><li><blockquote><p>Q0w</p></blockquote><br></li><li>Iw</li></ul>", fs9Range(true), () => clipboardEvent("copy")],
   ["R8 ordinary T1w@0 Backspace", LI("T1w"), at("T1w", 0), keys("{Backspace}")],
   ["R8 ordinary T1w@0 Ctrl+Backspace", LI("T1w"), at("T1w", 0), keys("{Control>}{Backspace}{/Control}")],
   ["R8 ordinary T1w end Delete", LI("T1w"), at("T1w"), keys("{Delete}")],
@@ -779,6 +808,46 @@ const caretOf = () =>
 const stateOf = () =>
   JSON.stringify(editorOf()!.getEditorState().toJSON().root);
 
+/**
+ * D7's state: `direction` and empty lines left out, with the caret by D1
+ * (a point in an empty line is the container's point where the line
+ * stands, counted without empty lines).
+ */
+const d7Of = () =>
+  editorOf()!
+    .getEditorState()
+    .read(() => {
+      const strip = (node: Record<string, unknown>): Record<string, unknown> => {
+        const { direction: _direction, ...rest } = node;
+        if (Array.isArray(rest.children)) {
+          rest.children = (rest.children as Record<string, unknown>[])
+            .filter((child) => !(child.type === "cms-line" && (child.children as unknown[]).length === 0))
+            .map(strip);
+        }
+        return rest;
+      };
+      const isEmptyLine = (node: LexicalNode) =>
+        node.getType() === "cms-line" && $isElementNode(node) && node.getChildrenSize() === 0;
+      const selection = $getSelection();
+      const pointOf = (point: { getNode: () => LexicalNode; offset: number; type: string }) => {
+        const node = point.getNode();
+        if (isEmptyLine(node)) {
+          const parent = node.getParentOrThrow();
+          const before = parent.getChildren().slice(0, node.getIndexWithinParent()).filter((child) => !isEmptyLine(child)).length;
+          return `${parent.getType()}@${before}`;
+        }
+        if (point.type === "text") return `${node.getTextContent()}@${point.offset}`;
+        const kept = $isElementNode(node)
+          ? node.getChildren().slice(0, point.offset).filter((child) => !isEmptyLine(child)).length
+          : point.offset;
+        return `${node.getType()}@${kept}`;
+      };
+      const caret = $isRangeSelection(selection)
+        ? `${pointOf(selection.anchor)}|${pointOf(selection.focus)}`
+        : String(selection === null ? "none" : "node");
+      return JSON.stringify(strip(editorOf()!.getEditorState().toJSON().root as unknown as Record<string, unknown>)) + caret;
+    });
+
 describe("S records", () => {
   const skip = String((import.meta as { env?: Record<string, string> }).env?.VITE_SKIP ?? "");
   for (const [id, html, place, action] of RECORDS) {
@@ -827,6 +896,7 @@ describe("S records", () => {
       const after = calls > 0 ? sanitizeRichTextHtml(lastHtml(onChange)) : stored;
       const caret = caretOf();
       const written = stateOf();
+      const writtenD7 = d7Of();
       clearRichTextReadOnlyMemo();
       const reopens = after === "" || getRichTextReadOnlyReason(after) === undefined;
       const letterPass =
@@ -851,6 +921,7 @@ describe("S records", () => {
       await userEvent.keyboard("{Control>}{Shift>}z{/Shift}{/Control}");
       await settle();
       const redone = stateOf();
+      const redoD7 = d7Of() === writtenD7;
       const redoState = redone === written;
       let redoDiff = "";
       if (redoState === false) {
@@ -872,6 +943,7 @@ describe("S records", () => {
           undoRestores: calls === 0 || undone === stored,
           undone,
           redoState,
+          redoD7,
           redoDiff,
           violations: lineRuleViolations.splice(0),
           lines: JSON.stringify(editorOf()!.getEditorState().toJSON()).split('"cms-line"').length - 1,
