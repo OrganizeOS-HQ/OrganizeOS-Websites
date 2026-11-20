@@ -767,7 +767,42 @@ const $joinsInlineContent = (block: ElementNode) => {
  * Lexical drops when the update ends. A point on a lined container is
  * resolved by D18 instead.
  */
+/**
+ * A caret at the edge of an inline element's content, the element at the
+ * edge of its block or line, is at that block's or line's edge: a delete in
+ * that direction runs from beside the element, as at the edge of the same
+ * text unwrapped.
+ */
+const $caretBesideInlineEdge = (isBackward: boolean, character: boolean) => {
+  const selection = $getSelection();
+  if ($isRangeSelection(selection) === false || selection.isCollapsed() === false) {
+    return false;
+  }
+  const inline = $inlineEdgeOf(selection.anchor, isBackward);
+  if (
+    inline === null ||
+    (isBackward ? inline.getPreviousSibling() : inline.getNextSibling()) !== null
+  ) {
+    return false;
+  }
+  const parent = inline.getParentOrThrow();
+  const offset = isBackward ? 0 : parent.getChildrenSize();
+  selection.anchor.set(parent.getKey(), offset, "element");
+  selection.focus.set(parent.getKey(), offset, "element");
+  // Backspace at the content's start: nothing is before the caret, and
+  // Lexical's own step past nothing reads the page's selection, still in
+  // the link; the block's start rule runs here, as at the start of the
+  // same text unwrapped (an item outdents, a paragraph stays). True when
+  // the delete is decided
+  if (isBackward && character && $nothingBefore(inline)) {
+    parent.collapseAtStart(selection);
+    return true;
+  }
+  return false;
+};
+
 const $pointOffNodeEnd = (selection: RangeSelection, isBackward?: boolean) => {
+  $lastPointIntoText(selection);
   const first = selection.isCollapsed()
     ? selection.anchor
     : selection.anchor.isBefore(selection.focus)
@@ -779,17 +814,13 @@ const $pointOffNodeEnd = (selection: RangeSelection, isBackward?: boolean) => {
   }
   const lined = isLinedContainer(holder as LexicalNode);
   // the mirror: a backward delete at a caret at the start of a node whose
-  // first child is an image starts in text before it, so the line rules
-  // read it as the start of the block's text (a line that starts with a
-  // break has its own rule); at the content's start there is nothing to
-  // remove and the caret stays
+  // first child is not text starts in text before that child, so the line
+  // rules read it as the start of the block's text (a line that starts
+  // with a break has its own rule); at the content's start there is
+  // nothing to remove and the caret stays
   if (lined === false && selection.isCollapsed() && isBackward === true) {
-    const at = holder.getChildAtIndex(first.offset);
-    if (
-      first.offset === 0 &&
-      $isDecoratorNode(at) &&
-      $nothingBefore(holder) === false
-    ) {
+    if (first.offset === 0 && $startsWithNonText(holder) && $nothingBefore(holder) === false) {
+      const at = holder.getFirstChildOrThrow();
       const text = $createTextNode("");
       at.insertBefore(text);
       selection.anchor.set(text.getKey(), 0, "text");
@@ -825,6 +856,49 @@ const $pointOffNodeEnd = (selection: RangeSelection, isBackward?: boolean) => {
   } else {
     first.set(text.getKey(), offset, "text");
   }
+};
+
+/**
+ * A node whose first child is not text: an image, an inline element such
+ * as a link, or a line break (not in a line: a line that starts with a
+ * break has its own rule).
+ */
+const $startsWithNonText = (holder: ElementNode) => {
+  const at = holder.getFirstChild();
+  return (
+    $isDecoratorNode(at) ||
+    ($isElementNode(at) && at.isInline()) ||
+    (isLineBreak(at) && $isCmsLineNode(holder) === false)
+  );
+};
+
+/**
+ * 5.4 for a range's last point: an element point at the start of a node
+ * whose first child is not text holds none of that child, but Lexical's
+ * node walk descends into it (getDescendantByIndex(0)); the point moves to
+ * the same place in text, an empty text node before the child, which
+ * Lexical drops when the update ends.
+ */
+const $lastPointIntoText = (selection: RangeSelection) => {
+  if (selection.isCollapsed()) {
+    return;
+  }
+  const last = selection.anchor.isBefore(selection.focus)
+    ? selection.focus
+    : selection.anchor;
+  const holder = last.getNode();
+  if (
+    last.type !== "element" ||
+    last.offset !== 0 ||
+    $isElementNode(holder) === false ||
+    isLinedContainer(holder as LexicalNode) ||
+    $startsWithNonText(holder) === false
+  ) {
+    return;
+  }
+  const text = $createTextNode("");
+  holder.getFirstChildOrThrow().insertBefore(text);
+  last.set(text.getKey(), 0, "text");
 };
 
 /** No node before this one, its ancestors' included: the content's start. */
@@ -863,7 +937,7 @@ const $backwardFormIsBackspace = () => {
   return (
     at !== null &&
     $isTextNode(at) === false &&
-    $isElementNode(at) === false &&
+    ($isElementNode(at) === false || at.isInline()) &&
     ((previous === null && $nothingBefore(holder) === false) || isLineBreak(previous))
   );
 };
@@ -883,7 +957,7 @@ const $lineFormAtContentStart = () => {
   return (
     first !== null &&
     $isTextNode(first) === false &&
-    $isElementNode(first) === false &&
+    ($isElementNode(first) === false || first.isInline()) &&
     $nothingBefore(holder)
   );
 };
@@ -1503,6 +1577,63 @@ const removeCommands: LexicalCommand<never>[] = [
 ] as LexicalCommand<never>[];
 
 /**
+ * Whether a point is at the start (end) of a node's content: nothing of
+ * that content stands before (after) it, in its own node or in any node
+ * between it and the scope. A link's text is its block's text, so the
+ * answer climbs through inline elements as through the blocks between.
+ * Every edge rule of the line code asks it.
+ */
+export const $atContentEdge = (
+  point: PointType,
+  scope: LexicalNode,
+  atStart: boolean
+) => {
+  let node: LexicalNode | null = point.getNode();
+  const size =
+    point.type === "text"
+      ? node.getTextContentSize()
+      : $isElementNode(node)
+        ? node.getChildrenSize()
+        : 0;
+  if (point.offset !== (atStart ? 0 : size)) {
+    return false;
+  }
+  while (node !== null && node.is(scope) === false) {
+    if ((atStart ? node.getPreviousSibling() : node.getNextSibling()) !== null) {
+      return false;
+    }
+    node = node.getParent();
+  }
+  return node !== null;
+};
+
+/**
+ * The outermost inline element whose content's start (end) a point is at,
+ * climbing through inline elements only; null when the point is not at
+ * the edge of one.
+ */
+const $inlineEdgeOf = (point: PointType, atStart: boolean) => {
+  let found: ElementNode | null = null;
+  for (
+    let at: ElementNode | null = point.getNode().getParent();
+    at !== null && at.isInline();
+    at = at.getParent()
+  ) {
+    if ($atContentEdge(point, at, atStart) === false) {
+      break;
+    }
+    found = at;
+  }
+  if (point.type === "element") {
+    const holder = point.getNode();
+    if ($isElementNode(holder) && holder.isInline() && $atContentEdge(point, holder, atStart)) {
+      found ??= holder;
+    }
+  }
+  return found;
+};
+
+/**
  * The direct child of a lined container that holds a collapsed caret at
  * its start (backward) or end (forward), with the container.
  */
@@ -1520,14 +1651,9 @@ const $childAtEdge = (isBackward: boolean) => {
   if (child === null || $isElementNode(child) === false) {
     return null;
   }
-  const edge = isBackward ? child.getFirstDescendant() : child.getLastDescendant();
-  const atEdge =
-    point.type === "element"
-      ? node.is(child) && point.offset === (isBackward ? 0 : child.getChildrenSize())
-      : edge !== null &&
-        edge.is(node) &&
-        point.offset === (isBackward ? 0 : node.getTextContentSize());
-  return atEdge ? { child, container: child.getParentOrThrow() } : null;
+  return $atContentEdge(point, child, isBackward)
+    ? { child, container: child.getParentOrThrow() }
+    : null;
 };
 
 /** The rule beside the caret's child of a lined container, in a direction. */
@@ -1557,14 +1683,7 @@ const $focusPastRule = (selection: RangeSelection, isBackward: boolean) => {
   if (child === null || $isElementNode(child) === false || $isCmsLineNode(child)) {
     return false;
   }
-  const edge = isBackward ? child.getFirstDescendant() : child.getLastDescendant();
-  const atEdge =
-    focus.type === "text"
-      ? edge !== null && edge.is(node) && focus.offset === (isBackward ? 0 : node.getTextContentSize())
-      : (edge === null || $isElementNode(edge)) &&
-        (edge ?? child).is(node) &&
-        focus.offset === (isBackward ? 0 : (edge ?? child).getChildrenSize());
-  if (atEdge === false) {
+  if ($atContentEdge(focus, child, isBackward) === false) {
     return false;
   }
   const rule = isBackward ? child.getPreviousSibling() : child.getNextSibling();
@@ -1763,13 +1882,7 @@ export const registerLineCommands = (editor: LexicalEditor) =>
           if (child === null || $isCmsLineNode(child) || $isElementNode(child) === false) {
             return false;
           }
-          const edge = isBackward ? child.getFirstDescendant() : child.getLastDescendant();
-          const atEdge =
-            focus.type === "text" &&
-            edge !== null &&
-            edge.is(node) &&
-            focus.offset === (isBackward ? 0 : node.getTextContentSize());
-          if (atEdge === false) {
+          if ($atContentEdge(focus, child, isBackward) === false) {
             return false;
           }
           const line = isBackward ? child.getPreviousSibling() : child.getNextSibling();
@@ -2050,25 +2163,10 @@ export const registerLineCommands = (editor: LexicalEditor) =>
                 // as a text end does in V1
                 const range = $getSelection();
                 if ($isRangeSelection(range) && range.isCollapsed()) {
-                  let node: LexicalNode = range.anchor.getNode();
-                  let atEnd =
-                    range.anchor.type === "text" &&
-                    range.anchor.offset === node.getTextContentSize();
-                  let parent = node.getParent();
-                  let moved = false;
-                  while (
-                    atEnd &&
-                    $isElementNode(parent) &&
-                    parent.isInline() &&
-                    parent.getLastChild()?.is(node) === true
-                  ) {
-                    node = parent;
-                    parent = node.getParent();
-                    moved = true;
-                    atEnd = true;
-                  }
-                  if (moved && parent !== null) {
-                    const at = node.getIndexWithinParent() + 1;
+                  const link = $inlineEdgeOf(range.anchor, false);
+                  const parent = link?.getParent() ?? null;
+                  if (link !== null && parent !== null) {
+                    const at = link.getIndexWithinParent() + 1;
                     range.anchor.set(parent.getKey(), at, "element");
                     range.focus.set(parent.getKey(), at, "element");
                   }
@@ -2140,6 +2238,15 @@ export const registerLineCommands = (editor: LexicalEditor) =>
             (command !== CUT_COMMAND && $headPathOverNodeSelection())
           ) {
             return false;
+          }
+          if (
+            command === DELETE_CHARACTER_COMMAND ||
+            command === DELETE_WORD_COMMAND ||
+            command === DELETE_LINE_COMMAND
+          ) {
+            if ($caretBesideInlineEdge(payload as boolean, command === DELETE_CHARACTER_COMMAND)) {
+              return true;
+            }
           }
           if (command === DELETE_LINE_COMMAND && payload === false && $lineFormHasNothing()) {
             return true;
@@ -2372,8 +2479,7 @@ export const registerLineCommands = (editor: LexicalEditor) =>
         if ($isCmsLineNode(line) === false || anchor.offset !== 0) {
           return false;
         }
-        const first = line.getFirstDescendant();
-        if (node.is(line) === false && first?.is(node) !== true) {
+        if ($atContentEdge(anchor, line, true) === false) {
           return false;
         }
         let target: LexicalNode | null = line.getPreviousSibling();
@@ -2427,11 +2533,7 @@ export const registerLineCommands = (editor: LexicalEditor) =>
         const item = $isListItemNode(node)
           ? node
           : $findMatchingParent(node, $isListItemNode);
-        if (item === null || anchor.offset !== 0) {
-          return false;
-        }
-        const first = item.getFirstDescendant();
-        if (first !== null && first.is(node) === false && item.is(node) === false) {
+        if (item === null || $atContentEdge(anchor, item, true) === false) {
           return false;
         }
         const previous = item.getPreviousSibling();
