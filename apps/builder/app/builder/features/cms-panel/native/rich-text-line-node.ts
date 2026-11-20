@@ -706,6 +706,8 @@ const compositionStarts = new WeakMap<
     ended: boolean;
   }
 >();
+/** Per editor, the text the page's last composition ended with. */
+const compositionEndText = new WeakMap<LexicalEditor, string>();
 /**
  * Per editor, a composition an undo or a redo voided while it ran: void
  * until it runs on and then ends.
@@ -1763,7 +1765,12 @@ const $focusPastRule = (selection: RangeSelection, isBackward: boolean) => {
   while (child !== null && isLinedContainer(child.getParent()) === false) {
     child = child.getParent();
   }
-  if (child === null || $isElementNode(child) === false || $isCmsLineNode(child)) {
+  // a block, or an empty caret line (15.3), at whose edge the focus stands
+  if (
+    child === null ||
+    $isElementNode(child) === false ||
+    ($isCmsLineNode(child) && child.isEmpty() === false)
+  ) {
     return false;
   }
   if ($atContentEdge(focus, child, isBackward) === false) {
@@ -1786,14 +1793,45 @@ const $focusPastRule = (selection: RangeSelection, isBackward: boolean) => {
  * in, where ArrowLeft moves forward in right-to-left text. Every arrow rule
  * of the line code reads its direction here.
  */
-const $arrowMovesBackward = (isLeftKey: boolean) => {
+const $arrowMovesBackward = (isLeftKey: boolean, byFocus = false) => {
   const selection = $getSelection();
   let isRtl = false;
-  if ($isRangeSelection(selection)) {
+  if ($isRangeSelection(selection) && byFocus) {
+    // 15.3: a range's moving point goes by the block the focus is in
+    let at: LexicalNode | null = selection.focus.getNode();
+    while (at !== null && ($isElementNode(at) === false || at.isInline() || at.getDirection() === null)) {
+      at = at.getParent();
+    }
+    isRtl = $isElementNode(at) && at.getDirection() === "rtl";
+  } else if ($isRangeSelection(selection)) {
     isRtl = $isParentElementRTL(selection);
   } else if ($isNodeSelection(selection)) {
-    const parent = selection.getNodes()[0]?.getParent() ?? null;
-    isRtl = parent?.getDirection() === "rtl";
+    // 15.4: off a selected node, the key steps the way it moves a caret in
+    // the direction of the content directly before and after the node; where
+    // the two sides differ, Lexical's own rule: ArrowLeft to the previous
+    // place, ArrowRight to the next
+    const nodes = selection.getNodes();
+    const directionOf = (node: LexicalNode | null) => {
+      for (let at = node; at !== null; at = $isElementNode(at) ? at.getParent() : at.getParent()) {
+        if ($isElementNode(at) && at.isInline() === false && at.getDirection() !== null) {
+          return at.getDirection();
+        }
+        if ($isElementNode(at) === false && at.getParent() === null) {
+          break;
+        }
+      }
+      return null;
+    };
+    const before = nodes[0]?.getPreviousSibling() ?? null;
+    const after = nodes.at(-1)?.getNextSibling() ?? null;
+    const sides = [before, after]
+      .filter((node): node is LexicalNode => node !== null && isBlockDecorator(node) === false)
+      .map((node) => ($isElementNode(node) ? node.getDirection() : directionOf(node.getParent())));
+    const parent = nodes[0]?.getParent() ?? null;
+    if (sides.length === 2 && sides[0] !== sides[1]) {
+      return isLeftKey;
+    }
+    isRtl = (sides[0] ?? parent?.getDirection()) === "rtl";
   }
   return isLeftKey !== isRtl;
 };
@@ -1892,7 +1930,7 @@ export const registerLineCommands = (editor: LexicalEditor) =>
       editor.registerCommand(
         command,
         (event: KeyboardEvent) => {
-          const isBackward = $arrowMovesBackward(isLeftKey);
+          const isBackward = $arrowMovesBackward(isLeftKey, event.shiftKey);
           if (event.altKey || event.ctrlKey || event.metaKey) {
             return false;
           }
@@ -2992,10 +3030,19 @@ export const d7Document = (state: EditorState) => {
  * since the start (a stack shorter than n0, or another entry below it),
  * voids what was kept, and the history stays as Lexical left it.
  */
-export const registerCompositionStep = (editor: LexicalEditor) =>
-  linesOff
-    ? () => {}
-    : mergeRegister(
+export const registerCompositionStep = (editor: LexicalEditor) => {
+  if (linesOff) {
+    return () => {};
+  }
+  // the text the page's composition ended with: none is a cancel
+  const onEnd = (event: CompositionEvent) => {
+    compositionEndText.set(editor, event.data ?? "");
+  };
+  return mergeRegister(
+        editor.registerRootListener((root, previous) => {
+          previous?.removeEventListener("compositionend", onEnd, true);
+          root?.addEventListener("compositionend", onEnd, true);
+        }),
         editor.registerUpdateListener(({ editorState, prevEditorState, tags, dirtyElements, dirtyLeaves }) => {
           const history = cmsHistory.get(editor);
           if (history === undefined) {
@@ -3023,6 +3070,7 @@ export const registerCompositionStep = (editor: LexicalEditor) =>
               const length = history.undoStack.length;
               const pushedHere = history.undoStack.at(-1)?.editorState === prevEditorState;
               const index = pushedHere ? length - 1 : length;
+              compositionEndText.delete(editor);
               compositionStarts.set(editor, {
                 before: prevEditorState,
                 index,
@@ -3048,9 +3096,10 @@ export const registerCompositionStep = (editor: LexicalEditor) =>
             return;
           }
           const before = d7Document(start.before);
-          // a cancelled composition: the history exactly as before it. The
-          // commit after the end is read too: a cancel can take its text
-          // out in the commit after the one that ends the composition
+          // a cancelled composition: the history exactly as before it. A
+          // composition that ended with no text is a cancel, and the commit
+          // that takes out its leftover belongs to it; one that ended with
+          // text is decided at its end, and the next edit is the person's
           if (d7Document(editorState) === before) {
             compositionStarts.delete(editor);
             history.undoStack.length = start.index;
@@ -3067,7 +3116,11 @@ export const registerCompositionStep = (editor: LexicalEditor) =>
             }
             return;
           }
-          start.ended = true;
+          if (compositionEndText.get(editor) === "") {
+            start.ended = true;
+          } else {
+            compositionStarts.delete(editor);
+          }
           const entry = history.undoStack[start.index];
           if (entry !== undefined && d7Document(entry.editorState) === before) {
             return;
@@ -3078,6 +3131,7 @@ export const registerCompositionStep = (editor: LexicalEditor) =>
           editor.dispatchCommand(CAN_REDO_COMMAND, false);
         })
       );
+};
 
 /**
  * Typed text with a block node-selected in a lined container lands
