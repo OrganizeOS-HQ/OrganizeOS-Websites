@@ -694,8 +694,23 @@ const $hasMark = (name: string) =>
   lineMarks.get($getEditor())?.has(name) === true;
 /** The field's history (Lexical's HistoryPlugin state), for K. */
 export const cmsHistory = new WeakMap<LexicalEditor, HistoryState>();
-/** Per editor, the composition under way: the state before it and the undo stack's length then. */
-const compositionStarts = new WeakMap<LexicalEditor, { before: EditorState; index: number }>();
+/** Per editor, the composition under way: the state before it, the undo stack's length then, the entry below it and the redo stack. */
+type HistoryEntry = HistoryState["undoStack"][number];
+const compositionStarts = new WeakMap<
+  LexicalEditor,
+  {
+    before: EditorState;
+    index: number;
+    below: HistoryEntry | undefined;
+    redo: HistoryEntry[];
+    ended: boolean;
+  }
+>();
+/**
+ * Per editor, a composition an undo or a redo voided while it ran: void
+ * until it runs on and then ends.
+ */
+const compositionVoided = new WeakMap<LexicalEditor, "voided" | "resumed">();
 /** The last check after a commit left a point on a lined container. */
 let checkFailed = false;
 
@@ -2963,51 +2978,106 @@ export const d7Document = (state: EditorState) => {
 
 /**
  * F12 (K): a composition that changes the document is its own undo step,
- * decided at the composition's end from state. At the commit in which the
- * editor starts composing, the state before it (S0) and the undo stack's
- * length (n0) are kept per editor; at the commit in which it stops, a
- * document equal to S0's leaves the history as it is, and a changed one
- * gets S0 as a step at n0 unless the history already holds it there.
+ * decided at the composition's own end from state. At the commit in which
+ * the editor starts composing, the state before it (S0), the undo stack's
+ * length (n0), the entry below that length and the redo stack are kept per
+ * editor. At the commit in which it stops:
+ * - a document equal to S0's (a cancelled composition) puts the history
+ *   back exactly: the undo stack is cut back to n0 and the redo stack is
+ *   the one kept (15.2);
+ * - a changed one gets S0 as a step at n0, unless the history already
+ *   holds it there.
+ * Only the composition's own end counts (15.1): a commit from the history
+ * (an undo or a redo) during the composition, or a history that moved
+ * since the start (a stack shorter than n0, or another entry below it),
+ * voids what was kept, and the history stays as Lexical left it.
  */
 export const registerCompositionStep = (editor: LexicalEditor) =>
   linesOff
     ? () => {}
-    : editor.registerUpdateListener(({ editorState, prevEditorState }) => {
-        const history = cmsHistory.get(editor);
-        if (history === undefined) {
-          return;
-        }
-        const start = compositionStarts.get(editor);
-        if (editor.isComposing()) {
-          if (start === undefined) {
-            // the history may already have taken this commit's step: its
-            // newest entry is then the state before this commit
-            const length = history.undoStack.length;
-            const pushedHere = history.undoStack.at(-1)?.editorState === prevEditorState;
-            compositionStarts.set(editor, {
-              before: prevEditorState,
-              index: pushedHere ? length - 1 : length,
-            });
+    : mergeRegister(
+        editor.registerUpdateListener(({ editorState, prevEditorState, tags, dirtyElements, dirtyLeaves }) => {
+          const history = cmsHistory.get(editor);
+          if (history === undefined) {
+            return;
           }
-          return;
-        }
-        if (start === undefined) {
-          return;
-        }
-        compositionStarts.delete(editor);
-        const before = d7Document(start.before);
-        if (d7Document(editorState) === before) {
-          return;
-        }
-        const entry = history.undoStack[start.index];
-        if (entry !== undefined && d7Document(entry.editorState) === before) {
-          return;
-        }
-        history.undoStack.splice(start.index, 0, { editor, editorState: start.before });
-        history.redoStack.length = 0;
-        editor.dispatchCommand(CAN_UNDO_COMMAND, true);
-        editor.dispatchCommand(CAN_REDO_COMMAND, false);
-      });
+          const start = compositionStarts.get(editor);
+          if (tags.has("historic")) {
+            if (start !== undefined) {
+              compositionStarts.delete(editor);
+              if (start.ended === false) {
+                compositionVoided.set(editor, "voided");
+              }
+            }
+            return;
+          }
+          if (editor.isComposing()) {
+            // the voided composition runs on (an undo can end the page's
+            // composition, and the input method starts it again)
+            if (compositionVoided.get(editor) === "voided") {
+              compositionVoided.set(editor, "resumed");
+            }
+            if (start === undefined && compositionVoided.has(editor) === false) {
+              // the history may already have taken this commit's step: its
+              // newest entry is then the state before this commit
+              const length = history.undoStack.length;
+              const pushedHere = history.undoStack.at(-1)?.editorState === prevEditorState;
+              const index = pushedHere ? length - 1 : length;
+              compositionStarts.set(editor, {
+                before: prevEditorState,
+                index,
+                below: index > 0 ? history.undoStack[index - 1] : undefined,
+                redo: [...history.redoStack],
+                ended: false,
+              });
+            }
+            return;
+          }
+          if (start === undefined) {
+            // the voided composition's own end
+            if (compositionVoided.get(editor) === "resumed") {
+              compositionVoided.delete(editor);
+            }
+            return;
+          }
+          if (
+            history.undoStack.length < start.index ||
+            (start.index > 0 && history.undoStack[start.index - 1] !== start.below)
+          ) {
+            compositionStarts.delete(editor);
+            return;
+          }
+          const before = d7Document(start.before);
+          // a cancelled composition: the history exactly as before it. The
+          // commit after the end is read too: a cancel can take its text
+          // out in the commit after the one that ends the composition
+          if (d7Document(editorState) === before) {
+            compositionStarts.delete(editor);
+            history.undoStack.length = start.index;
+            history.redoStack.length = 0;
+            history.redoStack.push(...start.redo);
+            editor.dispatchCommand(CAN_UNDO_COMMAND, history.undoStack.length > 0);
+            editor.dispatchCommand(CAN_REDO_COMMAND, history.redoStack.length > 0);
+            return;
+          }
+          if (start.ended) {
+            // a commit that changes no node is not the one read after the end
+            if (dirtyElements.size > 0 || dirtyLeaves.size > 0) {
+              compositionStarts.delete(editor);
+            }
+            return;
+          }
+          start.ended = true;
+          const entry = history.undoStack[start.index];
+          if (entry !== undefined && d7Document(entry.editorState) === before) {
+            return;
+          }
+          history.undoStack.splice(start.index, 0, { editor, editorState: start.before });
+          history.redoStack.length = 0;
+          editor.dispatchCommand(CAN_UNDO_COMMAND, true);
+          editor.dispatchCommand(CAN_REDO_COMMAND, false);
+        })
+      );
 
 /**
  * Typed text with a block node-selected in a lined container lands

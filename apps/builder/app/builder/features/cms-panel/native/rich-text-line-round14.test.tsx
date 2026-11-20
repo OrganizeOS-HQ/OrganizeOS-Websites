@@ -212,19 +212,15 @@ const CELLS: [keyof typeof STARTS, boolean, string[], string[]][] = [
   ["range", true, [T("T2wx"), T("T2w")], [T("T2wx"), T("T2wab")]],
   ["range", false, [T("T2wx"), T("T2w")], [T("T2wx"), T("T2w")]],
   ["bold", true, [T("T2wx"), T("T2w")], [T("T2wx"), T(`T2wx${BOLD("ab")}`)]],
-  ["bold", false, [T(`T2wx${BOLD("a")}`), T("T2wx"), T("T2w")], [T("T2wx"), T(`T2wx${BOLD("a")}`), T("T2wx")]],
+  // 15.2: a cancelled composition leaves the history exactly as it was
+  ["bold", false, [T("T2w")], [T("T2wx")]],
   [
     "element",
     true,
     [T(`${ITEM("T2wx")}`), T("T2wx"), T("T2w")],
     [T("T2wx"), T(ITEM("T2wx")), T(`${ITEM("T2wx")}ab`)],
   ],
-  [
-    "element",
-    false,
-    [T(`${ITEM("T2wx")}a`), T(ITEM("T2wx")), T("T2wx"), T("T2w")],
-    [T("T2wx"), T(ITEM("T2wx")), T(`${ITEM("T2wx")}a`), T(ITEM("T2wx"))],
-  ],
+  ["element", false, [T("T2wx"), T("T2w")], [T("T2wx"), T(ITEM("T2wx"))]],
 ];
 
 /** A second field on the page, mounted after the first; returns its unmount. */
@@ -379,14 +375,14 @@ describe("14.5 K: a composition's undo steps at quiet timing", () => {
     expect(await pressAll(onChange, history, "undo")).toEqual([T("T2wx"), T("T2w")]);
     expect(await pressAll(onChange, history, "redo")).toEqual([T("T2wx"), T("T2wxab")]);
   });
-  test("a composition within 30 ms of a key, cancelled: the head's steps, with the head's own unchanged press", async () => {
+  test("a composition within 30 ms of a key, cancelled: the history exactly as before it (15.2)", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const onChange = await renderField(TQT);
     const history = historyOf(editorOf()!);
     await clickInWord("T2w");
     await composeFast(false);
-    expect(await pressAll(onChange, history, "undo", [1])).toEqual([T("T2wx"), T("T2w")]);
-    expect(await pressAll(onChange, history, "redo", [2])).toEqual([T("T2wx"), T("T2wx")]);
+    expect(await pressAll(onChange, history, "undo")).toEqual([T("T2w")]);
+    expect(await pressAll(onChange, history, "redo")).toEqual([T("T2wx")]);
   });
   test.each(CELLS.slice(0, 2))("two fields: %s, wrote text %s, composing in the second after typing in the first", async (_start, wrote, undoValues, redoValues) => {
     const first = await renderField(LI("F1w"));
