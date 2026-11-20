@@ -93,6 +93,40 @@ export const lineSpike = {
   scratchClipboardFails: false,
 };
 
+/**
+ * 5.4: a removal removes what its range holds and nothing else. A range
+ * whose first point is an element point at the end of a node with children
+ * holds none of those children, but Lexical's node walk resolves that point
+ * to the node's last child (getDescendantByIndex past the end), and its
+ * removal takes it. Every removal in the field goes through removeText;
+ * there the walk's nodes are given without that child.
+ */
+const rangePrototype = Object.getPrototypeOf($createRangeSelection()) as {
+  removeText: (this: RangeSelection) => void;
+};
+const removeTextOfLexical = rangePrototype.removeText;
+rangePrototype.removeText = function (this: RangeSelection) {
+  if (lineSpike.on && this.isCollapsed() === false) {
+    const first = this.anchor.isBefore(this.focus) ? this.anchor : this.focus;
+    const holder = first.getNode();
+    if (
+      first.type === "element" &&
+      $isElementNode(holder) &&
+      holder.getChildrenSize() > 0 &&
+      first.offset === holder.getChildrenSize()
+    ) {
+      const outside = holder.getLastChild() as LexicalNode;
+      const nodes = this.getNodes().filter(
+        (node) =>
+          node.is(outside) === false &&
+          ($isElementNode(outside) && outside.isParentOf(node)) === false
+      );
+      this.setCachedNodes(nodes);
+    }
+  }
+  removeTextOfLexical.call(this);
+};
+
 export class CmsLineNode extends ElementNode {
   static getType() {
     return "cms-line";

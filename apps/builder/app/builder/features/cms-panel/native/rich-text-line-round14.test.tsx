@@ -14,6 +14,7 @@ import {
   $isRangeSelection,
   $setSelection,
   type ElementNode,
+  type LexicalNode,
   CAN_REDO_COMMAND,
   CAN_UNDO_COMMAND,
   COMMAND_PRIORITY_CRITICAL,
@@ -1165,5 +1166,151 @@ describe("round 14 rulings, item 2: D3's second case after a block that ends in 
     await clickInWord("T2w", 0);
     await keys("{Backspace}");
     expect(written(onChange)).toBe(stored(LI(`T0w<h3>${IMG2}T2w</h3>`)));
+  });
+});
+
+/**
+ * Round 14 rulings, b.2 (5.4): a removal removes what its range holds and
+ * nothing else. A range whose start is an element point at the end of a
+ * node with children (just after an image, a line break, inline code or
+ * text at the end of a line or paragraph) to Q2w@1, forward and backward,
+ * in a lined item and in ordinary content. Image is the old image, NEW an
+ * uploaded one.
+ */
+const B2_IMG = `<img src="https://cdn.example.org/x.png" alt="" width="40" height="20" />`;
+const B2_X: Record<string, string> = { image: B2_IMG, br: "<br>", code: "<code>cw</code>", text: "" };
+const B2_SHAPES = {
+  lined: (x: string) => LI(`<blockquote><p>Q0w</p></blockquote>T1w${x}<blockquote><p>Q2w</p></blockquote>`),
+  ordinary: (x: string) => `<p>T1w${x}</p><blockquote><p>Q2w</p></blockquote>`,
+};
+const b2Leaves = () => {
+  const out: LexicalNode[] = [];
+  const walk = (node: LexicalNode) => {
+    if ($isElementNode(node) && node.getChildrenSize() > 0) {
+      node.getChildren().forEach(walk);
+      return;
+    }
+    out.push(node);
+  };
+  walk($getRoot());
+  return out;
+};
+/** The range from just after the edge node (`x`) at its parent's end to Q2w@1. */
+const b2Select = async (x: string, direction: "fwd" | "back") => {
+  await click(editable());
+  await act(async () => {
+    editorOf()!.update(() => {
+      const leaves = b2Leaves();
+      const edge =
+        x === "image"
+          ? leaves.find((node) => node.getType() === "cms-image")!
+          : x === "br"
+            ? leaves.find((node) => node.getType() === "linebreak")!
+            : leaves.find((node) => node.getTextContent() === (x === "code" ? "cw" : "T1w"))!;
+      const q2 = leaves.find((node) => node.getTextContent() === "Q2w")!;
+      const range = $createRangeSelection();
+      const [from, to] = direction === "fwd" ? [range.anchor, range.focus] : [range.focus, range.anchor];
+      from.set(edge.getParentOrThrow().getKey(), edge.getIndexWithinParent() + 1, "element");
+      to.set(q2.getKey(), 1, "text");
+      $setSelection(range);
+    });
+  });
+  await settle();
+};
+const b2Cut = async () => {
+  act(() => {
+    editable()!.dispatchEvent(
+      new ClipboardEvent("cut", { bubbles: true, cancelable: true, clipboardData: new DataTransfer() })
+    );
+  });
+  await settle();
+};
+const B2_CELLS: [keyof typeof B2_SHAPES, string, "fwd" | "back", string, string][] = [
+  ["lined", "image", "fwd", "backspace", "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>T1wIMG2w</li><li>Nw</li></ul>"],
+  ["lined", "image", "fwd", "cut", "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>T1wIMG2w</li><li>Nw</li></ul>"],
+  ["lined", "image", "back", "backspace", "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>T1wIMG2w</li><li>Nw</li></ul>"],
+  ["lined", "image", "back", "cut", "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>T1wIMG2w</li><li>Nw</li></ul>"],
+  ["ordinary", "image", "fwd", "backspace", "<p>T1wIMG2w</p>"],
+  ["ordinary", "image", "fwd", "cut", "<p>T1wIMG2w</p>"],
+  ["ordinary", "image", "back", "backspace", "<p>T1wIMG2w</p>"],
+  ["ordinary", "image", "back", "cut", "<p>T1wIMG2w</p>"],
+  ["lined", "br", "fwd", "backspace", "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>T1w<br />2w</li><li>Nw</li></ul>"],
+  ["lined", "br", "fwd", "cut", "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>T1w<br />2w</li><li>Nw</li></ul>"],
+  ["lined", "br", "back", "backspace", "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>T1w<br />2w</li><li>Nw</li></ul>"],
+  ["lined", "br", "back", "cut", "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>T1w<br />2w</li><li>Nw</li></ul>"],
+  ["ordinary", "br", "fwd", "backspace", "<p>T1w<br />2w</p>"],
+  ["ordinary", "br", "fwd", "cut", "<p>T1w<br />2w</p>"],
+  ["ordinary", "br", "back", "backspace", "<p>T1w<br />2w</p>"],
+  ["ordinary", "br", "back", "cut", "<p>T1w<br />2w</p>"],
+  ["lined", "code", "fwd", "backspace", "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>T1w<code>cw</code>2w</li><li>Nw</li></ul>"],
+  ["lined", "code", "fwd", "cut", "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>T1w<code>cw</code>2w</li><li>Nw</li></ul>"],
+  ["lined", "code", "back", "backspace", "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>T1w<code>cw</code>2w</li><li>Nw</li></ul>"],
+  ["lined", "code", "back", "cut", "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>T1w<code>cw</code>2w</li><li>Nw</li></ul>"],
+  ["ordinary", "code", "fwd", "backspace", "<p>T1w<code>cw</code>2w</p>"],
+  ["ordinary", "code", "fwd", "cut", "<p>T1w<code>cw</code>2w</p>"],
+  ["ordinary", "code", "back", "backspace", "<p>T1w<code>cw</code>2w</p>"],
+  ["ordinary", "code", "back", "cut", "<p>T1w<code>cw</code>2w</p>"],
+  ["lined", "text", "fwd", "backspace", "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>T1w2w</li><li>Nw</li></ul>"],
+  ["lined", "text", "fwd", "cut", "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>T1w2w</li><li>Nw</li></ul>"],
+  ["lined", "text", "back", "backspace", "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>T1w2w</li><li>Nw</li></ul>"],
+  ["lined", "text", "back", "cut", "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>T1w2w</li><li>Nw</li></ul>"],
+  ["ordinary", "text", "fwd", "backspace", "<p>T1w2w</p>"],
+  ["ordinary", "text", "fwd", "cut", "<p>T1w2w</p>"],
+  ["ordinary", "text", "back", "backspace", "<p>T1w2w</p>"],
+  ["ordinary", "text", "back", "cut", "<p>T1w2w</p>"],
+];
+const b2Write = (onChange: Parameters<typeof lastHtml>[0]) =>
+  written(onChange)
+    .replace(/<img[^>]*x\.png[^>]*>/g, "IMG")
+    .replace(/<img[^>]*y\.png[^>]*>/g, "NEW");
+
+describe("round 14 rulings, b.2: a removal removes what its range holds", () => {
+  test.each(B2_CELLS)("%s, %s at the end, %s, %s", async (shape, x, direction, action, expected) => {
+    const onChange = await renderField(B2_SHAPES[shape](B2_X[x]));
+    await b2Select(x, direction);
+    if (action === "cut") {
+      await b2Cut();
+    } else {
+      await keys("{Backspace}");
+    }
+    expect(b2Write(onChange)).toBe(expected);
+  });
+  const LINED = B2_SHAPES.lined(B2_IMG);
+  test("lined, Delete: the image stays", async () => {
+    const onChange = await renderField(LINED);
+    await b2Select("image", "fwd");
+    await keys("{Delete}");
+    expect(b2Write(onChange)).toBe(stored(LI("<blockquote><p>Q0w</p></blockquote>T1wIMG2w")));
+  });
+  test("lined, Enter: the image stays, the rest a new item", async () => {
+    const onChange = await renderField(LINED);
+    await b2Select("image", "fwd");
+    await keys("{Enter}");
+    expect(b2Write(onChange)).toBe("<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>T1wIMG</li><li>2w</li><li>Nw</li></ul>");
+  });
+  test("lined, Image: the old image stays and the new one follows it", async () => {
+    const source = {
+      uploadImage: vi.fn(async () => ({ url: "https://cdn.example.org/y.png", path: "org/y.png" })),
+    } as never;
+    const onChange = await renderField(LINED, { source });
+    await b2Select("image", "fwd");
+    const canvas = document.createElement("canvas");
+    canvas.width = 2;
+    canvas.height = 3;
+    const blob = await new Promise<Blob>((resolve) => canvas.toBlob((result) => resolve(result!), "image/png"));
+    await act(async () => {
+      byLabel("Image")!.click();
+    });
+    const input = editable()!.closest("div")!.ownerDocument.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([blob], "a.png", { type: "image/png" }));
+    await act(async () => {
+      input.files = transfer.files;
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    for (let round = 0; round < 20; round += 1) {
+      await settle();
+    }
+    expect(b2Write(onChange)).toBe("<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>T1wIMGNEW2w</li><li>Nw</li></ul>");
   });
 });
