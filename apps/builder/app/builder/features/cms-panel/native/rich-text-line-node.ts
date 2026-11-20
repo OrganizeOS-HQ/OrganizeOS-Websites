@@ -644,6 +644,9 @@ const HEAD_PATH_TAG = "cms-head-path";
 const REMOVAL_START_TAG = "cms-removal-start:";
 const REMOVAL_END_TAG = "cms-removal-end:";
 const BREAK_AFTER_TAG = "cms-break-after:";
+const HOLD_POINT_TAG = "cms-hold-point";
+/** True while an empty-line delete runs again from its element point. */
+let deletingFromPoint = false;
 
 /**
  * This update removes content (a range, a node selection, a delete, a
@@ -797,7 +800,8 @@ const $keepContainer = (container: ElementNode) => {
   }
   $normaliseLines(container);
   if (container.isAttached()) {
-    $liftPointsIntoLines(true);
+    // a point held for a delete that runs next stays an element point
+    $liftPointsIntoLines($hasUpdateTag(HOLD_POINT_TAG) === false);
   }
 };
 
@@ -1425,7 +1429,12 @@ export const registerLineCommands = (editor: LexicalEditor) =>
           }
           const line = selection.anchor.getNode();
           const container = line.getParent();
-          if ($isCmsLineNode(line) === false || line.isEmpty() === false || isLinedContainer(container) === false) {
+          if (
+            deletingFromPoint ||
+            $isCmsLineNode(line) === false ||
+            line.isEmpty() === false ||
+            isLinedContainer(container) === false
+          ) {
             return false;
           }
           const beside = isBackward ? line.getPreviousSibling() : line.getNextSibling();
@@ -1441,10 +1450,16 @@ export const registerLineCommands = (editor: LexicalEditor) =>
           selection.focus.set(container.getKey(), at, "element");
           line.remove();
           $addUpdateTag("history-merge");
+          $addUpdateTag(HOLD_POINT_TAG);
           const editor = $getEditor();
           editor.update(() => {}, {
             onUpdate: () => {
-              editor.dispatchCommand(command as LexicalCommand<boolean>, isBackward);
+              deletingFromPoint = true;
+              try {
+                editor.dispatchCommand(command as LexicalCommand<boolean>, isBackward);
+              } finally {
+                deletingFromPoint = false;
+              }
             },
           });
           return true;
