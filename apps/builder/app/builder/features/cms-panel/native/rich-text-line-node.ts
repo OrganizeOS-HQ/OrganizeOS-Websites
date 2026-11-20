@@ -420,7 +420,7 @@ const $linesNeedingBreak = (container: ElementNode, children: LexicalNode[]) => 
       return;
     }
     // D3's break was decided before the edit, from the selection (E3)
-    if ($hasUpdateTag(`${BREAK_AFTER_TAG}${first.getKey()}`)) {
+    if ($hasMark(`${BREAK_AFTER_TAG}${first.getKey()}`)) {
       result.add(child.getKey());
     }
   });
@@ -444,7 +444,7 @@ const $caretAtJoinOfRemovedNode = (line: CmsLineNode) => {
  */
 const $caretAfterRemovedNode = (node: LexicalNode, inside: boolean) => {
   // I: a paste over the node leaves the caret after what it pasted
-  if ($hasUpdateTag("paste")) {
+  if ($hasUpdateTag("paste") || $hasMark(PASTE_OVER_NODE_MARK)) {
     return false;
   }
   // the state before this update held a node selection whose nodes are gone
@@ -659,6 +659,34 @@ const HEAD_PATH_TAG = "cms-head-path";
 const REMOVAL_START_TAG = "cms-removal-start:";
 const REMOVAL_END_TAG = "cms-removal-end:";
 const BREAK_AFTER_TAG = "cms-break-after:";
+/** A paste the line code runs over a node selection (Lexical's own paste is tagged "paste"). */
+const PASTE_OVER_NODE_MARK = "cms-paste-over-node";
+
+/**
+ * The field's marks: per editor, what a command decided for the rest of its
+ * update (a removal, the block its range ends in, D3's break, the head's
+ * path). They are not update tags: Lexical keeps the tags of a commit that
+ * changes no node for the next update. A mark lives from the command that
+ * sets it to the commit of its update: setting one marks the selection
+ * dirty, so the update commits even when it changes no node, and the
+ * listener in registerLineCommands clears the marks on every commit.
+ */
+const lineMarks = new WeakMap<LexicalEditor, Set<string>>();
+const $mark = (name: string) => {
+  const editor = $getEditor();
+  let marks = lineMarks.get(editor);
+  if (marks === undefined) {
+    marks = new Set();
+    lineMarks.set(editor, marks);
+  }
+  marks.add(name);
+  const selection = $getSelection();
+  if (selection !== null) {
+    selection.dirty = true;
+  }
+};
+const $hasMark = (name: string) =>
+  lineMarks.get($getEditor())?.has(name) === true;
 /** The field's history (Lexical's HistoryPlugin state), for K. */
 export const cmsHistory = new WeakMap<LexicalEditor, HistoryState>();
 /** Per editor, the composition under way: the state before it and the undo stack's length then. */
@@ -907,7 +935,7 @@ const $lineFormHasNothing = () => {
 };
 
 export const $tagRemoval = (isBackward?: boolean) => {
-  $addUpdateTag(REMOVAL_TAG);
+  $mark(REMOVAL_TAG);
   const selection = $getSelection();
   if ($isRangeSelection(selection) === false) {
     return;
@@ -931,7 +959,7 @@ export const $tagRemoval = (isBackward?: boolean) => {
         $isCmsLineNode(after) &&
         $joinsInlineContent(block)
       ) {
-        $addUpdateTag(`${BREAK_AFTER_TAG}${line.getKey()}`);
+        $mark(`${BREAK_AFTER_TAG}${line.getKey()}`);
       }
     }
   }
@@ -942,7 +970,7 @@ export const $tagRemoval = (isBackward?: boolean) => {
     node !== null;
     node = node.getParent()
   ) {
-    $addUpdateTag(`${REMOVAL_END_TAG}${node.getKey()}`);
+    $mark(`${REMOVAL_END_TAG}${node.getKey()}`);
   }
   if (selection.isCollapsed()) {
     return;
@@ -970,7 +998,7 @@ export const $tagRemoval = (isBackward?: boolean) => {
       last === null ||
       (end.getNode().is(last) && end.offset === last.getTextContentSize());
     if (atEnd === false) {
-      $addUpdateTag(`${BREAK_AFTER_TAG}${from.getKey()}`);
+      $mark(`${BREAK_AFTER_TAG}${from.getKey()}`);
     }
   }
   const start = selection.isBackward() ? selection.focus : selection.anchor;
@@ -979,15 +1007,15 @@ export const $tagRemoval = (isBackward?: boolean) => {
     node !== null;
     node = node.getParent()
   ) {
-    $addUpdateTag(`${REMOVAL_START_TAG}${node.getKey()}`);
+    $mark(`${REMOVAL_START_TAG}${node.getKey()}`);
   }
 };
 
 const $dropEmptied = (node: ElementNode) => {
   if (
     lineSpike.noEmptied === false ||
-    $hasUpdateTag(REMOVAL_TAG) === false ||
-    $hasUpdateTag(`${REMOVAL_START_TAG}${node.getKey()}`) ||
+    $hasMark(REMOVAL_TAG) === false ||
+    $hasMark(`${REMOVAL_START_TAG}${node.getKey()}`) ||
     $wasEmptied(node) === false ||
     holdsSelection(node)
   ) {
@@ -1074,7 +1102,7 @@ const $joinRestOfItem = (item: ElementNode) => {
   // later content in its item, whatever leads the item
   if (
     previous.some(
-      (child) => child.isLine === false && $hasUpdateTag(`${REMOVAL_END_TAG}${child.key}`)
+      (child) => child.isLine === false && $hasMark(`${REMOVAL_END_TAG}${child.key}`)
     )
   ) {
     return false;
@@ -1109,7 +1137,7 @@ const $keepContainer = (container: ElementNode) => {
   if ($dropEmptied(container)) {
     return;
   }
-  if ($hasUpdateTag(REMOVAL_TAG) && $joinRestOfItem(container)) {
+  if ($hasMark(REMOVAL_TAG) && $joinRestOfItem(container)) {
     return;
   }
   $normaliseLines(container);
@@ -1441,7 +1469,7 @@ export const $headPathOverNodeSelection = () => {
     return false;
   }
   $unwrapLines(container.getChildren());
-  $addUpdateTag(HEAD_PATH_TAG);
+  $mark(HEAD_PATH_TAG);
   return true;
 };
 
@@ -1589,6 +1617,10 @@ const isBlockDecorator = (node: LexicalNode | null): node is DecoratorNode<unkno
  */
 export const registerLineCommands = (editor: LexicalEditor) =>
   linesOff ? () => {} : mergeRegister(
+    // the field's marks end with the commit of the update that set them
+    editor.registerUpdateListener(() => {
+      lineMarks.delete(editor);
+    }),
     // a caret that arrives with no line beside it gets an empty line, and
     // an empty line the caret left goes: not an edit (no undo step, no
     // onChange: the field's change plugin skips history-merge updates)
@@ -1636,7 +1668,8 @@ export const registerLineCommands = (editor: LexicalEditor) =>
           } else {
             node.selectNext();
           }
-          // a caret move, not an edit
+          // a caret move, not an edit: a caret line made or removed is merged
+          // into the history's current step (the lift is true only then)
           const edited = $updateHasEdits();
           if ($liftPointsIntoLines(true) && edited === false) {
             $addUpdateTag("history-merge");
@@ -1862,11 +1895,12 @@ export const registerLineCommands = (editor: LexicalEditor) =>
         return;
       }
       editor.update(() => {
-        // no onChange, and no part of any undo step: the history leaves the
-        // update out, so the next edit starts its own step
-        $addUpdateTag("history-merge");
-        $addUpdateTag("historic");
-        $liftPointsIntoLines(true);
+        // a point moved and nothing else changed is no edit (no onChange, no
+        // step) and carries no tag; a caret line made or removed is merged
+        // into the history's current step and fires no onChange
+        if ($liftPointsIntoLines(true)) {
+          $addUpdateTag("history-merge");
+        }
         const still = $pointRuleBroken();
         if (still !== null) {
           checkFailed = true;
@@ -1878,7 +1912,7 @@ export const registerLineCommands = (editor: LexicalEditor) =>
       editor.registerCommand(
         command,
         (payload: unknown) => {
-          if ($hasUpdateTag(HEAD_PATH_TAG)) {
+          if ($hasMark(HEAD_PATH_TAG)) {
             return false;
           }
           // a drop carries a data transfer: it is a paste
@@ -1906,7 +1940,7 @@ export const registerLineCommands = (editor: LexicalEditor) =>
       editor.registerCommand(
         command,
         (payload: unknown) => {
-          if ($hasUpdateTag(HEAD_PATH_TAG)) {
+          if ($hasMark(HEAD_PATH_TAG)) {
             return false;
           }
           const selection = $getSelection();
@@ -1938,7 +1972,7 @@ export const registerLineCommands = (editor: LexicalEditor) =>
               const caret = $getSelection();
               if ($isRangeSelection(caret)) {
                 (payload as ClipboardEvent).preventDefault();
-                $addUpdateTag("paste");
+                $mark(PASTE_OVER_NODE_MARK);
                 $insertDataTransferForRichText(data, caret, $getEditor());
                 for (const node of nodes) {
                   if (node.isAttached()) {
@@ -1982,7 +2016,7 @@ export const registerLineCommands = (editor: LexicalEditor) =>
               if (
                 command !== INSERT_HORIZONTAL_RULE_COMMAND &&
                 $isCmsLineNode(line) &&
-                $hasUpdateTag(`${BREAK_AFTER_TAG}${line.getKey()}`)
+                $hasMark(`${BREAK_AFTER_TAG}${line.getKey()}`)
               ) {
                 $removeRangeWithBreak(selection);
                 return false;
@@ -2101,7 +2135,7 @@ export const registerLineCommands = (editor: LexicalEditor) =>
         command,
         (payload: unknown) => {
           if (
-            $hasUpdateTag(HEAD_PATH_TAG) ||
+            $hasMark(HEAD_PATH_TAG) ||
             (command !== CUT_COMMAND && $headPathOverNodeSelection())
           ) {
             return false;
@@ -2325,7 +2359,7 @@ export const registerLineCommands = (editor: LexicalEditor) =>
         const selection = $getSelection();
         if (
           isBackward === false ||
-          $hasUpdateTag(HEAD_PATH_TAG) ||
+          $hasMark(HEAD_PATH_TAG) ||
           $isRangeSelection(selection) === false ||
           selection.isCollapsed() === false
         ) {
@@ -2856,7 +2890,7 @@ export const registerTypingAfterSelectedNode = (editor: LexicalEditor) =>
           ) {
             return;
           }
-          $addUpdateTag("history-merge");
+          // a point move only: no tag
           point.set(line.getKey(), 0, "element");
           selection.focus.set(line.getKey(), 0, "element");
         },
