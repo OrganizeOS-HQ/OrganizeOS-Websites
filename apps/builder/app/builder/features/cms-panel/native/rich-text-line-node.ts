@@ -939,9 +939,43 @@ export const $liftPointsIntoLines = (create: boolean): boolean => {
     return false;
   }
   const made = new Map<string, CmsLineNode>();
-  for (const point of [selection.anchor, selection.focus]) {
+  const collapsed = selection.isCollapsed();
+  for (const point of collapsed ? [selection.anchor] : [selection.anchor, selection.focus]) {
     if (point.type !== "element") {
       continue;
+    }
+    const held = point.getNode();
+    if (collapsed && $isCmsLineNode(held) && isLinedContainer(held.getParent())) {
+      const at = held.getIndexWithinParent();
+      const before = held.getPreviousSibling();
+      const after = held.getNextSibling();
+      const isBeside = (node: LexicalNode | null) =>
+        node !== null &&
+        ($isCmsLineNode(node) || ($isElementNode(node) && node.isInline() === false));
+      if (held.isEmpty() && (isBeside(before) || isBeside(after))) {
+        // C2: an empty line holds the caret only while D13 holds at its
+        // place: with a line or a block beside it, the point goes back to
+        // the container there and resolves, and the line goes
+        const container = held.getParentOrThrow();
+        point.set(container.getKey(), at, "element");
+        held.remove();
+      } else if (
+        held.isEmpty() === false &&
+        point.offset === 0 &&
+        $isElementNode(before) &&
+        $isCmsLineNode(before) === false &&
+        before.isInline() === false &&
+        (isLineBreak(held.getFirstChild()) ||
+          ($isDecoratorNode(held.getFirstChild()) && held.getFirstChild()!.isInline()))
+      ) {
+        // C1: a point at a line's start is the container's point before
+        // the line, and resolves as that point does; that differs from the
+        // line's start only by D18's exception (a block before, a line that
+        // starts with a line break or an image)
+        point.set(held.getParentOrThrow().getKey(), at, "element");
+      } else {
+        continue;
+      }
     }
     const container = point.getNode();
     if (isLinedContainer(container) === false) {
@@ -1008,6 +1042,12 @@ export const $liftPointsIntoLines = (create: boolean): boolean => {
       }
     }
     point.set(line.getKey(), 0, "element");
+  }
+  if (collapsed) {
+    const { anchor, focus } = selection;
+    if (anchor.is(focus) === false) {
+      focus.set(anchor.key, anchor.offset, anchor.type);
+    }
   }
   return made.size > 0;
 };

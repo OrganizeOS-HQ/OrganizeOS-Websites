@@ -110,4 +110,53 @@ describe("B: an arrow from a block's text edge to a rule beside the block", () =
   });
 });
 
+/** A real click at the left or right end of the item's first rule. */
+const clickRule = async (side: "start" | "end") => {
+  const rule = editable()!.querySelector<HTMLElement>("hr")!;
+  const box = rule.getBoundingClientRect();
+  await userEvent.click(rule, {
+    position: { x: side === "start" ? 1 : box.width - 2, y: 1 },
+    force: true,
+  } as never);
+  await settle();
+};
+
+/** A real click at the bottom-right corner of the item holding `word`. */
+const clickItemEnd = async (word: string) => {
+  const span = [...editable()!.querySelectorAll<HTMLElement>("[data-lexical-text]")].find(
+    (element) => element.textContent === word
+  )!;
+  const item = span.closest("li")!;
+  const box = item.getBoundingClientRect();
+  await userEvent.click(item, { position: { x: box.width - 2, y: box.height - 2 }, force: true } as never);
+  await settle();
+};
+
+describe("C: a point at a line's start, and an empty caret line after its rule goes", () => {
+  test("C1: ArrowLeft from the text after a break that follows a quote, then a letter", async () => {
+    const onChange = await renderField(LI("<blockquote><p>Q0w</p></blockquote><br>T2w"));
+    await clickInWord("T2w", 0);
+    await keys("{ArrowLeft}k");
+    expect(written(onChange)).toBe(stored(LI("<blockquote><p>Q0wk</p></blockquote><br />T2w")));
+  });
+  test("C1: ArrowLeft there, then Enter, adds a paragraph to the quote", async () => {
+    const onChange = await renderField(LI("<blockquote><p>Q0w</p></blockquote><br>T2w"));
+    await clickInWord("T2w", 0);
+    await keys("{ArrowLeft}{Enter}");
+    expect(written(onChange)).toBe(stored(LI("<blockquote><p>Q0w</p><p></p></blockquote><br />T2w")));
+  });
+  test("C2: RQ, the rule clicked at its start, Delete, then a letter", async () => {
+    const onChange = await renderField(LI("<hr><blockquote><p>Q1w</p></blockquote>"));
+    await clickRule("start");
+    await keys("{Delete}k");
+    expect(written(onChange)).toBe(stored(LI("<blockquote><p>kQ1w</p></blockquote>")));
+  });
+  test("C2: QR, the item's end, Backspace, then a letter", async () => {
+    const onChange = await renderField(LI("<blockquote><p>Q0w</p></blockquote><hr>"));
+    await clickItemEnd("Q0w");
+    await keys("{Backspace}k");
+    expect(written(onChange)).toBe(stored(LI("<blockquote><p>Q0wk</p></blockquote>")));
+  });
+});
+
 export { editable };
