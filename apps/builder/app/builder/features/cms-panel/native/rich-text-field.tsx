@@ -2694,15 +2694,19 @@ const ImageEditingPlugin = () => {
               return false;
             }
             event.preventDefault();
-            // G (D6), 14.9: a range copies what the head copies for the same
-            // two ends: text/html and the editor data are written on the
-            // head's form of the tree, by the one writer (an element-point
-            // end goes with its line's children, as the unwrap carries it);
-            // text/plain is read from the structure. A node selection keeps
-            // the mapped writer
-            const isRange =
-              $isRangeSelection(selection) && selection.isCollapsed() === false;
-            if (isRange) {
+            // G (D6), 14.9: a range whose two ends are text points copies
+            // what the head copies for the same two ends: text/html and the
+            // editor data are written on the head's form of the tree, by the
+            // one writer; text/plain is read from the structure. A range
+            // with an element-point end, and a node selection, keep the
+            // mapped writer: on the head's form of the tree Lexical's own
+            // walk copies past an element end at a line's start (FS9)
+            const textEnds =
+              $isRangeSelection(selection) &&
+              selection.isCollapsed() === false &&
+              selection.anchor.type === "text" &&
+              selection.focus.type === "text";
+            if (textEnds) {
               const data = $headFormClipboard(editor, selection as RangeSelection);
               const plain = $plainTextOf(selection);
               if (data === null) {
