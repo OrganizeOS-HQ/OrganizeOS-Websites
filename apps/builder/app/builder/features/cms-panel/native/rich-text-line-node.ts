@@ -95,6 +95,8 @@ export const lineSpike = {
   scratchClipboardFails: false,
   /** Tests: the per-cut check finds the clipboard not holding the selection. */
   cutCheckFails: false,
+  /** Probes: the point rule's third place (after every commit) does not run. */
+  thirdPlaceOff: false,
 };
 
 export class CmsLineNode extends ElementNode {
@@ -666,24 +668,27 @@ const PASTE_OVER_NODE_MARK = "cms-paste-over-node";
  * The field's marks: per editor, what a command decided for the rest of its
  * update (a removal, the block its range ends in, D3's break, the head's
  * path). They are not update tags: Lexical keeps the tags of a commit that
- * changes no node for the next update. A mark lives from the command that
- * sets it to the commit of its update: setting one marks the selection
- * dirty, so the update commits even when it changes no node, and the
- * listener in registerLineCommands clears the marks on every commit.
+ * changes no node for the next update. A mark is gone when its update ends,
+ * committed or not: everything that reads one runs inside the update (its
+ * commands and transforms), so a microtask queued when the first mark is
+ * set clears them once the task that ran the update is done. Updates run in
+ * one task share their marks, as Lexical batches them into one commit.
  */
 const lineMarks = new WeakMap<LexicalEditor, Set<string>>();
 const $mark = (name: string) => {
   const editor = $getEditor();
   let marks = lineMarks.get(editor);
   if (marks === undefined) {
-    marks = new Set();
-    lineMarks.set(editor, marks);
+    const made = new Set<string>();
+    marks = made;
+    lineMarks.set(editor, made);
+    queueMicrotask(() => {
+      if (lineMarks.get(editor) === made) {
+        lineMarks.delete(editor);
+      }
+    });
   }
   marks.add(name);
-  const selection = $getSelection();
-  if (selection !== null) {
-    selection.dirty = true;
-  }
 };
 const $hasMark = (name: string) =>
   lineMarks.get($getEditor())?.has(name) === true;
@@ -1617,10 +1622,6 @@ const isBlockDecorator = (node: LexicalNode | null): node is DecoratorNode<unkno
  */
 export const registerLineCommands = (editor: LexicalEditor) =>
   linesOff ? () => {} : mergeRegister(
-    // the field's marks end with the commit of the update that set them
-    editor.registerUpdateListener(() => {
-      lineMarks.delete(editor);
-    }),
     // a caret that arrives with no line beside it gets an empty line, and
     // an empty line the caret left goes: not an edit (no undo step, no
     // onChange: the field's change plugin skips history-merge updates)
@@ -1881,7 +1882,7 @@ export const registerLineCommands = (editor: LexicalEditor) =>
       }
       // held while a composition runs: it adds no update between the
       // composition's own; the commit that ends it is checked
-      if (editor.isComposing()) {
+      if (editor.isComposing() || lineSpike.thirdPlaceOff) {
         return;
       }
       const broken = editorState.read($pointRuleBroken);

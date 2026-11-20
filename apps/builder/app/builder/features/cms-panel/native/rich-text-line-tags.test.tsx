@@ -4,10 +4,10 @@
 import { act } from "react-dom/test-utils";
 import { describe, expect, test } from "vitest";
 import { cdp, userEvent } from "@vitest/browser/context";
-import { $createRangeSelection, $getRoot, $isElementNode, $setSelection, type LexicalNode } from "lexical";
+import { $createRangeSelection, $getRoot, $getSelection, $isElementNode, $isRangeSelection, $setSelection, DELETE_CHARACTER_COMMAND, type LexicalNode } from "lexical";
 import { clickInWord, editable, editorOf, lastHtml, renderField, settle, undo } from "./rich-text-test-harness";
 import { sanitizeRichTextHtml } from "./rich-text-sanitize";
-import { cmsHistory } from "./rich-text-line-node";
+import { cmsHistory, lineSpike } from "./rich-text-line-node";
 import { fieldInvariantFailures, taggedNoChange } from "./rich-text-field-watch";
 
 const IMG = `<img src="https://cdn.example.org/x.png" alt="" width="40" height="20" />`;
@@ -180,27 +180,115 @@ describe("no tag outlives its update", () => {
   });
 });
 
+describe("the selection-change handler", () => {
+  test("a node selection that moves makes a caret line, and no commit fires an onChange", async () => {
+    // Lexical's commit of the moved node selection runs the handler's update
+    // inside itself (R13 D)
+    const html = "<ul><li>Pw</li><li><br /><hr /></li><li>Nw</li></ul>";
+    const onChange = await renderField(html);
+    await clickInWord("Nw", 0);
+    const before = onChange.mock.calls.length;
+    const lines = () => nodes().filter((node) => node.getType() === "cms-line").length;
+    const linesBefore = editorOf()!.getEditorState().read(lines);
+    let most = linesBefore;
+    const off = editorOf()!.registerUpdateListener(({ editorState }) => {
+      most = Math.max(most, editorState.read(lines));
+    });
+    await keys("{ArrowLeft}{ArrowLeft}");
+    off();
+    expect(most).toBeGreaterThan(linesBefore);
+    expect(onChange.mock.calls.length).toBe(before);
+    await keys("k");
+    expect(onChange.mock.calls.length).toBe(before + 1);
+    expect(written(onChange)).toBe(stored("<ul><li>Pw</li><li><br /><hr />k</li><li>Nw</li></ul>"));
+  });
+});
+
+describe("marks end with the task that ran their update", () => {
+  // two updates run in one task share their marks, as Lexical batches them
+  // into one commit: a removal that removes nothing, then a letter, in one
+  // task, write what the two write in two tasks
+  const html = `<ul><li>Pw</li><li><h3>X0w${IMG}</h3></li></ul>`;
+  const run = async (oneTask: boolean) => {
+    const onChange = await renderField(html);
+    await userEvent.click(editable()!.querySelector("img")!);
+    await settle();
+    await keys("{Escape}");
+    const removal = () => editorOf()!.dispatchCommand(DELETE_CHARACTER_COMMAND, false);
+    const letter = () =>
+      editorOf()!.update(() => {
+        const selection = $getSelection();
+        if ($isRangeSelection(selection)) selection.insertText("k");
+      });
+    if (oneTask) {
+      await act(async () => {
+        removal();
+        letter();
+      });
+    } else {
+      await act(async () => {
+        removal();
+      });
+      await settle();
+      await act(async () => {
+        letter();
+      });
+    }
+    await settle();
+    return written(onChange);
+  };
+  test("a no-op removal and a letter in two tasks", async () => {
+    expect(await run(false)).toBe(stored(`<ul><li>Pw</li><li><h3>X0w${IMG}k</h3></li></ul>`));
+  });
+  test("a no-op removal and a letter in one task", async () => {
+    expect(await run(true)).toBe(stored(`<ul><li>Pw</li><li><h3>X0w${IMG}k</h3></li></ul>`));
+  });
+});
+
 describe("undo into a state whose point rests on a lined container", () => {
+  // the third place corrects such a point at once, and the page's selection
+  // moves a kept state's point into text, so the history holds one only as
+  // given here: the state an edit committed, before any correction, as the
+  // step under the last edit
   test("then a letter: one onChange, and an undo step of its own", async () => {
     const html = "<ul><li>Pw</li><li>T0w<hr /></li><li>Nw</li></ul>";
     const onChange = await renderField(html);
     taggedNoChange.splice(0);
     await clickInWord("Pw");
-    // an edit that leaves its point on the item, between its line and its rule
-    await act(async () => {
-      editorOf()!.update(() => {
-        const text = nodes().find((node) => node.getTextContent() === "Pw" && node.getType() === "text")!;
-        (text as unknown as { setTextContent: (value: string) => void }).setTextContent("Pwx");
-        const item = nodes().filter((node) => node.getType() === "listitem")[1];
-        const range = $createRangeSelection();
-        range.anchor.set(item.getKey(), 1, "element");
-        range.focus.set(item.getKey(), 1, "element");
-        $setSelection(range);
+    let kept: ReturnType<NonNullable<ReturnType<typeof editorOf>>["getEditorState"]> | undefined;
+    lineSpike.thirdPlaceOff = true;
+    try {
+      await act(async () => {
+        editorOf()!.update(
+          () => {
+            const text = nodes().find((node) => node.getType() === "text" && node.getTextContent() === "Pw")!;
+            (text as unknown as { setTextContent: (value: string) => void }).setTextContent("Pwx");
+            // between the item's line and its rule
+            const item = nodes().filter((node) => node.getType() === "listitem")[1];
+            const range = $createRangeSelection();
+            range.anchor.set(item.getKey(), 1, "element");
+            range.focus.set(item.getKey(), 1, "element");
+            $setSelection(range);
+          },
+          { discrete: true }
+        );
+        kept = editorOf()!.getEditorState();
       });
-    });
+    } finally {
+      lineSpike.thirdPlaceOff = false;
+    }
+    expect(
+      kept!.read(() => {
+        const selection = $getSelection();
+        return $isRangeSelection(selection) ? selection.anchor.getNode().getType() : "";
+      })
+    ).toBe("listitem");
     await settle();
     await clickInWord("Nw");
     await keys("k");
+    // the step under the last edit is the state the edit committed
+    const history = cmsHistory.get(editorOf()!)!;
+    history.undoStack[history.undoStack.length - 1] = { editor: editorOf()!, editorState: kept! };
     await undo();
     expect(written(onChange)).toBe(stored("<ul><li>Pwx</li><li>T0w<hr /></li><li>Nw</li></ul>"));
     const before = onChange.mock.calls.length;
@@ -208,10 +296,9 @@ describe("undo into a state whose point rests on a lined container", () => {
     await keys("m");
     expect(onChange.mock.calls.length - before).toBe(1);
     expect(undoSteps()).toBe(steps + 1);
-    const typed = written(onChange);
+    expect(written(onChange)).toBe(stored("<ul><li>Pwx</li><li>T0wm<hr /></li><li>Nw</li></ul>"));
     await undo();
     expect(written(onChange)).toBe(stored("<ul><li>Pwx</li><li>T0w<hr /></li><li>Nw</li></ul>"));
-    expect(typed).toContain("m");
     expect(taggedNoChange.splice(0)).toEqual([]);
   });
 });
