@@ -1312,6 +1312,42 @@ const $ruleAtEdge = (isBackward: boolean) => {
   return isBlockDecorator(beside) ? beside : null;
 };
 
+/**
+ * The focus at a block's edge in a lined container, with a rule directly
+ * beside the block in the direction of the key, moves past the rule: the
+ * container point on the rule's far side, resolved by D18. True when it moved.
+ */
+const $focusPastRule = (selection: RangeSelection, isBackward: boolean) => {
+  const focus = selection.focus;
+  const node = focus.getNode();
+  let child: LexicalNode | null = node;
+  while (child !== null && isLinedContainer(child.getParent()) === false) {
+    child = child.getParent();
+  }
+  if (child === null || $isElementNode(child) === false || $isCmsLineNode(child)) {
+    return false;
+  }
+  const edge = isBackward ? child.getFirstDescendant() : child.getLastDescendant();
+  const atEdge =
+    focus.type === "text"
+      ? edge !== null && edge.is(node) && focus.offset === (isBackward ? 0 : node.getTextContentSize())
+      : (edge === null || $isElementNode(edge)) &&
+        (edge ?? child).is(node) &&
+        focus.offset === (isBackward ? 0 : (edge ?? child).getChildrenSize());
+  if (atEdge === false) {
+    return false;
+  }
+  const rule = isBackward ? child.getPreviousSibling() : child.getNextSibling();
+  if (isBlockDecorator(rule) === false) {
+    return false;
+  }
+  const container = child.getParentOrThrow();
+  const index = rule.getIndexWithinParent();
+  focus.set(container.getKey(), isBackward ? index : index + 1, "element");
+  $liftPointsIntoLines(false);
+  return true;
+};
+
 const isBlockDecorator = (node: LexicalNode | null): node is DecoratorNode<unknown> =>
   $isDecoratorNode(node) && node.isInline() === false;
 
@@ -1395,6 +1431,14 @@ export const registerLineCommands = (editor: LexicalEditor) =>
           const selection = $getSelection();
           if ($isRangeSelection(selection) === false) {
             return false;
+          }
+          // 14.3: with Shift held, from a block's edge toward a rule
+          // directly beside it the focus takes the caret's step and passes
+          // the rule, to where D18 resolves the container point on its far
+          // side; the rule is inside the selection
+          if (event.shiftKey && $focusPastRule(selection, isBackward)) {
+            event.preventDefault();
+            return true;
           }
           // B: from the edge of a block's text toward a rule directly beside
           // the block, the arrow node-selects the rule

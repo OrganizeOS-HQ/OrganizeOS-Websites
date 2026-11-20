@@ -301,3 +301,66 @@ describe("14.5 K: a composition's undo steps at quiet timing", () => {
     }
   });
 });
+
+/**
+ * 14.3 walks: [shape, direction, stored, start (word, offset), the press whose
+ * range first holds a rule, the write of a letter typed there, the presses
+ * to the content's edge, the write of a letter typed at the edge]. Each
+ * write equals the head's for the same two ends; going right the head's
+ * walk has one stop more, on the container point between the block and the
+ * rule, which D18 resolves to the block's edge.
+ */
+const SHIFT_WALKS: [string, "R" | "L", string, [string, number], number, string, number, string][] = [
+  ["QR", "R", LI("<blockquote><p>Q0w</p></blockquote><hr>"), ["Pw", 2], 5, "<ul><li>Pwk</li><li>Nw</li></ul>", 7, "<ul><li>Pwkw</li></ul>"],
+  ["QR", "L", LI("<blockquote><p>Q0w</p></blockquote><hr>"), ["Nw", 0], 2, "<ul><li>Pw</li><li><blockquote><p>Q0wkNw</p></blockquote></li></ul>", 7, "<ul><li>PkNw</li></ul>"],
+  ["QRT", "R", LI("<blockquote><p>Q0w</p></blockquote><hr>T2w"), ["Pw", 2], 5, "<ul><li>PwkT2w</li><li>Nw</li></ul>", 10, "<ul><li>Pwkw</li></ul>"],
+  ["QRT", "L", LI("<blockquote><p>Q0w</p></blockquote><hr>T2w"), ["Nw", 0], 5, "<ul><li>Pw</li><li><blockquote><p>Q0wkNw</p></blockquote></li></ul>", 10, "<ul><li>PkNw</li></ul>"],
+  ["TQRT", "R", LI("T0w<blockquote><p>Q1w</p></blockquote><hr>T3w"), ["Pw", 2], 9, "<ul><li>PwkT3w</li><li>Nw</li></ul>", 14, "<ul><li>Pwkw</li></ul>"],
+  ["TQRT", "L", LI("T0w<blockquote><p>Q1w</p></blockquote><hr>T3w"), ["Nw", 0], 5, "<ul><li>Pw</li><li>T0w<blockquote><p>Q1wkNw</p></blockquote></li></ul>", 14, "<ul><li>PkNw</li></ul>"],
+  ["BQR", "R", LI("<br><blockquote><p>Q1w</p></blockquote><hr>"), ["Pw", 2], 6, "<ul><li>Pwk</li><li>Nw</li></ul>", 8, "<ul><li>Pwkw</li></ul>"],
+  ["BQR", "L", LI("<br><blockquote><p>Q1w</p></blockquote><hr>"), ["Nw", 0], 2, "<ul><li>Pw</li><li><br /><blockquote><p>Q1wkNw</p></blockquote></li></ul>", 8, "<ul><li>PkNw</li></ul>"],
+  ["QQR", "R", LI("<blockquote><p>Q0w</p></blockquote><blockquote><p>Q1w</p></blockquote><hr>"), ["Pw", 2], 9, "<ul><li>Pwk</li><li>Nw</li></ul>", 11, "<ul><li>Pwkw</li></ul>"],
+  ["QQR", "L", LI("<blockquote><p>Q0w</p></blockquote><blockquote><p>Q1w</p></blockquote><hr>"), ["Nw", 0], 2, "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><blockquote><p>Q1wkNw</p></blockquote></li></ul>", 11, "<ul><li>PkNw</li></ul>"],
+  ["QRB", "R", LI("<blockquote><p>Q0w</p></blockquote><hr><br>"), ["Pw", 2], 5, "<ul><li>Pwk<br /></li><li>Nw</li></ul>", 8, "<ul><li>Pwkw</li></ul>"],
+  ["QRB", "L", LI("<blockquote><p>Q0w</p></blockquote><hr><br>"), ["Nw", 0], 3, "<ul><li>Pw</li><li><blockquote><p>Q0wkNw</p></blockquote></li></ul>", 8, "<ul><li>PkNw</li></ul>"],
+  ["QRL", "R", LI("<blockquote><p>Q0w</p></blockquote><hr><ul><li>L2w</li></ul>"), ["Pw", 2], 5, "<ul><li>Pwk<ul><li>L2w</li></ul></li><li>Nw</li></ul>", 11, "<ul><li>Pwkw</li></ul>"],
+  ["QRL", "L", LI("<blockquote><p>Q0w</p></blockquote><hr><ul><li>L2w</li></ul>"), ["Nw", 0], 6, "<ul><li>Pw</li><li><blockquote><p>Q0wkNw</p></blockquote></li></ul>", 11, "<ul><li>PkNw</li></ul>"],
+  ["QRQ", "R", LI("<blockquote><p>Q0w</p></blockquote><hr><blockquote><p>Q2w</p></blockquote>"), ["Pw", 2], 5, "<ul><li>PwkQ2w</li><li>Nw</li></ul>", 10, "<ul><li>Pwkw</li></ul>"],
+  ["QRQ", "L", LI("<blockquote><p>Q0w</p></blockquote><hr><blockquote><p>Q2w</p></blockquote>"), ["Nw", 0], 5, "<ul><li>Pw</li><li><blockquote><p>Q0wkNw</p></blockquote></li></ul>", 10, "<ul><li>PkNw</li></ul>"],
+  ["QRR", "R", LI("<blockquote><p>Q0w</p></blockquote><hr><hr>"), ["Pw", 2], 5, "<ul><li>Pwk<hr /></li><li>Nw</li></ul>", 8, "<ul><li>Pwkw</li></ul>"],
+  ["QRR", "L", LI("<blockquote><p>Q0w</p></blockquote><hr><hr>"), ["Nw", 0], 2, "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />kNw</li></ul>", 8, "<ul><li>PkNw</li></ul>"],
+  ["RQR", "R", LI("<hr><blockquote><p>Q1w</p></blockquote><hr>"), ["Pw", 2], 2, "<ul><li>PwkQ1w</li><li><hr /></li><li>Nw</li></ul>", 8, "<ul><li>Pwkw</li></ul>"],
+  ["RQR", "L", LI("<hr><blockquote><p>Q1w</p></blockquote><hr>"), ["Nw", 0], 2, "<ul><li>Pw</li><li><hr /><blockquote><p>Q1wkNw</p></blockquote></li></ul>", 8, "<ul><li>PkNw</li></ul>"],
+  ["TQR", "R", LI("T0w<blockquote><p>Q1w</p></blockquote><hr>"), ["Pw", 2], 9, "<ul><li>Pwk</li><li>Nw</li></ul>", 11, "<ul><li>Pwkw</li></ul>"],
+  ["TQR", "L", LI("T0w<blockquote><p>Q1w</p></blockquote><hr>"), ["Nw", 0], 2, "<ul><li>Pw</li><li>T0w<blockquote><p>Q1wkNw</p></blockquote></li></ul>", 11, "<ul><li>PkNw</li></ul>"],
+  ["QRTQ", "R", LI("<blockquote><p>Q0w</p></blockquote><hr>T2w<blockquote><p>Q3w</p></blockquote>"), ["Pw", 2], 5, "<ul><li>PwkT2w<blockquote><p>Q3w</p></blockquote></li><li>Nw</li></ul>", 14, "<ul><li>Pwkw</li></ul>"],
+  ["QRTQ", "L", LI("<blockquote><p>Q0w</p></blockquote><hr>T2w<blockquote><p>Q3w</p></blockquote>"), ["Nw", 0], 9, "<ul><li>Pw</li><li><blockquote><p>Q0wkNw</p></blockquote></li></ul>", 14, "<ul><li>PkNw</li></ul>"],
+  ["QRd2", "R", "<ul><li>Pw<ul><li>Aw</li><li><blockquote><p>Q0w</p></blockquote><hr></li><li>Zw</li></ul></li><li>Nw</li></ul>", ["Aw", 2], 5, "<ul><li>Pw<ul><li>Awk</li><li>Zw</li></ul></li><li>Nw</li></ul>", 7, "<ul><li>Pw<ul><li>Awkw</li></ul></li><li>Nw</li></ul>"],
+  ["QRd2", "L", "<ul><li>Pw<ul><li>Aw</li><li><blockquote><p>Q0w</p></blockquote><hr></li><li>Zw</li></ul></li><li>Nw</li></ul>", ["Zw", 0], 2, "<ul><li>Pw<ul><li>Aw</li><li><blockquote><p>Q0wkZw</p></blockquote></li></ul></li><li>Nw</li></ul>", 7, "<ul><li>Pw<ul><li>AkZw</li></ul></li><li>Nw</li></ul>"],
+  ["QRol", "R", "<ol><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr></li><li>Nw</li></ol>", ["Pw", 2], 5, "<ol><li>Pwk</li><li>Nw</li></ol>", 7, "<ol><li>Pwkw</li></ol>"],
+  ["QRol", "L", "<ol><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr></li><li>Nw</li></ol>", ["Nw", 0], 2, "<ol><li>Pw</li><li><blockquote><p>Q0wkNw</p></blockquote></li></ol>", 7, "<ol><li>PkNw</li></ol>"],
+];
+
+describe("14.3: Shift and an arrow pass a rule beside a block", () => {
+  test.each(SHIFT_WALKS)(
+    "%s, Shift+Arrow%s",
+    async (_shape, direction, html, [word, offset], pass, passWrite, edge, edgeWrite) => {
+      const onChange = await renderField(html);
+      await clickInWord(word, offset);
+      const arrow = direction === "R" ? "{Shift>}{ArrowRight}{/Shift}" : "{Shift>}{ArrowLeft}{/Shift}";
+      for (let press = 0; press < pass; press += 1) {
+        await keys(arrow);
+      }
+      await keys("k");
+      expect(written(onChange)).toBe(stored(passWrite));
+      await keys("{Control>}z{/Control}");
+      expect(written(onChange)).toBe(stored(html));
+      for (let press = pass; press < edge; press += 1) {
+        await keys(arrow);
+      }
+      await keys("k");
+      expect(written(onChange)).toBe(stored(edgeWrite));
+    },
+    40_000
+  );
+});
