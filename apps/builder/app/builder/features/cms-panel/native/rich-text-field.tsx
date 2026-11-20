@@ -967,13 +967,12 @@ const TransformsPlugin = () => {
       mergeRegister(
         registerRichTextTransforms(editor),
         // the live editor's alone: a stored value of these shapes reads lossy
-        editor.registerNodeTransform(ListItemNode, $liftBlocksAfterNestedList),
         editor.registerNodeTransform(ListNode, $liftPastDepthLimit),
         editor.registerNodeTransform(QuoteNode, $liftPastDepthLimit),
         editor.registerNodeTransform(ParagraphNode, $liftBlocksOutOfTextBlock),
         editor.registerNodeTransform(HeadingNode, $liftBlocksOutOfTextBlock),
-        // after the lifts: they see pasted paragraphs before lines do
-        registerLineTransforms(editor),
+        // a list item's lift runs first in the item's one transform
+        registerLineTransforms(editor, $liftBlocksAfterNestedList),
         registerLineCommands(editor),
         registerTypingAfterSelectedNode(editor)
       ),
@@ -3457,6 +3456,22 @@ const $intoLine = (nodes: LexicalNode[], selection: RangeSelection) => {
   if ((line === null || item === null) && selection.isCollapsed() === false) {
     const endLine = $findMatchingParent(end.getNode(), $isCmsLineNode);
     const endContainer = endLine?.getParent() ?? null;
+    // a block paste from the item before into a lined item: the removal
+    // first (5.4, with D5's join), then the paste at the caret it leaves
+    const before = endContainer?.getPreviousSibling() ?? null;
+    const startNode = start.getNode();
+    if (
+      $isListItemNode(endContainer) &&
+      $isListItemNode(before) &&
+      (before.is(startNode) || before.isParentOf(startNode)) &&
+      nodes.some(
+        (node) =>
+          ($isElementNode(node) || $isDecoratorNode(node)) && node.isInline() === false
+      )
+    ) {
+      selection.removeText();
+      return nodes;
+    }
     if (endContainer !== null) {
       $unwrapLines(endContainer.getChildren());
     }

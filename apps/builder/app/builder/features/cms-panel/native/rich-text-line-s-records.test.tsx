@@ -431,6 +431,17 @@ const itemPoint = (item: number, offset: number): Step => async () => {
   await settle();
 };
 /** A real composition through the browser's input-method interface. */
+/** Safari's text replacement: insertText with no data and a dataTransfer. */
+const replaceText = (text: string): Step => async () => {
+  const dataTransfer = new DataTransfer();
+  dataTransfer.setData("text/plain", text);
+  await act(async () => {
+    editable()!.dispatchEvent(
+      new InputEvent("beforeinput", { bubbles: true, cancelable: true, inputType: "insertText", data: null, dataTransfer })
+    );
+  });
+  await settle();
+};
 const ime = (text: string): Step => async () => {
   const session = cdp() as unknown as {
     send: (method: string, params?: object) => Promise<unknown>;
@@ -552,6 +563,52 @@ const V_RECORDS: Rec[] = [
     });
     await settle();
   }],
+  ["R8 A1 TQR link over T0w@1-Nw@1", LI("T0w<blockquote><p>Q1w</p></blockquote><hr>"), ["T0w", 1, "Nw", 1], linkButton],
+  ["R8 A1 lined root quote link over Y2w@1-Z3w@1", "<blockquote><p>X1w</p>Y2w<hr></blockquote><p>Z3w</p>", ["Y2w", 1, "Z3w", 1], linkButton],
+  ["R8 A2 focus with no selection, item ending in a rule", "<ul><li>T0w<hr></li></ul>", async () => {
+    await click(editable());
+  }, async () => {
+    await act(async () => {
+      editorOf()!.update(() => $setSelection(null));
+    });
+    await act(async () => {
+      editorOf()!.focus();
+    });
+    await settle();
+  }],
+  ["R8 A2 focus with no selection at the start, item starting with a rule", "<ul><li><hr>T1w</li></ul><p>Zw</p>", async () => {
+    await click(editable());
+  }, async () => {
+    await act(async () => {
+      editorOf()!.update(() => $setSelection(null));
+    });
+    await act(async () => {
+      editorOf()!.focus(undefined, { defaultSelection: "rootStart" });
+    });
+    await settle();
+  }],
+  ["R8 A3 two paragraphs pasted after a nested list", "<ul><li>Aw</li></ul>", at("Aw"), pasteHtml("<ul><li>Bq</li></ul><p>H1</p><p>H2</p>")],
+  ["R8 B3 reference: block paste at Pw@1", "<ul><li>Pw</li><li>Nw</li></ul>", at("Pw", 1), pasteHtml("<p>Aq</p><p>Bq</p>")],
+  ["R8 A5 text replacement from the item before into T1w", LI("T1w"), ["Pw", 1, "T1w", 1], replaceText("Rq")],
+  ["R8 A5 text replacement emptying an item", LI("T1w"), ["Pw", 2, "Nw", 0], replaceText("Rq")],
+  ["R8 A5 text replacement over a range in RT", LI("<hr>T1w"), ["Pw", 1, "T1w", 2], replaceText("Rq")],
+  ["R8 B1 QB el1 letter", LI("<blockquote><p>Q0w</p></blockquote><br>"), itemPoint(1, 1), keys("k")],
+  ["R8 B1 QI el1 letter", LI(`<blockquote><p>Q0w</p></blockquote>${IMGTAG}`), itemPoint(1, 1), keys("k")],
+  ["R8 B1 BQ el1 letter", LI("<br><blockquote><p>Q1w</p></blockquote>"), itemPoint(1, 1), keys("k")],
+  ["R8 B1 QA el1 letter", LI('<blockquote><p>Q0w</p></blockquote><a href="https://example.org/a">Lw</a>'), itemPoint(1, 1), keys("k")],
+  ["R8 B3 block paste over Pw@1-T1w@2 in RT", LI("<hr>T1w"), ["Pw", 1, "T1w", 2], pasteHtml("<p>Aq</p><p>Bq</p>")],
+  ["R8 B3 block paste over Pw@1-T1w@2 in RBT", LI("<hr><br>T1w"), ["Pw", 1, "T1w", 2], pasteHtml("<p>Aq</p><p>Bq</p>")],
+  ["R8 B4 TH Enter at H0w@0", LI("T0w<h3>H0w</h3>"), at("H0w", 0), keys("{Enter}")],
+  ["R8 B4 TQ Enter at Q0w@0", LI("T0w<blockquote><p>Q0w</p></blockquote>"), at("Q0w", 0), keys("{Enter}")],
+  ["R8 B4 TC Enter at C0w@0", LI("T0w<pre><code>C0w</code></pre>"), at("C0w", 0), keys("{Enter}")],
+  ["R8 B4 TBH Enter at H0w@0", LI("T0w<br><h3>H0w</h3>"), at("H0w", 0), keys("{Enter}")],
+  ["R8 B5 lined quote Enter at X1w end", "<blockquote><p>X0w</p>X1w</blockquote>", at("X1w"), keys("{Enter}")],
+  ["R8 B5 lined quote Enter at X0w end", "<blockquote><p>X0w</p>X1w</blockquote>", at("X0w"), keys("{Enter}")],
+  ["R8 B6 V8 row 1 right to left", LI("T0w<blockquote><p>Q1w</p></blockquote>"), ["Q1w", 2, "T0w", 1], keys("{Enter}")],
+  ["R8 B6 V8 row 2 right to left", LI("T0w<blockquote><p>Q1w</p></blockquote>"), ["Q1w", 2, "T0w", 1], () => clipboardEvent("cut")],
+  ["R8 B7 QT Delete at Q0w end", LI("<blockquote><p>Q0w</p></blockquote>T1w"), at("Q0w"), keys("{Delete}")],
+  ["R8 B7 TCT Delete at T0w end", LI("T0w<pre><code>C1w</code></pre>T2w"), at("T0w"), keys("{Delete}")],
+  ["R8 B8 root quote Shift+Enter at X2w end", "<blockquote><p>X1w</p>X2w</blockquote>", at("X2w"), keys("{Shift>}{Enter}{/Shift}")],
   ["R8 ordinary T1w@0 Backspace", LI("T1w"), at("T1w", 0), keys("{Backspace}")],
   ["R8 ordinary T1w@0 Ctrl+Backspace", LI("T1w"), at("T1w", 0), keys("{Control>}{Backspace}{/Control}")],
   ["R8 ordinary T1w end Delete", LI("T1w"), at("T1w"), keys("{Delete}")],
@@ -651,6 +708,29 @@ for (const [name, html, , size] of Q1_SHAPES) {
     for (const [label, step] of Q1_COMMANDS) {
       RECORDS.push([`Q1 ${name} item@${offset} ${label}`, html, place, step]);
     }
+  }
+}
+// B2: the points where a line and a block meet, for every command
+const B2_POINTS: Array<[string, string, Step]> = [
+  ["TQ@1", LI("T0w<blockquote><p>Q1w</p></blockquote>"), itemPoint(1, 1)],
+  ["QT@1", LI("<blockquote><p>Q0w</p></blockquote>T1w"), itemPoint(1, 1)],
+  ["TQT el1", LI("T0w<blockquote><p>Q1w</p></blockquote>T2w"), itemPoint(1, 1)],
+  ["TQT el2", LI("T0w<blockquote><p>Q1w</p></blockquote>T2w"), itemPoint(1, 2)],
+  ["TH@1", LI("T0w<h3>H1w</h3>"), itemPoint(1, 1)],
+  ["TC@1", LI("T0w<pre><code>C1w</code></pre>"), itemPoint(1, 1)],
+  ["AQ el1", LI('<a href="https://example.org/a">Aw</a><blockquote><p>Q1w</p></blockquote>'), itemPoint(1, 1)],
+  ["QA el1", LI('<blockquote><p>Q0w</p></blockquote><a href="https://example.org/a">Lw</a>'), itemPoint(1, 1)],
+  ["BQ el1", LI("<br><blockquote><p>Q1w</p></blockquote>"), itemPoint(1, 1)],
+  ["QB el1", LI("<blockquote><p>Q0w</p></blockquote><br>"), itemPoint(1, 1)],
+  ["root X1w el1", "<blockquote>X1w<p>X2w</p></blockquote>", elementPoint("X1w", 1)],
+];
+for (const [name, html, place] of B2_POINTS) {
+  RECORDS.push([`B2 ${name} Enter`, html, place, keys("{Enter}")]);
+  RECORDS.push([`B2 ${name} Heading 2`, html, place, blockType("Heading 2")]);
+  RECORDS.push([`B2 ${name} letter`, html, place, keys("k")]);
+  RECORDS.push([`B2 ${name} IME`, html, place, ime("a")]);
+  for (const [label, step] of Q1_COMMANDS) {
+    RECORDS.push([`B2 ${name} ${label}`, html, place, step]);
   }
 }
 const Q1_NODE_SHAPES: Array<[string, string, string]> = [

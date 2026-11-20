@@ -321,6 +321,16 @@ const $paragraphToLine = (paragraph: ParagraphNode) => {
     );
     const line = $createCmsLineNode();
     paragraph.insertBefore(line, false);
+    // inline content directly before ends its own line first (D19)
+    const prior = line.getPreviousSibling();
+    const priorEnd = $isCmsLineNode(prior) ? prior.getLastChild() : prior;
+    if (
+      prior !== null &&
+      (isInlineContent(prior) || $isCmsLineNode(prior)) &&
+      isLineBreak(priorEnd) === false
+    ) {
+      line.append($createLineBreakNode());
+    }
     line.append($createLineBreakNode());
     paragraph.remove();
     for (const point of points) {
@@ -644,6 +654,8 @@ const HEAD_PATH_TAG = "cms-head-path";
 const REMOVAL_START_TAG = "cms-removal-start:";
 const REMOVAL_END_TAG = "cms-removal-end:";
 const BREAK_AFTER_TAG = "cms-break-after:";
+/** The last check after a commit left a point on a lined container. */
+let checkFailed = false;
 
 /**
  * This update removes content (a range, a node selection, a delete, a
@@ -722,12 +734,41 @@ const $dropEmptied = (node: ElementNode) => {
   return true;
 };
 
+/**
+ * A line that comes to hold a non-inline child splits around it: the child
+ * goes to the container between the two halves, and an empty half goes.
+ */
+const $splitAroundBlocks = (line: CmsLineNode) => {
+  const children = line.getChildren();
+  if (children.every((child) => isInlineContent(child))) {
+    return;
+  }
+  let last: LexicalNode = line;
+  let half: CmsLineNode | null = null;
+  for (const child of children) {
+    if (isInlineContent(child)) {
+      if (half === null) {
+        half = $createCmsLineNode();
+        last.insertAfter(half);
+        last = half;
+      }
+      half.append(child);
+    } else {
+      last.insertAfter(child);
+      last = child;
+      half = null;
+    }
+  }
+  line.remove();
+};
+
 const $keepLineInPlace = (line: CmsLineNode) => {
   if (lineSpike.on === false) {
     return;
   }
   const parent = line.getParent();
   if (isLineContainer(parent)) {
+    $splitAroundBlocks(line);
     $normaliseLines(parent);
     return;
   }
@@ -802,14 +843,27 @@ const $keepContainer = (container: ElementNode) => {
 };
 
 /**
- * The line rules. Registered after the field's lifts, so that
- * `$liftBlocksAfterNestedList` sees a pasted paragraph before it becomes
- * a line.
+ * The line rules. A list item's lift (`liftItem`, the live editor's
+ * `$liftBlocksAfterNestedList`) runs in the same transform before the line
+ * step, so it sees a pasted paragraph before it becomes a line, whatever
+ * the registration order.
  */
-export const registerLineTransforms = (editor: LexicalEditor) =>
-  linesOff ? () => {} : mergeRegister(
+export const registerLineTransforms = (
+  editor: LexicalEditor,
+  liftItem?: (item: ListItemNode) => void
+) =>
+  linesOff
+    ? liftItem === undefined
+      ? () => {}
+      : editor.registerNodeTransform(ListItemNode, liftItem)
+    : mergeRegister(
     editor.registerNodeTransform(CmsLineNode, $keepLineInPlace),
-    editor.registerNodeTransform(ListItemNode, $keepContainer),
+    editor.registerNodeTransform(ListItemNode, (item) => {
+      liftItem?.(item);
+      if (item.isAttached()) {
+        $keepContainer(item);
+      }
+    }),
     editor.registerNodeTransform(QuoteNode, $keepContainer),
     editor.registerNodeTransform(LinkNode, $linkGivesUpRules),
     editor.registerNodeTransform(HeadingNode, $dropEmptiedBlockInContainer),
@@ -895,6 +949,26 @@ export const $liftPointsIntoLines = (create: boolean): boolean => {
     const lineAt = container.getChildAtIndex(point.offset);
     const lineBefore =
       point.offset > 0 ? container.getChildAtIndex(point.offset - 1) : null;
+    // the exception: a line at the point that starts with a line break or
+    // an image, with a block directly before the point: that block's end
+    const lead = $isCmsLineNode(lineAt) ? lineAt.getFirstChild() : null;
+    if (
+      lead !== null &&
+      (isLineBreak(lead) || ($isDecoratorNode(lead) && lead.isInline())) &&
+      $isElementNode(lineBefore) &&
+      $isCmsLineNode(lineBefore) === false &&
+      lineBefore.isInline() === false
+    ) {
+      const last = lineBefore.getLastDescendant();
+      if ($isTextNode(last)) {
+        point.set(last.getKey(), last.getTextContentSize(), "text");
+        continue;
+      }
+      if ($isElementNode(last)) {
+        point.set(last.getKey(), last.getChildrenSize(), "element");
+        continue;
+      }
+    }
     if ($isCmsLineNode(lineAt) || $isCmsLineNode(lineBefore)) {
       const line = ($isCmsLineNode(lineAt) ? lineAt : lineBefore) as CmsLineNode;
       const atStart = $isCmsLineNode(lineAt);
@@ -1263,17 +1337,36 @@ export const registerLineCommands = (editor: LexicalEditor) =>
         COMMAND_PRIORITY_NORMAL
       )
     ),
-    // the rule holds in every committed state (5.3, 5.5)
+    // the third place of 5.3: after every commit, a point that rests on a
+    // lined container resolves at once, in an update of its own that makes
+    // no undo step and fires no onChange; the rule then holds (5.3, 5.5)
     editor.registerUpdateListener(({ editorState }) => {
-      const broken = editorState.read($pointRuleBroken);
-      const block = editorState.read($lineHoldsBlock);
-      if (broken !== null || block) {
-        const message = broken !== null
-          ? `cms-line point rule: a point on ${broken}`
-          : "cms-line rule: a line holds a block";
+      const report = (message: string) => {
         console.error(message);
         lineRuleViolations.push(message);
+      };
+      if (editorState.read($lineHoldsBlock)) {
+        report("cms-line rule: a line holds a block");
       }
+      const broken = editorState.read($pointRuleBroken);
+      if (broken === null) {
+        checkFailed = false;
+        return;
+      }
+      // a check that could not resolve the point has reported it already
+      if (checkFailed) {
+        checkFailed = false;
+        return;
+      }
+      editor.update(() => {
+        $addUpdateTag("history-merge");
+        $liftPointsIntoLines(true);
+        const still = $pointRuleBroken();
+        if (still !== null) {
+          checkFailed = true;
+          report(`cms-line point rule: a point on ${still}`);
+        }
+      }, { discrete: true });
     }),
     ...insertCommands.map((command) =>
       editor.registerCommand(
@@ -1664,6 +1757,29 @@ export const $caretOffEmptyLine = () => {
 export const registerTypingAfterSelectedNode = (editor: LexicalEditor) =>
   linesOff ? () => {} : editor.registerRootListener((root, previous) => {
     const onBeforeInput = (event: InputEvent) => {
+      // Safari's text replacement over a range: the controlled text
+      // insertion, so the removal is marked like typed text (5.4)
+      if (
+        event.inputType === "insertText" &&
+        event.data === null &&
+        event.dataTransfer !== null
+      ) {
+        const ranged = editor
+          .getEditorState()
+          .read(() => {
+            const selection = $getSelection();
+            return $isRangeSelection(selection) && selection.isCollapsed() === false;
+          });
+        if (ranged) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          editor.dispatchCommand(
+            CONTROLLED_TEXT_INSERTION_COMMAND,
+            event.dataTransfer.getData("text/plain")
+          );
+        }
+        return;
+      }
       if (event.inputType !== "insertText" || event.data === null) {
         return;
       }
