@@ -143,17 +143,41 @@ const clickItemEnd = async (word: string) => {
 };
 
 describe("C: a point at a line's start, and an empty caret line after its rule goes", () => {
-  test("C1: ArrowLeft from the text after a break that follows a quote, then a letter", async () => {
+  test("C2: QRB, Backspace on the rule's line, then a letter", async () => {
+    const onChange = await renderField(LI("<blockquote><p>Q0w</p></blockquote><hr><br>"));
+    await clickRule("start");
+    await keys("{Backspace}k");
+    expect(written(onChange)).toBe(stored(LI("<blockquote><p>Q0w</p></blockquote>k<br />")));
+  });
+  test("a point at a line's start stays there: ArrowLeft after a break that follows a quote, then a letter", async () => {
     const onChange = await renderField(LI("<blockquote><p>Q0w</p></blockquote><br>T2w"));
     await clickInWord("T2w", 0);
     await keys("{ArrowLeft}k");
-    expect(written(onChange)).toBe(stored(LI("<blockquote><p>Q0wk</p></blockquote><br />T2w")));
+    expect(written(onChange)).toBe(stored(LI("<blockquote><p>Q0w</p></blockquote>k<br />T2w")));
   });
-  test("C1: ArrowLeft there, then Enter, adds a paragraph to the quote", async () => {
+  test("a point at a line's start stays there: then Enter", async () => {
     const onChange = await renderField(LI("<blockquote><p>Q0w</p></blockquote><br>T2w"));
     await clickInWord("T2w", 0);
     await keys("{ArrowLeft}{Enter}");
-    expect(written(onChange)).toBe(stored(LI("<blockquote><p>Q0w</p><p></p></blockquote><br />T2w")));
+    expect(written(onChange)).toBe(
+      stored("<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote></li><li><br />T2w</li><li>Nw</li></ul>")
+    );
+  });
+  test("Backspace at the start of a line that starts with a break after a quote removes the break; the caret at the quote's end", async () => {
+    const onChange = await renderField(LI("<blockquote><p>Q0w</p></blockquote><br>T2w"));
+    await clickInWord("T2w", 0);
+    await keys("{ArrowLeft}{Backspace}");
+    expect(written(onChange)).toBe(stored(LI("<blockquote><p>Q0w</p></blockquote>T2w")));
+    await keys("k");
+    expect(written(onChange)).toBe(stored(LI("<blockquote><p>Q0wk</p></blockquote>T2w")));
+  });
+  test("Delete there removes the same break; the caret stays at the line's start", async () => {
+    const onChange = await renderField(LI("<blockquote><p>Q0w</p></blockquote><br>T2w"));
+    await clickInWord("T2w", 0);
+    await keys("{ArrowLeft}{Delete}");
+    expect(written(onChange)).toBe(stored(LI("<blockquote><p>Q0w</p></blockquote>T2w")));
+    await keys("k");
+    expect(written(onChange)).toBe(stored(LI("<blockquote><p>Q0w</p></blockquote>kT2w")));
   });
   test("C2: RQ, the rule clicked at its start, Delete, then a letter", async () => {
     const onChange = await renderField(LI("<hr><blockquote><p>Q1w</p></blockquote>"));

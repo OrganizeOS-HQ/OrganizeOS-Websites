@@ -1020,20 +1020,6 @@ export const $liftPointsIntoLines = (create: boolean, depth = 0): boolean => {
         point.set(container.getKey(), at, "element");
         held.remove();
         gaveBack = true;
-      } else if (
-        held.isEmpty() === false &&
-        point.offset === 0 &&
-        $isElementNode(before) &&
-        $isCmsLineNode(before) === false &&
-        before.isInline() === false &&
-        (isLineBreak(held.getFirstChild()) ||
-          ($isDecoratorNode(held.getFirstChild()) && held.getFirstChild()!.isInline()))
-      ) {
-        // C1: a point at a line's start is the container's point before
-        // the line, and resolves as that point does; that differs from the
-        // line's start only by D18's exception (a block before, a line that
-        // starts with a line break or an image)
-        point.set(held.getParentOrThrow().getKey(), at, "element");
       } else {
         continue;
       }
@@ -1048,26 +1034,6 @@ export const $liftPointsIntoLines = (create: boolean, depth = 0): boolean => {
     const lineAt = container.getChildAtIndex(point.offset);
     const lineBefore =
       point.offset > 0 ? container.getChildAtIndex(point.offset - 1) : null;
-    // the exception: a line at the point that starts with a line break or
-    // an image, with a block directly before the point: that block's end
-    const lead = $isCmsLineNode(lineAt) ? lineAt.getFirstChild() : null;
-    if (
-      lead !== null &&
-      (isLineBreak(lead) || ($isDecoratorNode(lead) && lead.isInline())) &&
-      $isElementNode(lineBefore) &&
-      $isCmsLineNode(lineBefore) === false &&
-      lineBefore.isInline() === false
-    ) {
-      const last = lineBefore.getLastDescendant();
-      if ($isTextNode(last)) {
-        point.set(last.getKey(), last.getTextContentSize(), "text");
-        continue;
-      }
-      if ($isElementNode(last)) {
-        point.set(last.getKey(), last.getChildrenSize(), "element");
-        continue;
-      }
-    }
     if ($isCmsLineNode(lineAt) || $isCmsLineNode(lineBefore)) {
       const line = ($isCmsLineNode(lineAt) ? lineAt : lineBefore) as CmsLineNode;
       const atStart = $isCmsLineNode(lineAt);
@@ -1925,6 +1891,47 @@ export const registerLineCommands = (editor: LexicalEditor) =>
           }
           point.set(line.getKey(), at, "element");
           selection.focus.set(line.getKey(), at, "element");
+          return true;
+        },
+        COMMAND_PRIORITY_LOW
+      )
+    ),
+    // Backspace at the start of a line that starts with a line break,
+    // directly after a block: the break goes and the caret stands at the
+    // block's end
+    ...[DELETE_CHARACTER_COMMAND, DELETE_WORD_COMMAND, DELETE_LINE_COMMAND].map((command) =>
+      editor.registerCommand(
+        command as LexicalCommand<boolean>,
+        (isBackward: boolean) => {
+          const selection = $getSelection();
+          if (isBackward === false || $isRangeSelection(selection) === false || selection.isCollapsed() === false) {
+            return false;
+          }
+          const { anchor } = selection;
+          const line = anchor.getNode();
+          if (anchor.type !== "element" || anchor.offset !== 0 || $isCmsLineNode(line) === false) {
+            return false;
+          }
+          const brk = line.getFirstChild();
+          const block = line.getPreviousSibling();
+          if (
+            isLineBreak(brk) === false ||
+            brk === null ||
+            $isElementNode(block) === false ||
+            $isCmsLineNode(block) ||
+            block.isInline()
+          ) {
+            return false;
+          }
+          brk.remove();
+          const last = block.getLastDescendant();
+          if ($isTextNode(last)) {
+            last.select(last.getTextContentSize(), last.getTextContentSize());
+          } else if ($isElementNode(last)) {
+            last.selectEnd();
+          } else {
+            block.selectEnd();
+          }
           return true;
         },
         COMMAND_PRIORITY_LOW
