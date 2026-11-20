@@ -3474,12 +3474,14 @@ const $intoLine = (nodes: LexicalNode[], selection: RangeSelection) => {
   if ((line === null || item === null) && selection.isCollapsed() === false) {
     const endLine = $findMatchingParent(end.getNode(), $isCmsLineNode);
     const endContainer = endLine?.getParent() ?? null;
-    // a block paste from the item before into a lined item: the removal
-    // first (5.4, with D5's join), then the paste at the caret it leaves
+    // a block paste from the item before into a block-led lined item: the
+    // removal first (5.4, with D5's join), then the paste at the caret it
+    // leaves
     const before = endContainer?.getPreviousSibling() ?? null;
     const startNode = start.getNode();
     if (
       $isListItemNode(endContainer) &&
+      $isCmsLineNode(endContainer.getFirstChild()) === false &&
       $isListItemNode(before) &&
       (before.is(startNode) || before.isParentOf(startNode)) &&
       nodes.some(
