@@ -4,7 +4,11 @@
 // (undo stack length and redo stack). 15.3 and 15.4: Shift steps and steps
 // off a selected rule in right-to-left and mixed-direction items. 15.5 and
 // 15.6: a heading that holds only an image.
-import { expect, test } from "vitest";
+import { createElement } from "react";
+import { createRoot } from "react-dom/client";
+import { expect, test, vi } from "vitest";
+import { TooltipProvider } from "@webstudio-is/design-system";
+import { RichTextField } from "./rich-text-field";
 import { act } from "react-dom/test-utils";
 import { cdp, userEvent } from "@vitest/browser/context";
 import { $createRangeSelection, $createRangeSelectionFromDom, $setSelection, KEY_DOWN_COMMAND, type BaseSelection, type LexicalNode, $getRoot, $getSelection, $isElementNode, $isNodeSelection, $isRangeSelection, $isTextNode, type PointType, CAN_REDO_COMMAND, CAN_UNDO_COMMAND, COMMAND_PRIORITY_CRITICAL, type LexicalEditor } from "lexical";
@@ -862,4 +866,205 @@ test("15.12 the page has not moved, the step does nothing: a focus the field set
   expect(seen[0].atKey).toBe(seen[0].before);
   expect(seen[0].page).toBe('"Nw"@0->"Q0w"@3 format=0');
   expect(writeOf(onChange)).toBe(NOT_MOVED_WRITES["field focus"]);
+}, 30_000);
+
+// 15.13: the field moves no content under a pointer that is down. While a
+// press is in progress the point rule makes and removes no caret line; it
+// runs when the press's own events are over
+const mouse = (type: "mousePressed" | "mouseReleased" | "mouseMoved", x: number, y: number, buttons = type === "mousePressed" ? 1 : 0) =>
+  send("Input.dispatchMouseEvent", { type, x, y, button: type === "mouseMoved" ? (buttons ? "left" : "none") : "left", buttons, clickCount: type === "mouseMoved" ? 0 : 1 });
+const centre = (element: Element) => { const box = element.getBoundingClientRect(); return { x: box.left + box.width / 2, y: box.top + box.height / 2 }; };
+/** A press held for `ms` (0: released at once), at the element's centre or the given point. */
+const hold = async (at: { x: number; y: number }, ms: number) => {
+  await mouse("mousePressed", at.x, at.y);
+  if (ms > 0) { await settle(); await wait(ms); }
+  await mouse("mouseReleased", at.x, at.y);
+  await settle();
+};
+const selectedElement = () => editorOf()!.getEditorState().read(() => { const s = $getSelection(); return $isNodeSelection(s) && s.getNodes().length === 1 ? editorOf()!.getElementByKey(s.getNodes()[0].getKey()) : null; });
+const PRESS_RQR = LI("<hr><blockquote><p>Q1w</p></blockquote><hr>");
+for (const ms of [0, 50, 200]) test(`15.13 RQR's first rule pressed for ${ms} ms, 20 times: the rule is selected every time`, async () => {
+  let selected = 0;
+  for (let run = 0; run < 20; run++) {
+    const onChange = await renderField(PRESS_RQR);
+    const rule = editable()!.querySelector("hr")!;
+    await hold(centre(rule), ms);
+    if (selectedElement() === rule && writeOf(onChange) === "NOOP") selected += 1;
+    unmountField();
+  }
+  expect(selected).toBe(20);
+}, 120_000);
+const NESTED_RQ = "<ul><li>Pw<ul><li><hr><blockquote><p>Q1w</p></blockquote></li></ul></li><li>Nw</li></ul>";
+const Q15 = (w: string) => `<blockquote><p>${w}</p></blockquote>`;
+const PRESS_SHAPES: [string, string, number][] = [
+  ["a rule first in an item, a quote after", LI(`<hr>${Q15("Q1w")}`), 0],
+  ["RQR, the first rule", PRESS_RQR, 0],
+  ["RQR, the last rule", PRESS_RQR, 1],
+  ["two rules, the first", LI("<hr><hr>"), 0],
+  ["two rules, the second (between two rules)", LI("<hr><hr>"), 1],
+  ["a rule alone in an item", LI("<hr>"), 0],
+  ["QRR, the first rule", LI(`${Q15("Q0w")}<hr><hr>`), 0],
+  ["QRR, the second rule (between two rules)", LI(`${Q15("Q0w")}<hr><hr>`), 1],
+  ["a rule last in an item, after text", LI("T0w<hr>"), 0],
+  ["a rule last in an item, after a quote", LI(`${Q15("Q0w")}<hr>`), 0],
+  ["depth two, a rule first in a nested item", NESTED_RQ, 0],
+];
+for (const [name, html, index] of PRESS_SHAPES) for (const ms of [0, 50, 200]) test(`15.13 a press of ${ms} ms on ${name}: the rule is selected, nothing moves`, async () => {
+  const onChange = await renderField(html);
+  const rule = editable()!.querySelectorAll("hr")[index];
+  const before = rule.getBoundingClientRect().top;
+  await mouse("mousePressed", centre(rule).x, centre(rule).y);
+  await settle(); await wait(ms);
+  // the pressed rule stays where it was while the pointer is down
+  expect(rule.getBoundingClientRect().top).toBe(before);
+  await mouse("mouseReleased", centre(rule).x, centre(rule).y);
+  await settle();
+  expect(selectedElement()).toBe(rule);
+  expect(writeOf(onChange)).toBe("NOOP");
+}, 30_000);
+// the mirror: the caret in an empty caret line, then a press below it. The
+// line the caret leaves stays while the pointer is down
+const caretLineAt = async (index: number) => {
+  await userEvent.click(editable()!.querySelector("[data-lexical-text]")!); await settle();
+  await act(async () => { editorOf()!.update(() => { const item = all().filter((node) => node.getType() === "listitem")[1]; const range = $createRangeSelection(); range.anchor.set(item.getKey(), index, "element"); range.focus.set(item.getKey(), index, "element"); $setSelection(range); }); });
+  await settle();
+  expect(walkSel()).toBe("cms-line@0[-]");
+};
+const MIRROR_IMG = `<img src="https://cdn.example.org/x.png" alt="" width="40" height="20" />`;
+const MIRROR_LINK = `<a href="https://example.org/l">Lw</a>`;
+const MIRROR: [string, string, number, "rule" | "image" | "link" | "text"][] = [
+  ["at the start of a rule-led item: a rule below", LI(`<hr>${Q15("Q1w")}<hr>`), 0, "rule"],
+  ["at the start of a rule-led item: an image below", LI(`<hr>${MIRROR_IMG}T2w`), 0, "image"],
+  ["at the start of a rule-led item: a link below", LI(`<hr>${MIRROR_LINK}T2w`), 0, "link"],
+  ["at the start of a rule-led item: text below", LI("<hr>Abcdefghw"), 0, "text"],
+  ["between two rules: a rule below", LI(`<hr><hr>${Q15("Q2w")}<hr>`), 1, "rule"],
+  ["between two rules: an image below", LI(`<hr><hr>${MIRROR_IMG}T3w`), 1, "image"],
+  ["between two rules: a link below", LI(`<hr><hr>${MIRROR_LINK}T3w`), 1, "link"],
+  ["between two rules: text below", LI("<hr><hr>Abcdefghw"), 1, "text"],
+];
+for (const [name, html, index, target] of MIRROR) for (const ms of [0, 50, 200]) test(`15.13 the caret in an empty caret line ${name}, pressed for ${ms} ms`, async () => {
+  const onChange = await renderField(html);
+  await caretLineAt(index);
+  const words = () => [...editable()!.querySelectorAll<HTMLElement>("[data-lexical-text]")];
+  const element =
+    target === "rule" ? [...editable()!.querySelectorAll("hr")].at(-1)!
+      : target === "image" ? editable()!.querySelector("img")!
+        : words().find((span) => span.textContent === (target === "link" ? "Lw" : "Abcdefghw"))!;
+  const box = element.getBoundingClientRect();
+  const at = target === "text" ? { x: box.left + box.width * 0.55, y: box.top + box.height / 2 } : centre(element);
+  const under = document.caretRangeFromPoint(at.x, at.y);
+  const want = target === "text" ? `"Abcdefghw"@${under?.startOffset}` : "";
+  await mouse("mousePressed", at.x, at.y);
+  await settle(); await wait(ms);
+  expect(element.getBoundingClientRect().top).toBe(box.top);
+  await mouse("mouseReleased", at.x, at.y);
+  await settle();
+  if (target === "rule") expect(selectedElement()).toBe(element);
+  if (target === "image") {
+    expect([...document.querySelectorAll("label")].some((label) => label.textContent === "Alt")).toBe(true);
+    expect(editorOf()!.getEditorState().read(() => $getSelection())).toBeNull();
+  }
+  if (target === "link") expect(walkSel()).toBe('"Lw"@1');
+  if (target === "text") expect(walkSel()).toBe(want);
+  // the caret line goes once the press is over: not an edit
+  expect(editorOf()!.getEditorState().read(() => all().some((node) => node.getType() === "cms-line" && $isElementNode(node) && node.isEmpty()))).toBe(false);
+  expect(writeOf(onChange)).toBe("NOOP");
+}, 30_000);
+// a press on the item's padding beside its leading rule: the page caret on
+// the item
+const besideLeadingRule = () => {
+  const rule = editable()!.querySelector("hr")!;
+  const box = rule.getBoundingClientRect();
+  return { x: box.left - 6, y: box.top + box.height / 2 };
+};
+const PADDING_WRITES: Record<string, unknown> = {
+  // the range from the item's start to the pressed character; the letter
+  // replaces it (the removal step's class)
+  drag: { sel: '"kcdw"@1', w: "<ul><li>Pw</li><li>kcdw</li><li>Nw</li></ul>" },
+  // the held step runs first: the letter lands in a line before the rule
+  key: { during: { sel: '"k"@1', w: "<ul><li>Pw</li><li>k<hr />T1w</li><li>Nw</li></ul>" }, after: '"k"@1', w: "<ul><li>Pw</li><li>k<hr />T1w</li><li>Nw</li></ul>" },
+};
+test("15.13 a drag from the padding beside a leading rule into text below", async () => {
+  const onChange = await renderField(LI("<hr>T1w<br>Tabcdw"));
+  const from = besideLeadingRule();
+  const word = [...editable()!.querySelectorAll<HTMLElement>("[data-lexical-text]")].find((span) => span.textContent === "Tabcdw")!;
+  const box = word.getBoundingClientRect();
+  const to = { x: box.left + box.width * 0.5, y: box.top + box.height / 2 };
+  await mouse("mousePressed", from.x, from.y);
+  await settle(); await wait(50);
+  const top = word.getBoundingClientRect().top;
+  for (const step of [0.25, 0.5, 0.75, 1]) {
+    await mouse("mouseMoved", from.x + (to.x - from.x) * step, from.y + (to.y - from.y) * step, 1);
+    await settle();
+  }
+  expect(word.getBoundingClientRect().top).toBe(top);
+  await mouse("mouseReleased", to.x, to.y);
+  await settle();
+  await userEvent.keyboard("k"); await settle();
+  expect({ sel: walkSel(), w: writeOf(onChange) }).toEqual(PADDING_WRITES.drag);
+}, 30_000);
+test("15.13 a key while the pointer is down on the padding beside a leading rule", async () => {
+  const onChange = await renderField(LI("<hr>T1w"));
+  const from = besideLeadingRule();
+  await mouse("mousePressed", from.x, from.y);
+  await settle(); await wait(50);
+  await userEvent.keyboard("k"); await settle();
+  const during = { sel: walkSel(), w: writeOf(onChange) };
+  await mouse("mouseReleased", from.x, from.y);
+  await settle();
+  expect({ during, after: walkSel(), w: writeOf(onChange) }).toEqual(PADDING_WRITES.key);
+}, 30_000);
+// the hold cannot stick: each way a press ends with no click ends it, and
+// the held step then runs (the caret on the item gets its line)
+const ENDS: [string, () => Promise<void>][] = [
+  ["a cancelled pointer", async () => { window.dispatchEvent(new PointerEvent("pointercancel", { bubbles: true })); }],
+  ["a native drag's end", async () => { window.dispatchEvent(new DragEvent("dragend", { bubbles: true })); }],
+  ["a drop", async () => { window.dispatchEvent(new DragEvent("drop", { bubbles: true })); }],
+  ["a context menu", async () => { window.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true })); }],
+  ["the window's blur", async () => { window.dispatchEvent(new FocusEvent("blur")); }],
+  ["a second pointer", async () => { editable()!.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 7, button: 0, pointerType: "touch" })); }],
+  ["a release outside the window (a pointer seen with no button down)", async () => { window.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, buttons: 0 })); }],
+];
+for (const [name, end] of ENDS) test(`15.13 the hold ends at ${name}`, async () => {
+  const onChange = await renderField(LI("<hr>T1w"));
+  const from = besideLeadingRule();
+  await mouse("mousePressed", from.x, from.y);
+  await settle(); await wait(50);
+  expect(walkSel()).toBe("listitem@0[horizontalrule]");
+  await act(end);
+  await settle();
+  expect(walkSel()).toBe("cms-line@0[-]");
+  expect(writeOf(onChange)).toBe("NOOP");
+  await mouse("mouseReleased", from.x, from.y);
+  await settle();
+}, 30_000);
+test("15.13 the hold is the field's own: a press held in one field leaves another field's point rule running", async () => {
+  await renderField(LI("<hr>T1w"));
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  act(() => {
+    root.render(createElement(TooltipProvider, null, createElement(RichTextField, { id: "cms-field-second", labelId: "cms-field-second-label", value: { html: LI("<hr>T1w") }, onChange: vi.fn(), onOpenClassic: vi.fn() })));
+  });
+  await settle();
+  const other = (container.querySelector('[contenteditable="true"]') as HTMLElement & { __lexicalEditor?: LexicalEditor }).__lexicalEditor!;
+  const otherSel = () => other.getEditorState().read(() => { const sel = $getSelection(); return $isRangeSelection(sel) ? ptOf(sel.anchor) : String(sel); });
+  try {
+    const from = besideLeadingRule();
+    await mouse("mousePressed", from.x, from.y);
+    await settle(); await wait(50);
+    expect(walkSel()).toBe("listitem@0[horizontalrule]");
+    await act(async () => {
+      other.update(() => { const item = $getRoot().getAllTextNodes().find((t) => t.getTextContent() === "T1w")!.getParentOrThrow().getParentOrThrow(); const range = $createRangeSelection(); range.anchor.set(item.getKey(), 0, "element"); range.focus.set(item.getKey(), 0, "element"); $setSelection(range); });
+    });
+    await settle();
+    expect(otherSel()).toBe("cms-line@0[-]");
+    expect(walkSel()).toBe("listitem@0[horizontalrule]");
+    await mouse("mouseReleased", from.x, from.y);
+    await settle();
+    expect(walkSel()).toBe("cms-line@0[-]");
+  } finally {
+    act(() => root.unmount());
+    container.remove();
+  }
 }, 30_000);

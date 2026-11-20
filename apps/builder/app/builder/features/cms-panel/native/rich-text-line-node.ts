@@ -1956,6 +1956,44 @@ export const registerLineCommands = (editor: LexicalEditor) => {
       event.preventDefault();
     }
   };
+  // 15.13: while a press is in progress in the field, the point rule makes
+  // and removes no caret line, so no content moves under the pointer; it
+  // runs when the press's own events are over (after the click, so the
+  // pressed node's own click handler has run, else when the press ends
+  // some other way), on the selection as it is then
+  let pressId: number | null = null;
+  const $resolvePoint = () => {
+    const edited = $updateHasEdits();
+    const made = $liftPointsIntoLines(true);
+    const removed = $removeLeftEmptyLines();
+    if ((made || removed) && edited === false) {
+      $addUpdateTag("history-merge");
+    }
+  };
+  const endPress = () => {
+    if (pressId === null) {
+      return;
+    }
+    pressId = null;
+    if (editor.getRootElement() === null) {
+      return;
+    }
+    editor.update($resolvePoint, { discrete: true });
+  };
+  const onPressStart = (event: PointerEvent) => {
+    // a second pointer ends the press in progress
+    endPress();
+    if (event.button === 0) {
+      pressId = event.pointerId;
+    }
+  };
+  // a pointer seen with no button down: the press ended where the page
+  // reported no release (outside the window, or no click followed)
+  const onPointerMove = (event: PointerEvent) => {
+    if (pressId !== null && (event.buttons & 1) === 0) {
+      endPress();
+    }
+  };
   return mergeRegister(
     // a caret that arrives with no line beside it gets an empty line, and
     // an empty line the caret left goes: not an edit (no undo step, no
@@ -1963,11 +2001,8 @@ export const registerLineCommands = (editor: LexicalEditor) => {
     editor.registerCommand(
       SELECTION_CHANGE_COMMAND,
       () => {
-        const edited = $updateHasEdits();
-        const made = $liftPointsIntoLines(true);
-        const removed = $removeLeftEmptyLines();
-        if ((made || removed) && edited === false) {
-          $addUpdateTag("history-merge");
+        if (pressId === null) {
+          $resolvePoint();
         }
         return false;
       },
@@ -2222,6 +2257,46 @@ export const registerLineCommands = (editor: LexicalEditor) => {
       },
       COMMAND_PRIORITY_CRITICAL
     ),
+    // 15.13: a key while the pointer is still down: the held step runs
+    // before any rule reads the selection (after the page's read-back above)
+    editor.registerCommand(
+      KEY_DOWN_COMMAND,
+      () => {
+        if (pressId !== null) {
+          $resolvePoint();
+        }
+        return false;
+      },
+      COMMAND_PRIORITY_CRITICAL
+    ),
+    editor.registerRootListener((root, previous) => {
+      previous?.removeEventListener("pointerdown", onPressStart, true);
+      root?.addEventListener("pointerdown", onPressStart, true);
+    }),
+    (() => {
+      // the press's own end: the click (bubbling, after the node's own
+      // handler), or a way a press ends with no click
+      const ends = ["click", "pointercancel", "dragend", "drop", "contextmenu"] as const;
+      // the window losing focus (an element's blur is not the press's end)
+      const onBlur = (event: FocusEvent) => {
+        if (event.target === window) {
+          endPress();
+        }
+      };
+      for (const type of ends) {
+        window.addEventListener(type, endPress, type === "click" ? false : true);
+      }
+      window.addEventListener("pointermove", onPointerMove, true);
+      window.addEventListener("blur", onBlur, true);
+      return () => {
+        endPress();
+        for (const type of ends) {
+          window.removeEventListener(type, endPress, type === "click" ? false : true);
+        }
+        window.removeEventListener("pointermove", onPointerMove, true);
+        window.removeEventListener("blur", onBlur, true);
+      };
+    })(),
     // 15.7: Shift and a press on text while a node is selected: the field
     // takes the pressed point when the pointer goes down, so the page's
     // extension from its own anchor never becomes the selection, whichever
@@ -2279,7 +2354,7 @@ export const registerLineCommands = (editor: LexicalEditor) => {
       }
       // held while a composition runs: it adds no update between the
       // composition's own; the commit that ends it is checked
-      if (editor.isComposing() || lineSpike.thirdPlaceOff) {
+      if (editor.isComposing() || lineSpike.thirdPlaceOff || pressId !== null) {
         return;
       }
       const broken = editorState.read($pointRuleBroken);

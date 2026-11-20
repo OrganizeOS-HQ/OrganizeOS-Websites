@@ -1620,7 +1620,8 @@ describe("round 14 rulings, b.2: a removal removes what its range holds", () => 
       input.files = transfer.files;
       input.dispatchEvent(new Event("change", { bubbles: true }));
     });
-    for (let round = 0; round < 20; round += 1) {
+    // the upload resolves on its own schedule: wait for the write it makes
+    for (let round = 0; round < 200 && b2Write(onChange).includes("NEW") === false; round += 1) {
       await settle();
     }
     expect(b2Write(onChange)).toBe("<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>T1wIMGNEW2w</li><li>Nw</li></ul>");
