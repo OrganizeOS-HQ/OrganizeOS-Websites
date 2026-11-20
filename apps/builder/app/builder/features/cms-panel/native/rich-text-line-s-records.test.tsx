@@ -785,6 +785,7 @@ const V_RECORDS: Rec[] = [
   ["R13 M2 rule-led root quote el0 Enter then k", "<blockquote><hr>X2w</blockquote>", elementPoint("X2w", 0), keys("{Enter}k")],
   ["R13 M2 rule-led root quote el0 Shift+Enter", "<blockquote><hr>X2w</blockquote>", elementPoint("X2w", 0), keys("{Shift>}{Enter}{/Shift}")],
   ["R13 M2 rule-led root quote el0 Shift+Enter then k", "<blockquote><hr>X2w</blockquote>", elementPoint("X2w", 0), keys("{Shift>}{Enter}{/Shift}k")],
+  ["R13 F reference: two paragraphs at xq@1 in xq<br>yyq", "<ul><li>xq<br>yyq</li><li>nq</li></ul><p>sepq</p>", at("xq", 1), pasteHtml("<p>Aq</p><p>Bq</p>")],
   ["R8 ordinary T1w@0 Backspace", LI("T1w"), at("T1w", 0), keys("{Backspace}")],
   ["R8 ordinary T1w@0 Ctrl+Backspace", LI("T1w"), at("T1w", 0), keys("{Control>}{Backspace}{/Control}")],
   ["R8 ordinary T1w end Delete", LI("T1w"), at("T1w"), keys("{Delete}")],

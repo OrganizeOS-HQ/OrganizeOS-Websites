@@ -124,6 +124,7 @@ import {
   $liftPointsIntoLines,
   $mapLineEdges,
   $plainTextOf,
+  $removeRangeWithBreak,
   $tagRemoval,
   isLinedContainer,
   $unwrapLines,
@@ -3481,11 +3482,26 @@ const $insertIntoListItem = (
  * code block as inline code, and blocks (at a caret) into the item with
  * its lines unwrapped meanwhile, as in the item's own text.
  */
-const $intoLine = (nodes: LexicalNode[], selection: RangeSelection) => {
+const $intoLine = (
+  nodes: LexicalNode[],
+  selection: RangeSelection
+): LexicalNode[] => {
   const start = selection.isBackward() ? selection.focus : selection.anchor;
   const end = selection.isBackward() ? selection.anchor : selection.focus;
   const line = $findMatchingParent(start.getNode(), $isCmsLineNode);
   const item = line?.getParent() ?? null;
+  // F (D14): a range with a point in a lined container is removed first,
+  // as 5.4 says, with D3's and D5's joins, in the paste's update; the paste
+  // then runs at the caret that leaves. The head's path never runs over
+  // such a range
+  const inLined = (point: PointType) =>
+    $findMatchingParent(point.getNode(), (node) => isLinedContainer(node)) !== null;
+  // (a range that starts outside a lined container keeps the first check's
+  // V2 and V3 writes, below)
+  if (selection.isCollapsed() === false && inLined(start)) {
+    $removeRangeWithBreak(selection);
+    return selection.isCollapsed() ? $intoLine(nodes, selection) : nodes;
+  }
   // a range that starts outside a line and ends in one: the end's
   // container takes the head's path (V3)
   if ((line === null || item === null) && selection.isCollapsed() === false) {

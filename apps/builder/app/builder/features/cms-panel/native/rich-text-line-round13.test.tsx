@@ -9,7 +9,9 @@ import {
   clickInWord,
   editable,
   editorOf,
+  dropHtml,
   lastHtml,
+  paste,
   renderField,
   settle,
 } from "./rich-text-test-harness";
@@ -191,6 +193,51 @@ describe("E: D3's break, decided before the edit", () => {
     await clickInWord("T0w");
     await keys("{Delete}");
     expect(written(onChange)).toBe(stored(LI("T0wC1w<br />T2w")));
+  });
+});
+
+describe("F: a block paste or drop over a range in a lined item: the removal, then the paste", () => {
+  const S2 = "<ul><li>xq<blockquote><p>qq</p></blockquote>yyq</li><li>nq</li></ul><p>sepq</p>";
+  const S2ol = "<ol><li>xq<blockquote><p>qq</p></blockquote>yyq</li><li>nq</li></ol><p>sepq</p>";
+  const timed = async (step: () => Promise<void> | void) => {
+    const start = performance.now();
+    await step();
+    await settle();
+    return performance.now() - start;
+  };
+  const CASES: Array<[string, string, [string, number, string, number], () => Promise<void> | void, string | undefined]> = [
+    ["a paragraph from the quote's start into the line after", S2, ["qq", 0, "yyq", 1], () => paste({ "text/html": "<p>Aq</p>", "text/plain": "Aq" }),
+      "<ul><li>xq<blockquote><p>Aqyq</p></blockquote></li><li>nq</li></ul><p>sepq</p>"],
+    ["a paragraph from the first line into the quote", S2, ["xq", 1, "qq", 1], () => paste({ "text/html": "<p>Aq</p>", "text/plain": "Aq" }),
+      "<ul><li>xAqq<br />yyq</li><li>nq</li></ul><p>sepq</p>"],
+    ["bold from the first line into the quote", S2, ["xq", 1, "qq", 1], () => paste({ "text/html": "<b>Aq</b>", "text/plain": "Aq" }),
+      "<ul><li>x<b><strong>Aq</strong></b>q<br />yyq</li><li>nq</li></ul><p>sepq</p>"],
+    ["two paragraphs from the first line into the quote", S2, ["xq", 1, "qq", 1], () => paste({ "text/html": "<p>Aq</p><p>Bq</p>", "text/plain": "x" }),
+      "<ul><li>xAq</li></ul><p>Bqq<br />yyq</p><ul><li>nq</li></ul><p>sepq</p>"],
+    ["two paragraphs dropped from the first line into the quote", S2, ["xq", 1, "qq", 1], () => dropHtml("<p>Aq</p><p>Bq</p>"),
+      "<ul><li>xAq</li></ul><p>Bqq<br />yyq</p><ul><li>nq</li></ul><p>sepq</p>"],
+    ["a paragraph from inside the quote into the line after", S2, ["qq", 1, "yyq", 1], () => paste({ "text/html": "<p>Aq</p>", "text/plain": "Aq" }), undefined],
+    ["bold from the quote's start into the line after", S2, ["qq", 0, "yyq", 1], () => paste({ "text/html": "<b>Aq</b>", "text/plain": "Aq" }), undefined],
+    ["two paragraphs dropped from the quote's start", S2, ["qq", 0, "yyq", 1], () => dropHtml("<p>Aq</p><p>Bq</p>"), undefined],
+    ["two paragraphs into a numbered item's quote", S2ol, ["qq", 1, "yyq", 1], () => paste({ "text/html": "<p>Aq</p><p>Bq</p>", "text/plain": "Aq\nBq" }), undefined],
+  ];
+  test.each(CASES)("%s: no hang", async (_name, html, [from, fromOffset, to, toOffset], step, expected) => {
+    const onChange = await renderField(html);
+    await selectWords(from, fromOffset, to, toOffset);
+    expect(await timed(step)).toBeLessThan(2000);
+    if (expected !== undefined) {
+      expect(written(onChange)).toBe(stored(expected));
+    }
+  });
+  test("a cut from inside a quote into the line after: no hang", async () => {
+    await renderField("<ul><li>xq<blockquote><p>qq</p></blockquote>yq</li></ul>");
+    await selectWords("qq", 1, "yq", 1);
+    const data = new DataTransfer();
+    expect(
+      await timed(() => {
+        editable()!.dispatchEvent(new ClipboardEvent("cut", { bubbles: true, cancelable: true, clipboardData: data }));
+      })
+    ).toBeLessThan(2000);
   });
 });
 

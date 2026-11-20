@@ -649,6 +649,42 @@ let checkFailed = false;
  * cut). The block the removed range starts in, and its ancestors, are
  * never emptied by it.
  */
+/**
+ * Removes a range in this update, with D3's break where the range runs from
+ * a line into a block of the same container and a line follows the block
+ * (decided here, before the edit, from the selection): the key or paste
+ * that removed it then acts at the caret this leaves (E1, F).
+ */
+export const $removeRangeWithBreak = (selection: RangeSelection) => {
+  const start = selection.isBackward() ? selection.focus : selection.anchor;
+  const end = selection.isBackward() ? selection.anchor : selection.focus;
+  const line = $findMatchingParent(start.getNode(), $isCmsLineNode);
+  let block: LexicalNode | null = end.getNode();
+  while (block !== null && line !== null && block.getParent()?.is(line.getParent()) !== true) {
+    block = block.getParent();
+  }
+  const next =
+    $isCmsLineNode(line) && $isElementNode(block) && $isCmsLineNode(block) === false
+      ? block.getNextSibling()
+      : null;
+  selection.removeText();
+  if ($isCmsLineNode(next) === false || line === null) {
+    return;
+  }
+  if ($isElementNode(block) && block.isAttached() && block.getTextContentSize() === 0) {
+    block.remove();
+  }
+  if (
+    next.isAttached() &&
+    line.isAttached() &&
+    line.getNextSibling()?.is(next) === true &&
+    isLineBreak(line.getLastChild()) === false &&
+    isLineBreak(next.getFirstChild()) === false
+  ) {
+    line.append($createLineBreakNode());
+  }
+};
+
 export const $tagRemoval = (isBackward?: boolean) => {
   $addUpdateTag(REMOVAL_TAG);
   const selection = $getSelection();
@@ -1575,26 +1611,7 @@ export const registerLineCommands = (editor: LexicalEditor) =>
                 $isCmsLineNode(line) &&
                 $hasUpdateTag(`${BREAK_AFTER_TAG}${line.getKey()}`)
               ) {
-                const end = selection.isBackward() ? selection.anchor : selection.focus;
-                let block: LexicalNode | null = end.getNode();
-                while (block !== null && block.getParent()?.is(line.getParent()) !== true) {
-                  block = block.getParent();
-                }
-                const next = block?.getNextSibling() ?? null;
-                selection.removeText();
-                if ($isElementNode(block) && block.isAttached() && block.getTextContentSize() === 0) {
-                  block.remove();
-                }
-                if (
-                  $isCmsLineNode(next) &&
-                  next.isAttached() &&
-                  line.isAttached() &&
-                  line.getNextSibling()?.is(next) === true &&
-                  isLineBreak(line.getLastChild()) === false &&
-                  isLineBreak(next.getFirstChild()) === false
-                ) {
-                  line.append($createLineBreakNode());
-                }
+                $removeRangeWithBreak(selection);
                 return false;
               }
             }
