@@ -25,6 +25,7 @@ import {
   $isRangeSelection,
   $isTextNode,
   $setSelection,
+  $createNodeSelection,
   COMMAND_PRIORITY_CRITICAL,
   COMMAND_PRIORITY_LOW,
   COMMAND_PRIORITY_NORMAL,
@@ -1302,6 +1303,24 @@ export const registerLineCommands = (editor: LexicalEditor) =>
           const selection = $getSelection();
           if ($isRangeSelection(selection) === false) {
             return false;
+          }
+          // B: from the edge of a block's text toward a rule directly beside
+          // the block, the arrow node-selects the rule
+          if (event.shiftKey === false && selection.isCollapsed()) {
+            const edge = $childAtEdge(isBackward);
+            const rule =
+              edge === null || $isCmsLineNode(edge.child)
+                ? null
+                : isBackward
+                  ? edge.child.getPreviousSibling()
+                  : edge.child.getNextSibling();
+            if (isBlockDecorator(rule)) {
+              event.preventDefault();
+              const nodes = $createNodeSelection();
+              nodes.add(rule.getKey());
+              $setSelection(nodes);
+              return true;
+            }
           }
           const focus = selection.focus;
           const node = focus.getNode();

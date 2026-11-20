@@ -2,11 +2,13 @@
 // 13), one assertion each, with real input.
 import { describe, expect, test } from "vitest";
 import { userEvent } from "@vitest/browser/context";
+import { $getSelection, $isNodeSelection } from "lexical";
 import {
   byLabel,
   click,
   clickInWord,
   editable,
+  editorOf,
   lastHtml,
   renderField,
   settle,
@@ -18,6 +20,17 @@ const stored = (html: string) => sanitizeRichTextHtml(html);
 const written = (onChange: Parameters<typeof lastHtml>[0]) =>
   sanitizeRichTextHtml(lastHtml(onChange));
 const divider = () => click(byLabel("Divider"));
+const keys = async (input: string) => {
+  await userEvent.keyboard(input);
+  await settle();
+};
+const ruleSelected = () =>
+  editorOf()!
+    .getEditorState()
+    .read(() => {
+      const selection = $getSelection();
+      return $isNodeSelection(selection) && selection.getNodes()[0]?.getType() === "horizontalrule";
+    });
 /** A range by real input: a click in `from`, then Shift+click in `to`. */
 const selectWords = async (
   from: string,
@@ -77,6 +90,23 @@ describe("A: Divider beside a block in a lined item", () => {
     expect(written(onChange)).toBe(
       stored("<ul><li>Pw</li></ul><hr /><ul><li><blockquote><p>Q0w</p></blockquote>T1w</li><li>Nw</li></ul>")
     );
+  });
+});
+
+describe("B: an arrow from a block's text edge to a rule beside the block", () => {
+  test("ArrowRight at a quote's end selects the rule after it, then the text after the rule", async () => {
+    const onChange = await renderField(LI("<blockquote><p>Q0w</p></blockquote><hr>T2w"));
+    await clickInWord("Q0w");
+    await keys("{ArrowRight}");
+    expect(ruleSelected()).toBe(true);
+    await keys("{ArrowRight}k");
+    expect(written(onChange)).toBe(stored(LI("<blockquote><p>Q0w</p></blockquote><hr />kT2w")));
+  });
+  test("ArrowLeft at a quote's start selects the rule before it", async () => {
+    await renderField(LI("<hr><blockquote><p>Q1w</p></blockquote>"));
+    await clickInWord("Q1w", 0);
+    await keys("{ArrowLeft}");
+    expect(ruleSelected()).toBe(true);
   });
 });
 
