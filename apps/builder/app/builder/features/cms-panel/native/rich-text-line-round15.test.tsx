@@ -1,12 +1,13 @@
-// SPIKE: round 15's composition history (prototype round 15). 15.1: only a
-// composition's own end counts; an undo during it voids what the field kept
-// and the result is the head's. 15.2: a cancelled composition leaves the
-// history exactly as it was (undo stack length and redo stack).
+// SPIKE: round 15 (prototype round 15). 15.1: only a composition's own end
+// counts; an undo during it voids what the field kept and the result is the
+// head's. 15.2: a cancelled composition leaves the history exactly as it was
+// (undo stack length and redo stack). 15.3 and 15.4: Shift steps and steps
+// off a selected rule in right-to-left and mixed-direction items.
 import { expect, test } from "vitest";
 import { act } from "react-dom/test-utils";
 import { cdp, userEvent } from "@vitest/browser/context";
-import { $getRoot, CAN_REDO_COMMAND, CAN_UNDO_COMMAND, COMMAND_PRIORITY_CRITICAL, type LexicalEditor } from "lexical";
-import { clickInWord, editorOf, renderField, settle } from "./rich-text-test-harness";
+import { $getRoot, $getSelection, $isElementNode, $isNodeSelection, $isRangeSelection, $isTextNode, type PointType, CAN_REDO_COMMAND, CAN_UNDO_COMMAND, COMMAND_PRIORITY_CRITICAL, type LexicalEditor } from "lexical";
+import { clickInWord, editorOf, lastHtml, renderField, settle } from "./rich-text-test-harness";
 import { sanitizeRichTextHtml } from "./rich-text-sanitize";
 import { cmsHistory } from "./rich-text-line-node";
 const UNDO = "{Control>}z{/Control}";
@@ -174,3 +175,377 @@ for (const [kind, prep] of [
     save(id, { after, u, r });
   }, 60_000);
 }
+
+// 15.2: a composition that ended with text is decided at its end; the next
+// edit (a Backspace, a cut, an undo) is the person's own: the head's steps,
+// plus F12's step for the composition
+const WRITTEN_THEN: Record<string, unknown> = {
+ "W-ORD-one-bs": {
+  "composed": {
+   "value": "<p>A0w</p><p>B1wxa</p>",
+   "st": "2/0"
+  },
+  "afterEdit": {
+   "value": "<p>A0w</p><p>B1wx</p>",
+   "st": "3/0"
+  },
+  "u": [
+   "<p>A0w</p><p>B1wxa</p>",
+   "<p>A0w</p><p>B1wx</p>",
+   "<p>A0w</p><p>B1w</p>"
+  ],
+  "r": [
+   "<p>A0w</p><p>B1wx</p>",
+   "<p>A0w</p><p>B1wxa</p>",
+   "<p>A0w</p><p>B1wx</p>"
+  ]
+ },
+ "W-ORD-one-cut": {
+  "composed": {
+   "value": "<p>A0w</p><p>B1wxa</p>",
+   "st": "2/0"
+  },
+  "afterEdit": {
+   "value": "<p>A0w</p><p>B1wx</p>",
+   "st": "3/0"
+  },
+  "u": [
+   "<p>A0w</p><p>B1wxa</p>",
+   "<p>A0w</p><p>B1wx</p>",
+   "<p>A0w</p><p>B1w</p>"
+  ],
+  "r": [
+   "<p>A0w</p><p>B1wx</p>",
+   "<p>A0w</p><p>B1wxa</p>",
+   "<p>A0w</p><p>B1wx</p>"
+  ]
+ },
+ "W-ORD-one-undo": {
+  "composed": {
+   "value": "<p>A0w</p><p>B1wxa</p>",
+   "st": "2/0"
+  },
+  "afterEdit": {
+   "value": "<p>A0w</p><p>B1wx</p>",
+   "st": "1/1"
+  },
+  "u": [
+   "<p>A0w</p><p>B1w</p>"
+  ],
+  "r": [
+   "<p>A0w</p><p>B1wx</p>",
+   "<p>A0w</p><p>B1wxa</p>"
+  ]
+ },
+ "W-ORD-two-bs": {
+  "composed": {
+   "value": "<p>A0w</p><p>B1wxab</p>",
+   "st": "2/0"
+  },
+  "afterEdit": {
+   "value": "<p>A0w</p><p>B1wx</p>",
+   "st": "3/0"
+  },
+  "u": [
+   "<p>A0w</p><p>B1wxab</p>",
+   "<p>A0w</p><p>B1wx</p>",
+   "<p>A0w</p><p>B1w</p>"
+  ],
+  "r": [
+   "<p>A0w</p><p>B1wx</p>",
+   "<p>A0w</p><p>B1wxab</p>",
+   "<p>A0w</p><p>B1wx</p>"
+  ]
+ },
+ "W-TQT-one-bs": {
+  "composed": {
+   "value": "<li>T0w<blockquote><p>Q1w</p></blockquote>T2wxa</li>",
+   "st": "2/0"
+  },
+  "afterEdit": {
+   "value": "<li>T0w<blockquote><p>Q1w</p></blockquote>T2wx</li>",
+   "st": "3/0"
+  },
+  "u": [
+   "<li>T0w<blockquote><p>Q1w</p></blockquote>T2wxa</li>",
+   "<li>T0w<blockquote><p>Q1w</p></blockquote>T2wx</li>",
+   "<li>T0w<blockquote><p>Q1w</p></blockquote>T2w</li>"
+  ],
+  "r": [
+   "<li>T0w<blockquote><p>Q1w</p></blockquote>T2wx</li>",
+   "<li>T0w<blockquote><p>Q1w</p></blockquote>T2wxa</li>",
+   "<li>T0w<blockquote><p>Q1w</p></blockquote>T2wx</li>"
+  ]
+ },
+ "W-TQT-one-cut": {
+  "composed": {
+   "value": "<li>T0w<blockquote><p>Q1w</p></blockquote>T2wxa</li>",
+   "st": "2/0"
+  },
+  "afterEdit": {
+   "value": "<li>T0w<blockquote><p>Q1w</p></blockquote>T2wx</li>",
+   "st": "3/0"
+  },
+  "u": [
+   "<li>T0w<blockquote><p>Q1w</p></blockquote>T2wxa</li>",
+   "<li>T0w<blockquote><p>Q1w</p></blockquote>T2wx</li>",
+   "<li>T0w<blockquote><p>Q1w</p></blockquote>T2w</li>"
+  ],
+  "r": [
+   "<li>T0w<blockquote><p>Q1w</p></blockquote>T2wx</li>",
+   "<li>T0w<blockquote><p>Q1w</p></blockquote>T2wxa</li>",
+   "<li>T0w<blockquote><p>Q1w</p></blockquote>T2wx</li>"
+  ]
+ },
+ "W-TQT-one-undo": {
+  "composed": {
+   "value": "<li>T0w<blockquote><p>Q1w</p></blockquote>T2wxa</li>",
+   "st": "2/0"
+  },
+  "afterEdit": {
+   "value": "<li>T0w<blockquote><p>Q1w</p></blockquote>T2wx</li>",
+   "st": "1/1"
+  },
+  "u": [
+   "<li>T0w<blockquote><p>Q1w</p></blockquote>T2w</li>"
+  ],
+  "r": [
+   "<li>T0w<blockquote><p>Q1w</p></blockquote>T2wx</li>",
+   "<li>T0w<blockquote><p>Q1w</p></blockquote>T2wxa</li>"
+  ]
+ },
+ "W-TQT-two-bs": {
+  "composed": {
+   "value": "<li>T0w<blockquote><p>Q1w</p></blockquote>T2wxab</li>",
+   "st": "2/0"
+  },
+  "afterEdit": {
+   "value": "<li>T0w<blockquote><p>Q1w</p></blockquote>T2wx</li>",
+   "st": "3/0"
+  },
+  "u": [
+   "<li>T0w<blockquote><p>Q1w</p></blockquote>T2wxab</li>",
+   "<li>T0w<blockquote><p>Q1w</p></blockquote>T2wx</li>",
+   "<li>T0w<blockquote><p>Q1w</p></blockquote>T2w</li>"
+  ],
+  "r": [
+   "<li>T0w<blockquote><p>Q1w</p></blockquote>T2wx</li>",
+   "<li>T0w<blockquote><p>Q1w</p></blockquote>T2wxab</li>",
+   "<li>T0w<blockquote><p>Q1w</p></blockquote>T2wx</li>"
+  ]
+ }
+};
+const cutEvent = async () => { await act(async () => { document.querySelector<HTMLElement>("[contenteditable=true]")!.dispatchEvent(new ClipboardEvent("cut", { bubbles: true, cancelable: true, clipboardData: new DataTransfer() })); }); await settle(); };
+for (const [name, html, word] of [["TQT", LI("T0w<blockquote><p>Q1w</p></blockquote>T2w"), "T2w"], ["ORD", "<p>A0w</p><p>B1w</p>", "B1w"]] as const) for (const [kind, t, after] of [
+  ["one-bs", "a", async () => { await userEvent.keyboard("{Backspace}"); await settle(); }],
+  ["two-bs", "ab", async () => { await userEvent.keyboard("{Backspace}"); await settle(); await userEvent.keyboard("{Backspace}"); await settle(); }],
+  ["one-cut", "a", async () => { await userEvent.keyboard("{Shift>}{ArrowLeft}{/Shift}"); await settle(); await cutEvent(); }],
+  ["one-undo", "a", async () => { await userEvent.keyboard(UNDO); await settle(); }],
+] as const) {
+  const id = `W-${name}-${kind}`;
+  test(id, async () => {
+    const spy = await renderField(html); const e = editorOf()!; const h = watch(e);
+    await clickInWord(word, 3);
+    await userEvent.keyboard("x"); await settle(); await wait(150);
+    await ime(t.slice(0, 1)); if (t.length > 1) await ime(t); await commit(t); await wait(60); await settle();
+    const composed = { value: val(spy.mock.calls.at(-1)), st: stacks(e) };
+    await wait(150);
+    await after();
+    const afterEdit = { value: val(spy.mock.calls.at(-1)), st: stacks(e) };
+    const u = await presses(spy, h, e, "u"); const r = await presses(spy, h, e, "r");
+    expect({ composed, afterEdit, u, r }).toEqual(WRITTEN_THEN[id]);
+  }, 60_000);
+}
+
+// 15.3: with Shift held, a focus on an empty caret line beside a rule passes
+// it, in either direction of text (the moving point goes by the focus's
+// block). 15.4: off a selected rule, a key steps as a caret in the direction
+// of the content on both sides; where the sides differ, Lexical's rule
+// (ArrowLeft to the previous place, ArrowRight to the next)
+const ptOf = (p: PointType) => { const n = p.getNode(); if (p.type === "text") return `"${n.getTextContent()}"@${p.offset}`; const c = $isElementNode(n) ? n.getChildAtIndex(p.offset) : null; return `${n.getType()}@${p.offset}[${c ? ($isTextNode(c) ? c.getTextContent() : c.getType()) : "-"}]`; };
+const walkSel = () => editorOf()!.getEditorState().read(() => { const s = $getSelection(); if ($isNodeSelection(s)) return "node:" + s.getNodes().map((n) => n.getType()).join(","); if ($isRangeSelection(s)) return s.isCollapsed() ? ptOf(s.anchor) : `${ptOf(s.anchor)}->${ptOf(s.focus)}`; return String(s); });
+const QR = LI("<blockquote><p>קבג</p></blockquote><hr>").replace("Pw", "פא").replace("Nw", "נו");
+const RQR = LI("<hr><blockquote><p>קדה</p></blockquote><hr>").replace("Pw", "פא").replace("Nw", "נו");
+const TQR = LI("תאב<blockquote><p>קדה</p></blockquote><hr>").replace("Pw", "פא").replace("Nw", "נו");
+const WALKS: [string, string, string, number, string][] = [
+  ["F3-QR-back", QR, "נו", 0, "{Shift>}{ArrowRight}{/Shift}"],
+  ["F3-RQR-back", RQR, "נו", 0, "{Shift>}{ArrowRight}{/Shift}"],
+  ["F3-TQR-back", TQR, "נו", 0, "{Shift>}{ArrowRight}{/Shift}"],
+  ["F3-RQR-fwd", RQR, "פא", 2, "{Shift>}{ArrowLeft}{/Shift}"],
+  ["F3-QR-ltr-back", LI("<blockquote><p>Q0w</p></blockquote><hr>"), "Nw", 0, "{Shift>}{ArrowLeft}{/Shift}"],
+  ["F3-RQR-ltr-fwd", LI("<hr><blockquote><p>Q1w</p></blockquote><hr>"), "Pw", 2, "{Shift>}{ArrowRight}{/Shift}"],
+  ["F4-TRQrtl", LI("T0w<hr><blockquote><p>קבג</p></blockquote>"), "Pw", 2, "{ArrowRight}"],
+  ["F4-QRTrtl", LI("<blockquote><p>Q0w</p></blockquote><hr>תגד"), "Pw", 2, "{ArrowRight}"],
+  ["F4-TRQrtl-back", LI("T0w<hr><blockquote><p>קבג</p></blockquote>"), "Nw", 0, "{ArrowLeft}"],
+  ["F4-rtlRrtl", LI("תאב<hr><blockquote><p>קבג</p></blockquote>").replace("Pw", "פא").replace("Nw", "נו"), "פא", 2, "{ArrowLeft}"],
+];
+const WALK_STOPS: Record<string, { stops: string[]; k: string }> = {
+ "F3-QR-back": {
+  "stops": [
+   "\"נו\"@0",
+   "\"נו\"@0->cms-line@0[-]",
+   "\"נו\"@0->\"קבג\"@3",
+   "\"נו\"@0->\"קבג\"@2",
+   "\"נו\"@0->\"קבג\"@1",
+   "\"נו\"@0->\"קבג\"@0",
+   "\"נו\"@0->\"פא\"@2",
+   "\"נו\"@0->\"פא\"@1",
+   "\"נו\"@0->\"פא\"@0",
+   "\"נו\"@0->\"פא\"@0",
+   "\"נו\"@0->\"פא\"@0"
+  ],
+  "k": "<ul><li>kנו</li></ul>"
+ },
+ "F3-QR-ltr-back": {
+  "stops": [
+   "\"Nw\"@0",
+   "\"Nw\"@0->cms-line@0[-]",
+   "\"Nw\"@0->\"Q0w\"@3",
+   "\"Nw\"@0->\"Q0w\"@2",
+   "\"Nw\"@0->\"Q0w\"@1",
+   "\"Nw\"@0->\"Q0w\"@0",
+   "\"Nw\"@0->\"Pw\"@2",
+   "\"Nw\"@0->\"Pw\"@1",
+   "\"Nw\"@0->\"Pw\"@0",
+   "\"Nw\"@0->\"Pw\"@0",
+   "\"Nw\"@0->\"Pw\"@0"
+  ],
+  "k": "<ul><li>kNw</li></ul>"
+ },
+ "F3-RQR-back": {
+  "stops": [
+   "\"נו\"@0",
+   "\"נו\"@0->cms-line@0[-]",
+   "\"נו\"@0->\"קדה\"@3",
+   "\"נו\"@0->\"קדה\"@2",
+   "\"נו\"@0->\"קדה\"@1",
+   "\"נו\"@0->\"קדה\"@0",
+   "\"נו\"@0->cms-line@0[-]",
+   "\"נו\"@0->\"פא\"@2",
+   "\"נו\"@0->\"פא\"@1",
+   "\"נו\"@0->\"פא\"@0",
+   "\"נו\"@0->\"פא\"@0"
+  ],
+  "k": "<ul><li>kנו</li></ul>"
+ },
+ "F3-RQR-fwd": {
+  "stops": [
+   "\"פא\"@2",
+   "\"פא\"@2->cms-line@0[-]",
+   "\"פא\"@2->\"קדה\"@0",
+   "\"פא\"@2->\"קדה\"@1",
+   "\"פא\"@2->\"קדה\"@2",
+   "\"פא\"@2->\"קדה\"@3",
+   "\"פא\"@2->cms-line@0[-]",
+   "\"פא\"@2->\"נו\"@0",
+   "\"פא\"@2->\"נו\"@1",
+   "\"פא\"@2->\"נו\"@2",
+   "\"פא\"@2->\"נו\"@2"
+  ],
+  "k": "<ul><li>פאk</li></ul>"
+ },
+ "F3-RQR-ltr-fwd": {
+  "stops": [
+   "\"Pw\"@2",
+   "\"Pw\"@2->cms-line@0[-]",
+   "\"Pw\"@2->\"Q1w\"@0",
+   "\"Pw\"@2->\"Q1w\"@1",
+   "\"Pw\"@2->\"Q1w\"@2",
+   "\"Pw\"@2->\"Q1w\"@3",
+   "\"Pw\"@2->cms-line@0[-]",
+   "\"Pw\"@2->\"Nw\"@0",
+   "\"Pw\"@2->\"Nw\"@1",
+   "\"Pw\"@2->\"Nw\"@2",
+   "\"Pw\"@2->\"Nw\"@2"
+  ],
+  "k": "<ul><li>Pwk</li></ul>"
+ },
+ "F3-TQR-back": {
+  "stops": [
+   "\"נו\"@0",
+   "\"נו\"@0->cms-line@0[-]",
+   "\"נו\"@0->\"קדה\"@3",
+   "\"נו\"@0->\"קדה\"@2",
+   "\"נו\"@0->\"קדה\"@1",
+   "\"נו\"@0->\"קדה\"@0",
+   "\"נו\"@0->\"תאב\"@3",
+   "\"נו\"@0->\"תאב\"@2",
+   "\"נו\"@0->\"תאב\"@1",
+   "\"נו\"@0->\"תאב\"@0",
+   "\"נו\"@0->\"פא\"@2"
+  ],
+  "k": "<ul><li>פאkנו</li></ul>"
+ },
+ "F4-QRTrtl": {
+  "stops": [
+   "\"Pw\"@2",
+   "\"Q0w\"@0",
+   "\"Q0w\"@1",
+   "\"Q0w\"@2",
+   "\"Q0w\"@3",
+   "node:horizontalrule",
+   "\"תגד\"@0",
+   "node:horizontalrule",
+   "\"תגד\"@0",
+   "node:horizontalrule",
+   "\"תגד\"@0"
+  ],
+  "k": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />kתגד</li><li>Nw</li></ul>"
+ },
+ "F4-TRQrtl": {
+  "stops": [
+   "\"Pw\"@2",
+   "\"T0w\"@0",
+   "\"T0w\"@1",
+   "\"T0w\"@2",
+   "\"T0w\"@3",
+   "node:horizontalrule",
+   "quote@0[paragraph]",
+   "node:horizontalrule",
+   "quote@0[paragraph]",
+   "node:horizontalrule",
+   "quote@0[paragraph]"
+  ],
+  "k": "<ul><li>Pw</li><li>T0w<hr /><blockquote><p>kקבג</p></blockquote></li><li>Nw</li></ul>"
+ },
+ "F4-TRQrtl-back": {
+  "stops": [
+   "\"Nw\"@0",
+   "\"קבג\"@3",
+   "\"Nw\"@0",
+   "\"קבג\"@3",
+   "\"Nw\"@0",
+   "\"קבג\"@3",
+   "\"Nw\"@0",
+   "\"קבג\"@3",
+   "\"Nw\"@0",
+   "\"קבג\"@3",
+   "\"Nw\"@0"
+  ],
+  "k": "<ul><li>Pw</li><li>T0w<hr /><blockquote><p>קבג</p></blockquote></li><li>kNw</li></ul>"
+ },
+ "F4-rtlRrtl": {
+  "stops": [
+   "\"פא\"@2",
+   "\"תאב\"@0",
+   "\"תאב\"@1",
+   "\"תאב\"@2",
+   "\"תאב\"@3",
+   "node:horizontalrule",
+   "quote@0[paragraph]",
+   "\"קבג\"@1",
+   "\"קבג\"@2",
+   "\"קבג\"@3",
+   "\"נו\"@0"
+  ],
+  "k": "<ul><li>פא</li><li>תאב<hr /><blockquote><p>קבג</p></blockquote></li><li>kנו</li></ul>"
+ }
+};
+for (const [id, html, word, off, key] of WALKS) test(id, async () => {
+  const onChange = await renderField(html);
+  await clickInWord(word, off);
+  const stops = [walkSel()];
+  for (let i = 0; i < 10; i++) { await userEvent.keyboard(key); await settle(); stops.push(walkSel()); }
+  await userEvent.keyboard("k"); await settle();
+  expect({ stops, k: onChange.mock.calls.length ? sanitizeRichTextHtml(lastHtml(onChange)) : "NOOP" }).toEqual(WALK_STOPS[id]);
+}, 60_000);

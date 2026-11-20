@@ -1793,6 +1793,28 @@ const $focusPastRule = (selection: RangeSelection, isBackward: boolean) => {
  * in, where ArrowLeft moves forward in right-to-left text. Every arrow rule
  * of the line code reads its direction here.
  */
+/**
+ * 15.4: the directions of the content directly before and after a node (a
+ * rule), skipping none: a side with no content, or a rule, has none. True
+ * when both sides have one and they differ.
+ */
+const $sidesDiffer = (first: LexicalNode, last: LexicalNode = first) => {
+  const directionOf = (node: LexicalNode | null) => {
+    if (node === null || isBlockDecorator(node)) {
+      return null;
+    }
+    for (let at: LexicalNode | null = node; at !== null; at = at.getParent()) {
+      if ($isElementNode(at) && at.isInline() === false && at.getDirection() !== null) {
+        return at.getDirection();
+      }
+    }
+    return null;
+  };
+  const before = directionOf(first.getPreviousSibling());
+  const after = directionOf(last.getNextSibling());
+  return before !== null && after !== null && before !== after;
+};
+
 const $arrowMovesBackward = (isLeftKey: boolean, byFocus = false) => {
   const selection = $getSelection();
   let isRtl = false;
@@ -1811,27 +1833,19 @@ const $arrowMovesBackward = (isLeftKey: boolean, byFocus = false) => {
     // the two sides differ, Lexical's own rule: ArrowLeft to the previous
     // place, ArrowRight to the next
     const nodes = selection.getNodes();
-    const directionOf = (node: LexicalNode | null) => {
-      for (let at = node; at !== null; at = $isElementNode(at) ? at.getParent() : at.getParent()) {
-        if ($isElementNode(at) && at.isInline() === false && at.getDirection() !== null) {
-          return at.getDirection();
-        }
-        if ($isElementNode(at) === false && at.getParent() === null) {
-          break;
-        }
-      }
-      return null;
-    };
-    const before = nodes[0]?.getPreviousSibling() ?? null;
-    const after = nodes.at(-1)?.getNextSibling() ?? null;
-    const sides = [before, after]
-      .filter((node): node is LexicalNode => node !== null && isBlockDecorator(node) === false)
-      .map((node) => ($isElementNode(node) ? node.getDirection() : directionOf(node.getParent())));
-    const parent = nodes[0]?.getParent() ?? null;
-    if (sides.length === 2 && sides[0] !== sides[1]) {
+    const first = nodes[0];
+    const last = nodes.at(-1);
+    if (first === undefined || last === undefined) {
       return isLeftKey;
     }
-    isRtl = (sides[0] ?? parent?.getDirection()) === "rtl";
+    if ($sidesDiffer(first, last)) {
+      return isLeftKey;
+    }
+    const side = [first.getPreviousSibling(), last.getNextSibling()].find(
+      (node) => node !== null && isBlockDecorator(node) === false
+    );
+    const block = $isElementNode(side) ? side : (side?.getParent() ?? first.getParent());
+    isRtl = block?.getDirection() === "rtl";
   }
   return isLeftKey !== isRtl;
 };
