@@ -2236,3 +2236,160 @@ for (const [name, html, word, at, keys, writes] of A_CASES) for (const entry of 
     expect(window.getSelection()!.toString()).toBe("k");
   }
 }, 30_000);
+
+// A: a real drag from text that ends on an image. The page's end sits in
+// the image's decorator while the pointer is down; on release the field
+// puts Lexical's selection back on the page, and a letter types over it.
+// Before records (a7f8121fd): the rightward drags write the same; each
+// leftward drag writes nothing for the letter
+const DRAG_IMAGE: [string, string, string, number, { page: string; lexical: string; write: string }][] = [
+  ["a paragraph, from A0w@1 rightward", `<p>A0w${A_IMG}B1w</p>`, "A0w", 1, { page: '"A0w"@1->P@1', lexical: '"A0w"@1->paragraph@1[cms-image]', write: "<p>AkIB1w</p>" }],
+  ["a paragraph, from B1w@2 leftward", `<p>A0w${A_IMG}B1w</p>`, "B1w", 2, { page: '"B1w"@2->P@2', lexical: '"B1w"@2->"B1w"@0', write: "<p>A0wIkw</p>" }],
+  ["a paragraph led by the image, from B1w@2 leftward", `<p>A0w</p><p>${A_IMG}B1w</p>`, "B1w", 2, { page: '"B1w"@2->P@1', lexical: '"B1w"@2->"B1w"@0', write: "<p>A0w</p><p>Ikw</p>" }],
+  ["a lined item, from A0w@1 rightward", LI(`A0w${A_IMG}B1w`), "A0w", 1, { page: '"A0w"@1->LI@1', lexical: '"A0w"@1->listitem@1[cms-image]', write: "<ul><li>Pw</li><li>AkIB1w</li><li>Nw</li></ul>" }],
+  ["a lined item, from B1w@2 leftward", LI(`A0w${A_IMG}B1w`), "B1w", 2, { page: '"B1w"@2->LI@2', lexical: '"B1w"@2->"B1w"@0', write: "<ul><li>Pw</li><li>A0wIkw</li><li>Nw</li></ul>" }],
+  ["a lined item led by the image, from B1w@2 leftward", LI(`${A_IMG}B1w`), "B1w", 2, { page: '"B1w"@2->LI@1', lexical: '"B1w"@2->"B1w"@0', write: "<ul><li>Pw</li><li>Ikw</li><li>Nw</li></ul>" }],
+];
+const pageEndsText = () => {
+  const page = window.getSelection()!;
+  const at = (node: Node | null, offset: number) => `${node?.nodeType === 3 ? `"${node.textContent}"` : node?.nodeName}@${offset}`;
+  return `${at(page.anchorNode, page.anchorOffset)}->${at(page.focusNode, page.focusOffset)}`;
+};
+for (const [name, html, word, at, want] of DRAG_IMAGE) for (const spot of ["the image's centre", "the image's near edge"] as const) test(`A a drag that ends on an image: ${name} to ${spot}, then a letter`, async () => {
+  const onChange = await renderField(html);
+  const from = pointIn(word, at);
+  const box = editable()!.querySelector("img")!.getBoundingClientRect();
+  const to = { x: spot === "the image's centre" ? box.left + box.width / 2 : word === "B1w" ? box.right - 3 : box.left + 3, y: box.top + box.height / 2 };
+  await mouse("mousePressed", from.x, from.y); await settle();
+  for (let step = 1; step <= 6; step++) { await mouse("mouseMoved", from.x + ((to.x - from.x) * step) / 6, from.y + ((to.y - from.y) * step) / 6, 1); await wait(16); }
+  await settle();
+  // while the pointer is down the page's end is in the image's decorator
+  expect(window.getSelection()!.focusNode?.nodeName).toBe("SPAN");
+  await mouse("mouseReleased", to.x, to.y); await settle();
+  expect(pageEndsText()).toBe(want.page);
+  expect(walkSel()).toBe(want.lexical);
+  await userEvent.keyboard("k"); await settle();
+  expect(writeOf(onChange).replace(/<img[^>]*>/g, "I")).toBe(want.write);
+}, 30_000);
+
+// R1: a composition leaves nothing in the value but what was composed.
+// Lexical 0.21 starts a composition over a range by inserting its start
+// character (U+200B on Chrome); over a backward range Chrome composes after
+// it and Lexical leaves it (a7f8121fd: A[ZW]ab1w). The field removes it at
+// the composition's end, in the same update, at the place the start put it.
+// The backward range gives what the forward range gives, after the
+// composition, after one more letter, and through undo and redo
+const R1_CELLS: [string, string, string, boolean][] = [
+  ["two text nodes of one paragraph", "<p>A0w<b>B1w</b></p>", LI("A0w<b>B1w</b>"), false],
+  ["two paragraphs (lined: two lines)", "<p>A0w</p><p>B1w</p>", LI("A0w<br>B1w"), true],
+  ["across an image", `<p>A0w${A_IMG}B1w</p>`, LI(`A0w${A_IMG}B1w`), false],
+  ["across a rule (ordinary: root-level)", "<p>A0w</p><hr><p>B1w</p>", LI("A0w<hr>B1w"), true],
+];
+const R1_BACKWARD = '"B1w"@1->"A0w"@1';
+type R1Way = "Lexical" | "Shift+ArrowLeft" | "Shift+ArrowUp" | "a right-to-left drag";
+const r1Select = async (way: R1Way | "forward") => {
+  if (way === "forward" || way === "Lexical") {
+    await userEvent.click(editable()!); await settle();
+    await act(async () => { editorOf()!.update(() => {
+      const find = (w: string) => $getRoot().getAllTextNodes().find((t) => t.getTextContent() === w)!;
+      const range = $createRangeSelection();
+      const [first, last] = way === "forward" ? [range.anchor, range.focus] : [range.focus, range.anchor];
+      first.set(find("A0w").getKey(), 1, "text"); last.set(find("B1w").getKey(), 1, "text");
+      $setSelection(range);
+    }); });
+    await settle();
+  } else if (way === "a right-to-left drag") {
+    const from = pointIn("B1w", 1); const to = pointIn("A0w", 1);
+    await mouse("mousePressed", from.x, from.y); await settle();
+    for (let step = 1; step <= 6; step++) { await mouse("mouseMoved", from.x + ((to.x - from.x) * step) / 6, from.y + ((to.y - from.y) * step) / 6, 1); await wait(16); }
+    await mouse("mouseReleased", to.x, to.y); await settle();
+  } else {
+    await clickInWord("B1w", 1);
+    const key = way === "Shift+ArrowUp" ? "{Shift>}{ArrowUp}{/Shift}" : "{Shift>}{ArrowLeft}{/Shift}";
+    for (let press = 0; press < 8 && walkSel() !== R1_BACKWARD; press++) { await userEvent.keyboard(key); await settle(); }
+  }
+  if (way !== "forward") expect(walkSel()).toBe(R1_BACKWARD);
+};
+const r1Raw = (spy: Spy) => (spy.mock.calls.length ? (spy.mock.calls.at(-1)?.[0] as { html: string }).html : "NOOP");
+const r1Run = async (html: string, way: R1Way | "forward", composed: string) => {
+  const spy = await renderField(html); const e = editorOf()!; const h = watch(e);
+  await r1Select(way);
+  const before = spy.mock.calls.length;
+  for (let at = 1; at <= composed.length; at++) await ime(composed.slice(0, at));
+  await commit(composed); await wait(60); await settle();
+  const during = spy.mock.calls.slice(before).map((call) => (call[0] as { html: string }).html);
+  const afterComposition = r1Raw(spy);
+  await userEvent.keyboard("k"); await settle();
+  const afterLetter = r1Raw(spy);
+  const u = await presses(spy, h, e, "u"); const r = await presses(spy, h, e, "r");
+  unmountField();
+  return { during, afterComposition, afterLetter, u, r };
+};
+for (const [name, ordinary, lined, twoLines] of R1_CELLS) for (const [shape, html] of [["ordinary", ordinary], ["lined", lined]] as const) for (const way of ["Lexical", "Shift+ArrowLeft", ...(twoLines ? ["Shift+ArrowUp"] : []), "a right-to-left drag"] as R1Way[]) for (const composed of ["a", "abc"]) test(`R1 a backward range ${name}, ${shape}, by ${way}, ${composed.length} composed: no start character, the forward range's value and history`, async () => {
+  const forward = await r1Run(html, "forward", composed);
+  const backward = await r1Run(html, way, composed);
+  for (const value of [backward.afterComposition, backward.afterLetter]) expect(value.includes("\u200b")).toBe(false);
+  // the last onChange of the composition carries no start character
+  expect(backward.during.at(-1)?.includes("\u200b")).toBe(false);
+  expect(backward.afterComposition).toBe(forward.afterComposition);
+  expect(backward.afterLetter).toBe(forward.afterLetter);
+  expect(backward.u).toEqual(forward.u);
+  expect(backward.r).toEqual(forward.r);
+}, 60_000);
+// exact, never a strip: a zero-width space the value holds stays
+test("R1 a zero-width space the paragraph holds stays: a backward composition elsewhere in the paragraph", async () => {
+  const spy = await renderField("<p>Z\u200bZ A0w</p><p>B1w</p>");
+  await clickInWord("B1w", 1);
+  for (let press = 0; press < 8 && walkSel() !== '"B1w"@1->"Z\u200bZ A0w"@5'; press++) { await userEvent.keyboard("{Shift>}{ArrowLeft}{/Shift}"); await settle(); }
+  expect(walkSel()).toBe('"B1w"@1->"Z\u200bZ A0w"@5');
+  await ime("a"); await ime("ab"); await commit("ab"); await wait(60); await settle();
+  expect(sanitizeRichTextHtml(r1Raw(spy))).toBe("<p>Z\u200bZ Aab1w</p>");
+}, 30_000);
+test("R1 a zero-width space the paragraph holds stays: a backward composition right beside it", async () => {
+  const spy = await renderField("<p>A\u200b0w</p><p>B1w</p>");
+  await clickInWord("B1w", 1);
+  for (let press = 0; press < 8 && walkSel() !== '"B1w"@1->"A\u200b0w"@2'; press++) { await userEvent.keyboard("{Shift>}{ArrowLeft}{/Shift}"); await settle(); }
+  expect(walkSel()).toBe('"B1w"@1->"A\u200b0w"@2');
+  await ime("a"); await ime("ab"); await commit("ab"); await wait(60); await settle();
+  expect(sanitizeRichTextHtml(r1Raw(spy))).toBe("<p>A\u200bab1w</p>");
+}, 30_000);
+test("R1 a zero-width space the paragraph holds stays: a composition at a caret right after it", async () => {
+  const spy = await renderField("<p>A\u200b0w</p>");
+  await act(async () => { editorOf()!.update(() => { $getRoot().getAllTextNodes()[0].select(2, 2); }); }); await settle();
+  await ime("a"); await ime("ab"); await commit("ab"); await wait(60); await settle();
+  expect(sanitizeRichTextHtml(r1Raw(spy))).toBe("<p>A\u200bab0w</p>");
+}, 30_000);
+
+// D: an update of the field that changes a node while a node selection is
+// current keeps the page's range (keepPageRange). Sites: the kept lines'
+// removal before a key or edit, removeKeptLines (Link, Image popover,
+// toolbar), the after-commit removal of a line the selection left, the
+// after-commit point rule, a press's end. The sweep: a letter typed next
+// equals the letter with that node selected and no such update. The kept
+// line and press cells are 15.13 (a)'s above; here the after-commit
+// removal: an arrow from an empty caret line selects the rule and the line
+// the caret left goes in the after-commit update
+const D_CELLS: [string, string, number, string, () => Promise<void>][] = [
+  ["a caret line before a leading rule, ArrowRight", LI("<hr>T1w"), 0, "{ArrowRight}", async () => { await clickInWord("T1w", 0); await arrowUntilSelected("{ArrowLeft}"); }],
+  ["a caret line between two rules, ArrowLeft", LI("<hr><hr>T2w"), 1, "{ArrowLeft}", async () => { await clickInWord("Pw", 2); await arrowUntilSelected("{ArrowRight}"); }],
+  ["a caret line between two rules, ArrowRight", LI("<hr><hr>T2w"), 1, "{ArrowRight}", async () => { await clickInWord("T2w", 0); await arrowUntilSelected("{ArrowLeft}"); }],
+];
+for (const [name, html, index, key, byArrow] of D_CELLS) for (const next of ["a letter", "Backspace"] as const) test(`D ${name} selects the rule and the line goes after the commit: ${next} as with the rule selected from text`, async () => {
+  const run = async (fromLine: boolean) => {
+    const onChange = await renderField(html);
+    if (fromLine) {
+      await caretLineAt(index);
+      await userEvent.keyboard(key); await settle();
+      expect(nodeSelectedNow()).toBe(true);
+    } else {
+      await byArrow();
+    }
+    const selected = selectedElement();
+    await userEvent.keyboard(next === "a letter" ? "k" : "{Backspace}"); await settle();
+    const out = { w: writeOf(onChange), sel: walkSel(), lines: emptyLines(), rule: selected === null ? -1 : [...editable()!.querySelectorAll("hr")].indexOf(selected as HTMLHRElement) };
+    unmountField();
+    return out;
+  };
+  const fromText = await run(false);
+  expect(await run(true)).toEqual(fromText);
+}, 30_000);

@@ -37,7 +37,7 @@ import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext
 import { useLexicalEditable } from "@lexical/react/useLexicalEditable";
 import { useLexicalNodeSelection } from "@lexical/react/useLexicalNodeSelection";
 import { mergeRegister } from "@lexical/utils";
-import { removeKeptLines } from "./rich-text-line-node";
+import { focusEditor, lineSpike, removeKeptLines } from "./rich-text-line-node";
 import {
   Button,
   css,
@@ -273,6 +273,7 @@ const ImageView = ({ nodeKey, attributes, caption }: ImageViewProps) => {
   }, [isOpen]);
 
   // B: the popover's actions are edits: lines a press's caret left go first
+  const closedByPressInEditor = useRef(false);
   const edit = (change: (node: CmsImageNode | CmsFigureNode) => void) => {
     removeKeptLines(editor);
     editor.update(() => {
@@ -330,15 +331,28 @@ const ImageView = ({ nodeKey, attributes, caption }: ImageViewProps) => {
           if (byKey === false && lost === false) {
             return;
           }
-          editor.update(() => {
-            const node = $getNodeByKey(nodeKey);
-            if (node === null) {
-              return;
-            }
-            $caretBeside(node, false);
-          });
-          editor.getRootElement()?.focus({ preventScroll: true });
-          editor.focus();
+          // 15.14 (a): a close that came from a press inside the editor
+          // leaves the caret to the press
+          const byPress = closedByPressInEditor.current;
+          closedByPressInEditor.current = false;
+          if (byPress && byKey === false && lineSpike.closeFocusFixOff === false) {
+            return;
+          }
+          focusEditor(
+            editor,
+            () => {
+              const node = $getNodeByKey(nodeKey);
+              if (node === null) {
+                return;
+              }
+              $caretBeside(node, false);
+            },
+            true
+          );
+        }}
+        onPointerDownOutside={(event) => {
+          const target = (event.detail?.originalEvent?.target ?? event.target) as Node | null;
+          closedByPressInEditor.current = target !== null && editor.getRootElement()?.contains(target) === true;
         }}
       >
         <Grid gap="2">

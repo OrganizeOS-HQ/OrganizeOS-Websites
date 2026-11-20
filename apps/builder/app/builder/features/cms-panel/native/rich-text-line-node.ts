@@ -96,10 +96,20 @@ export const lineSpike = {
   scratchClipboardFails: false,
   /** Tests: the per-cut check finds the clipboard not holding the selection. */
   cutCheckFails: false,
+  /** Tests: the page's range is not put back after a node-changing commit (D off). */
+  pageRangeKeepOff: false,
+  /** Tests: the composition-start character is left where Lexical left it (R1 off). */
+  compositionStartCharKept: false,
+  /** Tests: the cut's removal is found not to take what its clipboard holds. */
+  cutTakesCheckFails: false,
   /** Probes: the point rule's third place (after every commit) does not run. */
   thirdPlaceOff: false,
   /** Probes: a key does not take over a caret the page moved (15.12 off). */
   resyncOff: false,
+  /** Tests (15.14): the focus guard off, to show the popovers' fix alone. */
+  focusGuardOff: false,
+  /** Tests (15.14): the popovers hand focus back after any close. */
+  closeFocusFixOff: false,
 };
 
 /**
@@ -760,6 +770,8 @@ const $mark = (name: string) => {
   }
   marks.add(name);
 };
+/** Tests: the marks an editor holds now (none once its update is done). */
+export const lineMarkCount = (editor: LexicalEditor) => lineMarks.get(editor)?.size ?? 0;
 const $hasMark = (name: string) =>
   lineMarks.get($getEditor())?.has(name) === true;
 /** The field's history (Lexical's HistoryPlugin state), for K. */
@@ -1715,6 +1727,31 @@ const $updateHasEdits = () => {
 };
 
 /**
+ * 15.14: the press's own caret survives the press. A press in progress in
+ * an editor, per editor (15.13's flag), and the one way the field focuses
+ * an editor: during a press in it the field does not focus it (the press
+ * does) and does not run what would place the caret after the focus.
+ */
+const pressing = new WeakSet<LexicalEditor>();
+export const isPressing = (editor: LexicalEditor) => pressing.has(editor);
+export const focusEditor = (
+  editor: LexicalEditor,
+  $before?: () => void,
+  focusRoot = false
+) => {
+  if (pressing.has(editor) && lineSpike.focusGuardOff === false) {
+    return;
+  }
+  if ($before !== undefined) {
+    editor.update($before);
+  }
+  if (focusRoot) {
+    editor.getRootElement()?.focus({ preventScroll: true });
+  }
+  editor.focus();
+};
+
+/**
  * 15.13 (a): empty lines a press's caret left, per editor. A press does not
  * remove the line its caret left (the content would move between the
  * presses of a double click); the next key in the field, or the next edit
@@ -1762,11 +1799,11 @@ export const unkeptEmptyLines = (editor: LexicalEditor) => {
 };
 
 /** Empty lines that hold no point of the selection go, except kept ones. True when any did. */
-const $removeLeftEmptyLines = () => {
+const $removeLeftEmptyLines = (only?: Set<string>) => {
   const { kept, left } = $leftEmptyLines();
   let removed = false;
   for (const line of left) {
-    if (kept.has(line.getKey()) === false) {
+    if (kept.has(line.getKey()) === false && (only === undefined || only.has(line.getKey()))) {
       line.remove();
       removed = true;
     }
@@ -1801,17 +1838,52 @@ const $removeKeptLines = () => {
  * events (a toolbar button), kept lines go in an update of their own: not
  * an edit (no undo step, no onChange).
  */
+/**
+ * D: the one way the field runs an update that can change a node while a
+ * node selection is current. With a node selected, the page's own range is
+ * what the browser types at (the field takes that input); Lexical's commit
+ * of a node selection drops the page's ranges, so the range the page held
+ * before the update is put back after it, when the node selection stands
+ * and the page holds none. `update` commits at once (discrete).
+ */
+export const keepPageRange = (editor: LexicalEditor, update: () => void) => {
+  const dom = window.getSelection();
+  const root = editor.getRootElement();
+  const saved =
+    dom !== null && dom.rangeCount > 0 && root !== null && root.contains(dom.anchorNode)
+      ? dom.getRangeAt(0).cloneRange()
+      : null;
+  const nodeSelected = () =>
+    editor.getEditorState().read(() => $isNodeSelection($getSelection()));
+  const before = saved !== null && nodeSelected();
+  update();
+  if (
+    before &&
+    saved !== null &&
+    dom !== null &&
+    dom.rangeCount === 0 &&
+    saved.startContainer.isConnected &&
+    saved.endContainer.isConnected &&
+    nodeSelected() &&
+    lineSpike.pageRangeKeepOff === false
+  ) {
+    dom.addRange(saved);
+  }
+};
+
 export const removeKeptLines = (editor: LexicalEditor) => {
   if (keptOf(editor).size === 0 || editor.isComposing()) {
     return;
   }
-  editor.update(
-    () => {
-      if ($removeKeptLines()) {
-        $addUpdateTag("history-merge");
-      }
-    },
-    { discrete: true }
+  keepPageRange(editor, () =>
+    editor.update(
+      () => {
+        if ($removeKeptLines()) {
+          $addUpdateTag("history-merge");
+        }
+      },
+      { discrete: true }
+    )
   );
 };
 
@@ -2237,16 +2309,18 @@ export const registerLineCommands = (editor: LexicalEditor) => {
       return;
     }
     pressId = null;
+    pressing.delete(editor);
     if (editor.getRootElement() === null) {
       return;
     }
-    editor.update($resolveAfterPress, { discrete: true });
+    keepPageRange(editor, () => editor.update($resolveAfterPress, { discrete: true }));
   };
   const onPressStart = (event: PointerEvent) => {
     // a second pointer ends the press in progress
     endPress();
     if (event.button === 0) {
       pressId = event.pointerId;
+      pressing.add(editor);
     }
   };
   // 15.12: the page's selection is read back where the page has moved
@@ -2304,10 +2378,7 @@ export const registerLineCommands = (editor: LexicalEditor) => {
     if (editor.isComposing() || (keptOf(editor).size === 0 && pressId === null && (rangeHeld === false || pageMoved() === false))) {
       return;
     }
-    const dom = window.getSelection();
-    const saved = dom !== null && dom.rangeCount > 0 ? dom.getRangeAt(0).cloneRange() : null;
-    const nodeSelected = editor.getEditorState().read(() => $isNodeSelection($getSelection()));
-    editor.update(
+    keepPageRange(editor, () => editor.update(
       () => {
         // a page step read back here is the selection change the page has
         // not reported yet: its step runs as at that change (a line the
@@ -2327,12 +2398,7 @@ export const registerLineCommands = (editor: LexicalEditor) => {
         }
       },
       { discrete: true }
-    );
-    // with a node selected, the page's own range is what the browser types
-    // at (the field takes that input); Lexical's commit drops it
-    if (saved !== null && nodeSelected && dom !== null && dom.rangeCount === 0) {
-      dom.addRange(saved);
-    }
+    ));
   };
   // a pointer seen with no button down: the press ended where the page
   // reported no release (outside the window, or no click followed)
@@ -2660,7 +2726,7 @@ export const registerLineCommands = (editor: LexicalEditor) => {
     // the third place of 5.3: after every commit, a point that rests on a
     // lined container resolves at once, in an update of its own that makes
     // no undo step and fires no onChange; the rule then holds (5.3, 5.5)
-    editor.registerUpdateListener(({ editorState }) => {
+    editor.registerUpdateListener(({ editorState, prevEditorState }) => {
       const report = (message: string) => {
         console.error(message);
         lineRuleViolations.push(message);
@@ -2679,22 +2745,33 @@ export const registerLineCommands = (editor: LexicalEditor) => {
         // a line the caret left by a key or by code, where no selection
         // change of the page followed (the field moved the caret in the
         // key's own update), goes at once
+        // goes at once: only a line the selection was in before this
+        // commit, never a kept one (a press holds this check off)
         const kept = keptOf(editor);
+        const was = prevEditorState.read(
+          () =>
+            new Set(
+              $dfs()
+                .filter(({ node }) => $isCmsLineNode(node) && holdsSelection(node))
+                .map(({ node }) => node.getKey())
+            )
+        );
         const left = editorState.read(() =>
           $dfs().some(
             ({ node }) =>
               $isCmsLineNode(node) &&
+              was.has(node.getKey()) &&
               node.isEmpty() &&
               holdsSelection(node) === false &&
               kept.has(node.getKey()) === false
           )
         );
         if (left) {
-          editor.update(() => {
-            if ($removeLeftEmptyLines()) {
+          keepPageRange(editor, () => editor.update(() => {
+            if ($removeLeftEmptyLines(was)) {
               $addUpdateTag("history-merge");
             }
-          }, { discrete: true });
+          }, { discrete: true }));
         }
         return;
       }
@@ -2703,7 +2780,7 @@ export const registerLineCommands = (editor: LexicalEditor) => {
         checkFailed = false;
         return;
       }
-      editor.update(() => {
+      keepPageRange(editor, () => editor.update(() => {
         // a point moved and nothing else changed is no edit (no onChange, no
         // step) and carries no tag; a caret line made or removed is merged
         // into the history's current step and fires no onChange
@@ -2715,7 +2792,7 @@ export const registerLineCommands = (editor: LexicalEditor) => {
           checkFailed = true;
           report(`cms-line point rule: a point on ${still}`);
         }
-      }, { discrete: true });
+      }, { discrete: true }));
     }),
     ...insertCommands.map((command) =>
       editor.registerCommand(
@@ -3735,15 +3812,113 @@ export const registerCompositionStep = (editor: LexicalEditor) => {
   const onEnd = (event: CompositionEvent) => {
     compositionEndText.set(editor, event.data ?? "");
   };
+  // R1 (the composition-start character): Lexical 0.21 starts a
+  // composition over a range, or at an element point, by inserting
+  // COMPOSITION_START_CHAR (U+200B on Chrome and other Blink browsers,
+  // U+00A0 on Firefox, Safari and iOS) at the caret. At the commit in which
+  // the editor starts composing, the composed node holds it just before
+  // the caret: that place is kept, and at the composition's end the
+  // character is removed in the same update when it is still there. Never
+  // a strip: no other character is touched
+  let starting: string | null = null;
+  let startPlace: { key: string; offset: number; char: string } | null = null;
+  let removedAtEnd = false;
+  // on the window, in the capture phase: before Lexical's own listener on
+  // the root
+  const onStart = (event: CompositionEvent) => {
+    const root = editor.getRootElement();
+    if (root === null || event.target instanceof Node === false || root.contains(event.target) === false) {
+      return;
+    }
+    // until the next commit: the start's own (Lexical's listener runs
+    // after a microtask checkpoint, so a microtask would end it too soon)
+    starting = "";
+  };
   return mergeRegister(
         editor.registerRootListener((root, previous) => {
           previous?.removeEventListener("compositionend", onEnd, true);
           root?.addEventListener("compositionend", onEnd, true);
+          previous?.ownerDocument.defaultView?.removeEventListener("compositionstart", onStart, true);
+          root?.ownerDocument.defaultView?.addEventListener("compositionstart", onStart, true);
+        }),
+        editor.registerCommand(
+          CONTROLLED_TEXT_INSERTION_COMMAND,
+          (payload) => {
+            if (
+              starting === "" &&
+              editor.isComposing() &&
+              (payload === "\u200b" || payload === "\u00a0")
+            ) {
+              starting = payload;
+            }
+            return false;
+          },
+          COMMAND_PRIORITY_CRITICAL
+        ),
+        // the composition's end dirties the text node the page's caret is
+        // in, which need not be the composed one
+        editor.registerNodeTransform(TextNode, () => {
+          const place = startPlace;
+          if (place === null || editor.isComposing() || lineSpike.compositionStartCharKept) {
+            return;
+          }
+          startPlace = null;
+          const node = $getNodeByKey(place.key);
+          if ($isTextNode(node) === false || node.isAttached() === false) {
+            return;
+          }
+          const text = node.getTextContent();
+          if (text[place.offset] !== place.char) {
+            return;
+          }
+          node.setTextContent(text.slice(0, place.offset) + text.slice(place.offset + 1));
+          removedAtEnd = true;
+          const selection = $getSelection();
+          if ($isRangeSelection(selection)) {
+            for (const point of [selection.anchor, selection.focus]) {
+              if (point.type === "text" && point.key === place.key && point.offset > place.offset) {
+                point.set(point.key, point.offset - 1, "text");
+              }
+            }
+          }
         }),
         editor.registerUpdateListener(({ editorState, prevEditorState, tags, dirtyElements, dirtyLeaves }) => {
+          // R1: the place of the start character, read at the commit that
+          // inserted it; gone once the composition is over
+          if (editor.isComposing() && typeof starting === "string" && starting !== "") {
+            const char = starting;
+            starting = null;
+            startPlace = editorState.read(() => {
+              const selection = $getSelection();
+              if ($isRangeSelection(selection) === false || selection.anchor.type !== "text") {
+                return null;
+              }
+              const { key, offset } = selection.anchor;
+              const node = $getNodeByKey(key);
+              return $isTextNode(node) && offset > 0 && node.getTextContent()[offset - 1] === char
+                ? { key, offset: offset - 1, char }
+                : null;
+            });
+          } else if (editor.isComposing() === false || tags.has("historic")) {
+            startPlace = null;
+          }
+          // a start that inserted no character is over at its commit (a
+          // commit before it, made while not composing, leaves it)
+          if (editor.isComposing()) {
+            starting = null;
+          }
           const history = cmsHistory.get(editor);
           if (history === undefined) {
             return;
+          }
+          // R1: the end that removed the start character is the
+          // composition's own commit: the state it replaced (the composing
+          // one, which held the character) is no step of its own
+          if (removedAtEnd) {
+            removedAtEnd = false;
+            if (history.undoStack.at(-1)?.editorState === prevEditorState) {
+              history.undoStack.pop();
+            }
           }
           const start = compositionStarts.get(editor);
           if (tags.has("historic")) {

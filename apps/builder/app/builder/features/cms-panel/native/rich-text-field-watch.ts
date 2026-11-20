@@ -1,6 +1,6 @@
 // The field's development checks: a tagged update that changes no node, and
 // the harness invariant every browser test and probe record is held to.
-import type { LexicalEditor } from "lexical";
+import { $getRoot, type LexicalEditor } from "lexical";
 import { d7Document, unkeptEmptyLines } from "./rich-text-line-node";
 
 export type FieldValue = { html: string; text: string } | null;
@@ -11,7 +11,12 @@ type Watched = {
   mounted: string | undefined;
   changes: number;
   last: FieldValue | undefined;
+  /** R1: the composition-start characters (U+200B, Chrome's) the mounted document held. */
+  startChars: number | undefined;
 };
+
+const startChars = (editor: LexicalEditor) =>
+  editor.getEditorState().read(() => $getRoot().getTextContent().split("\u200b").length - 1);
 
 const watched = new Set<Watched>();
 
@@ -68,10 +73,11 @@ export const registerTagCheck = (editor: LexicalEditor) => {
  * the updates the mount queued have committed, and each value it reports.
  */
 export const watchField = (editor: LexicalEditor, valueOf: () => FieldValue) => {
-  const entry: Watched = { editor, valueOf, mounted: undefined, changes: 0, last: undefined };
+  const entry: Watched = { editor, valueOf, mounted: undefined, changes: 0, last: undefined, startChars: undefined };
   watched.add(entry);
   queueMicrotask(() => {
     entry.mounted = d7Document(editor.getEditorState());
+    entry.startChars = startChars(editor);
   });
   return (value: FieldValue) => {
     entry.changes += 1;
@@ -84,6 +90,8 @@ export const watchField = (editor: LexicalEditor, valueOf: () => FieldValue) => 
  * editor's HTML export as it stands; one that reported none holds its document
  * as mounted, under D7. Empties the watch when `clear` is set.
  */
+const editorIsIdle = (editor: LexicalEditor) => editor.isComposing() === false;
+
 export const fieldInvariantFailures = (clear: boolean) => {
   const failures: string[] = [];
   for (const entry of watched) {
@@ -92,6 +100,14 @@ export const fieldInvariantFailures = (clear: boolean) => {
     const left = unkeptEmptyLines(entry.editor);
     if (left > 0) {
       failures.push(`field invariant: ${left} empty line(s) that hold no caret and no press kept`);
+    }
+    // R1: no record ends with a composition-start character the mounted
+    // document did not hold
+    if (entry.startChars !== undefined && editorIsIdle(entry.editor)) {
+      const held = startChars(entry.editor);
+      if (held > entry.startChars) {
+        failures.push(`field invariant: ${held - entry.startChars} composition-start character(s) the mounted document did not hold`);
+      }
     }
     if (entry.changes > 0) {
       const now = JSON.stringify(entry.valueOf()?.html ?? null);

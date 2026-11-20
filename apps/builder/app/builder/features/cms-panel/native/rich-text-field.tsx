@@ -139,6 +139,8 @@ import {
   PLACE_TYPES,
   placeNodes,
   removeKeptLines,
+  focusEditor,
+  isPressing,
   $mapLineEdges,
   $plainTextOf,
   $removeRangeWithBreak,
@@ -567,7 +569,7 @@ const setBlockType = (editor: LexicalEditor, block: BlockType) => {
       }
     }
   });
-  editor.focus();
+  focusEditor(editor);
 };
 
 /**
@@ -1049,6 +1051,7 @@ const LinkButton = ({
     });
   };
 
+  const closedByPressInEditor = useRef(false);
   const apply = () => {
     // B: an edit: lines a press's caret left go first
     removeKeptLines(editor);
@@ -1094,9 +1097,20 @@ const LinkButton = ({
       <PopoverContent
         align="start"
         css={{ width: theme.spacing[33], padding: theme.panel.padding }}
+        // 15.14 (a): a close that came from a press inside the editor does
+        // not hand focus back (the press gives the editor focus itself)
+        onPointerDownOutside={(event) => {
+          const target = (event.detail?.originalEvent?.target ?? event.target) as Node | null;
+          closedByPressInEditor.current = target !== null && editor.getRootElement()?.contains(target) === true;
+        }}
         onCloseAutoFocus={(event) => {
           event.preventDefault();
-          editor.focus();
+          const byPress = closedByPressInEditor.current;
+          closedByPressInEditor.current = false;
+          if (byPress && lineSpike.closeFocusFixOff === false) {
+            return;
+          }
+          focusEditor(editor);
         }}
       >
         <Grid gap="2">
@@ -1177,7 +1191,33 @@ const insertImage = (
   caret: RangeSelection | null,
   attributes: CmsImageAttributes
 ) => {
+  // 15.14: an upload that finishes during a press in the editor leaves the
+  // press's own caret where the press made it
+  const pressed = isPressing(editor);
   editor.update(() => {
+    const kept = pressed ? $getSelection()?.clone() ?? null : null;
+    const $keepPress = () => {
+      if (
+        $isRangeSelection(kept) === false ||
+        lineSpike.focusGuardOff ||
+        [kept.anchor, kept.focus].some((point) => {
+          const node = $getNodeByKey(point.key);
+          return (
+            node === null ||
+            node.isAttached() === false ||
+            point.offset >
+              ($isTextNode(node)
+                ? node.getTextContentSize()
+                : $isElementNode(node)
+                  ? node.getChildrenSize()
+                  : 0)
+          );
+        })
+      ) {
+        return;
+      }
+      $setSelection(kept);
+    };
     const image = $createCmsImageNode(attributes);
     const isAttached =
       caret !== null &&
@@ -1196,11 +1236,13 @@ const insertImage = (
       $liftPointsIntoLines(true);
       const selection = $getSelection() as RangeSelection;
       $editInBlockLedItem(selection, () => selection.insertNodes([image]));
+      $keepPress();
       return;
     }
     const paragraph = $createParagraphNode();
     paragraph.append(image);
     $getRoot().append(paragraph);
+    $keepPress();
   });
 };
 
@@ -2728,6 +2770,9 @@ const ImageEditingPlugin = () => {
             if (selection === null) {
               return false;
             }
+            // no native copy or cut, whatever follows (a refused cut
+            // abandons its update by a throw)
+            event.preventDefault();
             // 15.10: the writer takes the place the removal takes for a
             // range's last point on a container after a nested block; a cut
             // removes from there
@@ -2745,7 +2790,6 @@ const ImageEditingPlugin = () => {
                 selection = moved;
               }
             }
-            event.preventDefault();
             // G (D6), 14.9: a range whose two ends are text points copies
             // what the head copies for the same two ends: text/html and the
             // editor data are written on the head's form of the tree, by the
@@ -2818,7 +2862,7 @@ const ImageEditingPlugin = () => {
                 live.removeText();
               }
               const taken = $tokensHeld($removedTokens(before, $contentTokens()));
-              if (sameContent(data, taken) === false) {
+              if (sameContent(data, taken) === false || lineSpike.cutTakesCheckFails) {
                 markRichTextCopy(null);
                 setLexicalClipboardDataTransfer(event.clipboardData, { "text/plain": plain });
                 throw new Error("cms-line clipboard: the cut's removal does not take what its clipboard holds");
