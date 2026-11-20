@@ -355,4 +355,59 @@ describe("H, I, J, K", () => {
   });
 });
 
+describe("L: a click in QTR after the rule was node-selected", () => {
+  test("gives a caret at the click", async () => {
+    const onChange = await renderField(LI("<blockquote><p>Q0w</p></blockquote>T1w<hr>"));
+    await clickInWord("T1w");
+    await keys("{ArrowRight}");
+    expect(ruleSelected()).toBe(true);
+    await clickInWord("Q0w", 0);
+    await keys("k");
+    expect(written(onChange)).toBe(stored(LI("<blockquote><p>kQ0w</p></blockquote>T1w<hr />")));
+  });
+});
+
+describe("M", () => {
+  const RQX = "<blockquote><hr>X2w</blockquote>";
+  const beforeRule = async () => {
+    await click(editable());
+    await act(async () => {
+      editorOf()!.update(() => {
+        const quote = $getRoot().getFirstChildOrThrow<ElementNode>();
+        const selection = $createRangeSelection();
+        selection.anchor.set(quote.getKey(), 0, "element");
+        selection.focus.set(quote.getKey(), 0, "element");
+        $setSelection(selection);
+      });
+    });
+    await settle();
+  };
+  test("M2: a letter before the rule of a rule-led root quote", async () => {
+    const onChange = await renderField(RQX);
+    await beforeRule();
+    await keys("k");
+    expect(written(onChange)).toBe(stored("<blockquote>k<hr />X2w</blockquote>"));
+  });
+  test("M2: Enter there", async () => {
+    const onChange = await renderField(RQX);
+    await beforeRule();
+    await keys("{Enter}");
+    expect(written(onChange)).toBe(stored("<blockquote><p></p><hr />X2w</blockquote>"));
+  });
+  test("M2: Shift+Enter there, then a letter", async () => {
+    const onChange = await renderField(RQX);
+    await beforeRule();
+    await keys("{Shift>}{Enter}{/Shift}");
+    expect(written(onChange)).toBe(stored("<blockquote><br /><hr />X2w</blockquote>"));
+    await keys("k");
+    expect(written(onChange)).toBe(stored("<blockquote><br />k<hr />X2w</blockquote>"));
+  });
+  test("M1: a heading's whole text in an item, Enter", async () => {
+    const onChange = await renderField(LI("<h3>H0w</h3>"));
+    await selectWords("H0w", 0, "H0w", undefined);
+    await keys("{Enter}");
+    expect(written(onChange)).toBe(stored(LI("<h3></h3><br />")));
+  });
+});
+
 export { editable };

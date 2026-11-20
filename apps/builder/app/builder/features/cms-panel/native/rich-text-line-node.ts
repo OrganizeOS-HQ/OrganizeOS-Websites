@@ -26,6 +26,8 @@ import {
   $isTextNode,
   $setSelection,
   $createNodeSelection,
+  $createRangeSelectionFromDom,
+  CLICK_COMMAND,
   COMMAND_PRIORITY_CRITICAL,
   COMMAND_PRIORITY_LOW,
   COMMAND_PRIORITY_NORMAL,
@@ -1506,6 +1508,32 @@ export const registerLineCommands = (editor: LexicalEditor) =>
         editor.getElementByKey(key)?.setAttribute("data-cms-caret", "");
       }
     }),
+    // L: a click on text after a node was selected gives a real caret, as
+    // Lexical already does for a touch
+    editor.registerCommand(
+      CLICK_COMMAND,
+      (event: MouseEvent) => {
+        const selection = $getSelection();
+        if (selection !== null && $isNodeSelection(selection) === false) {
+          return false;
+        }
+        const target = event.target;
+        if (target instanceof Element && target.closest("hr, img, figure") !== null) {
+          return false;
+        }
+        const dom = window.getSelection();
+        const at = dom?.anchorNode ?? null;
+        if (dom === null || at === null || editor.getRootElement()?.contains(at) !== true) {
+          return false;
+        }
+        const range = $createRangeSelectionFromDom(dom, editor);
+        if (range !== null) {
+          $setSelection(range);
+        }
+        return false;
+      },
+      COMMAND_PRIORITY_LOW
+    ),
     // the third place of 5.3: after every commit, a point that rests on a
     // lined container resolves at once, in an update of its own that makes
     // no undo step and fires no onChange; the rule then holds (5.3, 5.5)
