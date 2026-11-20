@@ -1510,3 +1510,244 @@ describe("the caret's move into text inside a delete", () => {
     expect(written(onChange)).toBe(stored(LI("<blockquote><p>X0w</p></blockquote>T1w")));
   });
 });
+
+/**
+ * Round 14 rulings, the mirror: a caret just before an image that starts its
+ * block or line is that block's or line's start. Backspace, the word form and
+ * the line form there do what they do at the start of the same block
+ * starting with a word (the twin: the image replaced by the word Zw, the
+ * caret before it). The write in the twin's form: the image written as Zw.
+ */
+const M_STARTS: Record<string, (x: string) => string> = {
+  quote: (x) => `<blockquote><p>${x}X0w</p></blockquote>`,
+  heading: (x) => `<h3>${x}X0w</h3>`,
+  line: (x) => `${x}X1w`,
+};
+const M_ORDINARY_STARTS: Record<string, (x: string) => string> = {
+  quote: (x) => `<blockquote><p>${x}X0w</p></blockquote>`,
+  heading: (x) => `<h3>${x}X0w</h3>`,
+  line: (x) => `<p>${x}X1w</p>`,
+};
+const M_LINED_BEFORE: Record<string, string> = {
+  line: "T0w<br>",
+  block: "<blockquote><p>B0w</p></blockquote>",
+  rule: "<hr>",
+  itemStart: "",
+  contentStart: "",
+};
+const M_ORDINARY_BEFORE: Record<string, string> = {
+  line: "<p>T0w</p>",
+  block: "<blockquote><p>B0w</p></blockquote>",
+  rule: "<hr>",
+  contentStart: "",
+};
+const mShape = (context: string, start: string, before: string) => {
+  if (context === "ordinary") {
+    return `${M_ORDINARY_BEFORE[before]}${M_ORDINARY_STARTS[start](E_IMG)}<p>Ew</p>`;
+  }
+  const inner = `${context === "lineLed" && before !== "line" ? "T9w<br>" : ""}${M_LINED_BEFORE[before]}${M_STARTS[start](E_IMG)}`;
+  return before === "contentStart"
+    ? `<ul><li>${inner}</li><li>Nw</li></ul>`
+    : `<ul><li>Pw</li><li>${inner}</li><li>Nw</li></ul>`;
+};
+/** The caret just before the image, by structure: the element point at its index. */
+const caretBeforeImage = async () => {
+  await click(editable());
+  await act(async () => {
+    editorOf()!.update(() => {
+      const image = b2Leaves().find((node) => node.getType() === "cms-image")!;
+      const parent = image.getParentOrThrow();
+      const range = $createRangeSelection();
+      range.anchor.set(parent.getKey(), image.getIndexWithinParent(), "element");
+      range.focus.set(parent.getKey(), image.getIndexWithinParent(), "element");
+      $setSelection(range);
+    });
+  });
+  await settle();
+};
+const backwardForm = async (form: string) => {
+  if (form === "line") {
+    act(() => {
+      editable()!.dispatchEvent(
+        new InputEvent("beforeinput", { bubbles: true, cancelable: true, inputType: "deleteSoftLineBackward" })
+      );
+    });
+    await settle();
+    return;
+  }
+  await keys(form === "bs" ? "{Backspace}" : "{Control>}{Backspace}{/Control}");
+};
+const M_CELLS: [string, string, string, string, string][] = [
+  ["blockLed", "quote", "line", "bs", "<ul><li>Pw</li><li>T0w<blockquote><p>ZwX0w</p></blockquote></li><li>Nw</li></ul>"],
+  ["blockLed", "quote", "line", "word", "<ul><li>Pw</li><li>T0w<blockquote><p>ZwX0w</p></blockquote></li><li>Nw</li></ul>"],
+  ["blockLed", "quote", "line", "line", "<ul><li>Pw</li><li>T0w<blockquote><p>ZwX0w</p></blockquote></li><li>Nw</li></ul>"],
+  ["blockLed", "quote", "block", "bs", "<ul><li>Pw</li><li><blockquote><p>B0wZwX0w</p></blockquote></li><li>Nw</li></ul>"],
+  ["blockLed", "quote", "block", "word", "<ul><li>Pw</li><li><blockquote><p>B0wZwX0w</p></blockquote></li><li>Nw</li></ul>"],
+  ["blockLed", "quote", "block", "line", "<ul><li>Pw</li><li><blockquote><p>B0wZwX0w</p></blockquote></li><li>Nw</li></ul>"],
+  ["blockLed", "quote", "rule", "bs", "<ul><li>Pw</li><li><blockquote><p>ZwX0w</p></blockquote></li><li>Nw</li></ul>"],
+  ["blockLed", "quote", "rule", "word", "<ul><li>Pw</li><li><blockquote><p>ZwX0w</p></blockquote></li><li>Nw</li></ul>"],
+  ["blockLed", "quote", "rule", "line", "<ul><li>Pw</li><li><blockquote><p>ZwX0w</p></blockquote></li><li>Nw</li></ul>"],
+  ["blockLed", "quote", "itemStart", "bs", "<ul><li>PwZwX0w</li><li>Nw</li></ul>"],
+  ["blockLed", "quote", "itemStart", "word", "<ul><li>PwZwX0w</li><li>Nw</li></ul>"],
+  ["blockLed", "quote", "itemStart", "line", "<ul><li>PwZwX0w</li><li>Nw</li></ul>"],
+  ["blockLed", "quote", "contentStart", "bs", "NOOP"],
+  ["blockLed", "quote", "contentStart", "word", "NOOP"],
+  ["blockLed", "quote", "contentStart", "line", "NOOP"],
+  ["blockLed", "heading", "line", "bs", "<ul><li>Pw</li><li>T0w<h3>ZwX0w</h3></li><li>Nw</li></ul>"],
+  ["blockLed", "heading", "line", "word", "<ul><li>Pw</li><li>T0w<h3>ZwX0w</h3></li><li>Nw</li></ul>"],
+  ["blockLed", "heading", "line", "line", "<ul><li>Pw</li><li>T0w<h3>ZwX0w</h3></li><li>Nw</li></ul>"],
+  ["blockLed", "heading", "block", "bs", "<ul><li>Pw</li><li><blockquote><p>B0wZwX0w</p></blockquote></li><li>Nw</li></ul>"],
+  ["blockLed", "heading", "block", "word", "<ul><li>Pw</li><li><blockquote><p>B0wZwX0w</p></blockquote></li><li>Nw</li></ul>"],
+  ["blockLed", "heading", "block", "line", "<ul><li>Pw</li><li><blockquote><p>B0wZwX0w</p></blockquote></li><li>Nw</li></ul>"],
+  ["blockLed", "heading", "rule", "bs", "<ul><li>Pw</li><li><h3>ZwX0w</h3></li><li>Nw</li></ul>"],
+  ["blockLed", "heading", "rule", "word", "<ul><li>Pw</li><li><h3>ZwX0w</h3></li><li>Nw</li></ul>"],
+  ["blockLed", "heading", "rule", "line", "<ul><li>Pw</li><li><h3>ZwX0w</h3></li><li>Nw</li></ul>"],
+  ["blockLed", "heading", "itemStart", "bs", "<ul><li>PwZwX0w</li><li>Nw</li></ul>"],
+  ["blockLed", "heading", "itemStart", "word", "<ul><li>PwZwX0w</li><li>Nw</li></ul>"],
+  ["blockLed", "heading", "itemStart", "line", "<ul><li>PwZwX0w</li><li>Nw</li></ul>"],
+  ["blockLed", "heading", "contentStart", "bs", "NOOP"],
+  ["blockLed", "heading", "contentStart", "word", "NOOP"],
+  ["blockLed", "heading", "contentStart", "line", "NOOP"],
+  ["blockLed", "line", "line", "bs", "<ul><li>Pw</li><li>T0wZwX1w</li><li>Nw</li></ul>"],
+  ["blockLed", "line", "line", "word", "<ul><li>Pw</li><li>T0wZwX1w</li><li>Nw</li></ul>"],
+  ["blockLed", "line", "line", "line", "<ul><li>Pw</li><li>T0wZwX1w</li><li>Nw</li></ul>"],
+  ["blockLed", "line", "block", "bs", "<ul><li>Pw</li><li><blockquote><p>B0wZwX1w</p></blockquote></li><li>Nw</li></ul>"],
+  ["blockLed", "line", "block", "word", "<ul><li>Pw</li><li><blockquote><p>B0wZwX1w</p></blockquote></li><li>Nw</li></ul>"],
+  ["blockLed", "line", "block", "line", "<ul><li>Pw</li><li><blockquote><p>B0wZwX1w</p></blockquote></li><li>Nw</li></ul>"],
+  ["blockLed", "line", "rule", "bs", "<ul><li>Pw</li><li>ZwX1w</li><li>Nw</li></ul>"],
+  ["blockLed", "line", "rule", "word", "<ul><li>Pw</li><li>ZwX1w</li><li>Nw</li></ul>"],
+  ["blockLed", "line", "rule", "line", "<ul><li>Pw</li><li>ZwX1w</li><li>Nw</li></ul>"],
+  ["blockLed", "line", "itemStart", "bs", "<ul><li>PwZwX1w</li><li>Nw</li></ul>"],
+  ["blockLed", "line", "itemStart", "word", "<ul><li>PwZwX1w</li><li>Nw</li></ul>"],
+  ["blockLed", "line", "itemStart", "line", "<ul><li>PwZwX1w</li><li>Nw</li></ul>"],
+  ["blockLed", "line", "contentStart", "bs", "<p>ZwX1w</p><ul><li>Nw</li></ul>"],
+  ["blockLed", "line", "contentStart", "word", "NOOP"],
+  ["blockLed", "line", "contentStart", "line", "NOOP"],
+  ["lineLed", "quote", "line", "bs", "<ul><li>Pw</li><li>T0w<blockquote><p>ZwX0w</p></blockquote></li><li>Nw</li></ul>"],
+  ["lineLed", "quote", "line", "word", "<ul><li>Pw</li><li>T0w<blockquote><p>ZwX0w</p></blockquote></li><li>Nw</li></ul>"],
+  ["lineLed", "quote", "line", "line", "<ul><li>Pw</li><li>T0w<blockquote><p>ZwX0w</p></blockquote></li><li>Nw</li></ul>"],
+  ["lineLed", "quote", "block", "bs", "<ul><li>Pw</li><li>T9w<br /><blockquote><p>B0wZwX0w</p></blockquote></li><li>Nw</li></ul>"],
+  ["lineLed", "quote", "block", "word", "<ul><li>Pw</li><li>T9w<br /><blockquote><p>B0wZwX0w</p></blockquote></li><li>Nw</li></ul>"],
+  ["lineLed", "quote", "block", "line", "<ul><li>Pw</li><li>T9w<br /><blockquote><p>B0wZwX0w</p></blockquote></li><li>Nw</li></ul>"],
+  ["lineLed", "quote", "rule", "bs", "<ul><li>Pw</li><li>T9w<br /><blockquote><p>ZwX0w</p></blockquote></li><li>Nw</li></ul>"],
+  ["lineLed", "quote", "rule", "word", "<ul><li>Pw</li><li>T9w<br /><blockquote><p>ZwX0w</p></blockquote></li><li>Nw</li></ul>"],
+  ["lineLed", "quote", "rule", "line", "<ul><li>Pw</li><li>T9w<br /><blockquote><p>ZwX0w</p></blockquote></li><li>Nw</li></ul>"],
+  ["lineLed", "quote", "itemStart", "bs", "<ul><li>Pw</li><li>T9w<blockquote><p>ZwX0w</p></blockquote></li><li>Nw</li></ul>"],
+  ["lineLed", "quote", "itemStart", "word", "<ul><li>Pw</li><li>T9w<blockquote><p>ZwX0w</p></blockquote></li><li>Nw</li></ul>"],
+  ["lineLed", "quote", "itemStart", "line", "<ul><li>Pw</li><li>T9w<blockquote><p>ZwX0w</p></blockquote></li><li>Nw</li></ul>"],
+  ["lineLed", "quote", "contentStart", "bs", "<ul><li>T9w<blockquote><p>ZwX0w</p></blockquote></li><li>Nw</li></ul>"],
+  ["lineLed", "quote", "contentStart", "word", "<ul><li>T9w<blockquote><p>ZwX0w</p></blockquote></li><li>Nw</li></ul>"],
+  ["lineLed", "quote", "contentStart", "line", "<ul><li>T9w<blockquote><p>ZwX0w</p></blockquote></li><li>Nw</li></ul>"],
+  ["lineLed", "heading", "line", "bs", "<ul><li>Pw</li><li>T0w<h3>ZwX0w</h3></li><li>Nw</li></ul>"],
+  ["lineLed", "heading", "line", "word", "<ul><li>Pw</li><li>T0w<h3>ZwX0w</h3></li><li>Nw</li></ul>"],
+  ["lineLed", "heading", "line", "line", "<ul><li>Pw</li><li>T0w<h3>ZwX0w</h3></li><li>Nw</li></ul>"],
+  ["lineLed", "heading", "block", "bs", "<ul><li>Pw</li><li>T9w<br /><blockquote><p>B0wZwX0w</p></blockquote></li><li>Nw</li></ul>"],
+  ["lineLed", "heading", "block", "word", "<ul><li>Pw</li><li>T9w<br /><blockquote><p>B0wZwX0w</p></blockquote></li><li>Nw</li></ul>"],
+  ["lineLed", "heading", "block", "line", "<ul><li>Pw</li><li>T9w<br /><blockquote><p>B0wZwX0w</p></blockquote></li><li>Nw</li></ul>"],
+  ["lineLed", "heading", "rule", "bs", "<ul><li>Pw</li><li>T9w<br /><h3>ZwX0w</h3></li><li>Nw</li></ul>"],
+  ["lineLed", "heading", "rule", "word", "<ul><li>Pw</li><li>T9w<br /><h3>ZwX0w</h3></li><li>Nw</li></ul>"],
+  ["lineLed", "heading", "rule", "line", "<ul><li>Pw</li><li>T9w<br /><h3>ZwX0w</h3></li><li>Nw</li></ul>"],
+  ["lineLed", "heading", "itemStart", "bs", "<ul><li>Pw</li><li>T9w<h3>ZwX0w</h3></li><li>Nw</li></ul>"],
+  ["lineLed", "heading", "itemStart", "word", "<ul><li>Pw</li><li>T9w<h3>ZwX0w</h3></li><li>Nw</li></ul>"],
+  ["lineLed", "heading", "itemStart", "line", "<ul><li>Pw</li><li>T9w<h3>ZwX0w</h3></li><li>Nw</li></ul>"],
+  ["lineLed", "heading", "contentStart", "bs", "<ul><li>T9w<h3>ZwX0w</h3></li><li>Nw</li></ul>"],
+  ["lineLed", "heading", "contentStart", "word", "<ul><li>T9w<h3>ZwX0w</h3></li><li>Nw</li></ul>"],
+  ["lineLed", "heading", "contentStart", "line", "<ul><li>T9w<h3>ZwX0w</h3></li><li>Nw</li></ul>"],
+  ["lineLed", "line", "line", "bs", "<ul><li>Pw</li><li>T0wZwX1w</li><li>Nw</li></ul>"],
+  ["lineLed", "line", "line", "word", "<ul><li>Pw</li><li>T0wZwX1w</li><li>Nw</li></ul>"],
+  ["lineLed", "line", "line", "line", "<ul><li>Pw</li><li>T0wZwX1w</li><li>Nw</li></ul>"],
+  ["lineLed", "line", "block", "bs", "<ul><li>Pw</li><li>T9w<br /><blockquote><p>B0wZwX1w</p></blockquote></li><li>Nw</li></ul>"],
+  ["lineLed", "line", "block", "word", "<ul><li>Pw</li><li>T9w<br /><blockquote><p>B0wZwX1w</p></blockquote></li><li>Nw</li></ul>"],
+  ["lineLed", "line", "block", "line", "<ul><li>Pw</li><li>T9w<br /><blockquote><p>B0wZwX1w</p></blockquote></li><li>Nw</li></ul>"],
+  ["lineLed", "line", "rule", "bs", "<ul><li>Pw</li><li>T9w<br />ZwX1w</li><li>Nw</li></ul>"],
+  ["lineLed", "line", "rule", "word", "<ul><li>Pw</li><li>T9w<br />ZwX1w</li><li>Nw</li></ul>"],
+  ["lineLed", "line", "rule", "line", "<ul><li>Pw</li><li>T9w<br />ZwX1w</li><li>Nw</li></ul>"],
+  ["lineLed", "line", "itemStart", "bs", "<ul><li>Pw</li><li>T9wZwX1w</li><li>Nw</li></ul>"],
+  ["lineLed", "line", "itemStart", "word", "<ul><li>Pw</li><li>T9wZwX1w</li><li>Nw</li></ul>"],
+  ["lineLed", "line", "itemStart", "line", "<ul><li>Pw</li><li>T9wZwX1w</li><li>Nw</li></ul>"],
+  ["lineLed", "line", "contentStart", "bs", "<ul><li>T9wZwX1w</li><li>Nw</li></ul>"],
+  ["lineLed", "line", "contentStart", "word", "<ul><li>T9wZwX1w</li><li>Nw</li></ul>"],
+  ["lineLed", "line", "contentStart", "line", "<ul><li>T9wZwX1w</li><li>Nw</li></ul>"],
+  ["ordinary", "quote", "line", "bs", "<p>T0wZwX0w</p><p>Ew</p>"],
+  ["ordinary", "quote", "line", "word", "<p>T0wZwX0w</p><p>Ew</p>"],
+  ["ordinary", "quote", "line", "line", "<p>T0wZwX0w</p><p>Ew</p>"],
+  ["ordinary", "quote", "block", "bs", "<blockquote><p>B0wZwX0w</p></blockquote><p>Ew</p>"],
+  ["ordinary", "quote", "block", "word", "<blockquote><p>B0wZwX0w</p></blockquote><p>Ew</p>"],
+  ["ordinary", "quote", "block", "line", "<blockquote><p>B0wZwX0w</p></blockquote><p>Ew</p>"],
+  ["ordinary", "quote", "rule", "bs", "NOOP"],
+  ["ordinary", "quote", "rule", "word", "NOOP"],
+  ["ordinary", "quote", "rule", "line", "NOOP"],
+  ["ordinary", "quote", "contentStart", "bs", "NOOP"],
+  ["ordinary", "quote", "contentStart", "word", "NOOP"],
+  ["ordinary", "quote", "contentStart", "line", "NOOP"],
+  ["ordinary", "heading", "line", "bs", "<p>T0wZwX0w</p><p>Ew</p>"],
+  ["ordinary", "heading", "line", "word", "<p>T0wZwX0w</p><p>Ew</p>"],
+  ["ordinary", "heading", "line", "line", "<p>T0wZwX0w</p><p>Ew</p>"],
+  ["ordinary", "heading", "block", "bs", "<blockquote><p>B0wZwX0w</p></blockquote><p>Ew</p>"],
+  ["ordinary", "heading", "block", "word", "<blockquote><p>B0wZwX0w</p></blockquote><p>Ew</p>"],
+  ["ordinary", "heading", "block", "line", "<blockquote><p>B0wZwX0w</p></blockquote><p>Ew</p>"],
+  ["ordinary", "heading", "rule", "bs", "<h3>ZwX0w</h3><p>Ew</p>"],
+  ["ordinary", "heading", "rule", "word", "<h3>ZwX0w</h3><p>Ew</p>"],
+  ["ordinary", "heading", "rule", "line", "<h3>ZwX0w</h3><p>Ew</p>"],
+  ["ordinary", "heading", "contentStart", "bs", "NOOP"],
+  ["ordinary", "heading", "contentStart", "word", "NOOP"],
+  ["ordinary", "heading", "contentStart", "line", "NOOP"],
+  ["ordinary", "line", "line", "bs", "<p>T0wZwX1w</p><p>Ew</p>"],
+  ["ordinary", "line", "line", "word", "<p>T0wZwX1w</p><p>Ew</p>"],
+  ["ordinary", "line", "line", "line", "<p>T0wZwX1w</p><p>Ew</p>"],
+  ["ordinary", "line", "block", "bs", "<blockquote><p>B0wZwX1w</p></blockquote><p>Ew</p>"],
+  ["ordinary", "line", "block", "word", "<blockquote><p>B0wZwX1w</p></blockquote><p>Ew</p>"],
+  ["ordinary", "line", "block", "line", "<blockquote><p>B0wZwX1w</p></blockquote><p>Ew</p>"],
+  ["ordinary", "line", "rule", "bs", "<p>ZwX1w</p><p>Ew</p>"],
+  ["ordinary", "line", "rule", "word", "<p>ZwX1w</p><p>Ew</p>"],
+  ["ordinary", "line", "rule", "line", "<p>ZwX1w</p><p>Ew</p>"],
+  ["ordinary", "line", "contentStart", "bs", "NOOP"],
+  ["ordinary", "line", "contentStart", "word", "NOOP"],
+  ["ordinary", "line", "contentStart", "line", "NOOP"],
+];
+
+describe("a caret just before an image that starts its block or line is its start", () => {
+  test.each(M_CELLS)("%s, %s after %s, %s", async (context, start, before, form, expected) => {
+    const html = mShape(context, start, before);
+    const onChange = await renderField(html);
+    await caretBeforeImage();
+    await backwardForm(form);
+    const write = lastHtml(onChange) === "" ? "NOOP" : written(onChange);
+    expect(write === stored(html) ? "NOOP" : write.replace(/<img[^>]*>/g, "Zw")).toBe(expected);
+  });
+  const AT_CONTENT_START: [string, string][] = [
+    ["ordinary content", `<p>${E_IMG}X1w</p><p>Ew</p>`],
+    ["a heading at the content's start", `<h3>${E_IMG}X0w</h3><p>Ew</p>`],
+  ];
+  const emptyTexts = () =>
+    editorOf()!
+      .getEditorState()
+      .read(() => $getRoot().getAllTextNodes().filter((node) => node.getTextContent() === "").length);
+  for (const [where, html] of AT_CONTENT_START) {
+    // Backspace at a heading at the content's start fires an onChange with
+    // the same value in the twin too (Lexical's own collapse at start)
+    for (const form of where.startsWith("a heading") ? ["word", "line"] : ["bs", "word", "line"]) {
+      test(`at the content's start, ${where}, ${form}: no onChange, no undo step, nothing left behind`, async () => {
+        const onChange = await renderField(html);
+        await clickInWord("Ew");
+        await keys("a");
+        await caretBeforeImage();
+        const before = JSON.stringify(editorOf()!.getEditorState().toJSON());
+        const calls = onChange.mock.calls.length;
+        await backwardForm(form);
+        expect(onChange.mock.calls.length).toBe(calls);
+        expect(emptyTexts()).toBe(0);
+        expect(JSON.stringify(editorOf()!.getEditorState().toJSON())).toBe(before);
+        await keys("{Control>}z{/Control}");
+        expect(written(onChange)).toBe(stored(html));
+      });
+    }
+  }
+  test("a backward delete that takes the break before the image leaves no empty text behind", async () => {
+    const onChange = await renderField(mShape("blockLed", "line", "line"));
+    await caretBeforeImage();
+    await backwardForm("line");
+    expect(written(onChange).replace(/<img[^>]*>/g, "Zw")).toBe("<ul><li>Pw</li><li>T0wZwX1w</li><li>Nw</li></ul>");
+    expect(emptyTexts()).toBe(0);
+  });
+});

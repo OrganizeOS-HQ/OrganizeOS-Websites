@@ -743,6 +743,25 @@ const $pointOffNodeEnd = (selection: RangeSelection, isBackward?: boolean) => {
     return;
   }
   const lined = isLinedContainer(holder as LexicalNode);
+  // the mirror: a backward delete at a caret at the start of a node whose
+  // first child is an image starts in text before it, so the line rules
+  // read it as the start of the block's text (a line that starts with a
+  // break has its own rule); at the content's start there is nothing to
+  // remove and the caret stays
+  if (lined === false && selection.isCollapsed() && isBackward === true) {
+    const at = holder.getChildAtIndex(first.offset);
+    if (
+      first.offset === 0 &&
+      $isDecoratorNode(at) &&
+      $nothingBefore(holder) === false
+    ) {
+      const text = $createTextNode("");
+      at.insertBefore(text);
+      selection.anchor.set(text.getKey(), 0, "text");
+      selection.focus.set(text.getKey(), 0, "text");
+    }
+    return;
+  }
   if (lined || holder.getChildrenSize() === 0 || first.offset !== holder.getChildrenSize()) {
     return;
   }
@@ -771,6 +790,67 @@ const $pointOffNodeEnd = (selection: RangeSelection, isBackward?: boolean) => {
   } else {
     first.set(text.getKey(), offset, "text");
   }
+};
+
+/** No node before this one, its ancestors' included: the content's start. */
+const $nothingBefore = (node: LexicalNode) => {
+  for (let at: LexicalNode | null = node; at !== null; at = at.getParent()) {
+    if (at.getPreviousSibling() !== null) {
+      return false;
+    }
+  }
+  return true;
+};
+
+/**
+ * The word and line forms backward at a caret at the start of its block or
+ * line (nothing before it in its node, or a line break), just before a child
+ * that is not text: the line has nothing before the caret, so they take one
+ * character back, as Backspace does there (at the content's start there is
+ * none to take, as in text, and Lexical's own form runs). Decided here, so Lexical's
+ * extension by the page's selection does not run.
+ */
+const $backwardFormIsBackspace = () => {
+  const selection = $getSelection();
+  if ($isRangeSelection(selection) === false || selection.isCollapsed() === false) {
+    return false;
+  }
+  const { anchor } = selection;
+  const holder = anchor.getNode();
+  if (anchor.type !== "element" || $isElementNode(holder) === false || holder.isInline()) {
+    return false;
+  }
+  if (isLinedContainer(holder as LexicalNode)) {
+    return false;
+  }
+  const at = holder.getChildAtIndex(anchor.offset);
+  const previous = anchor.offset > 0 ? holder.getChildAtIndex(anchor.offset - 1) : null;
+  return (
+    at !== null &&
+    $isTextNode(at) === false &&
+    $isElementNode(at) === false &&
+    ((previous === null && $nothingBefore(holder) === false) || isLineBreak(previous))
+  );
+};
+
+/** A caret at the content's start, just before a first child that is not text. */
+const $lineFormAtContentStart = () => {
+  const selection = $getSelection();
+  if ($isRangeSelection(selection) === false || selection.isCollapsed() === false) {
+    return false;
+  }
+  const { anchor } = selection;
+  const holder = anchor.getNode();
+  if (anchor.type !== "element" || anchor.offset !== 0 || $isElementNode(holder) === false) {
+    return false;
+  }
+  const first = holder.getFirstChild();
+  return (
+    first !== null &&
+    $isTextNode(first) === false &&
+    $isElementNode(first) === false &&
+    $nothingBefore(holder)
+  );
 };
 
 /** No node after this one, its ancestors' included: the content's end. */
@@ -2025,6 +2105,19 @@ export const registerLineCommands = (editor: LexicalEditor) =>
             return false;
           }
           if (command === DELETE_LINE_COMMAND && payload === false && $lineFormHasNothing()) {
+            return true;
+          }
+          // the line form backward at the content's start, before a first
+          // child that is not text, has nothing to remove (as in text)
+          if (command === DELETE_LINE_COMMAND && payload === true && $lineFormAtContentStart()) {
+            return true;
+          }
+          if (
+            (command === DELETE_LINE_COMMAND || command === DELETE_WORD_COMMAND) &&
+            payload === true &&
+            $backwardFormIsBackspace()
+          ) {
+            $getEditor().dispatchCommand(DELETE_CHARACTER_COMMAND, true);
             return true;
           }
           $tagRemoval(
