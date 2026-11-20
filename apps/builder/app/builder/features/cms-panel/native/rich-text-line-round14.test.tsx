@@ -5,10 +5,17 @@ import { createRoot } from "react-dom/client";
 import { act } from "react-dom/test-utils";
 import { describe, expect, test, vi } from "vitest";
 import { cdp, userEvent } from "@vitest/browser/context";
-import { CAN_REDO_COMMAND, CAN_UNDO_COMMAND, COMMAND_PRIORITY_CRITICAL, type LexicalEditor } from "lexical";
+import {
+  $getSelection,
+  $isNodeSelection,
+  CAN_REDO_COMMAND,
+  CAN_UNDO_COMMAND,
+  COMMAND_PRIORITY_CRITICAL,
+  type LexicalEditor,
+} from "lexical";
 import { TooltipProvider } from "@webstudio-is/design-system";
 import { RichTextField } from "./rich-text-field";
-import { clickInWord, editable, editorOf, lastHtml, renderField, settle } from "./rich-text-test-harness";
+import { byLabel, click, clickInWord, editable, editorOf, lastHtml, renderField, settle } from "./rich-text-test-harness";
 import { sanitizeRichTextHtml } from "./rich-text-sanitize";
 
 const LI = (x: string) => `<ul><li>Pw</li><li>${x}</li><li>Nw</li></ul>`;
@@ -20,6 +27,14 @@ const keys = async (input: string) => {
   await settle();
 };
 const IMG = `<img src="https://cdn.example.org/x.png" alt="" width="40" height="20" />`;
+/** A range by real input: a click in `from`, then Shift+click in `to`. */
+const selectWords = async (from: string, fromOffset: number | undefined, to: string, toOffset: number | undefined) => {
+  await clickInWord(from, fromOffset);
+  await userEvent.keyboard("{Shift>}");
+  await clickInWord(to, toOffset);
+  await userEvent.keyboard("{/Shift}");
+  await settle();
+};
 
 describe("14.6: D3's first case, an empty block that joins goes whole with no break", () => {
   const EMPTY: [string, string][] = [
@@ -574,4 +589,116 @@ describe("14.4: a delete just after an image that ends a block or a line", () =>
             .replace("<li>Nw</li></ul>", "");
     expect(short).toBe(expected);
   });
+});
+
+/** 14.2: a click after a node selection, in ordinary content and in a lined item. */
+const C_IMG = `<img src="https://cdn.example.org/x.png" alt="" width="40" height="20" />`;
+const C_NODES: Record<string, string> = {
+  rule: "<hr>",
+  image: C_IMG,
+  figure: `<figure>${C_IMG}<figcaption>c</figcaption></figure>`,
+};
+const C_LINK = `<a href="https://example.org/l">Lw</a>`;
+const C_SHAPES: Record<string, (node: string) => string> = {
+  ordinary: (node) => `<p>Aw${C_LINK}</p>${node.startsWith("<img") ? `<p>${node}</p>` : node}<p>Cw</p>`,
+  lined: (node) => `<ul><li>Aw${C_LINK}${node}Cw</li></ul>`,
+};
+const nodeSelected = () =>
+  editorOf()!
+    .getEditorState()
+    .read(() => $isNodeSelection($getSelection()));
+const selectNode = async (way: "click" | "arrow") => {
+  const root = editable()!;
+  if (way === "click") {
+    const node = root.querySelector("hr, img")!;
+    await userEvent.click(node as HTMLElement);
+    await settle();
+    // a clicked image or figure opens its own popover and leaves the
+    // selection empty; a clicked rule is node-selected
+    if (node.tagName === "HR") {
+      expect(nodeSelected()).toBe(true);
+    }
+    return;
+  }
+  await clickInWord("Cw", 0);
+  for (let press = 0; press < 3 && nodeSelected() === false; press += 1) {
+    await keys("{ArrowLeft}");
+  }
+  expect(nodeSelected()).toBe(true);
+};
+const clickAtEnd = async () => {
+  const root = editable()!;
+  const box = root.getBoundingClientRect();
+  await userEvent.click(root, { position: { x: box.width - 4, y: box.height - 3 } } as never);
+  await settle();
+};
+type ClickAction = [string, () => Promise<void>, (shape: string) => string];
+const C_ACTIONS: ClickAction[] = [
+  ["a click in text", () => clickInWord("Aw", 1), () => "Akw"],
+  ["a click on a link", () => clickInWord("Lw", 1), () => "Lkw"],
+  ["a click at the content's end", clickAtEnd, () => "Cwk"],
+  [
+    "Shift+click",
+    async () => {
+      await userEvent.keyboard("{Shift>}");
+      await clickInWord("Aw", 1);
+      await userEvent.keyboard("{/Shift}");
+      await settle();
+    },
+    () => "Akw",
+  ],
+  [
+    "a double click",
+    async () => {
+      const span = [...editable()!.querySelectorAll<HTMLElement>("[data-lexical-text]")].find(
+        (element) => element.textContent === "Aw"
+      )!;
+      await userEvent.dblClick(span);
+      await settle();
+    },
+    () => "k<",
+  ],
+];
+
+describe("14.2: a click into text while a node is selected puts the caret where clicked", () => {
+  for (const [shapeName, shape] of Object.entries(C_SHAPES)) {
+    for (const [nodeName, node] of Object.entries(C_NODES)) {
+      for (const way of ["click", "arrow"] as const) {
+        // a figure in a list item is content the field does not edit
+        if (shapeName === "lined" && nodeName === "figure") {
+          continue;
+        }
+        test.each(C_ACTIONS)(`${shapeName}, ${nodeName} selected by ${way}: %s`, async (_name, action, expected) => {
+          const html = shape(node);
+          const onChange = await renderField(html);
+          await selectNode(way);
+          await action();
+          await keys("k");
+          const write = written(onChange);
+          const cw = expected(shapeName);
+          // the letter where clicked; a double click selects the page's word there, which the letter replaces
+          const want =
+            cw === "Lkw"
+              ? html.replace(">Lw<", ">Lkw<")
+              : cw === "Cwk"
+                ? html.replace(">Cw<", ">Cwk<").replace("Cw</li>", "Cwk</li>")
+                : cw === "k<"
+                  ? // the page's word at the click: Aw and the link's Lw touch
+                    html.replace(`Aw${C_LINK}`, "k")
+                  : html.replace("Aw<a", `${cw}<a`);
+          expect(write).toBe(stored(want));
+        });
+        test(`${shapeName}, ${nodeName} selected by ${way}: a click in text with the Link popover open`, async () => {
+          const html = shape(node);
+          const onChange = await renderField(html);
+          await selectNode(way);
+          await click(byLabel("Link"));
+          expect(byLabel("URL")).not.toBeNull();
+          await clickInWord("Aw", 1);
+          await keys("k");
+          expect(written(onChange)).toBe(stored(html.replace("Aw<a", "Akw<a")));
+        });
+      }
+    }
+  }
 });

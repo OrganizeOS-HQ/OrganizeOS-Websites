@@ -1439,6 +1439,21 @@ const $focusPastRule = (selection: RangeSelection, isBackward: boolean) => {
   return true;
 };
 
+/** The page's caret position at a point of the viewport. */
+const caretAtPoint = (x: number, y: number): { node: Node; offset: number } | null => {
+  const withPosition = document as Document & {
+    caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+  };
+  const position = withPosition.caretPositionFromPoint?.(x, y);
+  if (position !== undefined && position !== null) {
+    return { node: position.offsetNode, offset: position.offset };
+  }
+  const range = document.caretRangeFromPoint?.(x, y);
+  return range === null || range === undefined
+    ? null
+    : { node: range.startContainer, offset: range.startOffset };
+};
+
 const isBlockDecorator = (node: LexicalNode | null): node is DecoratorNode<unknown> =>
   $isDecoratorNode(node) && node.isInline() === false;
 
@@ -1661,7 +1676,8 @@ export const registerLineCommands = (editor: LexicalEditor) =>
       }
     }),
     // L: a click on text after a node was selected gives a real caret, as
-    // Lexical already does for a touch
+    // Lexical already does for a touch; with Shift held too, a caret at the
+    // click, never the page's range (14.2)
     editor.registerCommand(
       CLICK_COMMAND,
       (event: MouseEvent) => {
@@ -1674,8 +1690,15 @@ export const registerLineCommands = (editor: LexicalEditor) =>
           return false;
         }
         const dom = window.getSelection();
+        const root = editor.getRootElement();
+        if (dom !== null && event.shiftKey) {
+          const clicked = caretAtPoint(event.clientX, event.clientY);
+          if (clicked !== null && root?.contains(clicked.node) === true) {
+            dom.collapse(clicked.node, clicked.offset);
+          }
+        }
         const at = dom?.anchorNode ?? null;
-        if (dom === null || at === null || editor.getRootElement()?.contains(at) !== true) {
+        if (dom === null || at === null || root?.contains(at) !== true) {
           return false;
         }
         const range = $createRangeSelectionFromDom(dom, editor);
