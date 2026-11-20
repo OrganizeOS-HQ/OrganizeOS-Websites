@@ -6,6 +6,7 @@ import { act } from "react-dom/test-utils";
 import { describe, expect, test, vi } from "vitest";
 import { cdp, userEvent } from "@vitest/browser/context";
 import {
+  $createNodeSelection,
   $createRangeSelection,
   $getRoot,
   $getSelection,
@@ -1006,6 +1007,10 @@ const P_DATA: Record<string, Record<string, string>> = {
   p2: { "text/html": "<p>Aq</p><p>Bq</p>", "text/plain": "Aq\nBq" },
   list: { "text/html": "<ul><li>Aq</li></ul>", "text/plain": "Aq" },
   emptyP: { "text/html": "<p></p>", "text/plain": "" },
+  heading: { "text/html": "<h3>Hq</h3>", "text/plain": "Hq" },
+  bold: { "text/html": "<b>Bq</b>", "text/plain": "Bq" },
+  plain: { "text/plain": "Aq" },
+  plain2: { "text/plain": "Aq\nBq" },
 };
 const P_CELLS: [string, string, string][] = [
   ["QQR", "emptyP", "<ul><li>Pw</li><li><q>Q0w</q><q>Q1w</q></li><li>Nw</li></ul>"],
@@ -1066,6 +1071,171 @@ const P_CELLS: [string, string, string][] = [
   ["XRY", "emptyP", "<ul><li>Pw</li><li>xq</li></ul>yq<ul><li>Nw</li></ul>"],
 ];
 
+const P_CELLS_MORE: [string, string, string][] = [
+  ["QQR", "heading", "<ul><li>Pw</li><li><q>Q0w</q><q>Q1w</q>Hq</li><li>Nw</li></ul>"],
+  ["QQR", "bold", "<ul><li>Pw</li><li><q>Q0w</q><q>Q1w</q><b><strong>Bq</strong></b></li><li>Nw</li></ul>"],
+  ["QQR", "plain", "<ul><li>Pw</li><li><q>Q0w</q><q>Q1w</q>Aq</li><li>Nw</li></ul>"],
+  ["QQR", "plain2", "<ul><li>Pw</li><li><q>Q0w</q><q>Q1w</q>Aq</li><li>Bq</li><li>Nw</li></ul>"],
+  ["QR", "heading", "<ul><li>Pw</li><li><q>Q0w</q>Hq</li><li>Nw</li></ul>"],
+  ["QR", "bold", "<ul><li>Pw</li><li><q>Q0w</q><b><strong>Bq</strong></b></li><li>Nw</li></ul>"],
+  ["QR", "plain", "<ul><li>Pw</li><li><q>Q0w</q>Aq</li><li>Nw</li></ul>"],
+  ["QR", "plain2", "<ul><li>Pw</li><li><q>Q0w</q>Aq</li><li>Bq</li><li>Nw</li></ul>"],
+  ["QRB", "heading", "<ul><li>Pw</li><li><q>Q0w</q>Hq<br /></li><li>Nw</li></ul>"],
+  ["QRB", "bold", "<ul><li>Pw</li><li><q>Q0w</q><b><strong>Bq</strong></b><br /></li><li>Nw</li></ul>"],
+  ["QRB", "plain", "<ul><li>Pw</li><li><q>Q0w</q>Aq<br /></li><li>Nw</li></ul>"],
+  ["QRB", "plain2", "<ul><li>Pw</li><li><q>Q0w</q>Aq</li><li>Bq<br /></li><li>Nw</li></ul>"],
+  ["QRL", "heading", "<ul><li>Pw</li><li><q>Q0w</q>Hq<ul><li>L2w</li></ul></li><li>Nw</li></ul>"],
+  ["QRL", "bold", "<ul><li>Pw</li><li><q>Q0w</q><b><strong>Bq</strong></b><ul><li>L2w</li></ul></li><li>Nw</li></ul>"],
+  ["QRL", "plain", "<ul><li>Pw</li><li><q>Q0w</q>Aq<ul><li>L2w</li></ul></li><li>Nw</li></ul>"],
+  ["QRL", "plain2", "<ul><li>Pw</li><li><q>Q0w</q>Aq</li><li>Bq<ul><li>L2w</li></ul></li><li>Nw</li></ul>"],
+  ["QRQ", "heading", "<ul><li>Pw</li><li><q>Q0w</q><q><h3>HqQ2w</h3></q></li><li>Nw</li></ul>"],
+  ["QRQ", "bold", "<ul><li>Pw</li><li><q>Q0w</q><q><b><strong>Bq</strong></b>Q2w</q></li><li>Nw</li></ul>"],
+  ["QRQ", "plain", "<ul><li>Pw</li><li><q>Q0w</q><q>AqQ2w</q></li><li>Nw</li></ul>"],
+  ["QRQ", "plain2", "<ul><li>Pw</li><li><q>Q0w</q><q>AqBqQ2w</q></li><li>Nw</li></ul>"],
+  ["QRR", "heading", "<ul><li>Pw</li><li><q>Q0w</q>Hq<hr /></li><li>Nw</li></ul>"],
+  ["QRR", "bold", "<ul><li>Pw</li><li><q>Q0w</q><b><strong>Bq</strong></b><hr /></li><li>Nw</li></ul>"],
+  ["QRR", "plain", "<ul><li>Pw</li><li><q>Q0w</q>Aq<hr /></li><li>Nw</li></ul>"],
+  ["QRR", "plain2", "<ul><li>Pw</li><li><q>Q0w</q>Aq</li><li>Bq<hr /></li><li>Nw</li></ul>"],
+  ["QRT", "heading", "<ul><li>Pw</li><li><q>Q0w</q>HqT2w</li><li>Nw</li></ul>"],
+  ["QRT", "bold", "<ul><li>Pw</li><li><q>Q0w</q><b><strong>Bq</strong></b>T2w</li><li>Nw</li></ul>"],
+  ["QRT", "plain", "<ul><li>Pw</li><li><q>Q0w</q>AqT2w</li><li>Nw</li></ul>"],
+  ["QRT", "plain2", "<ul><li>Pw</li><li><q>Q0w</q>Aq</li><li>BqT2w</li><li>Nw</li></ul>"],
+  ["QRTQ", "heading", "<ul><li>Pw</li><li><q>Q0w</q>HqT2w<q>Q3w</q></li><li>Nw</li></ul>"],
+  ["QRTQ", "bold", "<ul><li>Pw</li><li><q>Q0w</q><b><strong>Bq</strong></b>T2w<q>Q3w</q></li><li>Nw</li></ul>"],
+  ["QRTQ", "plain", "<ul><li>Pw</li><li><q>Q0w</q>AqT2w<q>Q3w</q></li><li>Nw</li></ul>"],
+  ["QRTQ", "plain2", "<ul><li>Pw</li><li><q>Q0w</q>Aq</li><li>BqT2w<q>Q3w</q></li><li>Nw</li></ul>"],
+  ["QRd2", "heading", "<ul><li>Pw<ul><li>Aw</li><li><q>Q0w</q>Hq</li><li>Zw</li></ul></li><li>Nw</li></ul>"],
+  ["QRd2", "bold", "<ul><li>Pw<ul><li>Aw</li><li><q>Q0w</q><b><strong>Bq</strong></b></li><li>Zw</li></ul></li><li>Nw</li></ul>"],
+  ["QRd2", "plain", "<ul><li>Pw<ul><li>Aw</li><li><q>Q0w</q>Aq</li><li>Zw</li></ul></li><li>Nw</li></ul>"],
+  ["QRd2", "plain2", "<ul><li>Pw<ul><li>Aw</li><li><q>Q0w</q>Aq</li><li>Bq</li><li>Zw</li></ul></li><li>Nw</li></ul>"],
+  ["QRol", "heading", "<ol><li>Pw</li><li><q>Q0w</q>Hq</li><li>Nw</li></ol>"],
+  ["QRol", "bold", "<ol><li>Pw</li><li><q>Q0w</q><b><strong>Bq</strong></b></li><li>Nw</li></ol>"],
+  ["QRol", "plain", "<ol><li>Pw</li><li><q>Q0w</q>Aq</li><li>Nw</li></ol>"],
+  ["QRol", "plain2", "<ol><li>Pw</li><li><q>Q0w</q>Aq</li><li>Bq</li><li>Nw</li></ol>"],
+  ["RQR", "heading", "<ul><li>Pw</li><li><q><h3>HqQ1w</h3></q><hr /></li><li>Nw</li></ul>"],
+  ["RQR", "bold", "<ul><li>Pw</li><li><q><b><strong>Bq</strong></b>Q1w</q><hr /></li><li>Nw</li></ul>"],
+  ["RQR", "plain", "<ul><li>Pw</li><li><q>AqQ1w</q><hr /></li><li>Nw</li></ul>"],
+  ["RQR", "plain2", "<ul><li>Pw</li><li><q>AqBqQ1w</q><hr /></li><li>Nw</li></ul>"],
+  ["XRY", "heading", "<ul><li>Pw</li><li>xqHqyq</li><li>Nw</li></ul>"],
+  ["XRY", "bold", "<ul><li>Pw</li><li>xq<b><strong>Bq</strong></b>yq</li><li>Nw</li></ul>"],
+  ["XRY", "plain", "<ul><li>Pw</li><li>xqAqyq</li><li>Nw</li></ul>"],
+  ["XRY", "plain2", "<ul><li>Pw</li><li>xqAq</li><li>Bqyq</li><li>Nw</li></ul>"],
+];
+/** QRR and RQR: an arrow selects the item's last rule; "two" selects both rules. */
+const P_CELLS_LAST: [string, "arrow" | "two", string, string][] = [
+  ["QRR", "arrow", "p1", "<ul><li>Pw</li><li><q>Q0w</q><hr />Aq</li><li>Nw</li></ul>"],
+  ["QRR", "arrow", "p2", "<ul><li>Pw</li><li><q>Q0w</q><hr />Aq</li></ul>Bq<ul><li>Nw</li></ul>"],
+  ["QRR", "arrow", "list", "<ul><li>Pw</li><li><q>Q0w</q><hr /></li><li>Aq</li><li>Nw</li></ul>"],
+  ["QRR", "arrow", "emptyP", "<ul><li>Pw</li><li><q>Q0w</q><hr /></li><li>Nw</li></ul>"],
+  ["QRR", "arrow", "heading", "<ul><li>Pw</li><li><q>Q0w</q><hr />Hq</li><li>Nw</li></ul>"],
+  ["QRR", "arrow", "bold", "<ul><li>Pw</li><li><q>Q0w</q><hr /><b><strong>Bq</strong></b></li><li>Nw</li></ul>"],
+  ["QRR", "arrow", "plain", "<ul><li>Pw</li><li><q>Q0w</q><hr />Aq</li><li>Nw</li></ul>"],
+  ["QRR", "arrow", "plain2", "<ul><li>Pw</li><li><q>Q0w</q><hr />Aq</li><li>Bq</li><li>Nw</li></ul>"],
+  ["QRR", "two", "p1", "<ul><li>Pw</li><li><q>Q0w</q>Aq</li><li>Nw</li></ul>"],
+  ["QRR", "two", "p2", "<ul><li>Pw</li><li><q>Q0w</q>Aq</li></ul>Bq<ul><li>Nw</li></ul>"],
+  ["QRR", "two", "list", "<ul><li>Pw</li><li><q>Q0w</q></li><li>Aq</li><li>Nw</li></ul>"],
+  ["QRR", "two", "emptyP", "<ul><li>Pw</li><li><q>Q0w</q></li><li>Nw</li></ul>"],
+  ["QRR", "two", "heading", "<ul><li>Pw</li><li><q>Q0w</q>Hq</li><li>Nw</li></ul>"],
+  ["QRR", "two", "bold", "<ul><li>Pw</li><li><q>Q0w</q><b><strong>Bq</strong></b></li><li>Nw</li></ul>"],
+  ["QRR", "two", "plain", "<ul><li>Pw</li><li><q>Q0w</q>Aq</li><li>Nw</li></ul>"],
+  ["QRR", "two", "plain2", "<ul><li>Pw</li><li><q>Q0w</q>Aq</li><li>Bq</li><li>Nw</li></ul>"],
+  ["RQR", "arrow", "p1", "<ul><li>Pw</li><li><hr /><q>Q1w</q>Aq</li><li>Nw</li></ul>"],
+  ["RQR", "arrow", "p2", "<ul><li>Pw</li><li><hr /><q>Q1w</q>Aq</li></ul>Bq<ul><li>Nw</li></ul>"],
+  ["RQR", "arrow", "list", "<ul><li>Pw</li><li><hr /><q>Q1w</q></li><li>Aq</li><li>Nw</li></ul>"],
+  ["RQR", "arrow", "emptyP", "<ul><li>Pw</li><li><hr /><q>Q1w</q></li><li>Nw</li></ul>"],
+  ["RQR", "arrow", "heading", "<ul><li>Pw</li><li><hr /><q>Q1w</q>Hq</li><li>Nw</li></ul>"],
+  ["RQR", "arrow", "bold", "<ul><li>Pw</li><li><hr /><q>Q1w</q><b><strong>Bq</strong></b></li><li>Nw</li></ul>"],
+  ["RQR", "arrow", "plain", "<ul><li>Pw</li><li><hr /><q>Q1w</q>Aq</li><li>Nw</li></ul>"],
+  ["RQR", "arrow", "plain2", "<ul><li>Pw</li><li><hr /><q>Q1w</q>Aq</li><li>Bq</li><li>Nw</li></ul>"],
+  ["RQR", "two", "p1", "<ul><li>Pw</li><li><q>Q1w</q>Aq</li><li>Nw</li></ul>"],
+  ["RQR", "two", "p2", "<ul><li>Pw</li><li><q>Q1w</q>Aq</li></ul>Bq<ul><li>Nw</li></ul>"],
+  ["RQR", "two", "list", "<ul><li>Pw</li><li><q>Q1w</q></li><li>Aq</li><li>Nw</li></ul>"],
+  ["RQR", "two", "emptyP", "<ul><li>Pw</li><li><q>Q1w</q></li><li>Nw</li></ul>"],
+  ["RQR", "two", "heading", "<ul><li>Pw</li><li><q>Q1w</q>Hq</li><li>Nw</li></ul>"],
+  ["RQR", "two", "bold", "<ul><li>Pw</li><li><q>Q1w</q><b><strong>Bq</strong></b></li><li>Nw</li></ul>"],
+  ["RQR", "two", "plain", "<ul><li>Pw</li><li><q>Q1w</q>Aq</li><li>Nw</li></ul>"],
+  ["RQR", "two", "plain2", "<ul><li>Pw</li><li><q>Q1w</q>Aq</li><li>Bq</li><li>Nw</li></ul>"],
+];
+
+/**
+ * A tripwire for a paste that grows the document without end: past 20000
+ * nodes made or written in one update the update throws, so the cell fails
+ * instead of taking the page down.
+ */
+const pasteTripwire = () => {
+  const state = { tripped: false };
+  class Counting extends Set<string> {
+    count = 0;
+    add(key: string) {
+      this.count += 1;
+      if (this.count > 20000 && state.tripped === false) {
+        state.tripped = true;
+        throw new Error("tripwire: 20000 nodes in one update");
+      }
+      return super.add(key);
+    }
+    clear() {
+      this.count = 0;
+      super.clear();
+    }
+  }
+  (editorOf()! as unknown as { _cloneNotNeeded: Set<string> })._cloneNotNeeded = new Counting();
+  return state;
+};
+const P_AFTER: Record<string, string> = {
+  QR: "Nw", QRT: "T2w", QQR: "Nw", QRB: "Nw", QRL: "L2w", QRQ: "Q2w",
+  QRR: "Nw", RQR: "Nw", QRTQ: "T2w", QRd2: "Zw", QRol: "Nw", XRY: "yq",
+};
+const selectRule = async (shape: string, way: "click" | "arrow" | "two") => {
+  if (way === "click") {
+    await userEvent.click(editable()!.querySelector("hr")!);
+    await settle();
+  } else if (way === "arrow") {
+    await clickInWord(P_AFTER[shape], 0);
+    for (let press = 0; press < 4 && nodeSelected() === false; press += 1) {
+      await keys("{ArrowLeft}");
+    }
+  } else {
+    await clickInWord(shape === "RQR" ? "Q1w" : "Q0w");
+    await act(async () => {
+      editorOf()!.update(() => {
+        const selection = $createNodeSelection();
+        const walk = (node: LexicalNode) => {
+          if (node.getType() === "horizontalrule") {
+            selection.add(node.getKey());
+          }
+          if ($isElementNode(node)) {
+            node.getChildren().forEach(walk);
+          }
+        };
+        walk($getRoot());
+        $setSelection(selection);
+      });
+    });
+    await settle();
+  }
+  const count = editorOf()!
+    .getEditorState()
+    .read(() => {
+      const selection = $getSelection();
+      return $isNodeSelection(selection) ? selection.getNodes().length : 0;
+    });
+  expect(count).toBe(way === "two" ? 2 : 1);
+};
+const pasteShort = async (onChange: Parameters<typeof written>[0], data: Record<string, string>) => {
+  const trip = pasteTripwire();
+  const started = performance.now();
+  paste(data);
+  await settle();
+  expect(trip.tripped).toBe(false);
+  expect(performance.now() - started).toBeLessThan(2000);
+  const write = written(onChange);
+  return (write.length > 400 ? `LONG(${write.length})` : write)
+    .replace(/<img[^>]*>/g, "I")
+    .replace(/blockquote/g, "q")
+    .replace(/<\/?p>/g, "");
+};
+
 describe("14.8: a paste with a rule node-selected in a lined item", () => {
   test.each(P_CELLS)("%s, a paste of %s", async (shape, kind, expected) => {
     const onChange = await renderField(P_SHAPES[shape]);
@@ -1086,19 +1256,27 @@ describe("14.8: a paste with a rule node-selected in a lined item", () => {
         "text/plain": transfer.getData("text/plain"),
       };
     }
-    await userEvent.click(editable()!.querySelector("hr")!);
-    await settle();
-    expect(nodeSelected()).toBe(true);
-    const started = performance.now();
-    paste(data);
-    await settle();
-    expect(performance.now() - started).toBeLessThan(2000);
-    const write = written(onChange);
-    const short = (write.length > 400 ? `LONG(${write.length})` : write)
-      .replace(/<img[^>]*>/g, "I")
-      .replace(/blockquote/g, "q")
-      .replace(/<\/?p>/g, "");
-    expect(short).toBe(expected);
+    await selectRule(shape, "click");
+    expect(await pasteShort(onChange, data)).toBe(expected);
+  });
+  test.each(P_CELLS_MORE)("%s, a paste of %s", async (shape, kind, expected) => {
+    const onChange = await renderField(P_SHAPES[shape]);
+    await selectRule(shape, "click");
+    expect(await pasteShort(onChange, P_DATA[kind])).toBe(expected);
+  });
+  // an arrow selects the same rule as a click where the item holds one rule
+  const arrowCells = [...P_CELLS, ...P_CELLS_MORE].filter(
+    ([shape, kind]) => kind !== "own" && shape !== "QRR" && shape !== "RQR"
+  );
+  test.each(arrowCells)("%s, rule selected by an arrow, a paste of %s", async (shape, kind, expected) => {
+    const onChange = await renderField(P_SHAPES[shape]);
+    await selectRule(shape, "arrow");
+    expect(await pasteShort(onChange, P_DATA[kind])).toBe(expected);
+  });
+  test.each(P_CELLS_LAST)("%s, rule selected by %s, a paste of %s", async (shape, way, kind, expected) => {
+    const onChange = await renderField(P_SHAPES[shape]);
+    await selectRule(shape, way);
+    expect(await pasteShort(onChange, P_DATA[kind])).toBe(expected);
   });
 });
 
