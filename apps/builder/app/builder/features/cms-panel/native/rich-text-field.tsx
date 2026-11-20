@@ -143,6 +143,11 @@ import {
   registerLineCommands,
   registerLineTransforms,
 } from "./rich-text-line-node";
+import {
+  registerTagCheck,
+  watchField,
+  type FieldValue,
+} from "./rich-text-field-watch";
 import { INSERT_HORIZONTAL_RULE_COMMAND } from "@lexical/react/LexicalHorizontalRuleNode";
 import {
   Button,
@@ -2952,6 +2957,37 @@ const $headFormClipboard = (
 };
 
 /** Lexical's history, held where the line rules can reach it (K). */
+/** The value the field reports for the editor's document. */
+const fieldValueOf = (editor: LexicalEditor): FieldValue => {
+  const html = exportRichTextHtml(editor);
+  const text = editor.getEditorState().read(() => $getRoot().getTextContent());
+  // no value only with neither text nor an image
+  return text.trim() === "" && /<img\b/i.test(html) === false
+    ? null
+    : { html, text };
+};
+
+/** Development only: the field's tag check and harness watch. */
+const WatchPlugin = ({
+  watched,
+}: {
+  watched: { current: ((value: FieldValue) => void) | undefined };
+}) => {
+  const [editor] = useLexicalComposerContext();
+  useEffect(() => {
+    if (import.meta.env.DEV === false) {
+      return;
+    }
+    watched.current = watchField(editor, () => fieldValueOf(editor));
+    const off = registerTagCheck(editor);
+    return () => {
+      off();
+      watched.current = undefined;
+    };
+  }, [editor, watched]);
+  return null;
+};
+
 const CmsHistoryPlugin = () => {
   const [editor] = useLexicalComposerContext();
   const [historyState] = useState(createEmptyHistoryState);
@@ -4261,6 +4297,7 @@ export const RichTextField = ({
   useEffect(() => {
     isLoading.current = false;
   }, []);
+  const watched = useRef<((value: FieldValue) => void) | undefined>(undefined);
 
   if (readOnlyReason !== undefined) {
     return (
@@ -4352,19 +4389,13 @@ export const RichTextField = ({
         <OnChangePlugin
           ignoreSelectionChange
           ignoreHistoryMergeTagChange
-          onChange={(editorState, editor) => {
-            const html = exportRichTextHtml(editor);
-            editorState.read(() => {
-              const text = $getRoot().getTextContent();
-              // no value only with neither text nor an image
-              onChange(
-                text.trim() === "" && /<img\b/i.test(html) === false
-                  ? null
-                  : { html, text }
-              );
-            });
+          onChange={(_editorState, editor) => {
+            const value = fieldValueOf(editor);
+            watched.current?.(value);
+            onChange(value);
           }}
         />
+        <WatchPlugin watched={watched} />
       </div>
     </LexicalComposer>
   );

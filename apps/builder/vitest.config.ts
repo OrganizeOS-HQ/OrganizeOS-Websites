@@ -30,14 +30,15 @@ const browserProject = (
   group: "core" | "app",
   name: string,
   include: string[],
-  exclude: string[] = []
+  exclude: string[] = [],
+  setupFiles: string[] = []
 ) => ({
   extends: "./vitest.config.ts",
   test: {
     name: `${group}-browser-${name}`,
     include,
     exclude: [nodeTestGlob, ...exclude],
-    setupFiles: ["./vitest.browser-setup.ts"],
+    setupFiles: ["./vitest.browser-setup.ts", ...setupFiles],
     browser: {
       provider: "playwright" as const,
       enabled: true,
@@ -65,9 +66,14 @@ const projects = [
   ]),
   // OrganizeOS fork: the CMS panels run as a project of their own, so each
   // builder leg stays inside its step limit (fork doc section 7).
-  browserProject("core", "builder-cms", [
-    "app/builder/features/{cms-panel,organizeos-panel}/**/*.{test,spec}.{ts,tsx}",
-  ]),
+  // the CMS field's harness invariant ends every test of the project
+  browserProject(
+    "core",
+    "builder-cms",
+    ["app/builder/features/{cms-panel,organizeos-panel}/**/*.{test,spec}.{ts,tsx}"],
+    [],
+    ["./vitest.cms-invariant-setup.ts"]
+  ),
   browserProject(
     "core",
     "builder-features",

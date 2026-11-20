@@ -2,6 +2,7 @@
 // input, written as JSON lines so a run with VITE_LINES_OFF (the head's
 // behaviour) and one without can be compared record by record.
 import { describe, test, vi } from "vitest";
+import { fieldInvariantFailures, taggedNoChange } from "./rich-text-field-watch";
 import { act } from "react-dom/test-utils";
 import { cdp, userEvent } from "@vitest/browser/context";
 import {
@@ -1111,6 +1112,7 @@ describe("S records", () => {
         }
       });
       lineRuleViolations.splice(0);
+      taggedNoChange.splice(0);
       let onChange = await mount(stored);
       if (Array.isArray(place)) {
         await click(editable());
@@ -1141,6 +1143,9 @@ describe("S records", () => {
         swapped = undefined;
       }
       const calls = onChange.mock.calls.length;
+      // the harness invariant at the record's write, before its undo
+      const invariant = fieldInvariantFailures(false);
+      const tagged = taggedNoChange.splice(0);
       const after = calls > 0 ? sanitizeRichTextHtml(lastHtml(onChange)) : stored;
       const caret = caretOf();
       const written = stateOf();
@@ -1194,6 +1199,8 @@ describe("S records", () => {
           redoD7,
           redoDiff,
           violations: lineRuleViolations.splice(0),
+          invariant,
+          tagged,
           lines: JSON.stringify(editorOf()!.getEditorState().toJSON()).split('"cms-line"').length - 1,
           clipHtml: clip?.getData("text/html"),
           clipText: clip?.getData("text/plain"),

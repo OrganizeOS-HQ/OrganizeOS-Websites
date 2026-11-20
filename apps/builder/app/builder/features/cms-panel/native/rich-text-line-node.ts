@@ -1589,15 +1589,6 @@ const isBlockDecorator = (node: LexicalNode | null): node is DecoratorNode<unkno
  */
 export const registerLineCommands = (editor: LexicalEditor) =>
   linesOff ? () => {} : mergeRegister(
-    // the tags of an update reach only that update: a commit that changes
-    // no node keeps its tags for the next update, so they go here (a point
-    // correction tagged history-merge must not hide the edit after it from
-    // onChange and the history)
-    editor.registerUpdateListener(({ dirtyElements, dirtyLeaves, tags }) => {
-      if (dirtyElements.size === 0 && dirtyLeaves.size === 0) {
-        tags.clear();
-      }
-    }),
     // a caret that arrives with no line beside it gets an empty line, and
     // an empty line the caret left goes: not an edit (no undo step, no
     // onChange: the field's change plugin skips history-merge updates)
@@ -2745,7 +2736,7 @@ export const $caretOffEmptyLine = () => {
 };
 
 /** D7's document: `direction` and empty lines left out. */
-const d7Document = (state: EditorState) => {
+export const d7Document = (state: EditorState) => {
   const strip = (node: Record<string, unknown>): Record<string, unknown> => {
     const { direction: _direction, ...rest } = node;
     if (Array.isArray(rest.children)) {
