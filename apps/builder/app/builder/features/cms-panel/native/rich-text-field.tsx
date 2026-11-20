@@ -454,6 +454,16 @@ const setBlockType = (editor: LexicalEditor, block: BlockType) => {
         $findMatchingParent(point.getNode(), (node) =>
           isLinedContainer(node)
         ) !== null);
+    // text directly in a quote has the quote as its block: Paragraph there
+    // unwraps the quote, as at the head, so the quote's lines give way first
+    if (block === "paragraph") {
+      for (const point of [selection.anchor, selection.focus]) {
+        const quote = lineOf(point)?.getParent() ?? null;
+        if ($isQuoteNode(quote)) {
+          $unwrapLines(quote.getChildren());
+        }
+      }
+    }
     if (
       block === "paragraph" &&
       isParagraphish(selection.anchor) &&

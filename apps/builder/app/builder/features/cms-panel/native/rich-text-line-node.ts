@@ -1348,6 +1348,11 @@ export const registerLineCommands = (editor: LexicalEditor) =>
       if (editorState.read($lineHoldsBlock)) {
         report("cms-line rule: a line holds a block");
       }
+      // held while a composition runs: it adds no update between the
+      // composition's own; the commit that ends it is checked
+      if (editor.isComposing()) {
+        return;
+      }
       const broken = editorState.read($pointRuleBroken);
       if (broken === null) {
         checkFailed = false;
@@ -1359,7 +1364,10 @@ export const registerLineCommands = (editor: LexicalEditor) =>
         return;
       }
       editor.update(() => {
+        // no onChange, and no part of any undo step: the history leaves the
+        // update out, so the next edit starts its own step
         $addUpdateTag("history-merge");
+        $addUpdateTag("historic");
         $liftPointsIntoLines(true);
         const still = $pointRuleBroken();
         if (still !== null) {
@@ -1449,6 +1457,33 @@ export const registerLineCommands = (editor: LexicalEditor) =>
               const container = line?.getParent() ?? null;
               if (line !== null && container !== null) {
                 $unwrapLines(container.getChildren());
+                // a caret at the end of a link's text stands after the link,
+                // as a text end does in V1
+                const range = $getSelection();
+                if ($isRangeSelection(range) && range.isCollapsed()) {
+                  let node: LexicalNode = range.anchor.getNode();
+                  let atEnd =
+                    range.anchor.type === "text" &&
+                    range.anchor.offset === node.getTextContentSize();
+                  let parent = node.getParent();
+                  let moved = false;
+                  while (
+                    atEnd &&
+                    $isElementNode(parent) &&
+                    parent.isInline() &&
+                    parent.getLastChild()?.is(node) === true
+                  ) {
+                    node = parent;
+                    parent = node.getParent();
+                    moved = true;
+                    atEnd = true;
+                  }
+                  if (moved && parent !== null) {
+                    const at = node.getIndexWithinParent() + 1;
+                    range.anchor.set(parent.getKey(), at, "element");
+                    range.focus.set(parent.getKey(), at, "element");
+                  }
+                }
               } else {
                 // at a block's first text start or last text end, Divider
                 // acts beside the block, at the element point there
@@ -1540,38 +1575,94 @@ export const registerLineCommands = (editor: LexicalEditor) =>
     ),
     // D3's fourth case and D9: Backspace at a block's start removes a line
     // break or a rule directly before the block; Delete at its end, one
-    // directly after
-    editor.registerCommand(
-      DELETE_CHARACTER_COMMAND,
-      (isBackward: boolean) => {
-        const edge = $childAtEdge(isBackward);
-        if (edge === null || $isCmsLineNode(edge.child)) {
-          return false;
-        }
-        const rule = isBackward
-          ? edge.child.getPreviousSibling()
-          : edge.child.getNextSibling();
-        if (
-          isBlockDecorator(rule) &&
-          ["quote", "heading", "code"].includes(edge.child.getType())
-        ) {
-          rule.remove();
+    // directly after. The word and line forms take the line break too, and
+    // a line break is never pulled into the block
+    ...[DELETE_CHARACTER_COMMAND, DELETE_WORD_COMMAND, DELETE_LINE_COMMAND].map((command) =>
+      editor.registerCommand(
+        command as LexicalCommand<boolean>,
+        (isBackward: boolean) => {
+          const edge = $childAtEdge(isBackward);
+          if (edge === null || $isCmsLineNode(edge.child)) {
+            return false;
+          }
+          const rule = isBackward
+            ? edge.child.getPreviousSibling()
+            : edge.child.getNextSibling();
+          if (
+            command === DELETE_CHARACTER_COMMAND &&
+            isBlockDecorator(rule) &&
+            ["quote", "heading", "code"].includes(edge.child.getType())
+          ) {
+            rule.remove();
+            return true;
+          }
+          const line = isBackward
+            ? edge.child.getPreviousSibling()
+            : edge.child.getNextSibling();
+          if ($isCmsLineNode(line) === false) {
+            return false;
+          }
+          const brk = isBackward ? line.getLastChild() : line.getFirstChild();
+          if (isLineBreak(brk) === false || brk === null) {
+            return false;
+          }
+          brk.remove();
           return true;
-        }
-        const line = isBackward
-          ? edge.child.getPreviousSibling()
-          : edge.child.getNextSibling();
-        if ($isCmsLineNode(line) === false) {
-          return false;
-        }
-        const brk = isBackward ? line.getLastChild() : line.getFirstChild();
-        if (isLineBreak(brk) === false || brk === null) {
-          return false;
-        }
-        brk.remove();
-        return true;
-      },
-      COMMAND_PRIORITY_LOW
+        },
+        COMMAND_PRIORITY_LOW
+      )
+    ),
+    // D3's third case, Delete form: at the end of a line that ends in a line
+    // break, the text of the block directly after joins the line and the
+    // line break stays
+    ...[DELETE_CHARACTER_COMMAND, DELETE_WORD_COMMAND, DELETE_LINE_COMMAND].map((command) =>
+      editor.registerCommand(
+        command as LexicalCommand<boolean>,
+        (isBackward: boolean) => {
+          const selection = $getSelection();
+          if (
+            isBackward ||
+            $isRangeSelection(selection) === false ||
+            selection.isCollapsed() === false
+          ) {
+            return false;
+          }
+          const point = selection.anchor;
+          const line = point.getNode();
+          if (
+            $isCmsLineNode(line) === false ||
+            point.type !== "element" ||
+            point.offset !== line.getChildrenSize() ||
+            isLineBreak(line.getLastChild()) === false
+          ) {
+            return false;
+          }
+          const block = line.getNextSibling();
+          if (
+            $isElementNode(block) === false ||
+            $isCmsLineNode(block) ||
+            block.isInline() ||
+            ["quote", "heading"].includes(block.getType()) === false
+          ) {
+            return false;
+          }
+          const holder = $isQuoteNode(block) ? block.getFirstChild() : block;
+          if ($isElementNode(holder) === false || holder.isInline()) {
+            return false;
+          }
+          const moved = holder.getChildren();
+          const at = line.getChildrenSize();
+          line.append(...moved);
+          holder.remove();
+          if (block.isAttached() && block.isEmpty()) {
+            block.remove();
+          }
+          point.set(line.getKey(), at, "element");
+          selection.focus.set(line.getKey(), at, "element");
+          return true;
+        },
+        COMMAND_PRIORITY_LOW
+      )
     ),
     // V9: Delete just after an image that ends a line removes the image only
     editor.registerCommand(
@@ -1756,6 +1847,76 @@ export const $caretOffEmptyLine = () => {
  */
 export const registerTypingAfterSelectedNode = (editor: LexicalEditor) =>
   linesOff ? () => {} : editor.registerRootListener((root, previous) => {
+    // a composition at the start of a line that starts with a link lands
+    // before the link, as a typed letter does: the caret stands on the
+    // line's start before the composition begins
+    const onCompositionStart = () => {
+      // the state before a composition is its own undo step: a composition
+      // into existing text otherwise merges into the step before it. The
+      // update changes nothing and fires no onChange
+      editor.update(
+        () => {
+          const selection = $getSelection();
+          if ($isRangeSelection(selection) && selection.anchor.type === "text") {
+            selection.anchor.getNode().getParent()?.markDirty();
+            $addUpdateTag("history-push");
+            $addUpdateTag("history-merge");
+          }
+        },
+        { discrete: true }
+      );
+      const $atLinkLedLineStart = () => {
+        const selection = $getSelection();
+        if ($isRangeSelection(selection) === false || selection.isCollapsed() === false) {
+          return false;
+        }
+        const point = selection.anchor;
+        const text = point.getNode();
+        const link = text.getParent();
+        const line = link?.getParent() ?? null;
+        return (
+          point.type === "text" &&
+          point.offset === 0 &&
+          $isElementNode(link) &&
+          link.isInline() &&
+          link.getFirstChild()?.is(text) === true &&
+          $isCmsLineNode(line) &&
+          line.getFirstChild()?.is(link) === true
+        );
+      };
+      if (editor.getEditorState().read($atLinkLedLineStart) === false) {
+        return;
+      }
+      editor.update(
+        () => {
+          const selection = $getSelection();
+          if ($isRangeSelection(selection) === false || selection.isCollapsed() === false) {
+            return;
+          }
+          const point = selection.anchor;
+          const text = point.getNode();
+          const link = text.getParent();
+          const line = link?.getParent() ?? null;
+          if (
+            point.type !== "text" ||
+            point.offset !== 0 ||
+            $isElementNode(link) === false ||
+            link.isInline() === false ||
+            link.getFirstChild()?.is(text) !== true ||
+            $isCmsLineNode(line) === false ||
+            line.getFirstChild()?.is(link) !== true
+          ) {
+            return;
+          }
+          $addUpdateTag("history-merge");
+          point.set(line.getKey(), 0, "element");
+          selection.focus.set(line.getKey(), 0, "element");
+        },
+        { discrete: true }
+      );
+    };
+    previous?.removeEventListener("compositionstart", onCompositionStart, true);
+    root?.addEventListener("compositionstart", onCompositionStart, true);
     const onBeforeInput = (event: InputEvent) => {
       // Safari's text replacement over a range: the controlled text
       // insertion, so the removal is marked like typed text (5.4)
