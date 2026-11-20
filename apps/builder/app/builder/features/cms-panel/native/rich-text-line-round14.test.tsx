@@ -1309,7 +1309,9 @@ describe("14.8: a paste with a rule node-selected in a lined item", () => {
     await selectRule(shape, "click");
     expect(await pasteShort(onChange, data)).toBe(expected);
   });
-  test.each(P_CELLS_MORE)("%s, a paste of %s", async (shape, kind, expected) => {
+  // a line-led item's plain-text paste: C15's result (spec 5.7), not the head's (which writes nothing)
+  const c15 = (shape: string, kind: string) => (shape === "XRY" && kind.startsWith("plain") ? " (C15)" : "");
+  for (const [shape, kind, expected] of P_CELLS_MORE) test(`${shape}, a paste of ${kind}${c15(shape, kind)}`, async () => {
     const onChange = await renderField(P_SHAPES[shape]);
     await selectRule(shape, "click");
     expect(await pasteShort(onChange, P_DATA[kind])).toBe(expected);
@@ -1318,7 +1320,7 @@ describe("14.8: a paste with a rule node-selected in a lined item", () => {
   const arrowCells = [...P_CELLS, ...P_CELLS_MORE].filter(
     ([shape, kind]) => kind !== "own" && shape !== "QRR" && shape !== "RQR"
   );
-  test.each(arrowCells)("%s, rule selected by an arrow, a paste of %s", async (shape, kind, expected) => {
+  for (const [shape, kind, expected] of arrowCells) test(`${shape}, rule selected by an arrow, a paste of ${kind}${c15(shape, kind)}`, async () => {
     const onChange = await renderField(P_SHAPES[shape]);
     await selectRule(shape, "arrow");
     expect(await pasteShort(onChange, P_DATA[kind])).toBe(expected);
