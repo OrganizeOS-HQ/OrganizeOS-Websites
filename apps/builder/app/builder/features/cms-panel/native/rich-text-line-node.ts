@@ -429,6 +429,10 @@ const $caretAtJoinOfRemovedNode = (line: CmsLineNode) => {
  * turned the node selection into a point on the container.
  */
 const $caretAfterRemovedNode = (node: LexicalNode, inside: boolean) => {
+  // I: a paste over the node leaves the caret after what it pasted
+  if ($hasUpdateTag("paste")) {
+    return false;
+  }
   // the state before this update held a node selection whose nodes are gone
   const before = $getEditor().getEditorState()._selection;
   if ($isNodeSelection(before) === false) {
@@ -1885,7 +1889,8 @@ export const registerLineCommands = (editor: LexicalEditor) =>
         COMMAND_PRIORITY_LOW
       )
     ),
-    // V9: Delete just after an image that ends a line removes the image only
+    // V9: Delete just after an image that ends a line, or a block's last
+    // paragraph, removes the image only
     editor.registerCommand(
       DELETE_CHARACTER_COMMAND,
       (isBackward: boolean) => {
@@ -1897,13 +1902,26 @@ export const registerLineCommands = (editor: LexicalEditor) =>
         const line = anchor.getNode();
         if (
           anchor.type !== "element" ||
-          $isCmsLineNode(line) === false ||
+          $isElementNode(line) === false ||
           anchor.offset !== line.getChildrenSize()
         ) {
           return false;
         }
         const last = line.getLastChild();
-        if ($isDecoratorNode(last) === false || line.getNextSibling() !== null) {
+        // H: the same just after an image that ends the last paragraph of a
+        // block in a lined container
+        const holder = line.getParent();
+        const endsBlock =
+          $isCmsLineNode(line) === false &&
+          line.getNextSibling() === null &&
+          $isElementNode(holder) &&
+          holder.isInline() === false &&
+          isLinedContainer(holder.getParent());
+        if (
+          $isDecoratorNode(last) === false ||
+          ($isCmsLineNode(line) === false && endsBlock === false) ||
+          ($isCmsLineNode(line) && line.getNextSibling() !== null)
+        ) {
           return false;
         }
         last.remove();
