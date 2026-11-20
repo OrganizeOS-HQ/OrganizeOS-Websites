@@ -7,7 +7,7 @@
 import { expect, test } from "vitest";
 import { act } from "react-dom/test-utils";
 import { cdp, userEvent } from "@vitest/browser/context";
-import { $createRangeSelection, $setSelection, type LexicalNode, $getRoot, $getSelection, $isElementNode, $isNodeSelection, $isRangeSelection, $isTextNode, type PointType, CAN_REDO_COMMAND, CAN_UNDO_COMMAND, COMMAND_PRIORITY_CRITICAL, type LexicalEditor } from "lexical";
+import { $createRangeSelection, $createRangeSelectionFromDom, $setSelection, KEY_DOWN_COMMAND, type BaseSelection, type LexicalNode, $getRoot, $getSelection, $isElementNode, $isNodeSelection, $isRangeSelection, $isTextNode, type PointType, CAN_REDO_COMMAND, CAN_UNDO_COMMAND, COMMAND_PRIORITY_CRITICAL, type LexicalEditor } from "lexical";
 import { byLabel, click, clickInWord, editable, editorOf, lastHtml, renderField, settle, unmountField } from "./rich-text-test-harness";
 import { sanitizeRichTextHtml } from "./rich-text-sanitize";
 import { cmsHistory } from "./rich-text-line-node";
@@ -793,4 +793,73 @@ for (const [id, html, word, at, step, key] of KEY_CELLS) for (const order of ["k
   });
   await settle();
   expect(writeOf(onChange)).toBe(KEY_WRITES[id]);
+}, 30_000);
+
+// 15.12: the step runs only when the page has moved since the field last
+// wrote or read the selection. Where the page's read-back differs from the
+// field's caret without a page move, the key starts from the field's caret.
+const selText = (sel: BaseSelection | null) => {
+  if ($isRangeSelection(sel) === false) return String(sel);
+  return `${ptOf(sel.anchor)}->${ptOf(sel.focus)} format=${sel.format}`;
+};
+const watchStep = () => {
+  const ed = editorOf()!;
+  const seen: { before: string; atKey: string; page: string }[] = [];
+  const unregister = ed.registerCommand(KEY_DOWN_COMMAND, () => {
+    const dom = window.getSelection();
+    const page = dom === null ? null : $createRangeSelectionFromDom(dom, ed);
+    seen.push({
+      before: ed.getEditorState().read(() => selText($getSelection())),
+      atKey: selText($getSelection()),
+      page: page === null ? "null" : `${ptOf(page.anchor)}->${ptOf(page.focus)} format=${page.format}`,
+    });
+    return false;
+  }, COMMAND_PRIORITY_CRITICAL);
+  return { seen, unregister };
+};
+const NOT_MOVED_LINK = `<a href="https://example.org/l">Lw</a>`;
+const NOT_MOVED_WRITES: Record<string, string> = {
+  "link Enter": '<ul><li>Pw</li><li><br /><h3><a href="https://example.org/l">Lw</a>X0w</h3>T1w</li><li>Nw</li></ul>',
+  "link Backspace": '<ul><li>Pw<a href="https://example.org/l">Lw</a>X0w</li><li>T1w</li><li>Nw</li></ul>',
+  "pending format": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>T2wx<b><strong>y</strong></b></li><li>Nw</li></ul>",
+  "field focus": "<ul><li>Pw</li><li><blockquote><p>Q0wkNw</p></blockquote></li></ul>",
+};
+for (const key of ["Enter", "Backspace"]) test(`15.12 the page has not moved, the step does nothing: a text point at a link's start, ${key}`, async () => {
+  const onChange = await renderField(LI(`<h3>${NOT_MOVED_LINK}X0w</h3>T1w`));
+  await clickInWord("X0w", 1);
+  await act(async () => { editorOf()!.update(() => { const heading = all().find((nd) => nd.getType() === "link")!.getParentOrThrow(); const r = $createRangeSelection(); r.anchor.set(heading.getKey(), 0, "element"); r.focus.set(heading.getKey(), 0, "element"); $setSelection(r); }); });
+  await settle();
+  const { seen, unregister } = watchStep();
+  await userEvent.keyboard(`{${key}}`); await settle();
+  unregister();
+  expect(seen[0].atKey).toBe("heading@0[link]->heading@0[link] format=0");
+  expect(seen[0].page).toBe('"Lw"@0->"Lw"@0 format=0');
+  expect(seen[0].atKey).toBe(seen[0].before);
+  expect(seen[0].page).not.toBe(seen[0].atKey);
+  expect(writeOf(onChange)).toBe(NOT_MOVED_WRITES[`link ${key}`]);
+}, 30_000);
+test("15.12 the page has not moved, the step does nothing: a pending format", async () => {
+  const onChange = await renderField(LI("T0w<blockquote><p>Q1w</p></blockquote>T2w"));
+  await clickInWord("T2w"); await userEvent.keyboard("x"); await settle();
+  await userEvent.keyboard("{Control>}b{/Control}"); await settle();
+  const { seen, unregister } = watchStep();
+  await userEvent.keyboard("y"); await settle();
+  unregister();
+  expect(seen[0].atKey).toMatch(/ format=1$/);
+  expect(seen[0].atKey).toBe(seen[0].before);
+  expect(seen[0].page).toMatch(/ format=0$/);
+  expect(writeOf(onChange)).toBe(NOT_MOVED_WRITES["pending format"]);
+}, 30_000);
+test("15.12 the page has not moved, the step does nothing: a focus the field set", async () => {
+  const onChange = await renderField(LI("<blockquote><p>Q0w</p></blockquote><hr>T2w"));
+  await clickInWord("Nw", 0);
+  const focusIsQuote = () => editorOf()!.getEditorState().read(() => { const sel = $getSelection(); return $isRangeSelection(sel) && sel.focus.type === "element" && sel.focus.getNode().getType() === "quote"; });
+  for (let i = 0; i < 10 && focusIsQuote() === false; i++) { await userEvent.keyboard("{Shift>}{ArrowLeft}{/Shift}"); await settle(); }
+  const { seen, unregister } = watchStep();
+  await userEvent.keyboard("k"); await settle();
+  unregister();
+  expect(seen[0].atKey).toBe('"Nw"@0->quote@1[-] format=0');
+  expect(seen[0].atKey).toBe(seen[0].before);
+  expect(seen[0].page).toBe('"Nw"@0->"Q0w"@3 format=0');
+  expect(writeOf(onChange)).toBe(NOT_MOVED_WRITES["field focus"]);
 }, 30_000);

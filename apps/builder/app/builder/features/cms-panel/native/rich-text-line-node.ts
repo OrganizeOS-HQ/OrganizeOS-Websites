@@ -98,6 +98,8 @@ export const lineSpike = {
   cutCheckFails: false,
   /** Probes: the point rule's third place (after every commit) does not run. */
   thirdPlaceOff: false,
+  /** Probes: a key does not take over a caret the page moved (15.12 off). */
+  resyncOff: false,
 };
 
 export class CmsLineNode extends ElementNode {
@@ -2191,7 +2193,7 @@ export const registerLineCommands = (editor: LexicalEditor) => {
     editor.registerCommand(
       KEY_DOWN_COMMAND,
       () => {
-        if (editor.isComposing()) {
+        if (editor.isComposing() || lineSpike.resyncOff) {
           return false;
         }
         const now = pageSnapshot();

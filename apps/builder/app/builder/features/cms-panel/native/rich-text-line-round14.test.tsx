@@ -673,11 +673,15 @@ const selectNode = async (way: "click" | "arrow") => {
     const node = root.querySelector("hr, img")!;
     await userEvent.click(node as HTMLElement);
     await settle();
-    // a clicked image or figure opens its own popover and leaves the
-    // selection empty; a clicked rule is node-selected
     if (node.tagName === "HR") {
       expect(nodeSelected()).toBe(true);
+      return;
     }
+    // the control's premise: a clicked image or figure opens its popover
+    // and selects nothing
+    const alt = [...document.querySelectorAll("label")].find((label) => label.textContent === "Alt");
+    expect(alt).toBeDefined();
+    expect(editorOf()!.getEditorState().read(() => $getSelection())).toBeNull();
     return;
   }
   await clickInWord("Cw", 0);
@@ -720,46 +724,67 @@ const C_ACTIONS: ClickAction[] = [
   ],
 ];
 
-describe("14.2: a click into text while a node is selected puts the caret where clicked", () => {
-  for (const [shapeName, shape] of Object.entries(C_SHAPES)) {
-    for (const [nodeName, node] of Object.entries(C_NODES)) {
-      for (const way of ["click", "arrow"] as const) {
-        // a figure in a list item is content the field does not edit
-        if (shapeName === "lined" && nodeName === "figure") {
-          continue;
-        }
-        test.each(C_ACTIONS)(`${shapeName}, ${nodeName} selected by ${way}: %s`, async (_name, action, expected) => {
-          const html = shape(node);
-          const onChange = await renderField(html);
-          await selectNode(way);
-          await action();
-          await keys("k");
-          const write = written(onChange);
-          const cw = expected(shapeName);
-          // the letter where clicked; a double click selects the page's word there, which the letter replaces
-          const want =
-            cw === "Lkw"
-              ? html.replace(">Lw<", ">Lkw<")
-              : cw === "Cwk"
-                ? html.replace(">Cw<", ">Cwk<").replace("Cw</li>", "Cwk</li>")
-                : cw === "k<"
-                  ? // the page's word at the click: Aw and the link's Lw touch
-                    html.replace(`Aw${C_LINK}`, "k")
-                  : html.replace("Aw<a", `${cw}<a`);
-          expect(write).toBe(stored(want));
-        });
-        test(`${shapeName}, ${nodeName} selected by ${way}: a click in text with the Link popover open`, async () => {
-          const html = shape(node);
-          const onChange = await renderField(html);
-          await selectNode(way);
-          await click(byLabel("Link"));
-          expect(byLabel("URL")).not.toBeNull();
-          await clickInWord("Aw", 1);
-          await keys("k");
-          expect(written(onChange)).toBe(stored(html.replace("Aw<a", "Akw<a")));
-        });
+const C_CASES: [string, string, string, "click" | "arrow"][] = [];
+for (const shapeName of Object.keys(C_SHAPES)) {
+  for (const nodeName of Object.keys(C_NODES)) {
+    for (const way of ["click", "arrow"] as const) {
+      // a figure in a list item is content the field does not edit
+      if (shapeName === "lined" && nodeName === "figure") {
+        continue;
       }
+      // a click on an image or a figure selects nothing: those cells are
+      // controls, named for what they do
+      const control = way === "click" && nodeName !== "rule";
+      C_CASES.push([
+        control ? "14.2 controls (no node selection)" : "14.2: a click into text while a node is selected puts the caret where clicked",
+        shapeName,
+        nodeName,
+        way,
+      ]);
     }
+  }
+}
+const cTitle = (shapeName: string, nodeName: string, way: string, action: string) =>
+  way === "click" && nodeName !== "rule"
+    ? `${shapeName}: a click on ${nodeName === "image" ? "an image" : "a figure"} opens its popover and selects nothing; ${action} then ${action === "a double click" ? "selects the word at the click" : "gives a caret at the click"}`
+    : `${shapeName}, ${nodeName} selected by ${way}: ${action}`;
+for (const group of new Set(C_CASES.map(([title]) => title))) describe(group, () => {
+  for (const [title, shapeName, nodeName, way] of C_CASES) {
+    if (title !== group) {
+      continue;
+    }
+    const shape = C_SHAPES[shapeName];
+    const node = C_NODES[nodeName];
+    for (const [actionName, action, expected] of C_ACTIONS) test(cTitle(shapeName, nodeName, way, actionName), async () => {
+      const html = shape(node);
+      const onChange = await renderField(html);
+      await selectNode(way);
+      await action();
+      await keys("k");
+      const write = written(onChange);
+      const cw = expected(shapeName);
+      // the letter where clicked; a double click selects the page's word there, which the letter replaces
+      const want =
+        cw === "Lkw"
+          ? html.replace(">Lw<", ">Lkw<")
+          : cw === "Cwk"
+            ? html.replace(">Cw<", ">Cwk<").replace("Cw</li>", "Cwk</li>")
+            : cw === "k<"
+              ? // the page's word at the click: Aw and the link's Lw touch
+                html.replace(`Aw${C_LINK}`, "k")
+              : html.replace("Aw<a", `${cw}<a`);
+      expect(write).toBe(stored(want));
+    });
+    test(cTitle(shapeName, nodeName, way, "a click in text with the Link popover open"), async () => {
+      const html = shape(node);
+      const onChange = await renderField(html);
+      await selectNode(way);
+      await click(byLabel("Link"));
+      expect(byLabel("URL")).not.toBeNull();
+      await clickInWord("Aw", 1);
+      await keys("k");
+      expect(written(onChange)).toBe(stored(html.replace("Aw<a", "Akw<a")));
+    });
   }
 });
 
