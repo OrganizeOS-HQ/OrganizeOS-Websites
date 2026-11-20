@@ -2,7 +2,8 @@
 // counts; an undo during it voids what the field kept and the result is the
 // head's. 15.2: a cancelled composition leaves the history exactly as it was
 // (undo stack length and redo stack). 15.3 and 15.4: Shift steps and steps
-// off a selected rule in right-to-left and mixed-direction items.
+// off a selected rule in right-to-left and mixed-direction items. 15.5 and
+// 15.6: a heading that holds only an image.
 import { expect, test } from "vitest";
 import { act } from "react-dom/test-utils";
 import { cdp, userEvent } from "@vitest/browser/context";
@@ -374,6 +375,11 @@ const WALKS: [string, string, string, number, string][] = [
   ["F3-RQR-fwd", RQR, "פא", 2, "{Shift>}{ArrowLeft}{/Shift}"],
   ["F3-QR-ltr-back", LI("<blockquote><p>Q0w</p></blockquote><hr>"), "Nw", 0, "{Shift>}{ArrowLeft}{/Shift}"],
   ["F3-RQR-ltr-fwd", LI("<hr><blockquote><p>Q1w</p></blockquote><hr>"), "Pw", 2, "{Shift>}{ArrowRight}{/Shift}"],
+  // K8, an accepted difference (owned by R2 for the whole field): between a
+  // left-to-right line and a right-to-left quote the walk alternates
+  // between the rule and the quote's start (TRQrtl), and the reverse shape
+  // (QRT) between the rule and the right-to-left line's start; the right
+  // rule needs memory of how the rule was entered. R2's change shows here
   ["F4-TRQrtl", LI("T0w<hr><blockquote><p>קבג</p></blockquote>"), "Pw", 2, "{ArrowRight}"],
   ["F4-QRTrtl", LI("<blockquote><p>Q0w</p></blockquote><hr>תגד"), "Pw", 2, "{ArrowRight}"],
   ["F4-TRQrtl-back", LI("T0w<hr><blockquote><p>קבג</p></blockquote>"), "Nw", 0, "{ArrowLeft}"],
@@ -549,3 +555,58 @@ for (const [id, html, word, off, key] of WALKS) test(id, async () => {
   await userEvent.keyboard("k"); await settle();
   expect({ stops, k: onChange.mock.calls.length ? sanitizeRichTextHtml(lastHtml(onChange)) : "NOOP" }).toEqual(WALK_STOPS[id]);
 }, 60_000);
+
+// 15.5, 15.6: a heading that holds only an image, between two lines: the
+// word forms at the lines' edges do what the character forms do, as with
+// the heading holding a word (the twin)
+const IMAGE_HEADING: Record<string, { w: string; k: string }> = {
+ "image bs": {
+  "w": "<ul><li>Pw</li><li>T0w<h3><img src=\"https://cdn.example.org/x.png\" alt=\"\" width=\"40\" height=\"20\" />T2w</h3></li><li>Nw</li></ul>",
+  "k": "<ul><li>Pw</li><li>T0w<h3><img src=\"https://cdn.example.org/x.png\" alt=\"\" width=\"40\" height=\"20\" />kT2w</h3></li><li>Nw</li></ul>"
+ },
+ "image del": {
+  "w": "<ul><li>Pw</li><li>T0w<img src=\"https://cdn.example.org/x.png\" alt=\"\" width=\"40\" height=\"20\" /><br />T2w</li><li>Nw</li></ul>",
+  "k": "<ul><li>Pw</li><li>T0wk<img src=\"https://cdn.example.org/x.png\" alt=\"\" width=\"40\" height=\"20\" /><br />T2w</li><li>Nw</li></ul>"
+ },
+ "image wordBs": {
+  "w": "<ul><li>Pw</li><li>T0w<h3><img src=\"https://cdn.example.org/x.png\" alt=\"\" width=\"40\" height=\"20\" />T2w</h3></li><li>Nw</li></ul>",
+  "k": "<ul><li>Pw</li><li>T0w<h3><img src=\"https://cdn.example.org/x.png\" alt=\"\" width=\"40\" height=\"20\" />kT2w</h3></li><li>Nw</li></ul>"
+ },
+ "image wordDel": {
+  "w": "<ul><li>Pw</li><li>T0w<img src=\"https://cdn.example.org/x.png\" alt=\"\" width=\"40\" height=\"20\" /><br />T2w</li><li>Nw</li></ul>",
+  "k": "<ul><li>Pw</li><li>T0wk<img src=\"https://cdn.example.org/x.png\" alt=\"\" width=\"40\" height=\"20\" /><br />T2w</li><li>Nw</li></ul>"
+ },
+ "twin bs": {
+  "w": "<ul><li>Pw</li><li>T0w<h3>X1wT2w</h3></li><li>Nw</li></ul>",
+  "k": "<ul><li>Pw</li><li>T0w<h3>X1wkT2w</h3></li><li>Nw</li></ul>"
+ },
+ "twin del": {
+  "w": "<ul><li>Pw</li><li>T0wX1w<br />T2w</li><li>Nw</li></ul>",
+  "k": "<ul><li>Pw</li><li>T0wkX1w<br />T2w</li><li>Nw</li></ul>"
+ },
+ "twin wordBs": {
+  "w": "<ul><li>Pw</li><li>T0w<h3>X1wT2w</h3></li><li>Nw</li></ul>",
+  "k": "<ul><li>Pw</li><li>T0w<h3>X1wkT2w</h3></li><li>Nw</li></ul>"
+ },
+ "twin wordDel": {
+  "w": "<ul><li>Pw</li><li>T0wX1w<br />T2w</li><li>Nw</li></ul>",
+  "k": "<ul><li>Pw</li><li>T0wkX1w<br />T2w</li><li>Nw</li></ul>"
+ }
+};
+const HEADING_IMG = '<img src="https://cdn.example.org/x.png" alt="" width="40" height="20" />';
+for (const [shape, block] of [["image", `<h3>${HEADING_IMG}</h3>`], ["twin", "<h3>X1w</h3>"]] as const) for (const [act, word, off, key] of [
+  ["bs", "T2w", 0, "{Backspace}"],
+  ["wordBs", "T2w", 0, "{Control>}{Backspace}{/Control}"],
+  ["wordDel", "T0w", 3, "{Control>}{Delete}{/Control}"],
+  ["del", "T0w", 3, "{Delete}"],
+] as const) {
+  const id = `${shape} ${act}`;
+  test(`a heading of ${shape === "image" ? "only an image" : "a word"}: ${act}`, async () => {
+    const onChange = await renderField(LI(`T0w${block}T2w`));
+    await clickInWord(word, off);
+    await userEvent.keyboard(key); await settle();
+    const w = onChange.mock.calls.length ? sanitizeRichTextHtml(lastHtml(onChange)) : "NOOP";
+    await userEvent.keyboard("k"); await settle();
+    expect({ w, k: sanitizeRichTextHtml(lastHtml(onChange)) }).toEqual(IMAGE_HEADING[id]);
+  }, 30_000);
+}

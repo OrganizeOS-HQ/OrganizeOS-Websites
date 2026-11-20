@@ -1027,6 +1027,27 @@ const $backwardFormIsBackspace = () => {
   );
 };
 
+/**
+ * 15.5, 15.6: the word form at a line's start after a block (backward), or
+ * at its end before a block (forward), does what the character form does
+ * there (D3), as at the same block holding text: the line and the block
+ * join, and nothing of the block goes.
+ */
+const $wordFormAtLineEdgeBesideBlock = (isBackward: boolean) => {
+  const selection = $getSelection();
+  if ($isRangeSelection(selection) === false || selection.isCollapsed() === false) {
+    return false;
+  }
+  const point = selection.anchor;
+  const node = point.getNode();
+  const line = $isCmsLineNode(node) ? node : $findMatchingParent(node, $isCmsLineNode);
+  if ($isCmsLineNode(line) === false || $atContentEdge(point, line, isBackward) === false) {
+    return false;
+  }
+  const beside = isBackward ? line.getPreviousSibling() : line.getNextSibling();
+  return $isElementNode(beside) && $isCmsLineNode(beside) === false && beside.isInline() === false;
+};
+
 /** A caret at the content's start, just before a first child that is not text. */
 const $lineFormAtContentStart = () => {
   const selection = $getSelection();
@@ -2385,6 +2406,10 @@ export const registerLineCommands = (editor: LexicalEditor) =>
             if ($caretBesideInlineEdge(payload as boolean, command === DELETE_CHARACTER_COMMAND)) {
               return true;
             }
+          }
+          if (command === DELETE_WORD_COMMAND && $wordFormAtLineEdgeBesideBlock(payload as boolean)) {
+            $getEditor().dispatchCommand(DELETE_CHARACTER_COMMAND, payload as boolean);
+            return true;
           }
           if (command === DELETE_LINE_COMMAND && payload === false && $lineFormHasNothing()) {
             return true;
