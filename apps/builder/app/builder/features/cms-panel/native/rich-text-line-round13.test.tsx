@@ -284,6 +284,35 @@ const clipboard = async (type: "copy" | "cut") => {
   };
 };
 
+describe("G with a code block: two text ends never take the old writer", () => {
+  // the head writes no list item for a whole item that holds a code block
+  // (Lexical 0.21 compares the item's text with the selection's, and the
+  // code block's text differs): measured at lines off, and D6 asks for the
+  // head's copy for the same two ends
+  test("a whole lined item TC copies as the head does", async () => {
+    await renderField("<ul><li>T0w<pre><code>C1w</code></pre></li></ul>");
+    await selectWords("T0w", 0, "C1w", undefined);
+    expect(await clipboard("copy")).toEqual({ html: "T0w<pre><code>C1w</code></pre>", text: "T0w\nC1w" });
+  });
+  test("a whole lined item CT copies as the head does", async () => {
+    await renderField("<ul><li><pre><code>C0w</code></pre>T1w</li></ul>");
+    await selectWords("C0w", 0, "T1w", undefined);
+    expect(await clipboard("copy")).toEqual({ html: "<pre><code>C0w</code></pre>T1w", text: "C0w\nT1w" });
+  });
+  test("a line's whole text before a code block copies only that text", async () => {
+    await renderField("<ul><li>xxq<pre><code>cc</code></pre>yyq</li></ul>");
+    await selectWords("xxq", 0, "xxq", undefined);
+    expect(await clipboard("copy")).toEqual({ html: "xxq", text: "xxq" });
+  });
+  test("a cut that ends in code text removes exactly what its clipboard holds", async () => {
+    const onChange = await renderField(LI("T0w<pre><code>C1w</code></pre>"));
+    await selectWords("T0w", 1, "C1w", 2);
+    const clip = await clipboard("cut");
+    expect(clip.text).toBe("0w\nC1");
+    expect(written(onChange)).toBe(stored(LI("Tw")));
+  });
+});
+
 describe("G: the clipboard holds what the selection holds, and a cut removes that", () => {
   test("a line's whole text before a quote copies the text only", async () => {
     await renderField("<ul><li>xxq<blockquote><p>qq</p></blockquote>yyq</li></ul>");

@@ -2747,12 +2747,35 @@ const $headFormClipboard = (
     }
     return path;
   };
-  const ends = [selection.anchor, selection.focus].map((point) => ({
-    path: pathOf(point.getNode()),
-    kind: point.getNode().getType(),
-    offset: point.offset,
-    type: point.type,
-  }));
+  // a point in a code block is carried by its character offset in the
+  // block: the scratch editor's code block holds the same text, split into
+  // nodes its own way
+  const ends = [selection.anchor, selection.focus].map((point) => {
+    const node = point.getNode();
+    const code = $findMatchingParent(node, $isCodeNode);
+    if (code !== null) {
+      let chars = 0;
+      if (point.type === "element" && node.is(code)) {
+        for (const child of code.getChildren().slice(0, point.offset)) {
+          chars += child.getTextContentSize();
+        }
+      } else {
+        for (const child of code.getChildren()) {
+          if (child.is(node) || child.isParentOf(node)) break;
+          chars += child.getTextContentSize();
+        }
+        chars += point.type === "text" ? point.offset : 0;
+      }
+      return { path: pathOf(code), kind: "code", offset: chars, code: true };
+    }
+    return {
+      path: pathOf(node),
+      kind: node.getType(),
+      offset: point.offset,
+      type: point.type,
+      code: false,
+    };
+  });
   const scratch = createEditor({
     namespace: editor._config.namespace,
     theme: editor._config.theme,
@@ -2778,8 +2801,8 @@ const $headFormClipboard = (
         const range = $createRangeSelection();
         const anchorNode = resolve(ends[0].path);
         const focusNode = resolve(ends[1].path);
-        // a path that does not carry over (a code block's text is split
-        // differently) falls back to the field's own writer
+        // a path that does not carry over falls back to the field's own
+        // writer
         if (
           anchorNode === null ||
           focusNode === null ||
@@ -2788,14 +2811,43 @@ const $headFormClipboard = (
         ) {
           return;
         }
-        range.anchor.set(anchorNode.getKey(), ends[0].offset, ends[0].type);
-        range.focus.set(focusNode.getKey(), ends[1].offset, ends[1].type);
+        const place = (
+          point: typeof range.anchor,
+          node: LexicalNode,
+          end: (typeof ends)[number]
+        ) => {
+          if (end.code === false) {
+            point.set(node.getKey(), end.offset, end.type ?? "text");
+            return;
+          }
+          // the character offset in the scratch editor's code block
+          let left = end.offset;
+          const children = (node as ElementNode).getChildren();
+          for (const [index, child] of children.entries()) {
+            const size = child.getTextContentSize();
+            if ($isTextNode(child) && left <= size) {
+              point.set(child.getKey(), left, "text");
+              return;
+            }
+            if (left === 0) {
+              point.set(node.getKey(), index, "element");
+              return;
+            }
+            left -= size;
+          }
+          point.set(node.getKey(), children.length, "element");
+        };
+        place(range.anchor, anchorNode, ends[0]);
+        place(range.focus, focusNode, ends[1]);
         $setSelection(range);
         for (const { node } of $dfs()) {
           if ($isCmsLineNode(node) && node.isAttached()) {
             $unwrapLines([node]);
           }
         }
+        // a code block reached partway writes its selected text, read from
+        // this editor's selection
+        markRichTextCopy($getSelection());
         data = { ...$getClipboardDataFromSelection($getSelection()) };
       },
       { discrete: true }
