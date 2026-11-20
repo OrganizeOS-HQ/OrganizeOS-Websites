@@ -13,7 +13,7 @@ import {
   $getEditor,
   $splitNode,
   $isRootOrShadowRoot,
-  $getCharacterOffsets,
+  $getRoot,
   $hasUpdateTag,
   $getNodeByKey,
   $getSelection,
@@ -2467,19 +2467,107 @@ const queueLinePoints: ElementPoint[] = [];
  * at the head, plus one new line where a line's text meets the text of a
  * block before it, which the head runs together.
  */
+/**
+ * The nodes a range holds, in document order, read from the tree by the
+ * field's own order of the two ends (not Lexical's node walk, which reads
+ * an element-point end as a child of its node): an element that overlaps
+ * the range, a text node with a character inside it, and an image, rule or
+ * line break wholly inside it. The two ends come first and last.
+ */
+const $nodesInRange = (selection: RangeSelection) => {
+  const pathOf = (node: LexicalNode) => {
+    const path: number[] = [];
+    let at: LexicalNode = node;
+    while (at.getParent() !== null) {
+      path.unshift(at.getIndexWithinParent());
+      at = at.getParentOrThrow();
+    }
+    return path;
+  };
+  const placeOf = (point: PointType) => {
+    const node = point.getNode();
+    if (point.type === "element") {
+      return [...pathOf(node), point.offset];
+    }
+    const path = pathOf(node);
+    const index = path.pop() ?? 0;
+    return [...path, index + point.offset / (node.getTextContentSize() + 1)];
+  };
+  const compare = (a: number[], b: number[]) => {
+    for (let index = 0; index < Math.min(a.length, b.length); index += 1) {
+      if (a[index] !== b[index]) {
+        return a[index] - b[index];
+      }
+    }
+    return a.length - b.length;
+  };
+  const anchorFirst = compare(placeOf(selection.anchor), placeOf(selection.focus)) <= 0;
+  const [start, end] = anchorFirst
+    ? [selection.anchor, selection.focus]
+    : [selection.focus, selection.anchor];
+  const from = placeOf(start);
+  const to = placeOf(end);
+  const nodes: LexicalNode[] = [];
+  const walk = (node: LexicalNode) => {
+    const path = pathOf(node);
+    const index = path.pop() ?? 0;
+    const before = [...path, index];
+    const after = [...path, index + 1];
+    if ($isElementNode(node)) {
+      // inside the element: its own path is a prefix of every point in it
+      const opens = [...path, index];
+      const overlaps = compare(after, from) > 0 && compare(opens, to) < 0;
+      if (overlaps && node.getParent() !== null) {
+        nodes.push(node);
+      }
+      if (overlaps || node.getParent() === null) {
+        node.getChildren().forEach(walk);
+      }
+      return;
+    }
+    if ($isTextNode(node)) {
+      const size = node.getTextContentSize();
+      const first = [...path, index + 0 / (size + 1)];
+      const lastChar = [...path, index + size / (size + 1)];
+      if (size > 0 && compare(lastChar, from) > 0 && compare(first, to) < 0) {
+        nodes.push(node);
+      }
+      return;
+    }
+    if (compare(before, from) >= 0 && compare(after, to) <= 0) {
+      nodes.push(node);
+    }
+  };
+  walk($getRoot());
+  return { nodes, start, end };
+};
+
 export const $plainTextOf = (selection: BaseSelection): string => {
   if ($isRangeSelection(selection) === false) {
     return selection.getTextContent();
   }
-  const nodes = selection.getNodes();
-  if (nodes.length === 0) {
-    return "";
+  const { nodes, start, end } = $nodesInRange(selection);
+  // a range that ends at the start of a line after a block holds the break
+  // between them (F7): text/plain ends with a new line. The end is on the
+  // line at its start, or the container's point just before the line
+  const endNode = end.getNode();
+  let endLine: LexicalNode | null = null;
+  if (end.offset === 0 && $isCmsLineNode(endNode)) {
+    endLine = endNode;
+  } else if (end.offset === 0 && end.type === "text") {
+    const line = $findMatchingParent(endNode, $isCmsLineNode);
+    endLine = line?.getFirstDescendant()?.is(endNode) === true ? line : null;
+  } else if (end.type === "element" && isLinedContainer(endNode)) {
+    const at = endNode.getChildAtIndex(end.offset);
+    endLine = $isCmsLineNode(at) ? at : null;
   }
-  const first = nodes[0];
+  const blockBefore = endLine?.getPreviousSibling() ?? null;
+  const breakAtEnd =
+    $isElementNode(blockBefore) && $isCmsLineNode(blockBefore) === false && blockBefore.isInline() === false;
+  if (nodes.length === 0) {
+    return breakAtEnd ? "\n" : "";
+  }
   const last = nodes[nodes.length - 1];
-  const { anchor, focus } = selection;
-  const isBefore = anchor.isBefore(focus);
-  const [anchorOffset, focusOffset] = $getCharacterOffsets(selection);
   let text = "";
   let prevWasElement = true;
   // whether the last leaf read stood in a block's text, not in a line
@@ -2508,27 +2596,19 @@ export const $plainTextOf = (selection: BaseSelection): string => {
     lastInBlockText = line === null;
     prevWasElement = false;
     if ($isTextNode(node)) {
-      let part = node.getTextContent();
-      if (node === first) {
-        if (node === last) {
-          if (anchor.type !== "element" || focus.type !== "element" || focus.offset === anchor.offset) {
-            part = anchorOffset < focusOffset
-              ? part.slice(anchorOffset, focusOffset)
-              : part.slice(focusOffset, anchorOffset);
-          }
-        } else {
-          part = isBefore ? part.slice(anchorOffset) : part.slice(focusOffset);
-        }
-      } else if (node === last) {
-        part = isBefore ? part.slice(0, focusOffset) : part.slice(0, anchorOffset);
-      }
-      text += part;
+      const part = node.getTextContent();
+      const from = start.type === "text" && start.key === node.getKey() ? start.offset : 0;
+      const to = end.type === "text" && end.key === node.getKey() ? end.offset : part.length;
+      text += part.slice(from, to);
     } else if (
       ($isDecoratorNode(node) || isLineBreak(node)) &&
       (node !== last || selection.isCollapsed() === false)
     ) {
       text += node.getTextContent();
     }
+  }
+  if (breakAtEnd && text.endsWith("\n") === false) {
+    text += "\n";
   }
   return text;
 };
