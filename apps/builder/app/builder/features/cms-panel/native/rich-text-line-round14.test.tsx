@@ -21,7 +21,7 @@ import {
 } from "lexical";
 import { TooltipProvider } from "@webstudio-is/design-system";
 import { RichTextField } from "./rich-text-field";
-import { byLabel, click, clickInWord, editable, editorOf, lastHtml, renderField, settle } from "./rich-text-test-harness";
+import { byLabel, click, clickInWord, editable, editorOf, lastHtml, paste, renderField, settle } from "./rich-text-test-harness";
 import { sanitizeRichTextHtml } from "./rich-text-sanitize";
 
 const LI = (x: string) => `<ul><li>Pw</li><li>${x}</li><li>Nw</li></ul>`;
@@ -889,5 +889,128 @@ describe("14.10: tests that guard their fix", () => {
     await settle();
     await keys("k");
     expect(written(onChange)).toBe(stored(LI("<blockquote><p>Q0w</p></blockquote>k<br />")));
+  });
+});
+
+/**
+ * 14.8: a paste with a rule node-selected in an item that starts with a
+ * block (the head's own path does not end there): Lexical's order with the
+ * point after the rule resolved by D18 first, so the paste runs at that
+ * caret and the rule then goes; no step over 2 s. An item that starts with
+ * a line keeps the head's write. The write in the grid's short form.
+ */
+const P_Q = (word: string) => `<blockquote><p>${word}</p></blockquote>`;
+const P_SHAPES: Record<string, string> = {
+  QR: LI(`${P_Q("Q0w")}<hr>`),
+  QRT: LI(`${P_Q("Q0w")}<hr>T2w`),
+  QQR: LI(`${P_Q("Q0w")}${P_Q("Q1w")}<hr>`),
+  QRB: LI(`${P_Q("Q0w")}<hr><br>`),
+  QRL: LI(`${P_Q("Q0w")}<hr><ul><li>L2w</li></ul>`),
+  QRQ: LI(`${P_Q("Q0w")}<hr>${P_Q("Q2w")}`),
+  QRR: LI(`${P_Q("Q0w")}<hr><hr>`),
+  RQR: LI(`<hr>${P_Q("Q1w")}<hr>`),
+  QRTQ: LI(`${P_Q("Q0w")}<hr>T2w${P_Q("Q3w")}`),
+  QRd2: `<ul><li>Pw<ul><li>Aw</li><li>${P_Q("Q0w")}<hr></li><li>Zw</li></ul></li><li>Nw</li></ul>`,
+  QRol: `<ol><li>Pw</li><li>${P_Q("Q0w")}<hr></li><li>Nw</li></ol>`,
+  XRY: LI("xq<hr>yq"),
+};
+const P_DATA: Record<string, Record<string, string>> = {
+  p1: { "text/html": "<p>Aq</p>", "text/plain": "Aq" },
+  p2: { "text/html": "<p>Aq</p><p>Bq</p>", "text/plain": "Aq\nBq" },
+  list: { "text/html": "<ul><li>Aq</li></ul>", "text/plain": "Aq" },
+  emptyP: { "text/html": "<p></p>", "text/plain": "" },
+};
+const P_CELLS: [string, string, string][] = [
+  ["QQR", "emptyP", "<ul><li>Pw</li><li><q>Q0w</q><q>Q1w</q></li><li>Nw</li></ul>"],
+  ["QQR", "list", "<ul><li>Pw</li><li><q>Q0w</q><q>Q1w</q></li><li>Aq</li><li>Nw</li></ul>"],
+  ["QQR", "own", "<ul><li>Pw</li><li><q>Q0w</q><q>Q1w</q></li><li>Pw</li><li>Nw</li></ul>"],
+  ["QQR", "p1", "<ul><li>Pw</li><li><q>Q0w</q><q>Q1w</q>Aq</li><li>Nw</li></ul>"],
+  ["QQR", "p2", "<ul><li>Pw</li><li><q>Q0w</q><q>Q1w</q>Aq</li></ul>Bq<ul><li>Nw</li></ul>"],
+  ["QR", "emptyP", "<ul><li>Pw</li><li><q>Q0w</q></li><li>Nw</li></ul>"],
+  ["QR", "list", "<ul><li>Pw</li><li><q>Q0w</q></li><li>Aq</li><li>Nw</li></ul>"],
+  ["QR", "own", "<ul><li>Pw</li><li><q>Q0w</q></li><li>Pw</li><li>Nw</li></ul>"],
+  ["QR", "p1", "<ul><li>Pw</li><li><q>Q0w</q>Aq</li><li>Nw</li></ul>"],
+  ["QR", "p2", "<ul><li>Pw</li><li><q>Q0w</q>Aq</li></ul>Bq<ul><li>Nw</li></ul>"],
+  ["QRB", "emptyP", "<ul><li>Pw</li><li><q>Q0w</q><br /></li><li>Nw</li></ul>"],
+  ["QRB", "list", "<ul><li>Pw</li><li><q>Q0w</q></li><li>Aq<br /></li><li>Nw</li></ul>"],
+  ["QRB", "own", "<ul><li>Pw</li><li><q>Q0w</q></li><li>Pw<br /></li><li>Nw</li></ul>"],
+  ["QRB", "p1", "<ul><li>Pw</li><li><q>Q0w</q>Aq<br /></li><li>Nw</li></ul>"],
+  ["QRB", "p2", "<ul><li>Pw</li><li><q>Q0w</q>Aq</li></ul>Bq<br /><ul><li>Nw</li></ul>"],
+  ["QRL", "emptyP", "<ul><li>Pw</li><li><q>Q0w</q><ul><li>L2w</li></ul></li><li>Nw</li></ul>"],
+  ["QRL", "list", "<ul><li>Pw</li><li><q>Q0w</q></li><li>Aq<ul><li>L2w</li></ul></li><li>Nw</li></ul>"],
+  ["QRL", "own", "<ul><li>Pw</li><li><q>Q0w</q></li><li>Pw<ul><li>L2w</li></ul></li><li>Nw</li></ul>"],
+  ["QRL", "p1", "<ul><li>Pw</li><li><q>Q0w</q>Aq<ul><li>L2w</li></ul></li><li>Nw</li></ul>"],
+  ["QRL", "p2", "<ul><li>Pw</li><li><q>Q0w</q>Aq</li></ul>Bq<ul><li><ul><li>L2w</li></ul></li><li>Nw</li></ul>"],
+  ["QRQ", "emptyP", "<ul><li>Pw</li><li><q>Q0w</q><q>Q2w</q></li><li>Nw</li></ul>"],
+  ["QRQ", "list", "<ul><li>Pw</li><li><q>Q0w</q><q><ul><li>Aq</li></ul>Q2w</q></li><li>Nw</li></ul>"],
+  ["QRQ", "own", "<ul><li>Pw</li><li><q>Q0w</q><q><ul><li>Pw</li></ul>Q2w</q></li><li>Nw</li></ul>"],
+  ["QRQ", "p1", "<ul><li>Pw</li><li><q>Q0w</q><q>AqQ2w</q></li><li>Nw</li></ul>"],
+  ["QRQ", "p2", "<ul><li>Pw</li><li><q>Q0w</q><q>AqBqQ2w</q></li><li>Nw</li></ul>"],
+  ["QRR", "emptyP", "<ul><li>Pw</li><li><q>Q0w</q><hr /></li><li>Nw</li></ul>"],
+  ["QRR", "list", "<ul><li>Pw</li><li><q>Q0w</q></li><li>Aq<hr /></li><li>Nw</li></ul>"],
+  ["QRR", "own", "<ul><li>Pw</li><li><q>Q0w</q></li><li>Pw<hr /></li><li>Nw</li></ul>"],
+  ["QRR", "p1", "<ul><li>Pw</li><li><q>Q0w</q>Aq<hr /></li><li>Nw</li></ul>"],
+  ["QRR", "p2", "<ul><li>Pw</li><li><q>Q0w</q>Aq</li></ul>Bq<hr /><ul><li>Nw</li></ul>"],
+  ["QRT", "emptyP", "<ul><li>Pw</li><li><q>Q0w</q>T2w</li><li>Nw</li></ul>"],
+  ["QRT", "list", "<ul><li>Pw</li><li><q>Q0w</q></li><li>AqT2w</li><li>Nw</li></ul>"],
+  ["QRT", "own", "<ul><li>Pw</li><li><q>Q0w</q></li><li>PwT2w</li><li>Nw</li></ul>"],
+  ["QRT", "p1", "<ul><li>Pw</li><li><q>Q0w</q>AqT2w</li><li>Nw</li></ul>"],
+  ["QRT", "p2", "<ul><li>Pw</li><li><q>Q0w</q>Aq</li></ul>BqT2w<ul><li>Nw</li></ul>"],
+  ["QRTQ", "emptyP", "<ul><li>Pw</li><li><q>Q0w</q>T2w<q>Q3w</q></li><li>Nw</li></ul>"],
+  ["QRTQ", "list", "<ul><li>Pw</li><li><q>Q0w</q></li><li>AqT2w<q>Q3w</q></li><li>Nw</li></ul>"],
+  ["QRTQ", "own", "<ul><li>Pw</li><li><q>Q0w</q></li><li>PwT2w<q>Q3w</q></li><li>Nw</li></ul>"],
+  ["QRTQ", "p1", "<ul><li>Pw</li><li><q>Q0w</q>AqT2w<q>Q3w</q></li><li>Nw</li></ul>"],
+  ["QRTQ", "p2", "<ul><li>Pw</li><li><q>Q0w</q>Aq</li></ul>BqT2w<q>Q3w</q><ul><li>Nw</li></ul>"],
+  ["QRd2", "emptyP", "<ul><li>Pw<ul><li>Aw</li><li><q>Q0w</q></li><li>Zw</li></ul></li><li>Nw</li></ul>"],
+  ["QRd2", "list", "<ul><li>Pw<ul><li>Aw</li><li><q>Q0w</q></li><li>Aq</li><li>Zw</li></ul></li><li>Nw</li></ul>"],
+  ["QRd2", "own", "<ul><li>Pw<ul><li>Aw</li><li><q>Q0w</q></li><li>Pw</li><li>Zw</li></ul></li><li>Nw</li></ul>"],
+  ["QRd2", "p1", "<ul><li>Pw<ul><li>Aw</li><li><q>Q0w</q>Aq</li><li>Zw</li></ul></li><li>Nw</li></ul>"],
+  ["QRd2", "p2", "<ul><li>Pw<ul><li>Aw</li><li><q>Q0w</q>Aq</li></ul></li><li>Bq<ul><li>Zw</li></ul></li><li>Nw</li></ul>"],
+  ["QRol", "emptyP", "<ol><li>Pw</li><li><q>Q0w</q></li><li>Nw</li></ol>"],
+  ["QRol", "list", "<ol><li>Pw</li><li><q>Q0w</q></li></ol><ul><li>Aq</li></ul><ol><li>Nw</li></ol>"],
+  ["QRol", "own", "<ol><li>Pw</li><li><q>Q0w</q></li><li>Pw</li><li>Nw</li></ol>"],
+  ["QRol", "p1", "<ol><li>Pw</li><li><q>Q0w</q>Aq</li><li>Nw</li></ol>"],
+  ["QRol", "p2", "<ol><li>Pw</li><li><q>Q0w</q>Aq</li></ol>Bq<ol><li>Nw</li></ol>"],
+  ["RQR", "emptyP", "<ul><li>Pw</li><li><q>Q1w</q><hr /></li><li>Nw</li></ul>"],
+  ["RQR", "list", "<ul><li>Pw</li><li><q><ul><li>Aq</li></ul>Q1w</q><hr /></li><li>Nw</li></ul>"],
+  ["RQR", "own", "<ul><li>Pw</li><li><q><ul><li>Pw</li></ul>Q1w</q><hr /></li><li>Nw</li></ul>"],
+  ["RQR", "p1", "<ul><li>Pw</li><li><q>AqQ1w</q><hr /></li><li>Nw</li></ul>"],
+  ["RQR", "p2", "<ul><li>Pw</li><li><q>AqBqQ1w</q><hr /></li><li>Nw</li></ul>"],
+  ["XRY", "emptyP", "<ul><li>Pw</li><li>xq</li></ul>yq<ul><li>Nw</li></ul>"],
+];
+
+describe("14.8: a paste with a rule node-selected in a lined item", () => {
+  test.each(P_CELLS)("%s, a paste of %s", async (shape, kind, expected) => {
+    const onChange = await renderField(P_SHAPES[shape]);
+    let data = P_DATA[kind];
+    if (kind === "own") {
+      // the field's own nodes: a real copy of the first item's text
+      await clickInWord("Pw", 0);
+      await keys("{Shift>}{End}{/Shift}");
+      const transfer = new DataTransfer();
+      act(() => {
+        editable()!.dispatchEvent(
+          new ClipboardEvent("copy", { bubbles: true, cancelable: true, clipboardData: transfer })
+        );
+      });
+      data = {
+        "application/x-lexical-editor": transfer.getData("application/x-lexical-editor"),
+        "text/html": transfer.getData("text/html"),
+        "text/plain": transfer.getData("text/plain"),
+      };
+    }
+    await userEvent.click(editable()!.querySelector("hr")!);
+    await settle();
+    expect(nodeSelected()).toBe(true);
+    const started = performance.now();
+    paste(data);
+    await settle();
+    expect(performance.now() - started).toBeLessThan(2000);
+    const write = written(onChange);
+    const short = (write.length > 400 ? `LONG(${write.length})` : write)
+      .replace(/<img[^>]*>/g, "I")
+      .replace(/blockquote/g, "q")
+      .replace(/<\/?p>/g, "");
+    expect(short).toBe(expected);
   });
 });

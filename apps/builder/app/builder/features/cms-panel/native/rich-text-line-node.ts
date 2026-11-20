@@ -73,6 +73,7 @@ import { $isHeadingNode, $isQuoteNode, HeadingNode, QuoteNode } from "@lexical/r
 import { CodeNode } from "@lexical/code";
 import { $dfs, $findMatchingParent, mergeRegister } from "@lexical/utils";
 import { $isParentElementRTL } from "@lexical/selection";
+import { $insertDataTransferForRichText } from "@lexical/clipboard";
 import { LinkNode } from "@lexical/link";
 import type { HistoryState } from "@lexical/react/LexicalHistoryPlugin";
 import { $createHorizontalRuleNode, INSERT_HORIZONTAL_RULE_COMMAND } from "@lexical/react/LexicalHorizontalRuleNode";
@@ -1812,12 +1813,39 @@ export const registerLineCommands = (editor: LexicalEditor) =>
             command === PASTE_COMMAND && payload instanceof ClipboardEvent
               ? payload.clipboardData
               : null;
-          if (
+          const isRich =
             data !== null &&
             (data.getData("text/html") !== "" ||
-              data.getData("application/x-lexical-editor") !== "") &&
-            $headPathOverNodeSelection()
-          ) {
+              data.getData("application/x-lexical-editor") !== "");
+          // 14.8 (D15): in a lined container that starts with a block,
+          // where the head's own path does not end, Lexical's order for a
+          // node selection, with the point after the last selected node
+          // resolved by D18 first: the paste runs at that caret, as a paste
+          // there does (D14), then the selected nodes go. A container that
+          // starts with a line keeps the head's write
+          if (isRich && $isNodeSelection(selection)) {
+            const nodes = selection.getNodes();
+            const container = nodes.at(-1)?.getParent() ?? null;
+            if (
+              isLinedContainer(container) &&
+              $isCmsLineNode(container.getFirstChild()) === false
+            ) {
+              $nodeSelectionIntoLine(false, true);
+              const caret = $getSelection();
+              if ($isRangeSelection(caret)) {
+                (payload as ClipboardEvent).preventDefault();
+                $addUpdateTag("paste");
+                $insertDataTransferForRichText(data, caret, $getEditor());
+                for (const node of nodes) {
+                  if (node.isAttached()) {
+                    node.remove();
+                  }
+                }
+                return true;
+              }
+            }
+          }
+          if (isRich && $headPathOverNodeSelection()) {
             return false;
           }
           // plain text replaces the node; a clipboard of files only leaves it
