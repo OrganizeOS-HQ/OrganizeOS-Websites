@@ -40,11 +40,9 @@ import {
   ElementNode,
   INSERT_LINE_BREAK_COMMAND,
   INSERT_PARAGRAPH_COMMAND,
-  KEY_ARROW_DOWN_COMMAND,
+  KEY_DOWN_COMMAND,
   KEY_ARROW_LEFT_COMMAND,
   KEY_ARROW_RIGHT_COMMAND,
-  KEY_ARROW_UP_COMMAND,
-  KEY_ENTER_COMMAND,
   KEY_BACKSPACE_COMMAND,
   KEY_DELETE_COMMAND,
   PASTE_COMMAND,
@@ -1902,6 +1900,24 @@ export const registerLineCommands = (editor: LexicalEditor) => {
   if (linesOff) {
     return () => {};
   }
+  type PageSelection = { anchorNode: Node; anchorOffset: number; focusNode: Node; focusOffset: number };
+  // the page's selection as Lexical last wrote or read it
+  let pageSelection: PageSelection | null = null;
+  const pageSnapshot = (): PageSelection | null => {
+    const dom = window.getSelection();
+    const root = editor.getRootElement();
+    if (
+      dom === null ||
+      root === null ||
+      dom.anchorNode === null ||
+      dom.focusNode === null ||
+      root.contains(dom.anchorNode) === false ||
+      root.contains(dom.focusNode) === false
+    ) {
+      return null;
+    }
+    return { anchorNode: dom.anchorNode, anchorOffset: dom.anchorOffset, focusNode: dom.focusNode, focusOffset: dom.focusOffset };
+  };
   let shiftPressTaken = false;
   const onShiftPress = (event: PointerEvent) => {
     shiftPressTaken = false;
@@ -2146,54 +2162,63 @@ export const registerLineCommands = (editor: LexicalEditor) => {
         editor.getElementByKey(key)?.setAttribute("data-cms-caret", "");
       }
     }),
-    // 15.12: a key handled from its keydown reads the page's caret first.
-    // A step the page took itself (a caret move inside text) reaches Lexical
-    // only when the page's selectionchange is read back, and Lexical's
-    // keydown update keeps its last selection; a key that comes before that
-    // read would act at the place the page has left (an Enter splitting
-    // there, a delete deciding from there). So a key at a caret in text, not
-    // while composing, starts from where the page's caret is
-    ...([
-      KEY_ARROW_LEFT_COMMAND,
-      KEY_ARROW_RIGHT_COMMAND,
-      KEY_ARROW_UP_COMMAND,
-      KEY_ARROW_DOWN_COMMAND,
-      KEY_BACKSPACE_COMMAND,
-      KEY_DELETE_COMMAND,
-      KEY_ENTER_COMMAND,
-    ] as LexicalCommand<unknown>[]).map((command) =>
-      editor.registerCommand(
-        command,
-        () => {
-          if (editor.isComposing()) {
-            return false;
-          }
-          const selection = $getSelection();
-          const dom = window.getSelection();
-          const root = editor.getRootElement();
-          // a point the field set (an element point) stands where the page
-          // cannot draw it apart; only a caret in text can be behind the page
-          if (
-            $isRangeSelection(selection) === false ||
-            selection.anchor.type !== "text" ||
-            selection.focus.type !== "text" ||
-            dom === null ||
-            root === null ||
-            dom.anchorNode === null ||
-            dom.focusNode === null ||
-            root.contains(dom.anchorNode) === false ||
-            root.contains(dom.focusNode) === false
-          ) {
-            return false;
-          }
-          const page = $createRangeSelectionFromDom(dom, editor);
-          if (page !== null && page.is(selection) === false) {
-            $setSelection(page);
-          }
+    // 15.12: a key starts from where the page's caret is when the page has
+    // moved it since Lexical last wrote or read the selection. A step the
+    // page took itself (a caret move inside text) reaches Lexical only when
+    // the page's selectionchange is read back, and Lexical's keydown update
+    // keeps its last selection; a key that comes before that read would act
+    // at the place the page has left (an Enter splitting there, a delete
+    // deciding from there). Where the page has not moved, Lexical's own
+    // selection stands as it is (a point the page cannot draw apart, a
+    // pending format)
+    editor.registerUpdateListener(({ editorState, prevEditorState }) => {
+      // a commit that wrote the selection
+      const next = editorState.read(() => $getSelection());
+      const prev = prevEditorState.read(() => $getSelection());
+      if (next === prev || (next !== null && prev !== null && next.is(prev))) {
+        return;
+      }
+      pageSelection = pageSnapshot();
+    }),
+    editor.registerCommand(
+      SELECTION_CHANGE_COMMAND,
+      () => {
+        pageSelection = pageSnapshot();
+        return false;
+      },
+      COMMAND_PRIORITY_CRITICAL
+    ),
+    editor.registerCommand(
+      KEY_DOWN_COMMAND,
+      () => {
+        if (editor.isComposing()) {
           return false;
-        },
-        COMMAND_PRIORITY_CRITICAL
-      )
+        }
+        const now = pageSnapshot();
+        const was = pageSelection;
+        if (
+          now === null ||
+          (was !== null &&
+            now.anchorNode === was.anchorNode &&
+            now.anchorOffset === was.anchorOffset &&
+            now.focusNode === was.focusNode &&
+            now.focusOffset === was.focusOffset)
+        ) {
+          return false;
+        }
+        const selection = $getSelection();
+        const dom = window.getSelection();
+        if ($isRangeSelection(selection) === false || dom === null) {
+          return false;
+        }
+        const page = $createRangeSelectionFromDom(dom, editor);
+        if (page !== null) {
+          $setSelection(page);
+        }
+        pageSelection = now;
+        return false;
+      },
+      COMMAND_PRIORITY_CRITICAL
     ),
     // 15.7: Shift and a press on text while a node is selected: the field
     // takes the pressed point when the pointer goes down, so the page's
