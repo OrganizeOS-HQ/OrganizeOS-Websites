@@ -40,8 +40,10 @@ import {
   ElementNode,
   INSERT_LINE_BREAK_COMMAND,
   INSERT_PARAGRAPH_COMMAND,
+  KEY_ARROW_DOWN_COMMAND,
   KEY_ARROW_LEFT_COMMAND,
   KEY_ARROW_RIGHT_COMMAND,
+  KEY_ARROW_UP_COMMAND,
   KEY_BACKSPACE_COMMAND,
   KEY_DELETE_COMMAND,
   PASTE_COMMAND,
@@ -2143,6 +2145,43 @@ export const registerLineCommands = (editor: LexicalEditor) => {
         editor.getElementByKey(key)?.setAttribute("data-cms-caret", "");
       }
     }),
+    // 15.12: an arrow key reads the page's caret first. A step the page took
+    // itself (a caret move inside text) reaches Lexical only when the page's
+    // selectionchange is read back; a key that comes before that read would
+    // see the place before the step, and the field's rules would decide
+    // from there. So an arrow key at a caret in text starts from where the
+    // page's caret is
+    ...[KEY_ARROW_LEFT_COMMAND, KEY_ARROW_RIGHT_COMMAND, KEY_ARROW_UP_COMMAND, KEY_ARROW_DOWN_COMMAND].map((command) =>
+      editor.registerCommand(
+        command,
+        () => {
+          const selection = $getSelection();
+          const dom = window.getSelection();
+          const root = editor.getRootElement();
+          // a point the field set (an element point) stands where the page
+          // cannot draw it apart; only a caret in text can be behind the page
+          if (
+            $isRangeSelection(selection) === false ||
+            selection.anchor.type !== "text" ||
+            selection.focus.type !== "text" ||
+            dom === null ||
+            root === null ||
+            dom.anchorNode === null ||
+            dom.focusNode === null ||
+            root.contains(dom.anchorNode) === false ||
+            root.contains(dom.focusNode) === false
+          ) {
+            return false;
+          }
+          const page = $createRangeSelectionFromDom(dom, editor);
+          if (page !== null && page.is(selection) === false) {
+            $setSelection(page);
+          }
+          return false;
+        },
+        COMMAND_PRIORITY_CRITICAL
+      )
+    ),
     // 15.7: Shift and a press on text while a node is selected: the field
     // takes the pressed point when the pointer goes down, so the page's
     // extension from its own anchor never becomes the selection, whichever
