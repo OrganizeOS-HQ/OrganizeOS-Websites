@@ -792,6 +792,59 @@ for (const [name, html, place] of B2_POINTS) {
     RECORDS.push([`B2 ${name} ${label}`, html, place, step]);
   }
 }
+// R10: a real click at the visible place of each element point, then a
+// letter (D1: where the letter lands)
+const clickAtPoint = (offset: number, inQuote: boolean): Step => async () => {
+  const root = editable()!;
+  const container = (
+    inQuote
+      ? root.querySelector("blockquote")
+      : root.querySelectorAll("ul > li")[1]
+  ) as HTMLElement;
+  // the stored children: a line's element stands for its children
+  const children: Node[] = [];
+  for (const child of Array.from(container.childNodes)) {
+    if (child instanceof HTMLElement && child.hasAttribute("data-cms-line")) {
+      children.push(...Array.from(child.childNodes));
+    } else {
+      children.push(child);
+    }
+  }
+  const rectOf = (node: Node) => {
+    if (node instanceof Element) return node.getBoundingClientRect();
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    return range.getBoundingClientRect();
+  };
+  const base = root.getBoundingClientRect();
+  const target = offset > 0 ? children[offset - 1] : children[0];
+  const rect = rectOf(target);
+  const x = offset > 0 ? rect.right - 1 : rect.left + 1;
+  const y = offset > 0 ? rect.bottom - 3 : rect.top + 3;
+  await userEvent.click(root, { position: { x: x - base.left, y: y - base.top } } as never);
+  await settle();
+};
+for (const [name, html, , size] of Q1_SHAPES) {
+  for (let offset = 0; offset <= size; offset += 1) {
+    RECORDS.push([`R10 click ${name} item@${offset} then k`, html, clickAtPoint(offset, false), keys("k")]);
+  }
+}
+const R10_MEETS: Array<[string, string, number, boolean]> = [
+  ["TQ@1", LI("T0w<blockquote><p>Q1w</p></blockquote>"), 1, false],
+  ["QT@1", LI("<blockquote><p>Q0w</p></blockquote>T1w"), 1, false],
+  ["TQT el1", LI("T0w<blockquote><p>Q1w</p></blockquote>T2w"), 1, false],
+  ["TQT el2", LI("T0w<blockquote><p>Q1w</p></blockquote>T2w"), 2, false],
+  ["TH@1", LI("T0w<h3>H1w</h3>"), 1, false],
+  ["TC@1", LI("T0w<pre><code>C1w</code></pre>"), 1, false],
+  ["AQ el1", LI('<a href="https://example.org/a">Aw</a><blockquote><p>Q1w</p></blockquote>'), 1, false],
+  ["QA el1", LI('<blockquote><p>Q0w</p></blockquote><a href="https://example.org/a">Lw</a>'), 1, false],
+  ["BQ el1", LI("<br><blockquote><p>Q1w</p></blockquote>"), 1, false],
+  ["QB el1", LI("<blockquote><p>Q0w</p></blockquote><br>"), 1, false],
+  ["root X1w el1", "<blockquote>X1w<p>X2w</p></blockquote>", 1, true],
+];
+for (const [name, html, offset, inQuote] of R10_MEETS) {
+  RECORDS.push([`R10 click ${name} then k`, html, clickAtPoint(offset, inQuote), keys("k")]);
+}
 const Q1_NODE_SHAPES: Array<[string, string, string]> = [
   ["rule in TRT", TRT, "horizontalrule"],
   ["rule in TR", TR, "horizontalrule"],
