@@ -5,7 +5,7 @@ import { act } from "react-dom/test-utils";
 import { describe, expect, test } from "vitest";
 import { cdp, userEvent } from "@vitest/browser/context";
 import { $createRangeSelection, $getRoot, $isElementNode, $setSelection, type LexicalNode } from "lexical";
-import { click, clickInWord, editable, editorOf, lastHtml, renderField, settle, undo } from "./rich-text-test-harness";
+import { clickInWord, editable, editorOf, lastHtml, renderField, settle, undo } from "./rich-text-test-harness";
 import { sanitizeRichTextHtml } from "./rich-text-sanitize";
 import { cmsHistory } from "./rich-text-line-node";
 import { fieldInvariantFailures, taggedNoChange } from "./rich-text-field-watch";
