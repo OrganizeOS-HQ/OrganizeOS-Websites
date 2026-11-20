@@ -491,6 +491,63 @@ const imeCancel = (how: "empty" | "commit" | "escape"): Step => async () => {
   }
   await settle();
 };
+/** The drawn caret's rectangles, against the editable root. */
+const logCaret = (label: string): Step => async () => {
+  editable()!.focus();
+  await settle();
+  const selection = window.getSelection();
+  const base = editable()!.getBoundingClientRect();
+  const rects =
+    selection === null || selection.rangeCount === 0
+      ? []
+      : Array.from(selection.getRangeAt(0).getClientRects()).map(
+          (r) => `${Math.round(r.left - base.left)},${Math.round(r.top - base.top)},${Math.round(r.width)},${Math.round(r.height)}`
+        );
+  const node = selection?.anchorNode;
+  // the drawn caret: pixels that differ between the focused editor and the
+  // same page with the editor blurred, over a few frames (the caret blinks)
+  const session = cdp() as unknown as {
+    send: (method: string, params?: object) => Promise<unknown>;
+  };
+  const shot = async () => {
+    const { data } = (await session.send("Page.captureScreenshot", {
+      format: "png",
+      clip: { x: base.left, y: base.top, width: base.width, height: base.height, scale: 1 },
+    })) as { data: string };
+    const blob = await (await fetch(`data:image/png;base64,${data}`)).blob();
+    const bitmap = await createImageBitmap(blob);
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    const context = canvas.getContext("2d")!;
+    context.drawImage(bitmap, 0, 0);
+    return context.getImageData(0, 0, bitmap.width, bitmap.height);
+  };
+  const focused: ImageData[] = [];
+  for (let frame = 0; frame < 4; frame += 1) {
+    focused.push(await shot());
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  }
+  const saved = selection !== null && selection.rangeCount > 0 ? selection.getRangeAt(0).cloneRange() : null;
+  selection?.removeAllRanges();
+  const blurred = await shot();
+  if (saved !== null) selection?.addRange(saved);
+  let box: number[] | null = null;
+  for (const image of focused) {
+    for (let y = 0; y < image.height; y += 1) {
+      for (let x = 0; x < image.width; x += 1) {
+        const i = (y * image.width + x) * 4;
+        if (
+          Math.abs(image.data[i] - blurred.data[i]) +
+            Math.abs(image.data[i + 1] - blurred.data[i + 1]) +
+            Math.abs(image.data[i + 2] - blurred.data[i + 2]) > 60
+        ) {
+          box = box === null ? [x, y, x, y] : [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)];
+        }
+      }
+    }
+  }
+  const drawn = box === null ? "none" : `${box[0]},${box[1]},${box[2] - box[0] + 1},${box[3] - box[1] + 1}`;
+  console.log(`CARET ${JSON.stringify({ label, rects, drawn, at: `${node?.nodeName}@${selection?.anchorOffset}` })}`);
+};
 const then = (...steps: Step[]): Step => async () => {
   for (const step of steps) await step();
 };
@@ -668,6 +725,12 @@ const V_RECORDS: Rec[] = [
   ["R10 cancelled composition (escape) after x, at T0w end", LI("T0w"), at("T0w"), then(keys("x"), imeCancel("escape"))],
   ["R10 cancelled composition (escape) after x, at TR@2", LI("T0w<hr>"), itemPoint(1, 2), then(keys("x"), imeCancel("escape"))],
   ["R10 cancelled composition (escape) alone, at T0w end", LI("T0w"), at("T0w"), imeCancel("escape")],
+  ["R11 caret at BQ el1 then k", LI("<br><blockquote><p>Q1w</p></blockquote>"), itemPoint(1, 1), then(logCaret("BQ el1"), keys("k"))],
+  ["R11 caret after T0w's break before a quote then k", LI("T0w<br><blockquote><p>Q2w</p></blockquote>"), itemPoint(1, 1), then(logCaret("TBQ el1"), keys("k"))],
+  ["R11 caret at TR@2 then k", LI("T0w<hr>"), itemPoint(1, 2), then(logCaret("TR@2"), keys("k"))],
+  ["R11 caret at RT@0 then k", LI("<hr>T1w"), itemPoint(1, 0), then(logCaret("RT@0"), keys("k"))],
+  ["R11 caret at RR@1 then k", LI("<hr><hr>"), itemPoint(1, 1), then(logCaret("RR@1"), keys("k"))],
+  ["R11 composition at BQ el1", LI("<br><blockquote><p>Q1w</p></blockquote>"), itemPoint(1, 1), ime("a")],
   ["R8 ordinary T1w@0 Backspace", LI("T1w"), at("T1w", 0), keys("{Backspace}")],
   ["R8 ordinary T1w@0 Ctrl+Backspace", LI("T1w"), at("T1w", 0), keys("{Control>}{Backspace}{/Control}")],
   ["R8 ordinary T1w end Delete", LI("T1w"), at("T1w"), keys("{Delete}")],

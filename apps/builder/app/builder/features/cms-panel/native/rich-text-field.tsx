@@ -282,6 +282,13 @@ const contentStyle = css(textVariants.regular, {
     borderTop: `1px solid ${cssVar("--border-default")}`,
     marginBlock: theme.spacing[5],
   },
+  // a line adds no space of its own: the break Lexical adds after a stored
+  // break that ends a line draws nothing where something follows the line,
+  // as the stored break draws nothing at the head before a block. An empty
+  // line's single break stays
+  "& [data-cms-line]:has(+ *) > br + br:last-child": {
+    display: "none",
+  },
 });
 
 const NumberedListIcon = () => (
