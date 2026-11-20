@@ -61,7 +61,7 @@ import {
   type RangeSelection,
   type SerializedElementNode,
   type EditorState,
-  type TextNode,
+  TextNode,
   $createTextNode,
   CAN_REDO_COMMAND,
   CAN_UNDO_COMMAND,
@@ -101,6 +101,73 @@ export const lineSpike = {
   /** Probes: a key does not take over a caret the page moved (15.12 off). */
   resyncOff: false,
 };
+
+/**
+ * 15.11: the nodes the clipboard writer's scratch editor makes to give an
+ * element end a place in text: types of their own, registered in the
+ * scratch editor only, so no real node is ever taken for one. They are
+ * dropped from the editor data by type and from text/html by their mark.
+ */
+export const PLACE_ATTRIBUTE = "data-cms-place";
+const markExport = (output: DOMExportOutput) => {
+  if (output.element instanceof HTMLElement) {
+    output.element.setAttribute(PLACE_ATTRIBUTE, "");
+  }
+  return output;
+};
+export class CmsPlaceTextNode extends TextNode {
+  static getType() {
+    return "cms-place-text";
+  }
+  static clone(node: CmsPlaceTextNode) {
+    return new CmsPlaceTextNode(node.__text, node.__key);
+  }
+  static importJSON() {
+    return new CmsPlaceTextNode("");
+  }
+  exportJSON() {
+    return { ...super.exportJSON(), type: "cms-place-text" };
+  }
+  exportDOM(editor: LexicalEditor) {
+    return markExport(super.exportDOM(editor));
+  }
+}
+export class CmsPlaceParagraphNode extends ParagraphNode {
+  static getType() {
+    return "cms-place-paragraph";
+  }
+  static clone(node: CmsPlaceParagraphNode) {
+    return new CmsPlaceParagraphNode(node.__key);
+  }
+  static importJSON() {
+    return new CmsPlaceParagraphNode();
+  }
+  exportJSON() {
+    return { ...super.exportJSON(), type: "cms-place-paragraph" };
+  }
+  exportDOM(editor: LexicalEditor) {
+    return markExport(super.exportDOM(editor));
+  }
+}
+export class CmsPlaceItemNode extends ListItemNode {
+  static getType() {
+    return "cms-place-item";
+  }
+  static clone(node: CmsPlaceItemNode) {
+    return new CmsPlaceItemNode(node.__value, node.__checked, node.__key);
+  }
+  static importJSON() {
+    return new CmsPlaceItemNode();
+  }
+  exportJSON() {
+    return { ...super.exportJSON(), type: "cms-place-item" };
+  }
+  exportDOM(editor: LexicalEditor) {
+    return markExport(super.exportDOM(editor));
+  }
+}
+export const PLACE_TYPES = new Set(["cms-place-text", "cms-place-paragraph", "cms-place-item"]);
+export const placeNodes = [CmsPlaceTextNode, CmsPlaceParagraphNode, CmsPlaceItemNode];
 
 export class CmsLineNode extends ElementNode {
   static getType() {
@@ -1133,30 +1200,51 @@ export const $lastPointToBlockEnd = (selection: RangeSelection) => {
   if (lineSpike.on === false || selection.isCollapsed()) {
     return false;
   }
-  const last = selection.isBackward() ? selection.anchor : selection.focus;
-  if (last.type !== "element" || last.offset === 0) {
-    return false;
+  const noText = (holder: LexicalNode) =>
+    ($isRootOrShadowRoot(holder) || $isListNode(holder) || $isQuoteNode(holder)) &&
+    isLinedContainer(holder) === false;
+  const isBlock = (node: LexicalNode | null): node is ElementNode =>
+    $isElementNode(node) && node.isInline() === false;
+  const { start, end: last } = $endsInOrder(selection);
+  let moved = false;
+  // 15.10: a last point directly after a nested block takes its content end
+  let lastDone = false;
+  if (last.type === "element" && last.offset > 0 && noText(last.getNode())) {
+    const block = (last.getNode() as ElementNode).getChildAtIndex(last.offset - 1);
+    if (isBlock(block)) {
+      const end = block.getLastDescendant();
+      if ($isTextNode(end)) {
+        last.set(end.getKey(), end.getTextContentSize(), "text");
+      } else if (end === null) {
+        last.set(block.getKey(), 0, "element");
+      } else {
+        last.set(end.getParentOrThrow().getKey(), end.getIndexWithinParent() + 1, "element");
+      }
+      lastDone = true;
+      moved = true;
+    }
   }
-  const holder = last.getNode();
-  if (
-    ($isRootOrShadowRoot(holder) === false && $isListNode(holder) === false && $isQuoteNode(holder) === false) ||
-    isLinedContainer(holder)
-  ) {
-    return false;
+  // E (15.10's mirror): an end, first or last, directly before a block
+  // takes that block's content start
+  for (const point of lastDone ? [start] : [start, last]) {
+    if (point.type !== "element" || noText(point.getNode()) === false) {
+      continue;
+    }
+    const block = (point.getNode() as ElementNode).getChildAtIndex(point.offset);
+    if (isBlock(block) === false) {
+      continue;
+    }
+    const first = block.getFirstDescendant();
+    if ($isTextNode(first)) {
+      point.set(first.getKey(), 0, "text");
+    } else if (first === null) {
+      point.set(block.getKey(), 0, "element");
+    } else {
+      point.set(first.getParentOrThrow().getKey(), first.getIndexWithinParent(), "element");
+    }
+    moved = true;
   }
-  const block = (holder as ElementNode).getChildAtIndex(last.offset - 1);
-  if ($isElementNode(block) === false || block.isInline()) {
-    return false;
-  }
-  const end = block.getLastDescendant();
-  if ($isTextNode(end)) {
-    last.set(end.getKey(), end.getTextContentSize(), "text");
-  } else if (end === null) {
-    last.set(block.getKey(), 0, "element");
-  } else {
-    last.set(end.getParentOrThrow().getKey(), end.getIndexWithinParent() + 1, "element");
-  }
-  return true;
+  return moved;
 };
 
 /**
@@ -2113,6 +2201,30 @@ export const registerLineCommands = (editor: LexicalEditor) => {
     if (made && edited === false) {
       $addUpdateTag("history-merge");
     }
+    $selectionBackOnPage();
+  };
+  // A: an end of the page's selection inside a decorator's DOM (an image's
+  // own element, where Chrome takes no typed text) while Lexical holds a
+  // range: Lexical's own selection goes back on the page, which then types
+  // over the range. Selection-only; the page's next selection change reads
+  // a place outside the decorator, so it does not repeat
+  const pageEndInDecorator = () => {
+    const root = editor.getRootElement();
+    const page = window.getSelection();
+    if (root === null || page === null || page.rangeCount === 0) {
+      return false;
+    }
+    return [page.anchorNode, page.focusNode].some((node) => {
+      const element = node instanceof Element ? node : node?.parentElement ?? null;
+      const decorator = element?.closest("[data-lexical-decorator]") ?? null;
+      return decorator !== null && root.contains(decorator);
+    });
+  };
+  const $selectionBackOnPage = () => {
+    const selection = $getSelection();
+    if ($isRangeSelection(selection) && selection.isCollapsed() === false && pageEndInDecorator()) {
+      $setSelection(selection.clone());
+    }
   };
   const endPress = () => {
     if (pressId === null) {
@@ -2232,6 +2344,7 @@ export const registerLineCommands = (editor: LexicalEditor) => {
       () => {
         if (pressId === null) {
           $resolvePoint();
+          $selectionBackOnPage();
         }
         return false;
       },
@@ -3256,21 +3369,19 @@ export const $endsInOrder = (selection: RangeSelection) => {
  * paragraphs) nothing moves and the result is null. With `mark`, the
  * inserted nodes carry the mark the writer drops them by.
  */
-export const PLACE_MARK = "--cms-place: 1";
-export const $endsIntoText = (selection: RangeSelection, mark: boolean): TextNode[] | null => {
+
+export const $endsIntoText = (selection: RangeSelection, mark: boolean): LexicalNode[] | null => {
   const { start, end } = $endsInOrder(selection);
   const holders = [start, end].filter((point) => point.type === "element");
-  for (const point of holders) {
-    const element = point.getNode();
-    if (
-      $isRootOrShadowRoot(element) ||
-      $isListNode(element) ||
-      ($isQuoteNode(element) && isLinedContainer(element) === false)
-    ) {
-      return null;
-    }
+  const noText = (element: LexicalNode) =>
+    $isRootOrShadowRoot(element) ||
+    $isListNode(element) ||
+    ($isQuoteNode(element) && isLinedContainer(element) === false);
+  // the live editor: where no text can stand nothing moves (15.11 (4))
+  if (mark === false && holders.some((point) => noText(point.getNode()))) {
+    return null;
   }
-  const inserted: TextNode[] = [];
+  const inserted: LexicalNode[] = [];
   const placed = new Map<string, TextNode>();
   for (const point of [start, end]) {
     if (point.type !== "element") {
@@ -3292,15 +3403,19 @@ export const $endsIntoText = (selection: RangeSelection, mark: boolean): TextNod
     const at = `${element.getKey()}@${point.offset}`;
     let text = placed.get(at);
     if (text === undefined) {
-      text = $createTextNode("");
-      if (mark) {
-        text.toggleUnmergeable();
-        text.setStyle(PLACE_MARK);
+      text = mark ? new CmsPlaceTextNode("") : $createTextNode("");
+      // 15.11 (E), the scratch editor only: where no text can stand, a
+      // made block of a kind that can stand there holds it
+      let holder: LexicalNode = text;
+      if (noText(element)) {
+        const block = $isListNode(element) ? new CmsPlaceItemNode() : new CmsPlaceParagraphNode();
+        block.append(text);
+        holder = block;
       }
       if (right !== null) {
-        right.insertBefore(text);
+        right.insertBefore(holder);
       } else {
-        element.append(text);
+        element.append(holder);
       }
       placed.set(at, text);
       inserted.push(text);

@@ -135,7 +135,9 @@ import {
   $liftPointsIntoLines,
   $lastPointToBlockEnd,
   $endsIntoText,
-  PLACE_MARK,
+  PLACE_ATTRIBUTE,
+  PLACE_TYPES,
+  placeNodes,
   removeKeptLines,
   $mapLineEdges,
   $plainTextOf,
@@ -1048,6 +1050,8 @@ const LinkButton = ({
   };
 
   const apply = () => {
+    // B: an edit: lines a press's caret left go first
+    removeKeptLines(editor);
     // only an address the site shows as a link
     const href = richTextHref(url);
     if (href === null) {
@@ -1134,6 +1138,7 @@ const LinkButton = ({
                 <Button
                   color="ghost"
                   onClick={() => {
+                    removeKeptLines(editor);
                     editor.dispatchCommand(TOGGLE_LINK_COMMAND, null);
                     setOpen(false);
                   }}
@@ -1483,8 +1488,18 @@ const Toolbar = ({
       // 15.13 (a): lines a press's caret left go before a toolbar command,
       // at the click (the press is over: nothing moves under the pointer)
       // or the key that runs it
-      onClickCapture={() => removeKeptLines(editor)}
-      onKeyDownCapture={() => removeKeptLines(editor)}
+      onClickCapture={(event) => {
+        // the toolbar's own controls; a popover's content (a portal) runs
+        // the removal at its own command
+        if (event.currentTarget.contains(event.target as Node)) {
+          removeKeptLines(editor);
+        }
+      }}
+      onKeyDownCapture={(event) => {
+        if (event.currentTarget.contains(event.target as Node)) {
+          removeKeptLines(editor);
+        }
+      }}
     >
       <Select
         aria-label="Block type"
@@ -2782,12 +2797,34 @@ const ImageEditingPlugin = () => {
               return true;
             }
             data["text/plain"] = plain;
+            if (command === CUT_COMMAND && $isRangeSelection(selection)) {
+              // E (2): the cut's check compares the clipboard with what the
+              // removal actually takes, the document before and after it in
+              // this update, before the clipboard is written. Where they
+              // differ nothing is removed: the update is abandoned by a throw,
+              // which Lexical answers by keeping the state before it (no
+              // onChange, no undo step, the selection as it was) and reports
+              // to the editor's onError (the dev assertion); the clipboard
+              // holds text/plain only
+              const before = $contentTokens();
+              $tagRemoval();
+              const live = $getSelection();
+              if ($isRangeSelection(live)) {
+                live.removeText();
+              }
+              const taken = $tokensHeld($removedTokens(before, $contentTokens()));
+              if (sameContent(data, taken) === false) {
+                markRichTextCopy(null);
+                setLexicalClipboardDataTransfer(event.clipboardData, { "text/plain": plain });
+                throw new Error("cms-line clipboard: the cut's removal does not take what its clipboard holds");
+              }
+              setLexicalClipboardDataTransfer(event.clipboardData, data);
+              return true;
+            }
             setLexicalClipboardDataTransfer(event.clipboardData, data);
             if (command === CUT_COMMAND) {
               $tagRemoval();
-              if ($isRangeSelection(selection)) {
-                selection.removeText();
-              } else if ($isNodeSelection(selection)) {
+              if ($isNodeSelection(selection)) {
                 $headPathOverNodeSelection();
                 for (const node of selection.getNodes()) {
                   node.remove();
@@ -2856,19 +2893,59 @@ const $treeJSON = (node: LexicalNode): SerializedLexicalNode => {
  * container with the line's children). Null when it cannot write: a throw,
  * or an end that does not carry over or does not fit its node.
  */
-/** 15.11 (2): the empty text nodes that gave an element end its place leave nothing. */
+/** The document's content in order: each character, and each leaf that is not text by its type. */
+const $contentTokens = () => {
+  const tokens: string[] = [];
+  const walk = (node: LexicalNode) => {
+    if ($isTextNode(node)) {
+      for (const character of node.getTextContent()) {
+        tokens.push(character);
+      }
+    } else if ($isElementNode(node)) {
+      node.getChildren().forEach(walk);
+    } else {
+      tokens.push(`[${node.getType()}]`);
+    }
+  };
+  walk($getRoot());
+  return tokens;
+};
+/** What a removal took: the tokens between the common start and the common end. */
+const $removedTokens = (before: string[], after: string[]) => {
+  let start = 0;
+  while (start < before.length && start < after.length && before[start] === after[start]) start += 1;
+  let end = 0;
+  while (end < before.length - start && end < after.length - start && before[before.length - 1 - end] === after[after.length - 1 - end]) end += 1;
+  return before.slice(start, before.length - end);
+};
+const $tokensHeld = (tokens: string[]) => {
+  const held = { text: "", images: 0, rules: 0 };
+  for (const token of tokens) {
+    if (token === "[cms-image]") held.images += 1;
+    else if (token === "[horizontalrule]") held.rules += 1;
+    else if (token.length === 1 && token !== "\n") held.text += token;
+  }
+  return held;
+};
+
+/** 15.11 (2, E): the nodes the scratch editor made to give an end its place leave nothing. */
 const dropPlaces = (data: ReturnType<typeof $getClipboardDataFromSelection>) => {
   const json = data["application/x-lexical-editor"];
   if (json !== undefined && json !== "") {
     const parsed = JSON.parse(json) as { nodes: SerializedLexicalNode[] };
     const drop = (nodes: SerializedLexicalNode[]): SerializedLexicalNode[] =>
       nodes.flatMap((node) => {
-        const item = node as SerializedLexicalNode & { style?: string; children?: SerializedLexicalNode[] };
-        if (item.type === "text" && (item.style ?? "").includes(PLACE_MARK)) {
+        const item = node as SerializedLexicalNode & { children?: SerializedLexicalNode[] };
+        if (PLACE_TYPES.has(item.type)) {
           return [];
         }
         if (item.children !== undefined) {
+          const had = item.children.length;
           item.children = drop(item.children);
+          // a list the made item alone filled goes with it
+          if (had > 0 && item.children.length === 0 && item.type === "list") {
+            return [];
+          }
         }
         return [item];
       });
@@ -2876,19 +2953,19 @@ const dropPlaces = (data: ReturnType<typeof $getClipboardDataFromSelection>) => 
     data["application/x-lexical-editor"] = JSON.stringify(parsed);
   }
   const html = data["text/html"];
-  if (html !== undefined && html.includes("--cms-place")) {
+  if (html !== undefined && html.includes(PLACE_ATTRIBUTE)) {
     const doc = new DOMParser().parseFromString(html, "text/html");
-    for (const span of doc.body.querySelectorAll("span")) {
-      if ((span.getAttribute("style") ?? "").includes("--cms-place") === false) {
+    for (const element of [...doc.body.querySelectorAll(`[${PLACE_ATTRIBUTE}]`)]) {
+      if (element.isConnected === false) {
         continue;
       }
-      // the span and any wrapper it alone fills
-      let at: Element = span;
+      // the made node, and any span or list it alone fills
+      let at: Element = element;
       while (
         at.parentElement !== null &&
         at.parentElement !== doc.body &&
-        at.parentElement.tagName === "SPAN" &&
-        at.parentElement.childNodes.length === 1
+        at.parentElement.childNodes.length === 1 &&
+        (at.parentElement.tagName === "SPAN" || ["UL", "OL"].includes(at.parentElement.tagName))
       ) {
         at = at.parentElement;
       }
@@ -2947,7 +3024,7 @@ const $headFormClipboard = (
   const scratch = createEditor({
     namespace: editor._config.namespace,
     theme: editor._config.theme,
-    nodes: [...richTextNodes],
+    nodes: [...richTextNodes, ...placeNodes],
     html: richTextHtmlConfig,
     onError: (error: Error) => {
       throw error;

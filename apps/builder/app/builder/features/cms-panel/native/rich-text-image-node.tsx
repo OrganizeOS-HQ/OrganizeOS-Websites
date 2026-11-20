@@ -37,6 +37,7 @@ import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext
 import { useLexicalEditable } from "@lexical/react/useLexicalEditable";
 import { useLexicalNodeSelection } from "@lexical/react/useLexicalNodeSelection";
 import { mergeRegister } from "@lexical/utils";
+import { removeKeptLines } from "./rich-text-line-node";
 import {
   Button,
   css,
@@ -271,7 +272,9 @@ const ImageView = ({ nodeKey, attributes, caption }: ImageViewProps) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
+  // B: the popover's actions are edits: lines a press's caret left go first
   const edit = (change: (node: CmsImageNode | CmsFigureNode) => void) => {
+    removeKeptLines(editor);
     editor.update(() => {
       const node = $getNodeByKey(nodeKey);
       if ($isCmsImageNode(node) || $isCmsFigureNode(node)) {

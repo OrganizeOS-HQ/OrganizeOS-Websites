@@ -2045,3 +2045,194 @@ test("15.12 S QRL Shift+ArrowRight x11 then a letter ends in bounded time", asyn
   expect(performance.now() - started).toBeLessThan(10_000);
   expect(writeOf(onChange)).toBe("<ul><li>Pwkw</li></ul>");
 }, 30_000);
+
+// 15.11 (E): the writer drops only the nodes its scratch editor made; a
+// real empty paragraph or item the range holds stays in the clipboard
+const copyNodes = async () => {
+  const data = new DataTransfer();
+  await act(async () => { editable()!.dispatchEvent(new ClipboardEvent("copy", { bubbles: true, cancelable: true, clipboardData: data })); });
+  await settle();
+  type J = { type: string; text?: string; children?: J[] };
+  const walk = (node: J): string => (node.text !== undefined ? `'${node.text}'` : node.children === undefined ? node.type : `${node.type}(${node.children.map(walk).join(",")})`);
+  return { nodes: (JSON.parse(data.getData("application/x-lexical-editor")).nodes as J[]).map(walk).join(","), html: data.getData("text/html").replace(/ (class|dir|style|value)="[^"]*"/g, "").replace(/<\/?span>/g, "") };
+};
+test("15.11 (E) a range across a real empty paragraph keeps it in the clipboard", async () => {
+  await renderField("<p>A0w</p><p><br></p><p>B2w</p>");
+  await placeIn("A0w", 1);
+  await act(async () => { editorOf()!.update(() => { const sel = $getSelection(); const b = $getRoot().getAllTextNodes().find((t) => t.getTextContent() === "B2w")!; if ($isRangeSelection(sel)) sel.focus.set(b.getKey(), 1, "text"); }); });
+  await settle();
+  expect(await copyNodes()).toEqual(EMPTY_PINS.paragraph);
+}, 30_000);
+test("15.11 (E) a range that starts in a real empty item keeps the item in the clipboard", async () => {
+  await renderField("<ul><li>Aw</li><li></li><li>Bw</li></ul>");
+  await placeIn("Bw", 1);
+  await act(async () => { editorOf()!.update(() => { const sel = $getSelection(); const item = all().filter((node) => node.getType() === "listitem")[1]; if ($isRangeSelection(sel)) sel.anchor.set(item.getKey(), 0, "element"); }); });
+  await settle();
+  expect(await copyNodes()).toEqual(EMPTY_PINS.item);
+}, 30_000);
+const EMPTY_PINS: Record<string, unknown> = {
+  paragraph: { nodes: "paragraph('0w'),paragraph(linebreak),paragraph('B')", html: "<p>0w</p><p><br></p><p>B</p>" },
+  item: { nodes: "list(listitem(),listitem('B'))", html: "<ul><li></li><li>B</li></ul>" },
+};
+// 15.11 (E, 5): the real input that reaches a root point beside a
+// root-level rule: a drag from a word onto the rule ends before it
+// (root@1). Shift+arrows step over the rule into text, a drag below the
+// rule ends in the next paragraph, a Shift+click on the rule selects it:
+// none reaches the point after the rule
+const DRAG_PINS: Record<string, string> = {
+ "A0w {Backspace}": "\"A0w\"@0->root@1[horizontalrule] | <hr /><p>B2w</p>",
+ "A0w k": "\"A0w\"@0->root@1[horizontalrule] | <p>k</p><hr /><p>B2w</p>",
+ "A0w cut": "\"A0w\"@0->root@1[horizontalrule] | <p></p><hr /><p>B2w</p> clip=\"A0w\"",
+ "B2w {Backspace}": "\"B2w\"@0->root@1[horizontalrule] | <p>A0w</p><p>B2w</p>",
+ "B2w k": "\"B2w\"@0->root@1[horizontalrule] | <p>A0w</p><p>kB2w</p>",
+ "B2w cut": "\"B2w\"@0->root@1[horizontalrule] | <p>A0w</p><p>B2w</p> clip=\"\\n\\n\""
+};
+for (const from of ["A0w", "B2w"]) for (const key of ["{Backspace}", "k", "cut"]) test(`15.11 (E) a drag from ${from} onto a root-level rule, then ${key === "cut" ? "a cut" : key}`, async () => {
+  const onChange = await renderField("<p>A0w</p><hr><p>B2w</p>");
+  const words = [...editable()!.querySelectorAll<HTMLElement>("[data-lexical-text]")];
+  const box = words.find((span) => span.textContent === from)!.getBoundingClientRect();
+  const rule = editable()!.querySelector("hr")!.getBoundingClientRect();
+  const x1 = rule.left + rule.width / 2;
+  const y1 = rule.top + rule.height / 2;
+  await mouse("mousePressed", box.left + 2, box.top + box.height / 2);
+  await settle();
+  await mouse("mouseMoved", x1, (box.top + y1) / 2, 1); await settle();
+  await mouse("mouseMoved", x1, y1, 1); await settle();
+  await mouse("mouseReleased", x1, y1);
+  await settle();
+  const sel = walkSel();
+  let clip = "";
+  if (key === "cut") {
+    const data = new DataTransfer();
+    await act(async () => { editable()!.dispatchEvent(new ClipboardEvent("cut", { bubbles: true, cancelable: true, clipboardData: data })); });
+    clip = ` clip=${JSON.stringify(data.getData("text/plain"))}`;
+  } else {
+    await userEvent.keyboard(key);
+  }
+  await settle();
+  expect(`${sel} | ${writeOf(onChange)}${clip}`).toBe(DRAG_PINS[`${from} ${key}`]);
+}, 30_000);
+
+// 15.11 (E): a range with an end on the root beside a root-level rule:
+// an end directly before a block takes its content start (15.10's mirror).
+// Backspace and a letter, pinned; the cut is the writer test's (oracle).
+// Before records: a7f8121fd's write for the same range
+type RootEnd = { t: "text"; w: string; o: number } | { t: "before" | "after" | "between" };
+const RA: RootEnd = { t: "text", w: "A0w", o: 1 }, RB: RootEnd = { t: "text", w: "B2w", o: 1 };
+const ROOT_CASES: [string, string, RootEnd, RootEnd][] = [
+  ["beforeRule -> prevP A0w@1", "<p>A0w</p><hr><p>B2w</p>", { t: "before" }, RA], ["prevP A0w@1 -> beforeRule", "<p>A0w</p><hr><p>B2w</p>", RA, { t: "before" }],
+  ["beforeRule -> nextP B2w@1", "<p>A0w</p><hr><p>B2w</p>", { t: "before" }, RB], ["nextP B2w@1 -> beforeRule", "<p>A0w</p><hr><p>B2w</p>", RB, { t: "before" }],
+  ["afterRule -> prevP A0w@1", "<p>A0w</p><hr><p>B2w</p>", { t: "after" }, RA], ["prevP A0w@1 -> afterRule", "<p>A0w</p><hr><p>B2w</p>", RA, { t: "after" }],
+  ["afterRule -> nextP B2w@1", "<p>A0w</p><hr><p>B2w</p>", { t: "after" }, RB], ["nextP B2w@1 -> afterRule", "<p>A0w</p><hr><p>B2w</p>", RB, { t: "after" }],
+  ["pair beforeRule..afterRule", "<p>A0w</p><hr><p>B2w</p>", { t: "before" }, { t: "after" }], ["pair-back beforeRule..afterRule", "<p>A0w</p><hr><p>B2w</p>", { t: "after" }, { t: "before" }],
+  ["end after a rule last in the content: A0w@1 -> after", "<p>A0w</p><hr>", RA, { t: "after" }], ["end after a rule last in the content: after -> A0w@1", "<p>A0w</p><hr>", { t: "after" }, RA],
+  ["between two rules: A0w@1 -> between", "<p>A0w</p><hr><hr><p>B2w</p>", RA, { t: "between" }], ["between two rules: between -> B2w@1", "<p>A0w</p><hr><hr><p>B2w</p>", { t: "between" }, RB],
+];
+const ROOT_PINS: Record<string, string> = {
+ "afterRule -> nextP B2w@1 | Backspace": "<p>A0w</p><hr /><p>2w</p>",
+ "afterRule -> nextP B2w@1 | k": "<p>A0w</p><hr /><p>k2w</p>",
+ "afterRule -> prevP A0w@1 | Backspace": "<p>AB2w</p>",
+ "afterRule -> prevP A0w@1 | k": "<p>AkB2w</p>",
+ "beforeRule -> nextP B2w@1 | Backspace": "<p>A0w</p><p>2w</p>",
+ "beforeRule -> nextP B2w@1 | k": "<p>A0w</p><p>k2w</p>",
+ "beforeRule -> prevP A0w@1 | Backspace": "<p>A</p><hr /><p>B2w</p>",
+ "beforeRule -> prevP A0w@1 | k": "<p>Ak</p><hr /><p>B2w</p>",
+ "between two rules: A0w@1 -> between | Backspace": "<p>A</p><hr /><p>B2w</p>",
+ "between two rules: A0w@1 -> between | k": "<p>Ak</p><hr /><p>B2w</p>",
+ "between two rules: between -> B2w@1 | Backspace": "<p>A0w</p><hr /><p>2w</p>",
+ "between two rules: between -> B2w@1 | k": "<p>A0w</p><hr /><p>k2w</p>",
+ "end after a rule last in the content: A0w@1 -> after | Backspace": "<p>A</p>",
+ "end after a rule last in the content: A0w@1 -> after | k": "<p>Ak</p>",
+ "end after a rule last in the content: after -> A0w@1 | Backspace": "<p>A</p>",
+ "end after a rule last in the content: after -> A0w@1 | k": "<p>Ak</p>",
+ "nextP B2w@1 -> afterRule | Backspace": "<p>A0w</p><hr /><p>2w</p>",
+ "nextP B2w@1 -> afterRule | k": "<p>A0w</p><hr /><p>k2w</p>",
+ "nextP B2w@1 -> beforeRule | Backspace": "<p>A0w</p><p>2w</p>",
+ "nextP B2w@1 -> beforeRule | k": "<p>A0w</p><p>k2w</p>",
+ "pair beforeRule..afterRule | Backspace": "<p>A0w</p><p>B2w</p>",
+ "pair beforeRule..afterRule | k": "<p>A0w</p><p>kB2w</p>",
+ "pair-back beforeRule..afterRule | Backspace": "<p>A0w</p><p>B2w</p>",
+ "pair-back beforeRule..afterRule | k": "<p>A0w</p><p>kB2w</p>",
+ "prevP A0w@1 -> afterRule | Backspace": "<p>AB2w</p>",
+ "prevP A0w@1 -> afterRule | k": "<p>AkB2w</p>",
+ "prevP A0w@1 -> beforeRule | Backspace": "<p>A</p><hr /><p>B2w</p>",
+ "prevP A0w@1 -> beforeRule | k": "<p>Ak</p><hr /><p>B2w</p>"
+};
+const ROOT_HEAD: Record<string, string> = {
+ "afterRule -> nextP B2w@1 | Backspace": "<p>A0w</p><hr /><p>B</p>",
+ "afterRule -> nextP B2w@1 | cut": "<p>A0w</p><hr /><p>B</p> clip=\"B\"",
+ "afterRule -> nextP B2w@1 | k": "<p>A0w</p><hr /><p>Bk</p>",
+ "afterRule -> prevP A0w@1 | Backspace": "<p>A</p>",
+ "afterRule -> prevP A0w@1 | cut": "<p>A</p> clip=\"0w\\n\\n\\n\"",
+ "afterRule -> prevP A0w@1 | k": "<p>AkB2w</p>",
+ "beforeRule -> nextP B2w@1 | Backspace": "<p>A0w</p><p>2w</p>",
+ "beforeRule -> nextP B2w@1 | cut": "<p>A0w</p><p>2w</p> clip=\"\\n\\nB\"",
+ "beforeRule -> nextP B2w@1 | k": "<p>A0w</p><p>k2w</p>",
+ "beforeRule -> prevP A0w@1 | Backspace": "<p>A</p><hr /><p>B2w</p>",
+ "beforeRule -> prevP A0w@1 | cut": "<p>A</p><hr /><p>B2w</p> clip=\"0w\\n\"",
+ "beforeRule -> prevP A0w@1 | k": "NOOP ERR Error: updateEditor: selection has been lost because the previously selected nod",
+ "nextP B2w@1 -> afterRule | Backspace": "<p>A0w</p><hr /><p>B</p>",
+ "nextP B2w@1 -> afterRule | cut": "<p>A0w</p><hr /><p>B</p> clip=\"B\"",
+ "nextP B2w@1 -> afterRule | k": "<p>A0w</p><hr /><p>Bk</p>",
+ "nextP B2w@1 -> beforeRule | Backspace": "<p>A0w</p><p>2w</p>",
+ "nextP B2w@1 -> beforeRule | cut": "<p>A0w</p><p>2w</p> clip=\"\\n\\nB\"",
+ "nextP B2w@1 -> beforeRule | k": "<p>A0w</p><p>k2w</p>",
+ "pair beforeRule..afterRule | Backspace": "<p>A0w</p>",
+ "pair beforeRule..afterRule | cut": "<p>A0w</p> clip=\"\\n\\n\"",
+ "pair beforeRule..afterRule | k": "<p>A0w</p><p>k</p>",
+ "pair-back beforeRule..afterRule | Backspace": "<p>A0w</p>",
+ "pair-back beforeRule..afterRule | cut": "<p>A0w</p> clip=\"\\n\\n\"",
+ "pair-back beforeRule..afterRule | k": "<p>A0w</p><p>k</p>",
+ "prevP A0w@1 -> afterRule | Backspace": "<p>A</p>",
+ "prevP A0w@1 -> afterRule | cut": "<p>A</p> clip=\"0w\\n\\n\\n\"",
+ "prevP A0w@1 -> afterRule | k": "<p>AkB2w</p>",
+ "prevP A0w@1 -> beforeRule | Backspace": "<p>A</p><hr /><p>B2w</p>",
+ "prevP A0w@1 -> beforeRule | cut": "<p>A</p><hr /><p>B2w</p> clip=\"0w\\n\"",
+ "prevP A0w@1 -> beforeRule | k": "NOOP ERR Error: updateEditor: selection has been lost because the previously selected nod"
+};
+for (const [id, html, anchor, focus] of ROOT_CASES) for (const key of ["Backspace", "k"]) test(`15.11 (E) ${id}: ${key}`, async () => {
+  const onChange = await renderField(html);
+  await userEvent.click(editable()!); await settle();
+  await act(async () => { editorOf()!.update(() => {
+    const range = $createRangeSelection();
+    const set = (point: PointType, end: RootEnd) => {
+      if (end.t === "text") { const text = $getRoot().getAllTextNodes().find((t) => t.getTextContent() === end.w)!; point.set(text.getKey(), end.o, "text"); return; }
+      const rule = all().find((node) => node.getType() === "horizontalrule")!;
+      point.set("root", rule.getIndexWithinParent() + (end.t === "before" ? 0 : 1), "element");
+    };
+    set(range.anchor, anchor); set(range.focus, focus); $setSelection(range);
+  }); });
+  await settle();
+  await userEvent.keyboard(key === "k" ? "k" : "{Backspace}");
+  await settle();
+  expect(writeOf(onChange)).toBe(ROOT_PINS[`${id} | ${key}`]);
+  if (id.includes("Rule")) expect(ROOT_HEAD[`${id} | ${key}`]).toBeDefined();
+}, 30_000);
+
+// A: with Lexical holding a range and the page an end of it inside a
+// decorator's DOM, the field puts Lexical's selection back on the page, so
+// the page types over the range. Before records: a7f8121fd writes nothing
+// for the letter (the page fires no beforeinput there)
+const A_IMG = `<img src="https://cdn.example.org/x.png" alt="" width="40" height="20" />`;
+const A_CASES: [string, string, string, number, string, Record<string, string>][] = [
+  ["a paragraph that starts with an image, Shift+Home", `<p>A0w</p><p>${A_IMG}B1w</p>`, "B1w", 1, "{Shift>}{Home}{/Shift}", { letter: "<p>A0w</p><p>Ik1w</p>", composition: "<p>A0w</p><p>Iab1w</p>", paste: "<p>A0w</p><p>IZq1w</p>", head: "NOOP" }],
+  ["an item that starts with an image, Shift+Home", `<ul><li>Pw</li><li>${A_IMG}T1w</li><li>Nw</li></ul>`, "T1w", 1, "{Shift>}{Home}{/Shift}", { letter: "<ul><li>Pw</li><li>Ik1w</li><li>Nw</li></ul>", composition: "<ul><li>Pw</li><li>Iab1w</li><li>Nw</li></ul>", paste: "<ul><li>Pw</li><li>IZq1w</li><li>Nw</li></ul>", head: "NOOP" }],
+  ["a line after a quote that starts with an image, Shift+Home", `<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>${A_IMG}T1w</li><li>Nw</li></ul>`, "T1w", 1, "{Shift>}{Home}{/Shift}", { letter: "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>Ik1w</li><li>Nw</li></ul>", composition: "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>Iab1w</li><li>Nw</li></ul>", paste: "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>IZq1w</li><li>Nw</li></ul>", head: "NOOP" }],
+  ["a paragraph that ends with an image, Shift+End", `<p>A0w${A_IMG}</p><p>B1w</p>`, "A0w", 1, "{Shift>}{End}{/Shift}", { letter: "<p>Ak</p><p>B1w</p>", composition: "<p>Aab</p><p>B1w</p>", paste: "<p>AZq</p><p>B1w</p>", head: "<p>Ak</p><p>B1w</p>" }],
+];
+for (const [name, html, word, at, keys, writes] of A_CASES) for (const entry of ["letter", "composition", "paste"] as const) test(`A ${name}, then ${entry === "letter" ? "a letter" : entry === "composition" ? "a written composition" : "a menu paste"}`, async () => {
+  const onChange = await renderField(html);
+  await clickInWord(word, at);
+  await userEvent.keyboard(keys); await settle();
+  if (entry === "letter") await userEvent.keyboard("k");
+  else if (entry === "composition") { await ime("a"); await commit("ab"); }
+  else { const data = new DataTransfer(); data.setData("text/plain", "Zq"); await act(async () => { editable()!.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: data })); }); }
+  await settle();
+  expect(writeOf(onChange).replace(/<img[^>]*>/g, "I")).toBe(writes[entry]);
+  expect(writes.head).toBeDefined();
+  if (entry === "letter") {
+    // the next Shift+arrow continues from the place the letter left
+    await userEvent.keyboard("{Shift>}{ArrowLeft}{/Shift}"); await settle();
+    expect(window.getSelection()!.toString()).toBe("k");
+  }
+}, 30_000);
