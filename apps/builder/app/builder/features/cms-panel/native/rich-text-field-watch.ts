@@ -1,7 +1,7 @@
 // The field's development checks: a tagged update that changes no node, and
 // the harness invariant every browser test and probe record is held to.
 import type { LexicalEditor } from "lexical";
-import { d7Document } from "./rich-text-line-node";
+import { d7Document, unkeptEmptyLines } from "./rich-text-line-node";
 
 export type FieldValue = { html: string; text: string } | null;
 
@@ -87,6 +87,12 @@ export const watchField = (editor: LexicalEditor, valueOf: () => FieldValue) => 
 export const fieldInvariantFailures = (clear: boolean) => {
   const failures: string[] = [];
   for (const entry of watched) {
+    // 15.13 (a): after a key or an edit no empty line stands that does not
+    // hold the caret; only a press keeps one
+    const left = unkeptEmptyLines(entry.editor);
+    if (left > 0) {
+      failures.push(`field invariant: ${left} empty line(s) that hold no caret and no press kept`);
+    }
     if (entry.changes > 0) {
       const now = JSON.stringify(entry.valueOf()?.html ?? null);
       if (JSON.stringify(entry.last?.html ?? null) !== now) {

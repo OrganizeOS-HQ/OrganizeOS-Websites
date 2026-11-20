@@ -1122,11 +1122,56 @@ const $lineFormHasNothing = () => {
   }
 };
 
-export const $tagRemoval = (isBackward?: boolean) => {
-  $mark(REMOVAL_TAG);
+/**
+ * 15.10: a range's last point on a container where no text can stand (the
+ * root, a list, a quote) directly after a nested block holds what the
+ * range ending at that block's content end holds, and moves there: its
+ * last text's end, else the place after its last child. A first point,
+ * and a last point after a rule, stay. True when it moved.
+ */
+export const $lastPointToBlockEnd = (selection: RangeSelection) => {
+  if (lineSpike.on === false || selection.isCollapsed()) {
+    return false;
+  }
+  const last = selection.isBackward() ? selection.anchor : selection.focus;
+  if (last.type !== "element" || last.offset === 0) {
+    return false;
+  }
+  const holder = last.getNode();
+  if (
+    ($isRootOrShadowRoot(holder) === false && $isListNode(holder) === false && $isQuoteNode(holder) === false) ||
+    isLinedContainer(holder)
+  ) {
+    return false;
+  }
+  const block = (holder as ElementNode).getChildAtIndex(last.offset - 1);
+  if ($isElementNode(block) === false || block.isInline()) {
+    return false;
+  }
+  const end = block.getLastDescendant();
+  if ($isTextNode(end)) {
+    last.set(end.getKey(), end.getTextContentSize(), "text");
+  } else if (end === null) {
+    last.set(block.getKey(), 0, "element");
+  } else {
+    last.set(end.getParentOrThrow().getKey(), end.getIndexWithinParent() + 1, "element");
+  }
+  return true;
+};
+
+/**
+ * Marks a removal and puts its ends where the line rules read them. True
+ * when the range holds nothing once its ends are in place (15.10): there
+ * is nothing to remove, and the selection is the caret there.
+ */
+export const $tagRemoval = (isBackward?: boolean): boolean => {
   const selection = $getSelection();
+  if ($isRangeSelection(selection) && $lastPointToBlockEnd(selection) && selection.isCollapsed()) {
+    return true;
+  }
+  $mark(REMOVAL_TAG);
   if ($isRangeSelection(selection) === false) {
-    return;
+    return false;
   }
   $pointOffNodeEnd(selection, isBackward);
   // E3: D3's break is decided here, before the edit, from the selection:
@@ -1161,7 +1206,7 @@ export const $tagRemoval = (isBackward?: boolean) => {
     $mark(`${REMOVAL_END_TAG}${node.getKey()}`);
   }
   if (selection.isCollapsed()) {
-    return;
+    return false;
   }
   const startPoint = selection.isBackward() ? selection.focus : selection.anchor;
   const childOf = (node: LexicalNode) => {
@@ -1197,6 +1242,7 @@ export const $tagRemoval = (isBackward?: boolean) => {
   ) {
     $mark(`${REMOVAL_START_TAG}${node.getKey()}`);
   }
+  return false;
 };
 
 const $dropEmptied = (node: ElementNode) => {
@@ -1570,21 +1616,105 @@ const $updateHasEdits = () => {
   return editor._dirtyElements.size > 0 || editor._dirtyLeaves.size > 0;
 };
 
-/** Empty lines that hold no point of the selection go. True when any did. */
-const $removeLeftEmptyLines = () => {
-  let removed = false;
+/**
+ * 15.13 (a): empty lines a press's caret left, per editor. A press does not
+ * remove the line its caret left (the content would move between the
+ * presses of a double click); the next key in the field, or the next edit
+ * or clipboard command, removes it first. A press back into a kept line
+ * makes it the caret's line again.
+ */
+const keptLines = new WeakMap<LexicalEditor, Set<NodeKey>>();
+const keptOf = (editor: LexicalEditor) => {
+  let kept = keptLines.get(editor);
+  if (kept === undefined) {
+    kept = new Set();
+    keptLines.set(editor, kept);
+  }
+  return kept;
+};
+
+/** Empty lines that hold no point of the selection, by whether a press kept them. */
+const $leftEmptyLines = () => {
+  const kept = keptOf($getEditor());
+  const left: CmsLineNode[] = [];
   for (const { node } of $dfs()) {
-    if (
-      $isCmsLineNode(node) &&
-      node.isAttached() &&
-      node.isEmpty() &&
-      holdsSelection(node) === false
-    ) {
-      node.remove();
+    if ($isCmsLineNode(node) && node.isAttached() && node.isEmpty()) {
+      if (holdsSelection(node)) {
+        kept.delete(node.getKey());
+      } else {
+        left.push(node);
+      }
+    }
+  }
+  return { kept, left };
+};
+
+/** Harness: empty lines that hold no point of the selection and no press kept. */
+export const unkeptEmptyLines = (editor: LexicalEditor) => {
+  const kept = keptOf(editor);
+  return editor.getEditorState().read(() =>
+    $dfs().filter(
+      ({ node }) =>
+        $isCmsLineNode(node) &&
+        node.isEmpty() &&
+        holdsSelection(node) === false &&
+        kept.has(node.getKey()) === false
+    ).length
+  );
+};
+
+/** Empty lines that hold no point of the selection go, except kept ones. True when any did. */
+const $removeLeftEmptyLines = () => {
+  const { kept, left } = $leftEmptyLines();
+  let removed = false;
+  for (const line of left) {
+    if (kept.has(line.getKey()) === false) {
+      line.remove();
       removed = true;
     }
   }
   return removed;
+};
+
+/** A press's end: the empty lines its caret left are kept. */
+const $keepLeftEmptyLines = () => {
+  const { kept, left } = $leftEmptyLines();
+  for (const line of left) {
+    kept.add(line.getKey());
+  }
+};
+
+/** Kept lines that hold no point of the selection go. True when any did. */
+const $removeKeptLines = () => {
+  const { kept, left } = $leftEmptyLines();
+  let removed = false;
+  for (const line of left) {
+    if (kept.has(line.getKey())) {
+      line.remove();
+      removed = true;
+    }
+  }
+  kept.clear();
+  return removed;
+};
+
+/**
+ * Before an edit command from outside the field's own keys and clipboard
+ * events (a toolbar button), kept lines go in an update of their own: not
+ * an edit (no undo step, no onChange).
+ */
+export const removeKeptLines = (editor: LexicalEditor) => {
+  if (keptOf(editor).size === 0 || editor.isComposing()) {
+    return;
+  }
+  editor.update(
+    () => {
+      if ($removeKeptLines()) {
+        $addUpdateTag("history-merge");
+      }
+    },
+    { discrete: true }
+  );
 };
 
 /** Whether a committed selection breaks the point rule (5.3). */
@@ -1970,6 +2100,16 @@ export const registerLineCommands = (editor: LexicalEditor) => {
       $addUpdateTag("history-merge");
     }
   };
+  // the press's end makes the line a caret needs; a line the caret left
+  // is kept (15.13 (a))
+  const $resolveAfterPress = () => {
+    const edited = $updateHasEdits();
+    const made = $liftPointsIntoLines(true);
+    $keepLeftEmptyLines();
+    if (made && edited === false) {
+      $addUpdateTag("history-merge");
+    }
+  };
   const endPress = () => {
     if (pressId === null) {
       return;
@@ -1978,13 +2118,75 @@ export const registerLineCommands = (editor: LexicalEditor) => {
     if (editor.getRootElement() === null) {
       return;
     }
-    editor.update($resolvePoint, { discrete: true });
+    editor.update($resolveAfterPress, { discrete: true });
   };
   const onPressStart = (event: PointerEvent) => {
     // a second pointer ends the press in progress
     endPress();
     if (event.button === 0) {
       pressId = event.pointerId;
+    }
+  };
+  // 15.12: the page's selection is read back where the page has moved
+  // since Lexical last wrote or read it
+  const $readBack = () => {
+    if (editor.isComposing() || lineSpike.resyncOff) {
+      return;
+    }
+    const now = pageSnapshot();
+    const was = pageSelection;
+    if (
+      now === null ||
+      (was !== null &&
+        now.anchorNode === was.anchorNode &&
+        now.anchorOffset === was.anchorOffset &&
+        now.focusNode === was.focusNode &&
+        now.focusOffset === was.focusOffset)
+    ) {
+      return;
+    }
+    const selection = $getSelection();
+    const dom = window.getSelection();
+    if ($isRangeSelection(selection) === false || dom === null) {
+      return;
+    }
+    const page = $createRangeSelectionFromDom(dom, editor);
+    if (page !== null) {
+      $setSelection(page);
+    }
+    pageSelection = now;
+  };
+  // a key, or an edit or clipboard event, in the field: in an update of its
+  // own before the key's or the edit's (not an edit: no undo step, no
+  // onChange), in this order: the page's read-back (15.12), the kept lines
+  // go, the held step of a press in progress (15.13); the rules then read
+  // the selection
+  const beforeKeyOrEditEvents = ["keydown", "beforeinput", "paste", "cut", "copy", "drop"] as const;
+  const beforeKeyOrEdit = () => {
+    if (editor.isComposing() || (keptOf(editor).size === 0 && pressId === null)) {
+      return;
+    }
+    const dom = window.getSelection();
+    const saved = dom !== null && dom.rangeCount > 0 ? dom.getRangeAt(0).cloneRange() : null;
+    const nodeSelected = editor.getEditorState().read(() => $isNodeSelection($getSelection()));
+    editor.update(
+      () => {
+        $readBack();
+        let changed = $removeKeptLines();
+        if (pressId !== null) {
+          changed = $liftPointsIntoLines(true) || changed;
+          changed = $removeLeftEmptyLines() || changed;
+        }
+        if (changed) {
+          $addUpdateTag("history-merge");
+        }
+      },
+      { discrete: true }
+    );
+    // with a node selected, the page's own range is what the browser types
+    // at (the field takes that input); Lexical's commit drops it
+    if (saved !== null && nodeSelected && dom !== null && dom.rangeCount === 0) {
+      dom.addRange(saved);
     }
   };
   // a pointer seen with no button down: the press ended where the page
@@ -2228,43 +2430,7 @@ export const registerLineCommands = (editor: LexicalEditor) => {
     editor.registerCommand(
       KEY_DOWN_COMMAND,
       () => {
-        if (editor.isComposing() || lineSpike.resyncOff) {
-          return false;
-        }
-        const now = pageSnapshot();
-        const was = pageSelection;
-        if (
-          now === null ||
-          (was !== null &&
-            now.anchorNode === was.anchorNode &&
-            now.anchorOffset === was.anchorOffset &&
-            now.focusNode === was.focusNode &&
-            now.focusOffset === was.focusOffset)
-        ) {
-          return false;
-        }
-        const selection = $getSelection();
-        const dom = window.getSelection();
-        if ($isRangeSelection(selection) === false || dom === null) {
-          return false;
-        }
-        const page = $createRangeSelectionFromDom(dom, editor);
-        if (page !== null) {
-          $setSelection(page);
-        }
-        pageSelection = now;
-        return false;
-      },
-      COMMAND_PRIORITY_CRITICAL
-    ),
-    // 15.13: a key while the pointer is still down: the held step runs
-    // before any rule reads the selection (after the page's read-back above)
-    editor.registerCommand(
-      KEY_DOWN_COMMAND,
-      () => {
-        if (pressId !== null) {
-          $resolvePoint();
-        }
+        $readBack();
         return false;
       },
       COMMAND_PRIORITY_CRITICAL
@@ -2272,6 +2438,10 @@ export const registerLineCommands = (editor: LexicalEditor) => {
     editor.registerRootListener((root, previous) => {
       previous?.removeEventListener("pointerdown", onPressStart, true);
       root?.addEventListener("pointerdown", onPressStart, true);
+      for (const type of beforeKeyOrEditEvents) {
+        previous?.removeEventListener(type, beforeKeyOrEdit, true);
+        root?.addEventListener(type, beforeKeyOrEdit, true);
+      }
     }),
     (() => {
       // the press's own end: the click (bubbling, after the node's own
@@ -2612,6 +2782,28 @@ export const registerLineCommands = (editor: LexicalEditor) => {
           COMMAND_PRIORITY_CRITICAL
         )
     ),
+    // 15.10: Backspace or Delete over a range that holds nothing once its
+    // last point is in place removes nothing, and the page's own delete
+    // after the key does not run at the caret that is left
+    ...[KEY_BACKSPACE_COMMAND, KEY_DELETE_COMMAND].map((command) =>
+      editor.registerCommand(
+        command,
+        (event: KeyboardEvent | null) => {
+          const selection = $getSelection();
+          if ($isRangeSelection(selection) === false) {
+            return false;
+          }
+          const moved = selection.clone();
+          if ($lastPointToBlockEnd(moved) === false || moved.isCollapsed() === false) {
+            return false;
+          }
+          event?.preventDefault();
+          $setSelection(moved);
+          return true;
+        },
+        COMMAND_PRIORITY_CRITICAL
+      )
+    ),
     ...removeCommands.map((command) =>
       editor.registerCommand(
         command,
@@ -2651,14 +2843,15 @@ export const registerLineCommands = (editor: LexicalEditor) => {
             $getEditor().dispatchCommand(DELETE_CHARACTER_COMMAND, true);
             return true;
           }
-          $tagRemoval(
+          const nothingHeld = $tagRemoval(
             command === DELETE_CHARACTER_COMMAND ||
               command === DELETE_WORD_COMMAND ||
               command === DELETE_LINE_COMMAND
               ? (payload as boolean)
               : undefined
           );
-          return false;
+          // a range that holds nothing (15.10) removes nothing
+          return nothingHeld;
         },
         COMMAND_PRIORITY_CRITICAL
       )

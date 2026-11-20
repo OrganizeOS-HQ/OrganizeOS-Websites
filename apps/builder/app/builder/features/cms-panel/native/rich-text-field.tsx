@@ -133,6 +133,8 @@ import {
   $heldContent,
   type HeldContent,
   $liftPointsIntoLines,
+  $lastPointToBlockEnd,
+  removeKeptLines,
   $mapLineEdges,
   $plainTextOf,
   $removeRangeWithBreak,
@@ -1472,7 +1474,14 @@ const Toolbar = ({
     });
   };
   return (
-    <div className={toolbarStyle()} role="toolbar" aria-label="Formatting">
+    <div
+      className={toolbarStyle()}
+      role="toolbar"
+      aria-label="Formatting"
+      // 15.13 (a): lines a press's caret left go before a toolbar command
+      onPointerDownCapture={() => removeKeptLines(editor)}
+      onKeyDownCapture={() => removeKeptLines(editor)}
+    >
       <Select
         aria-label="Block type"
         options={blockTypes}
@@ -2696,9 +2705,21 @@ const ImageEditingPlugin = () => {
             ) {
               return false;
             }
-            const selection = $getSelection();
+            let selection = $getSelection();
             if (selection === null) {
               return false;
+            }
+            // 15.10: the writer takes the place the removal takes for a
+            // range's last point on a container after a nested block; a cut
+            // removes from there
+            if ($isRangeSelection(selection)) {
+              const moved = selection.clone();
+              if ($lastPointToBlockEnd(moved)) {
+                if (command === CUT_COMMAND) {
+                  $setSelection(moved);
+                }
+                selection = moved;
+              }
             }
             event.preventDefault();
             // G (D6), 14.9: a range whose two ends are text points copies

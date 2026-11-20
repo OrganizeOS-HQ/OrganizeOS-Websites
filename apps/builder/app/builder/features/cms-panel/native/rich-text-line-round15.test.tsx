@@ -11,7 +11,7 @@ import { TooltipProvider } from "@webstudio-is/design-system";
 import { RichTextField } from "./rich-text-field";
 import { act } from "react-dom/test-utils";
 import { cdp, userEvent } from "@vitest/browser/context";
-import { $createRangeSelection, $createRangeSelectionFromDom, $setSelection, KEY_DOWN_COMMAND, type BaseSelection, type LexicalNode, $getRoot, $getSelection, $isElementNode, $isNodeSelection, $isRangeSelection, $isTextNode, type PointType, CAN_REDO_COMMAND, CAN_UNDO_COMMAND, COMMAND_PRIORITY_CRITICAL, type LexicalEditor } from "lexical";
+import { $createRangeSelection, $createRangeSelectionFromDom, $setSelection, KEY_DOWN_COMMAND, type BaseSelection, type ElementNode, type LexicalNode, $getRoot, $getSelection, $isElementNode, $isNodeSelection, $isRangeSelection, $isTextNode, type PointType, CAN_REDO_COMMAND, CAN_UNDO_COMMAND, COMMAND_PRIORITY_CRITICAL, type LexicalEditor } from "lexical";
 import { byLabel, click, clickInWord, editable, editorOf, lastHtml, renderField, settle, unmountField } from "./rich-text-test-harness";
 import { sanitizeRichTextHtml } from "./rich-text-sanitize";
 import { cmsHistory } from "./rich-text-line-node";
@@ -942,16 +942,38 @@ const MIRROR: [string, string, number, "rule" | "image" | "link" | "text"][] = [
   ["between two rules: a link below", LI(`<hr><hr>${MIRROR_LINK}T3w`), 1, "link"],
   ["between two rules: text below", LI("<hr><hr>Abcdefghw"), 1, "text"],
 ];
-for (const [name, html, index, target] of MIRROR) for (const ms of [0, 50, 200]) test(`15.13 the caret in an empty caret line ${name}, pressed for ${ms} ms`, async () => {
-  const onChange = await renderField(html);
-  await caretLineAt(index);
-  const words = () => [...editable()!.querySelectorAll<HTMLElement>("[data-lexical-text]")];
+const emptyLines = () => editorOf()!.getEditorState().read(() => all().filter((node) => node.getType() === "cms-line" && $isElementNode(node) && node.isEmpty()).length);
+const mirrorTarget = (target: "rule" | "image" | "link" | "text") => {
+  const words = [...editable()!.querySelectorAll<HTMLElement>("[data-lexical-text]")];
   const element =
     target === "rule" ? [...editable()!.querySelectorAll("hr")].at(-1)!
       : target === "image" ? editable()!.querySelector("img")!
-        : words().find((span) => span.textContent === (target === "link" ? "Lw" : "Abcdefghw"))!;
+        : words.find((span) => span.textContent === (target === "link" ? "Lw" : "Abcdefghw"))!;
   const box = element.getBoundingClientRect();
   const at = target === "text" ? { x: box.left + box.width * 0.55, y: box.top + box.height / 2 } : centre(element);
+  return { element, box, at };
+};
+/** The same press and key with no caret line in the field: the write a kept line must not change. */
+const mirrorWithoutLine = async (html: string, target: "rule" | "image" | "link" | "text", textPoint: [string, number] | null, key: string) => {
+  const onChange = await renderField(html);
+  if (textPoint !== null) {
+    await clickInWord(textPoint[0], textPoint[1]);
+    await act(async () => { editorOf()!.update(() => { $getRoot().getAllTextNodes().find((t) => t.getTextContent() === textPoint[0])!.select(textPoint[1], textPoint[1]); }); });
+    await settle();
+  } else {
+    const { at } = mirrorTarget(target);
+    await hold(at, 50);
+  }
+  if (target === "image") { await userEvent.keyboard("{Escape}"); await settle(); }
+  await userEvent.keyboard(key); await settle();
+  const write = writeOf(onChange);
+  unmountField();
+  return write;
+};
+for (const [name, html, index, target] of MIRROR) for (const ms of [0, 50, 200]) for (const key of ["{ArrowLeft}", "k"]) test(`15.13 the caret in an empty caret line ${name}, pressed for ${ms} ms, then ${key === "k" ? "a letter" : "ArrowLeft"}`, async () => {
+  const onChange = await renderField(html);
+  await caretLineAt(index);
+  const { element, box, at } = mirrorTarget(target);
   const under = document.caretRangeFromPoint(at.x, at.y);
   const want = target === "text" ? `"Abcdefghw"@${under?.startOffset}` : "";
   await mouse("mousePressed", at.x, at.y);
@@ -966,9 +988,18 @@ for (const [name, html, index, target] of MIRROR) for (const ms of [0, 50, 200])
   }
   if (target === "link") expect(walkSel()).toBe('"Lw"@1');
   if (target === "text") expect(walkSel()).toBe(want);
-  // the caret line goes once the press is over: not an edit
-  expect(editorOf()!.getEditorState().read(() => all().some((node) => node.getType() === "cms-line" && $isElementNode(node) && node.isEmpty()))).toBe(false);
+  // the line is still there after the press, nothing has moved; it is gone
+  // after the next key
+  expect(emptyLines()).toBe(1);
+  expect(element.getBoundingClientRect().top).toBe(box.top);
   expect(writeOf(onChange)).toBe("NOOP");
+  const textPoint: [string, number] | null = target === "link" ? ["Lw", 1] : target === "text" ? ["Abcdefghw", under!.startOffset] : null;
+  if (target === "image") { await userEvent.keyboard("{Escape}"); await settle(); }
+  await userEvent.keyboard(key); await settle();
+  expect(emptyLines()).toBe(0);
+  const write = writeOf(onChange);
+  unmountField();
+  if (key === "k") expect(write).toBe(await mirrorWithoutLine(html, target, textPoint, key));
 }, 30_000);
 // a press on the item's padding beside its leading rule: the page caret on
 // the item
@@ -1067,4 +1098,678 @@ test("15.13 the hold is the field's own: a press held in one field leaves anothe
     act(() => root.unmount());
     container.remove();
   }
+}, 30_000);
+
+// 15.13 (a): a caret line the caret left by a press is not removed by that
+// press; it goes at the next key in the field, or before the next edit or
+// clipboard command. A double click's second press lands where its first
+// did
+const wordAt = (text: string, word: string) => {
+  const span = [...editable()!.querySelectorAll<HTMLElement>("[data-lexical-text]")].find((element) => element.textContent === text)!;
+  const node = span.firstChild!;
+  const start = text.indexOf(word);
+  const range = document.createRange();
+  range.setStart(node, start);
+  range.setEnd(node, start + word.length);
+  const box = range.getBoundingClientRect();
+  return { x: box.left + box.width / 2, y: box.top + box.height / 2, left: box.left + 1, right: box.right - 1 };
+};
+/** Presses with a real gap between them, one click sequence. */
+const clicks = async (at: { x: number; y: number }, count: number, gap = 150) => {
+  for (let n = 1; n <= count; n++) {
+    await send("Input.dispatchMouseEvent", { type: "mousePressed", x: at.x, y: at.y, button: "left", buttons: 1, clickCount: n });
+    await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: at.x, y: at.y, button: "left", buttons: 0, clickCount: n });
+    await settle();
+    if (n < count) await wait(gap);
+  }
+  await settle();
+};
+const KEPT_SHAPES: [string, string, number][] = [
+  ["at the start of a rule-led item", LI("<hr>Aw Bw Cw<br>Dw"), 0],
+  ["between two rules", LI("<hr><hr>Aw Bw Cw<br>Dw"), 1],
+];
+for (const [name, html, index] of KEPT_SHAPES) {
+  test(`15.13 (a) the caret in an empty caret line ${name}: a double click with a 150 ms gap on the word below selects the pressed word, 20 times`, async () => {
+    let pressed = 0;
+    for (let run = 0; run < 20; run++) {
+      await renderField(html);
+      await caretLineAt(index);
+      await clicks(wordAt("Aw Bw Cw", "Bw"), 2);
+      if (window.getSelection()?.toString() === "Bw" && walkSel() === '"Aw Bw Cw"@3->"Aw Bw Cw"@5') pressed += 1;
+      unmountField();
+    }
+    expect(pressed).toBe(20);
+  }, 120_000);
+  test(`15.13 (a) the caret in an empty caret line ${name}: a triple click with 150 ms gaps selects the pressed line, as with no caret line`, async () => {
+    const run = async (withLine: boolean) => {
+      await renderField(html);
+      if (withLine) await caretLineAt(index);
+      await clicks(wordAt("Aw Bw Cw", "Bw"), 3);
+      const out = { page: window.getSelection()?.toString(), sel: walkSel() };
+      unmountField();
+      return out;
+    };
+    expect(await run(true)).toEqual(await run(false));
+  }, 30_000);
+  test(`15.13 (a) the caret in an empty caret line ${name}: a double click with a 150 ms gap on a link's text below selects its word`, async () => {
+    await renderField(html.replace("Aw Bw Cw", 'Aw <a href="https://example.org/l">Lw</a> Cw'));
+    await caretLineAt(index);
+    await clicks(wordAt("Lw", "Lw"), 2);
+    expect(window.getSelection()?.toString()).toBe("Lw");
+  }, 30_000);
+  test(`15.13 (a) the caret in an empty caret line ${name}: a press and drag across a word below selects what it crossed, as with no caret line`, async () => {
+    const run = async (withLine: boolean) => {
+      await renderField(html);
+      if (withLine) await caretLineAt(index);
+      const from = wordAt("Aw Bw Cw", "Aw");
+      const to = wordAt("Aw Bw Cw", "Cw");
+      await mouse("mousePressed", from.left, from.y);
+      await settle(); await wait(50);
+      for (const step of [0.5, 1]) { await mouse("mouseMoved", from.left + (to.right - from.left) * step, from.y, 1); await settle(); }
+      await mouse("mouseReleased", to.right, to.y);
+      await settle();
+      const out = { page: window.getSelection()?.toString(), sel: walkSel(), lines: emptyLines() };
+      unmountField();
+      return out;
+    };
+    const kept = await run(true);
+    const plain = await run(false);
+    expect({ page: kept.page, sel: kept.sel }).toEqual({ page: plain.page, sel: plain.sel });
+    expect(kept.lines).toBe(1);
+  }, 30_000);
+  test(`15.13 (a) the caret in an empty caret line ${name}: an arrow walk after a press into the text below stops where it stops with no caret line`, async () => {
+    const walk = async (withLine: boolean) => {
+      await renderField(html);
+      if (withLine) {
+        await caretLineAt(index);
+        await clicks(wordAt("Aw Bw Cw", "Bw"), 1);
+        expect(emptyLines()).toBe(1);
+      } else {
+        await clickInWord("Aw Bw Cw", 0);
+      }
+      await act(async () => { editorOf()!.update(() => { $getRoot().getAllTextNodes().find((t) => t.getTextContent() === "Aw Bw Cw")!.select(4, 4); }); });
+      await settle();
+      const stops: string[] = [];
+      for (const key of ["{ArrowUp}", "{ArrowUp}", "{ArrowDown}", "{ArrowLeft}", "{ArrowLeft}", "{ArrowLeft}", "{ArrowLeft}", "{ArrowLeft}"]) { await userEvent.keyboard(key); await settle(); stops.push(walkSel()); }
+      unmountField();
+      return stops;
+    };
+    expect(await walk(true)).toEqual(await walk(false));
+  }, 30_000);
+}
+/** A press into "T2w" below, with the caret first in an empty caret line at the item's start: one kept line. */
+const KEPT_EDIT = LI("<hr>Aw T2w");
+const keepOne = async () => {
+  await caretLineAt(0);
+  await clicks(wordAt("Aw T2w", "T2w"), 1);
+  expect(emptyLines()).toBe(1);
+};
+const placeAt = async (word: string, from: number, to: number) => {
+  await act(async () => { editorOf()!.update(() => { const text = $getRoot().getAllTextNodes().find((t) => t.getTextContent() === word)!; text.select(from, to); }); });
+  await settle();
+};
+const KEPT_EDITS: [string, () => Promise<void>][] = [
+  ["Divider", async () => { await placeAt("Aw T2w", 4, 4); await click(byLabel("Divider")); }],
+  ["Bold", async () => { await placeAt("Aw T2w", 3, 6); await click(byLabel("Bold")); }],
+  ["a menu paste", async () => { await placeAt("Aw T2w", 4, 4); const data = new DataTransfer(); data.setData("text/plain", "Zq"); await act(async () => { editable()!.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: data })); }); await settle(); }],
+  ["a menu cut", async () => { await placeAt("Aw T2w", 3, 6); await act(async () => { editable()!.dispatchEvent(new ClipboardEvent("cut", { bubbles: true, cancelable: true, clipboardData: new DataTransfer() })); }); await settle(); }],
+];
+for (const [name, edit] of KEPT_EDITS) test(`15.13 (a) ${name} with a kept line elsewhere writes what it writes with no kept line`, async () => {
+  const run = async (withLine: boolean) => {
+    const onChange = await renderField(KEPT_EDIT);
+    if (withLine) await keepOne(); else await clickInWord("Aw T2w", 4);
+    await edit();
+    const out = { w: writeOf(onChange), lines: emptyLines() };
+    unmountField();
+    return out;
+  };
+  const kept = await run(true);
+  expect(kept).toEqual(await run(false));
+  expect(kept.lines).toBe(0);
+}, 30_000);
+test("15.13 (a) Image with a kept line elsewhere writes what it writes with no kept line", async () => {
+  const run = async (withLine: boolean) => {
+    const source = { uploadImage: vi.fn(async () => ({ url: "https://cdn.example.org/y.png", path: "org/y.png" })) } as never;
+    const onChange = await renderField(KEPT_EDIT, { source });
+    if (withLine) await keepOne(); else await clickInWord("Aw T2w", 4);
+    await placeAt("Aw T2w", 4, 4);
+    const canvas = document.createElement("canvas");
+    canvas.width = 2; canvas.height = 3;
+    const blob = await new Promise<Blob>((resolve) => canvas.toBlob((result) => resolve(result!), "image/png"));
+    await click(byLabel("Image"));
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([blob], "a.png", { type: "image/png" }));
+    await act(async () => { input.files = transfer.files; input.dispatchEvent(new Event("change", { bubbles: true })); });
+    for (let round = 0; round < 200 && writeOf(onChange).includes("y.png") === false; round += 1) await settle();
+    const out = { w: writeOf(onChange), lines: emptyLines() };
+    unmountField();
+    return out;
+  };
+  const kept = await run(true);
+  expect(kept).toEqual(await run(false));
+  expect(kept.w).toContain("y.png");
+}, 60_000);
+test("15.13 (a) a copy of a range dragged across a kept line holds no more than with no kept line", async () => {
+  const html = LI("T0w<hr><hr>T3w");
+  const run = async (withLine: boolean) => {
+    await renderField(html);
+    if (withLine) {
+      await caretLineAt(2);
+      await clicks(wordAt("T3w", "T3w"), 1);
+      expect(emptyLines()).toBe(1);
+    }
+    const from = wordAt("T0w", "T0w");
+    const to = wordAt("T3w", "T3w");
+    await mouse("mousePressed", from.x, from.y);
+    await settle(); await wait(50);
+    for (const step of [0.5, 1]) { await mouse("mouseMoved", from.x + (to.x - from.x) * step, from.y + (to.y - from.y) * step, 1); await settle(); }
+    await mouse("mouseReleased", to.x, to.y);
+    await settle();
+    const data = new DataTransfer();
+    await act(async () => { editable()!.dispatchEvent(new ClipboardEvent("copy", { bubbles: true, cancelable: true, clipboardData: data })); });
+    await settle();
+    const out = { plain: data.getData("text/plain"), html: data.getData("text/html").replace(/ class="[^"]*"/g, ""), sel: walkSel() };
+    unmountField();
+    return out;
+  };
+  const kept = await run(true);
+  const plain = await run(false);
+  expect(kept).toEqual(plain);
+}, 30_000);
+test("15.13 (a) two kept lines, then one key: both go", async () => {
+  await renderField("<ul><li>Pw</li><li><hr>T1w</li><li><hr>T2w</li><li>Nw</li></ul>");
+  await caretLineAt(0);
+  const second = editable()!.querySelectorAll("hr")[1].getBoundingClientRect();
+  await clicks({ x: second.left - 6, y: second.top + second.height / 2 }, 1);
+  await clicks(wordAt("T2w", "T2w"), 1);
+  expect(emptyLines()).toBe(2);
+  await userEvent.keyboard("{ArrowLeft}"); await settle();
+  expect(emptyLines()).toBe(0);
+}, 30_000);
+test("15.13 (a) a button below the field, pressed with the caret in a caret line, does not move during its press", async () => {
+  await renderField(LI("<hr>T1w"));
+  const button = document.createElement("button");
+  button.textContent = "Below";
+  editable()!.closest("div")!.parentElement!.insertAdjacentElement("afterend", button);
+  try {
+    await caretLineAt(0);
+    const top = button.getBoundingClientRect().top;
+    const at = centre(button);
+    await mouse("mousePressed", at.x, at.y);
+    await settle(); await wait(50);
+    expect(button.getBoundingClientRect().top).toBe(top);
+    await mouse("mouseReleased", at.x, at.y);
+    await settle();
+    expect(button.getBoundingClientRect().top).toBe(top);
+  } finally {
+    button.remove();
+  }
+}, 30_000);
+
+
+// 15.10: a range whose last point rests on the root, a list or a quote
+// directly after a nested block holds what the range ending at the block's
+// content end holds. The oracle is the same input one press earlier; where
+// the range holds nothing (x1) Backspace, Delete, their word forms and cut
+// remove nothing, and a letter, Enter and paste act at that caret
+type R10At = { text: string; at: number } | { el: string; nth: number; at: number };
+type R10Shape = { id: string; html: string; anchor: R10At; holder: { el: string; nth: number }; index: number; real: boolean };
+const IMG = MIRROR_IMG;
+const R10: R10Shape[] = [
+  { id: "q R p", html: "<blockquote><p>Pw</p></blockquote><hr><p>Nw</p>", anchor: { text: "Pw", at: 2 }, holder: { el: "root", nth: 0 }, index: 1, real: true },
+  { id: "q R end", html: "<blockquote><p>Pw</p></blockquote><hr>", anchor: { text: "Pw", at: 2 }, holder: { el: "root", nth: 0 }, index: 1, real: true },
+  { id: "q R q", html: "<blockquote><p>Pw</p></blockquote><hr><blockquote><p>Nw</p></blockquote>", anchor: { text: "Pw", at: 2 }, holder: { el: "root", nth: 0 }, index: 1, real: true },
+  { id: "l R p", html: "<ul><li>Pw</li></ul><hr><p>Nw</p>", anchor: { text: "Pw", at: 2 }, holder: { el: "root", nth: 0 }, index: 1, real: true },
+  { id: "l2 R p", html: "<ul><li>Aw<ul><li>Pw</li></ul></li></ul><hr><p>Nw</p>", anchor: { text: "Pw", at: 2 }, holder: { el: "root", nth: 0 }, index: 1, real: true },
+  { id: "q-img R p", html: `<blockquote><p>Pw${IMG}</p></blockquote><hr><p>Nw</p>`, anchor: { el: "paragraph", nth: 0, at: 2 }, holder: { el: "root", nth: 0 }, index: 1, real: true },
+  { id: "q-link R p", html: `<blockquote><p>Pw<a href="https://example.org/l">Lw</a></p></blockquote><hr><p>Nw</p>`, anchor: { text: "Lw", at: 2 }, holder: { el: "root", nth: 0 }, index: 1, real: true },
+  { id: "q-br R p", html: `<blockquote><p>Pw<br><br></p></blockquote><hr><p>Nw</p>`, anchor: { el: "paragraph", nth: 0, at: 3 }, holder: { el: "root", nth: 0 }, index: 1, real: true },
+  { id: "text-back q R p", html: "<p>Aw</p><blockquote><p>Pw</p></blockquote><hr><p>Nw</p>", anchor: { text: "Aw", at: 1 }, holder: { el: "root", nth: 0 }, index: 2, real: false },
+  { id: "text-back in q R p", html: "<blockquote><p>Pw</p></blockquote><hr><p>Nw</p>", anchor: { text: "Pw", at: 1 }, holder: { el: "root", nth: 0 }, index: 1, real: true },
+];
+const R10_ENTRY = ["k", "Backspace", "Delete", "CtrlBackspace", "CtrlDelete", "Enter", "ShiftEnter", "paste", "cut", "copy"] as const;
+const R10_PINS: Record<string, { w: string; clip: string }> = {
+ "l2 R p | k": {
+  "w": "<ul><li>Aw<ul><li>Pwk</li></ul></li></ul><hr /><p>Nw</p>",
+  "clip": "-"
+ },
+ "l2 R p | Backspace": {
+  "w": "NOOP",
+  "clip": "-"
+ },
+ "l2 R p | Delete": {
+  "w": "NOOP",
+  "clip": "-"
+ },
+ "l2 R p | CtrlBackspace": {
+  "w": "NOOP",
+  "clip": "-"
+ },
+ "l2 R p | CtrlDelete": {
+  "w": "NOOP",
+  "clip": "-"
+ },
+ "l2 R p | Enter": {
+  "w": "<ul><li>Aw<ul><li>Pw</li><li></li></ul></li></ul><hr /><p>Nw</p>",
+  "clip": "-"
+ },
+ "l2 R p | ShiftEnter": {
+  "w": "<ul><li>Aw<ul><li>Pw<br /></li></ul></li></ul><hr /><p>Nw</p>",
+  "clip": "-"
+ },
+ "l2 R p | paste": {
+  "w": "<ul><li>Aw<ul><li>PwZq</li></ul></li></ul><hr /><p>Nw</p>",
+  "clip": "-"
+ },
+ "l2 R p | cut": {
+  "w": "NOOP",
+  "clip": "[\"\",\"\"]"
+ },
+ "l2 R p | copy": {
+  "w": "NOOP",
+  "clip": "[\"\",\"\"]"
+ },
+ "l R p | k": {
+  "w": "<ul><li>Pwk</li></ul><hr /><p>Nw</p>",
+  "clip": "-"
+ },
+ "l R p | Backspace": {
+  "w": "NOOP",
+  "clip": "-"
+ },
+ "l R p | Delete": {
+  "w": "NOOP",
+  "clip": "-"
+ },
+ "l R p | CtrlBackspace": {
+  "w": "NOOP",
+  "clip": "-"
+ },
+ "l R p | CtrlDelete": {
+  "w": "NOOP",
+  "clip": "-"
+ },
+ "l R p | Enter": {
+  "w": "<ul><li>Pw</li><li></li></ul><hr /><p>Nw</p>",
+  "clip": "-"
+ },
+ "l R p | ShiftEnter": {
+  "w": "<ul><li>Pw<br /></li></ul><hr /><p>Nw</p>",
+  "clip": "-"
+ },
+ "l R p | paste": {
+  "w": "<ul><li>PwZq</li></ul><hr /><p>Nw</p>",
+  "clip": "-"
+ },
+ "l R p | cut": {
+  "w": "NOOP",
+  "clip": "[\"\",\"\"]"
+ },
+ "l R p | copy": {
+  "w": "NOOP",
+  "clip": "[\"\",\"\"]"
+ },
+ "q-br R p | k": {
+  "w": "<blockquote><p>Pw<br /><br />k</p></blockquote><hr /><p>Nw</p>",
+  "clip": "-"
+ },
+ "q-br R p | Backspace": {
+  "w": "NOOP",
+  "clip": "-"
+ },
+ "q-br R p | Delete": {
+  "w": "NOOP",
+  "clip": "-"
+ },
+ "q-br R p | CtrlBackspace": {
+  "w": "NOOP",
+  "clip": "-"
+ },
+ "q-br R p | CtrlDelete": {
+  "w": "NOOP",
+  "clip": "-"
+ },
+ "q-br R p | Enter": {
+  "w": "<blockquote><p>Pw<br /><br /></p><p></p></blockquote><hr /><p>Nw</p>",
+  "clip": "-"
+ },
+ "q-br R p | ShiftEnter": {
+  "w": "<blockquote><p>Pw<br /><br /><br /></p></blockquote><hr /><p>Nw</p>",
+  "clip": "-"
+ },
+ "q-br R p | paste": {
+  "w": "<blockquote><p>Pw<br /><br />Zq</p></blockquote><hr /><p>Nw</p>",
+  "clip": "-"
+ },
+ "q-br R p | cut": {
+  "w": "NOOP",
+  "clip": "[\"\",\"\"]"
+ },
+ "q-br R p | copy": {
+  "w": "NOOP",
+  "clip": "[\"\",\"\"]"
+ },
+ "q-img R p | k": {
+  "w": "<blockquote><p>Pw<img src=\"https://cdn.example.org/x.png\" alt=\"\" width=\"40\" height=\"20\" />k</p></blockquote><hr /><p>Nw</p>",
+  "clip": "-"
+ },
+ "q-img R p | Backspace": {
+  "w": "NOOP",
+  "clip": "-"
+ },
+ "q-img R p | Delete": {
+  "w": "NOOP",
+  "clip": "-"
+ },
+ "q-img R p | CtrlBackspace": {
+  "w": "NOOP",
+  "clip": "-"
+ },
+ "q-img R p | CtrlDelete": {
+  "w": "NOOP",
+  "clip": "-"
+ },
+ "q-img R p | Enter": {
+  "w": "<blockquote><p>Pw<img src=\"https://cdn.example.org/x.png\" alt=\"\" width=\"40\" height=\"20\" /></p><p></p></blockquote><hr /><p>Nw</p>",
+  "clip": "-"
+ },
+ "q-img R p | ShiftEnter": {
+  "w": "<blockquote><p>Pw<img src=\"https://cdn.example.org/x.png\" alt=\"\" width=\"40\" height=\"20\" /><br /></p></blockquote><hr /><p>Nw</p>",
+  "clip": "-"
+ },
+ "q-img R p | paste": {
+  "w": "<blockquote><p>Pw<img src=\"https://cdn.example.org/x.png\" alt=\"\" width=\"40\" height=\"20\" />Zq</p></blockquote><hr /><p>Nw</p>",
+  "clip": "-"
+ },
+ "q-img R p | cut": {
+  "w": "NOOP",
+  "clip": "[\"\",\"\"]"
+ },
+ "q-img R p | copy": {
+  "w": "NOOP",
+  "clip": "[\"\",\"\"]"
+ },
+ "q-link R p | k": {
+  "w": "<blockquote><p>Pw<a href=\"https://example.org/l\">Lw</a>k</p></blockquote><hr /><p>Nw</p>",
+  "clip": "-"
+ },
+ "q-link R p | Backspace": {
+  "w": "NOOP",
+  "clip": "-"
+ },
+ "q-link R p | Delete": {
+  "w": "NOOP",
+  "clip": "-"
+ },
+ "q-link R p | CtrlBackspace": {
+  "w": "NOOP",
+  "clip": "-"
+ },
+ "q-link R p | CtrlDelete": {
+  "w": "NOOP",
+  "clip": "-"
+ },
+ "q-link R p | Enter": {
+  "w": "<blockquote><p>Pw<a href=\"https://example.org/l\">Lw</a></p><p></p></blockquote><hr /><p>Nw</p>",
+  "clip": "-"
+ },
+ "q-link R p | ShiftEnter": {
+  "w": "<blockquote><p>Pw<a href=\"https://example.org/l\">Lw</a><br /></p></blockquote><hr /><p>Nw</p>",
+  "clip": "-"
+ },
+ "q-link R p | paste": {
+  "w": "<blockquote><p>Pw<a href=\"https://example.org/l\">Lw</a>Zq</p></blockquote><hr /><p>Nw</p>",
+  "clip": "-"
+ },
+ "q-link R p | cut": {
+  "w": "NOOP",
+  "clip": "[\"\",\"\"]"
+ },
+ "q-link R p | copy": {
+  "w": "NOOP",
+  "clip": "[\"\",\"\"]"
+ },
+ "q R end | k": {
+  "w": "<blockquote><p>Pwk</p></blockquote><hr />",
+  "clip": "-"
+ },
+ "q R end | Backspace": {
+  "w": "NOOP",
+  "clip": "-"
+ },
+ "q R end | Delete": {
+  "w": "NOOP",
+  "clip": "-"
+ },
+ "q R end | CtrlBackspace": {
+  "w": "NOOP",
+  "clip": "-"
+ },
+ "q R end | CtrlDelete": {
+  "w": "NOOP",
+  "clip": "-"
+ },
+ "q R end | Enter": {
+  "w": "<blockquote><p>Pw</p><p></p></blockquote><hr />",
+  "clip": "-"
+ },
+ "q R end | ShiftEnter": {
+  "w": "<blockquote><p>Pw<br /></p></blockquote><hr />",
+  "clip": "-"
+ },
+ "q R end | paste": {
+  "w": "<blockquote><p>PwZq</p></blockquote><hr />",
+  "clip": "-"
+ },
+ "q R end | cut": {
+  "w": "NOOP",
+  "clip": "[\"\",\"\"]"
+ },
+ "q R end | copy": {
+  "w": "NOOP",
+  "clip": "[\"\",\"\"]"
+ },
+ "q R p | k": {
+  "w": "<blockquote><p>Pwk</p></blockquote><hr /><p>Nw</p>",
+  "clip": "-"
+ },
+ "q R p | Backspace": {
+  "w": "NOOP",
+  "clip": "-"
+ },
+ "q R p | Delete": {
+  "w": "NOOP",
+  "clip": "-"
+ },
+ "q R p | CtrlBackspace": {
+  "w": "NOOP",
+  "clip": "-"
+ },
+ "q R p | CtrlDelete": {
+  "w": "NOOP",
+  "clip": "-"
+ },
+ "q R p | Enter": {
+  "w": "<blockquote><p>Pw</p><p></p></blockquote><hr /><p>Nw</p>",
+  "clip": "-"
+ },
+ "q R p | ShiftEnter": {
+  "w": "<blockquote><p>Pw<br /></p></blockquote><hr /><p>Nw</p>",
+  "clip": "-"
+ },
+ "q R p | paste": {
+  "w": "<blockquote><p>PwZq</p></blockquote><hr /><p>Nw</p>",
+  "clip": "-"
+ },
+ "q R p | cut": {
+  "w": "NOOP",
+  "clip": "[\"\",\"\"]"
+ },
+ "q R p | copy": {
+  "w": "NOOP",
+  "clip": "[\"\",\"\"]"
+ },
+ "q R q | k": {
+  "w": "<blockquote><p>Pwk</p></blockquote><hr /><blockquote><p>Nw</p></blockquote>",
+  "clip": "-"
+ },
+ "q R q | Backspace": {
+  "w": "NOOP",
+  "clip": "-"
+ },
+ "q R q | Delete": {
+  "w": "NOOP",
+  "clip": "-"
+ },
+ "q R q | CtrlBackspace": {
+  "w": "NOOP",
+  "clip": "-"
+ },
+ "q R q | CtrlDelete": {
+  "w": "NOOP",
+  "clip": "-"
+ },
+ "q R q | Enter": {
+  "w": "<blockquote><p>Pw</p><p></p></blockquote><hr /><blockquote><p>Nw</p></blockquote>",
+  "clip": "-"
+ },
+ "q R q | ShiftEnter": {
+  "w": "<blockquote><p>Pw<br /></p></blockquote><hr /><blockquote><p>Nw</p></blockquote>",
+  "clip": "-"
+ },
+ "q R q | paste": {
+  "w": "<blockquote><p>PwZq</p></blockquote><hr /><blockquote><p>Nw</p></blockquote>",
+  "clip": "-"
+ },
+ "q R q | cut": {
+  "w": "NOOP",
+  "clip": "[\"\",\"\"]"
+ },
+ "q R q | copy": {
+  "w": "NOOP",
+  "clip": "[\"\",\"\"]"
+ },
+ "text-back in q R p | k": {
+  "w": "<blockquote><p>Pk</p></blockquote><hr /><p>Nw</p>",
+  "clip": "-"
+ },
+ "text-back in q R p | Backspace": {
+  "w": "<blockquote><p>P</p></blockquote><hr /><p>Nw</p>",
+  "clip": "-"
+ },
+ "text-back in q R p | Delete": {
+  "w": "<blockquote><p>P</p></blockquote><hr /><p>Nw</p>",
+  "clip": "-"
+ },
+ "text-back in q R p | CtrlBackspace": {
+  "w": "<blockquote><p>P</p></blockquote><hr /><p>Nw</p>",
+  "clip": "-"
+ },
+ "text-back in q R p | CtrlDelete": {
+  "w": "<blockquote><p>P</p></blockquote><hr /><p>Nw</p>",
+  "clip": "-"
+ },
+ "text-back in q R p | Enter": {
+  "w": "<blockquote><p>P</p><p></p></blockquote><hr /><p>Nw</p>",
+  "clip": "-"
+ },
+ "text-back in q R p | ShiftEnter": {
+  "w": "<blockquote><p>P<br /></p></blockquote><hr /><p>Nw</p>",
+  "clip": "-"
+ },
+ "text-back in q R p | paste": {
+  "w": "<blockquote><p>PZq</p></blockquote><hr /><p>Nw</p>",
+  "clip": "-"
+ },
+ "text-back in q R p | cut": {
+  "w": "<blockquote><p>P</p></blockquote><hr /><p>Nw</p>",
+  "clip": "[\"w\",\"<span style=\\\"white-space: pre-wrap;\\\">w</span>\"]"
+ },
+ "text-back in q R p | copy": {
+  "w": "NOOP",
+  "clip": "[\"w\",\"<span style=\\\"white-space: pre-wrap;\\\">w</span>\"]"
+ },
+ "text-back q R p | k": {
+  "w": "<p>Ak</p><hr /><p>Nw</p>",
+  "clip": "-"
+ },
+ "text-back q R p | Backspace": {
+  "w": "<p>A</p><hr /><p>Nw</p>",
+  "clip": "-"
+ },
+ "text-back q R p | Delete": {
+  "w": "<p>A</p><hr /><p>Nw</p>",
+  "clip": "-"
+ },
+ "text-back q R p | CtrlBackspace": {
+  "w": "<p>A</p><hr /><p>Nw</p>",
+  "clip": "-"
+ },
+ "text-back q R p | CtrlDelete": {
+  "w": "<p>A</p><hr /><p>Nw</p>",
+  "clip": "-"
+ },
+ "text-back q R p | Enter": {
+  "w": "<p>A</p><p></p><hr /><p>Nw</p>",
+  "clip": "-"
+ },
+ "text-back q R p | ShiftEnter": {
+  "w": "<p>A<br /></p><hr /><p>Nw</p>",
+  "clip": "-"
+ },
+ "text-back q R p | paste": {
+  "w": "<p>AZq</p><hr /><p>Nw</p>",
+  "clip": "-"
+ },
+ "text-back q R p | cut": {
+  "w": "<p>A</p><hr /><p>Nw</p>",
+  "clip": "[\"w\\nPw\",\"<p dir=\\\"ltr\\\"><span style=\\\"white-space: pre-wrap;\\\">w</span></p><blockquote dir=\\\"ltr\\\"><p dir=\\\"ltr\\\"><span style=\\\"white-space: pre-wrap;\\\">Pw</span></p></blockquote>\"]"
+ },
+ "text-back q R p | copy": {
+  "w": "NOOP",
+  "clip": "[\"w\\nPw\",\"<p dir=\\\"ltr\\\"><span style=\\\"white-space: pre-wrap;\\\">w</span></p><blockquote dir=\\\"ltr\\\"><p dir=\\\"ltr\\\"><span style=\\\"white-space: pre-wrap;\\\">Pw</span></p></blockquote>\"]"
+ }
+};
+const r10Find = (el: string, nth: number) => (el === "root" ? $getRoot() : (all().filter((node) => node.getType() === el)[nth] as ElementNode));
+const r10Run = async (shape: R10Shape, form: "range" | "oracle", entry: (typeof R10_ENTRY)[number]) => {
+  const onChange = await renderField(shape.html);
+  await userEvent.click(editable()!.querySelector("[data-lexical-text]")!); await settle();
+  // the input one press earlier: the anchor, the focus at the block's content end
+  await act(async () => { editorOf()!.update(() => {
+    const range = $createRangeSelection();
+    const anchor = shape.anchor;
+    if ("text" in anchor) { const text = $getRoot().getAllTextNodes().find((t) => t.getTextContent() === anchor.text)!; range.anchor.set(text.getKey(), anchor.at, "text"); }
+    else range.anchor.set(r10Find(anchor.el, anchor.nth).getKey(), anchor.at, "element");
+    const block = r10Find(shape.holder.el, shape.holder.nth).getChildAtIndex(shape.index - 1) as ElementNode;
+    const end = block.getLastDescendant()!;
+    if ($isTextNode(end)) range.focus.set(end.getKey(), end.getTextContentSize(), "text");
+    else range.focus.set(end.getParentOrThrow().getKey(), end.getIndexWithinParent() + 1, "element");
+    $setSelection(range);
+  }, { discrete: true }); });
+  await settle();
+  if (form === "range") {
+    if (shape.real) { await userEvent.keyboard("{Shift>}{ArrowRight}{/Shift}"); await settle(); }
+    else { await act(async () => { editorOf()!.update(() => { const sel = $getSelection(); if ($isRangeSelection(sel)) sel.focus.set(r10Find(shape.holder.el, shape.holder.nth).getKey(), shape.index, "element"); }, { discrete: true }); }); await settle(); }
+    expect(walkSel()).toMatch(/->root@/);
+  }
+  const before = onChange.mock.calls.length;
+  let clip = "-";
+  if (entry === "k") await userEvent.keyboard("k");
+  else if (entry === "CtrlBackspace") await userEvent.keyboard("{Control>}{Backspace}{/Control}");
+  else if (entry === "CtrlDelete") await userEvent.keyboard("{Control>}{Delete}{/Control}");
+  else if (entry === "ShiftEnter") await userEvent.keyboard("{Shift>}{Enter}{/Shift}");
+  else if (entry === "paste") { const data = new DataTransfer(); data.setData("text/plain", "Zq"); await act(async () => { editable()!.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: data })); }); }
+  else if (entry === "cut" || entry === "copy") { const data = new DataTransfer(); await act(async () => { editable()!.dispatchEvent(new ClipboardEvent(entry, { bubbles: true, cancelable: true, clipboardData: data })); }); clip = JSON.stringify([data.getData("text/plain"), data.getData("text/html").replace(/ class="[^"]*"/g, "").slice(0, 160)]); }
+  else await userEvent.keyboard(`{${entry}}`);
+  await settle();
+  const out = { w: onChange.mock.calls.length > before ? sanitizeRichTextHtml(lastHtml(onChange)) : "NOOP", clip };
+  unmountField();
+  return out;
+};
+for (const shape of R10) for (const entry of R10_ENTRY) test(`15.10 ${shape.id}: ${entry} over the range to the root after the block`, async () => {
+  const range = await r10Run(shape, "range", entry);
+  expect(range).toEqual(R10_PINS[`${shape.id} | ${entry}`]);
+  // the range holds text: it gives what the range one press earlier gives
+  if (shape.id.startsWith("text-back")) expect(range).toEqual(await r10Run(shape, "oracle", entry));
 }, 30_000);
