@@ -71,7 +71,7 @@ import {
   $isListNode,
   ListItemNode,
 } from "@lexical/list";
-import { $isQuoteNode, HeadingNode, QuoteNode } from "@lexical/rich-text";
+import { $createHeadingNode, $isHeadingNode, $isQuoteNode, HeadingNode, QuoteNode } from "@lexical/rich-text";
 import { CodeNode } from "@lexical/code";
 import { $dfs, $findMatchingParent, mergeRegister } from "@lexical/utils";
 import { $isParentElementRTL } from "@lexical/selection";
@@ -799,6 +799,74 @@ const $caretBesideInlineEdge = (isBackward: boolean, character: boolean) => {
     return true;
   }
   return false;
+};
+
+/**
+ * Enter with a collapsed caret in a heading, where Lexical's own test
+ * misreads the caret (it reads the heading's end only as the end of its
+ * last text, and any point at offset 0 as the heading's start). The edge
+ * function decides:
+ * - at the heading's content start: Lexical's rule;
+ * - at its content end: a paragraph directly after the heading, with the
+ *   caret in it (the line rules make that a line);
+ * - between two of its children: the heading splits into two headings
+ *   there, with the caret at the start of the second.
+ * Wherever Lexical reads the caret right (a text point inside text, or at
+ * the end of a heading's last text) it stays Lexical's. True when it wrote.
+ */
+const $enterInHeading = () => {
+  const selection = $getSelection();
+  if ($isRangeSelection(selection) === false || selection.isCollapsed() === false) {
+    return false;
+  }
+  const point = selection.anchor;
+  const node = point.getNode();
+  const heading = $isHeadingNode(node) ? node : $findMatchingParent(node, $isHeadingNode);
+  if ($isHeadingNode(heading) === false || heading.isEmpty() || $atContentEdge(point, heading, true)) {
+    return false;
+  }
+  if ($atContentEdge(point, heading, false)) {
+    const last = heading.getLastDescendant();
+    if (
+      point.type === "text" &&
+      $isTextNode(last) &&
+      point.key === last.getKey() &&
+      point.offset === last.getTextContentSize()
+    ) {
+      return false;
+    }
+    const paragraph = $createParagraphNode();
+    paragraph.setDirection(heading.getDirection());
+    heading.insertAfter(paragraph);
+    paragraph.select();
+    return true;
+  }
+  // the middle: only where Lexical misreads the caret
+  if (point.type === "text" && point.offset > 0) {
+    return false;
+  }
+  let index: number;
+  if (point.type === "element") {
+    if (node.is(heading) === false) {
+      return false;
+    }
+    index = point.offset;
+  } else {
+    let child: LexicalNode = node;
+    while (child.getParent()?.is(heading) === false) {
+      child = child.getParentOrThrow();
+    }
+    if ($atContentEdge(point, child, true) === false) {
+      return false;
+    }
+    index = child.getIndexWithinParent();
+  }
+  const second = $createHeadingNode(heading.getTag());
+  second.setDirection(heading.getDirection());
+  second.append(...heading.getChildren().slice(index));
+  heading.insertAfter(second);
+  second.selectStart();
+  return true;
 };
 
 const $pointOffNodeEnd = (selection: RangeSelection, isBackward?: boolean) => {
@@ -2119,6 +2187,9 @@ export const registerLineCommands = (editor: LexicalEditor) =>
         editor.registerCommand(
           command as LexicalCommand<unknown>,
           () => {
+            if (command === INSERT_PARAGRAPH_COMMAND && $enterInHeading()) {
+              return true;
+            }
             const selection = $getSelection();
             if ($isRangeSelection(selection) && selection.isCollapsed() === false) {
               $tagRemoval();
