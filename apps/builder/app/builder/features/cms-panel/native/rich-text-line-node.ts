@@ -1895,8 +1895,47 @@ const isBlockDecorator = (node: LexicalNode | null): node is DecoratorNode<unkno
  * item's start after an item that ends in a rule removes the rule and
  * joins the item, as after an item that ends in text.
  */
-export const registerLineCommands = (editor: LexicalEditor) =>
-  linesOff ? () => {} : mergeRegister(
+export const registerLineCommands = (editor: LexicalEditor) => {
+  if (linesOff) {
+    return () => {};
+  }
+  let shiftPressTaken = false;
+  const onShiftPress = (event: PointerEvent) => {
+    shiftPressTaken = false;
+    if (event.shiftKey === false || event.button !== 0) {
+      return;
+    }
+    const target = event.target;
+    if (target instanceof Element && target.closest("hr, img, figure") !== null) {
+      return;
+    }
+    const isNodeSelected = editor.getEditorState().read(() => $isNodeSelection($getSelection()));
+    const root = editor.getRootElement();
+    const dom = window.getSelection();
+    const clicked = caretAtPoint(event.clientX, event.clientY);
+    if (isNodeSelected === false || dom === null || clicked === null || root?.contains(clicked.node) !== true) {
+      return;
+    }
+    shiftPressTaken = true;
+    dom.collapse(clicked.node, clicked.offset);
+    editor.update(
+      () => {
+        const range = $createRangeSelectionFromDom(dom, editor);
+        if (range !== null) {
+          $setSelection(range);
+        }
+      },
+      { discrete: true }
+    );
+  };
+  // the press the field took: the page does not extend its own selection
+  const onShiftMouseDown = (event: MouseEvent) => {
+    if (shiftPressTaken) {
+      shiftPressTaken = false;
+      event.preventDefault();
+    }
+  };
+  return mergeRegister(
     // a caret that arrives with no line beside it gets an empty line, and
     // an empty line the caret left goes: not an edit (no undo step, no
     // onChange: the field's change plugin skips history-merge updates)
@@ -2103,6 +2142,16 @@ export const registerLineCommands = (editor: LexicalEditor) =>
       for (const key of marked) {
         editor.getElementByKey(key)?.setAttribute("data-cms-caret", "");
       }
+    }),
+    // 15.7: Shift and a press on text while a node is selected: the field
+    // takes the pressed point when the pointer goes down, so the page's
+    // extension from its own anchor never becomes the selection, whichever
+    // of the page's selectionchange and the click comes first
+    editor.registerRootListener((root, previous) => {
+      previous?.removeEventListener("pointerdown", onShiftPress, true);
+      previous?.removeEventListener("mousedown", onShiftMouseDown, true);
+      root?.addEventListener("pointerdown", onShiftPress, true);
+      root?.addEventListener("mousedown", onShiftMouseDown, true);
     }),
     // L: a click on text after a node was selected gives a real caret, as
     // Lexical already does for a touch; with Shift held too, a caret at the
@@ -2726,6 +2775,7 @@ export const registerLineCommands = (editor: LexicalEditor) =>
     )
     )
   );
+};
 
 /**
  * The lines among `nodes` give way to their children, in place, and the

@@ -8,7 +8,7 @@ import { expect, test } from "vitest";
 import { act } from "react-dom/test-utils";
 import { cdp, userEvent } from "@vitest/browser/context";
 import { $getRoot, $getSelection, $isElementNode, $isNodeSelection, $isRangeSelection, $isTextNode, type PointType, CAN_REDO_COMMAND, CAN_UNDO_COMMAND, COMMAND_PRIORITY_CRITICAL, type LexicalEditor } from "lexical";
-import { clickInWord, editorOf, lastHtml, renderField, settle } from "./rich-text-test-harness";
+import { clickInWord, editable, editorOf, lastHtml, renderField, settle, unmountField } from "./rich-text-test-harness";
 import { sanitizeRichTextHtml } from "./rich-text-sanitize";
 import { cmsHistory } from "./rich-text-line-node";
 const UNDO = "{Control>}z{/Control}";
@@ -609,4 +609,71 @@ for (const [shape, block] of [["image", `<h3>${HEADING_IMG}</h3>`], ["twin", "<h
     await userEvent.keyboard("k"); await settle();
     expect({ w, k: sanitizeRichTextHtml(lastHtml(onChange)) }).toEqual(IMAGE_HEADING[id]);
   }, 30_000);
+}
+
+// 15.7: Shift and a press on text while a node is selected: the caret where
+// pressed, decided at the press, whichever of the page's selectionchange and
+// the click comes first (the two orders forced)
+const SC_IMG = `<img src="https://cdn.example.org/x.png" alt="" width="40" height="20" />`;
+const SC_LINK = `<a href="https://example.org/l">Lw</a>`;
+const SC_SHAPES: Record<string, (node: string) => string> = {
+  ordinary: (node) => `<p>Aw${SC_LINK}</p>${node.startsWith("<img") ? `<p>${node}</p>` : node}<p>Cw</p>`,
+  lined: (node) => `<ul><li>Aw${SC_LINK}${node}Cw</li></ul>`,
+};
+const scNodeSelected = () => editorOf()!.getEditorState().read(() => $isNodeSelection($getSelection()));
+const selectByArrow = async () => { await clickInWord("Cw", 0); for (let i = 0; i < 3 && !scNodeSelected(); i++) { await userEvent.keyboard("{ArrowLeft}"); await settle(); } };
+const pointIn = (word: string, at: number) => {
+  const span = [...editable()!.querySelectorAll<HTMLElement>("[data-lexical-text]")].find((e) => e.textContent === word)!;
+  const range = document.createRange(); range.setStart(span.firstChild!, at); range.setEnd(span.firstChild!, at);
+  const r = range.getBoundingClientRect(); const b = span.getBoundingClientRect();
+  return { span, x: r.left, y: b.top + b.height / 2, node: span.firstChild!, at };
+};
+const N = 5;
+for (const shape of Object.keys(SC_SHAPES)) for (const nodeName of ["rule", "image"]) for (const [word, at] of [["Aw", 1], ["Lw", 1], ["Cw", 1]] as const) {
+  test(`15.7 Shift+press after a node selection, repeated: ${shape} ${nodeName} ${word}`, async () => {
+    const results: string[] = [];
+    for (let rep = 0; rep < N; rep++) {
+      const html = SC_SHAPES[shape](nodeName === "rule" ? "<hr>" : SC_IMG);
+      const onChange = await renderField(html);
+      await selectByArrow();
+      const sel0 = scNodeSelected();
+      await userEvent.keyboard("{Shift>}");
+      await clickInWord(word, at);
+      await userEvent.keyboard("{/Shift}"); await settle();
+      await userEvent.keyboard("k"); await settle();
+      results.push(`${sel0}|${sanitizeRichTextHtml(lastHtml(onChange))}`);
+      unmountField();
+    }
+    const want = `true|${sanitizeRichTextHtml(SC_SHAPES[shape](nodeName === "rule" ? "<hr>" : SC_IMG).replace(`>${word}<`, `>${word[0]}k${word[1]}<`))}`;
+    expect(results).toEqual(Array(N).fill(want));
+  }, 300_000);
+  for (const order of ["selectionchange-first", "click-first"]) test(`15.7 Shift+press after a node selection, ${order} ${shape} ${nodeName} ${word}`, async () => {
+    const html = SC_SHAPES[shape](nodeName === "rule" ? "<hr>" : SC_IMG);
+    const onChange = await renderField(html);
+    await selectByArrow();
+    const sel0 = scNodeSelected();
+    const p = pointIn(word, at);
+    const opts = { bubbles: true, cancelable: true, clientX: p.x, clientY: p.y, shiftKey: true, button: 0 };
+    await act(async () => {
+      p.span.dispatchEvent(new PointerEvent("pointerdown", { ...opts, pointerType: "mouse" }));
+      const down = new MouseEvent("mousedown", opts);
+      p.span.dispatchEvent(down);
+      // the page's extension from its anchor (the content's first text) to the point
+      const extend = () => { const dom = window.getSelection()!; const first = editable()!.querySelector("[data-lexical-text]")!.firstChild!; dom.setBaseAndExtent(first, 0, p.node, p.at); };
+      if (order === "selectionchange-first") {
+        if (!down.defaultPrevented) extend();
+        await new Promise((r) => setTimeout(r, 20));
+        p.span.dispatchEvent(new MouseEvent("mouseup", opts));
+        p.span.dispatchEvent(new MouseEvent("click", opts));
+      } else {
+        p.span.dispatchEvent(new MouseEvent("mouseup", opts));
+        p.span.dispatchEvent(new MouseEvent("click", opts));
+        if (!down.defaultPrevented) extend();
+        await new Promise((r) => setTimeout(r, 20));
+      }
+    });
+    await settle();
+    await userEvent.keyboard("k"); await settle();
+    expect(`${sel0}|${sanitizeRichTextHtml(lastHtml(onChange))}`).toBe(`true|${sanitizeRichTextHtml(html.replace(`>${word}<`, `>${word[0]}k${word[1]}<`))}`);
+  }, 60_000);
 }
