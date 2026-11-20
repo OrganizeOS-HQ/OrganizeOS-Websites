@@ -1863,6 +1863,8 @@ export const $mapLineEdges = (selection: BaseSelection): BaseSelection => {
     return selection;
   }
   const mapped = selection.clone();
+  const endPoint = selection.isBackward() ? mapped.anchor : mapped.focus;
+  let endsAtLineStart: CmsLineNode | null = null;
   for (const point of [mapped.anchor, mapped.focus]) {
     const node = point.getNode();
     const line = $isCmsLineNode(node)
@@ -1885,11 +1887,27 @@ export const $mapLineEdges = (selection: BaseSelection): BaseSelection => {
       continue;
     }
     const container = line.getParentOrThrow();
+    if (atStart && point === endPoint && selection.isCollapsed() === false) {
+      endsAtLineStart = line;
+    }
     point.set(
       container.getKey(),
       line.getIndexWithinParent() + (atStart ? 0 : 1),
       "element"
     );
+  }
+  // a selection that ends at a line's start holds nothing of that line: it
+  // ends at the container's point before the line, where the head's nodes
+  // step back to the child before it (D6)
+  const line = endsAtLineStart;
+  if (line !== null) {
+    const nodes = mapped.getNodes();
+    const kept = nodes.filter((node) => line.is(node) === false && line.isParentOf(node) === false);
+    const before = line.getPreviousSibling();
+    if (before !== null && kept.some((node) => node.is(before)) === false) {
+      kept.push(before);
+    }
+    mapped.getNodes = () => kept;
   }
   return mapped;
 };
