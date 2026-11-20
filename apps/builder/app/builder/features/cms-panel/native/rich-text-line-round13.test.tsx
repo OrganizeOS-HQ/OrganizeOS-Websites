@@ -159,4 +159,39 @@ describe("C: a point at a line's start, and an empty caret line after its rule g
   });
 });
 
+describe("E: D3's break, decided before the edit", () => {
+  const TQT = LI("T0w<blockquote><p>Q1w</p></blockquote>T2w");
+  const BQT = LI("<br><blockquote><p>Q1w</p></blockquote>T2w");
+  test("E1: Enter over T0w's end to Q1w@1 is the join, then Enter", async () => {
+    const onChange = await renderField(TQT);
+    await selectWords("T0w", undefined, "Q1w", 1);
+    await keys("{Enter}");
+    expect(written(onChange)).toBe(stored("<ul><li>Pw</li><li>T0w</li><li>1w<br />T2w</li><li>Nw</li></ul>"));
+  });
+  test("E2: a letter over a range from the item before into the quote", async () => {
+    const onChange = await renderField(BQT);
+    await selectWords("Pw", 1, "Q1w", 2);
+    await keys("k");
+    expect(written(onChange)).toBe(stored("<ul><li>Pkw</li><li>T2w</li><li>Nw</li></ul>"));
+  });
+  test("E2: Backspace over that range", async () => {
+    const onChange = await renderField(BQT);
+    await selectWords("Pw", 1, "Q1w", 2);
+    await keys("{Backspace}");
+    expect(written(onChange)).toBe(stored("<ul><li>Pw</li><li>T2w</li><li>Nw</li></ul>"));
+  });
+  test("E3: Backspace at a code block's start between two lines", async () => {
+    const onChange = await renderField(LI("T0w<pre><code>C1w</code></pre>T2w"));
+    await clickInWord("C1w", 0);
+    await keys("{Backspace}");
+    expect(written(onChange)).toBe(stored(LI("T0wC1w<br />T2w")));
+  });
+  test("E3: Delete at the end of the line before a code block", async () => {
+    const onChange = await renderField(LI("T0w<pre><code>C1w</code></pre>T2w"));
+    await clickInWord("T0w");
+    await keys("{Delete}");
+    expect(written(onChange)).toBe(stored(LI("T0wC1w<br />T2w")));
+  });
+});
+
 export { editable };

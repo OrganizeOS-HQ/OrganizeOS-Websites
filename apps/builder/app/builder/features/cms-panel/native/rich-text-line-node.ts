@@ -405,25 +405,8 @@ const $linesNeedingBreak = (container: ElementNode, children: LexicalNode[]) => 
     if (from === -1 || to === -1 || to - from < 2) {
       return;
     }
-    const between = keys.slice(from + 1, to);
-    // the first line grew by text a removed block between held (its text
-    // nodes may be replaced on the way, as a code block's are)
-    const before = $getEditor()
-      .getEditorState()
-      .read(() => ({
-        line: $getNodeByKey(first.getKey())?.getTextContent() ?? "",
-        blocks: between
-          .map((key) => $getNodeByKey(key))
-          .filter((node) => $isElementNode(node))
-          .map((node) => node!.getTextContent()),
-      }));
-    const now = first.getTextContent();
-    const grown = now.startsWith(before.line) ? now.slice(before.line.length) : "";
-    if (
-      (grown !== "" &&
-        before.blocks.some((text) => text !== "" && text.endsWith(grown))) ||
-      $hasUpdateTag(`${BREAK_AFTER_TAG}${first.getKey()}`)
-    ) {
+    // D3's break was decided before the edit, from the selection (E3)
+    if ($hasUpdateTag(`${BREAK_AFTER_TAG}${first.getKey()}`)) {
       result.add(child.getKey());
     }
   });
@@ -666,11 +649,32 @@ let checkFailed = false;
  * cut). The block the removed range starts in, and its ancestors, are
  * never emptied by it.
  */
-export const $tagRemoval = () => {
+export const $tagRemoval = (isBackward?: boolean) => {
   $addUpdateTag(REMOVAL_TAG);
   const selection = $getSelection();
   if ($isRangeSelection(selection) === false) {
     return;
+  }
+  // E3: D3's break is decided here, before the edit, from the selection:
+  // a delete at a caret that joins a block's text into the line before it
+  // (Backspace at the block's start) or into this line (Delete at the
+  // line's end), where a line follows the block, marks that line
+  if (selection.isCollapsed() && isBackward !== undefined) {
+    const edge = $childAtEdge(isBackward);
+    if (edge !== null) {
+      const block = isBackward ? edge.child : edge.child.getNextSibling();
+      const line = isBackward ? edge.child.getPreviousSibling() : edge.child;
+      const after = block?.getNextSibling() ?? null;
+      if (
+        $isCmsLineNode(line) &&
+        $isElementNode(block) &&
+        $isCmsLineNode(block) === false &&
+        block.isInline() === false &&
+        $isCmsLineNode(after)
+      ) {
+        $addUpdateTag(`${BREAK_AFTER_TAG}${line.getKey()}`);
+      }
+    }
   }
   // the block the removal ends in: its rest joins what is before (D3)
   const end = selection.isBackward() ? selection.anchor : selection.focus;
@@ -807,6 +811,15 @@ const $joinRestOfItem = (item: ElementNode) => {
   if (previous.some((child) => child.isLine && gone(child.key)) === false) {
     return false;
   }
+  // E2: a range that ended inside a block of the item leaves the item's
+  // later content in its item, whatever leads the item
+  if (
+    previous.some(
+      (child) => child.isLine === false && $hasUpdateTag(`${REMOVAL_END_TAG}${child.key}`)
+    )
+  ) {
+    return false;
+  }
   const held = new Set(previous.map((child) => child.key));
   if (item.getChildren().some((child) => held.has(child.getKey()) === false)) {
     return false;
@@ -940,6 +953,7 @@ export const $liftPointsIntoLines = (create: boolean): boolean => {
   }
   const made = new Map<string, CmsLineNode>();
   const collapsed = selection.isCollapsed();
+  let gaveBack = false;
   for (const point of collapsed ? [selection.anchor] : [selection.anchor, selection.focus]) {
     if (point.type !== "element") {
       continue;
@@ -959,6 +973,7 @@ export const $liftPointsIntoLines = (create: boolean): boolean => {
         const container = held.getParentOrThrow();
         point.set(container.getKey(), at, "element");
         held.remove();
+        gaveBack = true;
       } else if (
         held.isEmpty() === false &&
         point.offset === 0 &&
@@ -1049,7 +1064,7 @@ export const $liftPointsIntoLines = (create: boolean): boolean => {
       focus.set(anchor.key, anchor.offset, anchor.type);
     }
   }
-  return made.size > 0;
+  return made.size > 0 || gaveBack;
 };
 
 /**
@@ -1550,6 +1565,38 @@ export const registerLineCommands = (editor: LexicalEditor) =>
             const selection = $getSelection();
             if ($isRangeSelection(selection) && selection.isCollapsed() === false) {
               $tagRemoval();
+              // E1: Enter or Shift+Enter over a range from a line into a
+              // block is the removal (with D3's break, decided before the
+              // edit by the removal's mark), then the key at its caret
+              const start = selection.isBackward() ? selection.focus : selection.anchor;
+              const line = $findMatchingParent(start.getNode(), $isCmsLineNode);
+              if (
+                command !== INSERT_HORIZONTAL_RULE_COMMAND &&
+                $isCmsLineNode(line) &&
+                $hasUpdateTag(`${BREAK_AFTER_TAG}${line.getKey()}`)
+              ) {
+                const end = selection.isBackward() ? selection.anchor : selection.focus;
+                let block: LexicalNode | null = end.getNode();
+                while (block !== null && block.getParent()?.is(line.getParent()) !== true) {
+                  block = block.getParent();
+                }
+                const next = block?.getNextSibling() ?? null;
+                selection.removeText();
+                if ($isElementNode(block) && block.isAttached() && block.getTextContentSize() === 0) {
+                  block.remove();
+                }
+                if (
+                  $isCmsLineNode(next) &&
+                  next.isAttached() &&
+                  line.isAttached() &&
+                  line.getNextSibling()?.is(next) === true &&
+                  isLineBreak(line.getLastChild()) === false &&
+                  isLineBreak(next.getFirstChild()) === false
+                ) {
+                  line.append($createLineBreakNode());
+                }
+                return false;
+              }
             }
             // Divider in a line splits as at the head: the container's
             // lines give way to their text for this update (V1)
@@ -1662,14 +1709,20 @@ export const registerLineCommands = (editor: LexicalEditor) =>
     ...removeCommands.map((command) =>
       editor.registerCommand(
         command,
-        () => {
+        (payload: unknown) => {
           if (
             $hasUpdateTag(HEAD_PATH_TAG) ||
             (command !== CUT_COMMAND && $headPathOverNodeSelection())
           ) {
             return false;
           }
-          $tagRemoval();
+          $tagRemoval(
+            command === DELETE_CHARACTER_COMMAND ||
+              command === DELETE_WORD_COMMAND ||
+              command === DELETE_LINE_COMMAND
+              ? (payload as boolean)
+              : undefined
+          );
           return false;
         },
         COMMAND_PRIORITY_CRITICAL
