@@ -1433,14 +1433,21 @@ export const registerLineCommands = (editor: LexicalEditor) =>
             beside.remove();
             return true;
           }
-          // the point stands on the container first, so nothing points at
-          // the line once it goes
+          // the line goes in an update of its own; the delete then runs from
+          // the element point once the page shows that point, as at the head
+          // (Lexical extends a delete through the page's selection)
           const at = line.getIndexWithinParent();
           selection.anchor.set(container.getKey(), at, "element");
           selection.focus.set(container.getKey(), at, "element");
           line.remove();
-          $unwrapLines(container.getChildren());
-          return false;
+          $addUpdateTag("history-merge");
+          const editor = $getEditor();
+          editor.update(() => {}, {
+            onUpdate: () => {
+              editor.dispatchCommand(command as LexicalCommand<boolean>, isBackward);
+            },
+          });
+          return true;
         },
         COMMAND_PRIORITY_NORMAL
       )
