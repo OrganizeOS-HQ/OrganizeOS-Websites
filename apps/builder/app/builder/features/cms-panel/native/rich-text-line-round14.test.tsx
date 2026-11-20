@@ -1119,3 +1119,33 @@ describe("14.9: one writer for a range", () => {
     expect(stored(data.getData("text/html"))).toBe("<ul><li>xq<hr />yq</li></ul>");
   });
 });
+
+describe("ruled no change: a cut from code text into the line after it", () => {
+  const html = LI("T0w<pre><code>C1w</code></pre>T2w");
+  const select = async () => {
+    await clickInWord("C1w", 1);
+    await userEvent.keyboard("{Shift>}");
+    await clickInWord("T2w", 1);
+    await userEvent.keyboard("{/Shift}");
+    await settle();
+  };
+  // 5.4's join: the rest of the line joins the code block
+  const joined = stored(LI("T0w<pre><code>C2w</code></pre>"));
+  test("the cut", async () => {
+    const onChange = await renderField(html);
+    await select();
+    act(() => {
+      editable()!.dispatchEvent(
+        new ClipboardEvent("cut", { bubbles: true, cancelable: true, clipboardData: new DataTransfer() })
+      );
+    });
+    await settle();
+    expect(written(onChange)).toBe(joined);
+  });
+  test("one Backspace over the same range writes the same", async () => {
+    const onChange = await renderField(html);
+    await select();
+    await keys("{Backspace}");
+    expect(written(onChange)).toBe(joined);
+  });
+});
