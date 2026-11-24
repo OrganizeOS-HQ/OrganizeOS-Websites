@@ -57,29 +57,42 @@ import {
 } from "./code-check";
 
 /**
- * Whether an org's own script may run on its Website: HTML Embeds, Content
- * Embeds, Markdown Embeds, the SVG `animate` and `set` elements, an element
- * whose tag the builder does not offer, the `dangerouslySetInnerHTML` prop,
- * the site-wide custom code, the unsafe values (an address that can run
- * script, `srcdoc`, an event handler attribute, an action whose args or code
- * could run script, an XML element on an HTML page and a redirect to an
- * unsafe address), a component the published page does not import, an
- * instance stored with the global root's id and a data source the page
- * module cannot name as itself. It is off (owner decision, 2026-10-21); what
- * orgs saved is kept, and each org's next publish ships it again once this
- * is on.
+ * The standing rule that an org's content is data on its Website and in the
+ * builder: no element whose tag the builder does not offer, no SVG `animate`
+ * or `set`, no `dangerouslySetInnerHTML` prop, no unsafe values (an address
+ * that can run script, `srcdoc`, an event handler attribute, an action whose
+ * args or code could run script, an XML element on an HTML page and a
+ * redirect to an unsafe address), no component the published page does not
+ * import, no instance stored with the global root's id, no data source the
+ * page module cannot name as itself, no expression that fails the checks and
+ * no MDX content. It returns false and stays false.
  *
- * Turn it on only when both hold (docs/ORGANIZEOS-FORK.md section 10):
- * - org sites are served from {sub}.organizeos.io and the old
- *   {sub}.organizeos.org hosts only redirect (org sites domain step C2);
- * - the platform session is host-only on app.organizeos.org (step D), so the
- *   builder canvas, which stays under organizeos.org, never receives it.
+ * Five things are named exceptions, governed by orgEmbedsMayShip() instead:
+ * HTML Embed, Content Embed, Markdown Embed, JSON-LD and the site-wide custom
+ * code (docs/ORGANIZEOS-FORK.md section 10; spec
+ * 2026-11-20-builder-code-embeds-design.md, 4.1, in the OrganizeOS repo).
  *
  * It is a constant, not an environment variable: the builder and the CLI read
  * it at the same commit, and a missing or mistyped value cannot fail open.
- * Turning it on is a reviewed change that also edits its test.
+ * Changing it is a reviewed change that also edits its test.
  */
 export const orgScriptMayRun = (): boolean => false;
+
+/**
+ * Whether an org's embeds ship on its published Website: HTML Embed, Content
+ * Embed (an HTML Embed bound to a Resource or a collection field), Markdown
+ * Embed, JSON-LD and the site-wide custom code (Settings > General). Nothing
+ * else orgScriptMayRun() refuses follows it. The builder never runs embed
+ * code whatever this says (apps/builder/app/shared/organizeos-untrusted-markup.tsx).
+ *
+ * It is off until the platform accepts a build that carries org code (spec
+ * 2026-11-20-builder-code-embeds-design.md, PR C, in the OrganizeOS repo).
+ * It is a constant for the same reasons orgScriptMayRun() is: the builder,
+ * the CLI and the publish workflow read it at one commit, and a missing or
+ * mistyped value cannot fail open. Turning it on is a reviewed change that
+ * also edits its test (org-script.test.ts).
+ */
+export const orgEmbedsMayShip = (): boolean => false;
 
 /**
  * Which of OrganizeOS's launch requirements the CLI built from this commit
@@ -119,17 +132,17 @@ export const templateIconCodes: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Whether an HTML Embed with this `code` may run. Only a static string that
- * is byte-identical to a template icon may, unless the switch is on. A value
+ * Whether an HTML Embed with this `code` may ship. Only a static string that
+ * is byte-identical to a template icon may, unless embeds may ship. A value
  * that is not a string is never an icon, even one that becomes an icon string
  * (`String(["<svg…>"])`): upstream's HTML Embed coerces whatever it is given
  * with `String(code)` and writes it into the page.
+ *
+ * The flag has no default: a test's mock of this module replaces the export,
+ * not the binding a default here would read, so every caller passes it.
  */
-export const htmlEmbedCodeMayRun = (
-  code: unknown,
-  mayRun: boolean = orgScriptMayRun()
-): boolean =>
-  mayRun || (typeof code === "string" && templateIconCodes.has(code));
+export const htmlEmbedCodeMayRun = (code: unknown, mayShip: boolean): boolean =>
+  mayShip || (typeof code === "string" && templateIconCodes.has(code));
 
 /**
  * The SVG elements that can set an attribute of their parent from markup, so

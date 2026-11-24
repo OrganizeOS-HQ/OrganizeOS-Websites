@@ -35,6 +35,7 @@ import {
   checksInstanceTag,
   elementTagMayRender,
   htmlEmbedCodeMayRun,
+  orgEmbedsMayShip,
   orgScriptMayRun,
 } from "@organizeos/site-components/org-script";
 import { platformName } from "~/shared/branding";
@@ -65,7 +66,7 @@ export const PausedHtmlEmbed = forwardRef<
 >((props, ref) => {
   // Upstream's HTML Embed turns whatever it is given into a string with
   // String(code), so only a string is ever tested against the icons.
-  if (htmlEmbedCodeMayRun(props.code)) {
+  if (htmlEmbedCodeMayRun(props.code, orgEmbedsMayShip())) {
     return <HtmlEmbed {...props} ref={ref} />;
   }
   // $ws$executeScripts is the canvas's, given to every HTML Embed
