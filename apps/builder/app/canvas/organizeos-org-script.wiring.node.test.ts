@@ -218,3 +218,18 @@ test("the source runs text as code in these places only", () => {
     "packages/project-build/src/runtime/jsx/evaluate.server.ts": 2,
   });
 });
+
+// OrganizeOS fork: the canvas decides an icon itself (a string in
+// templateIconCodes). htmlEmbedCodeMayRun takes the embed switch as a
+// parameter, and a default read inside org-script.ts would be invisible to a
+// test's mock, so the canvas never asks it (spec 2026-11-20, plan A, D12).
+test("the canvas module decides icons itself, never through a default", () => {
+  const module = withoutComments(
+    readFileSync(
+      fileURLToPath(new URL("./organizeos-org-script.tsx", import.meta.url)),
+      "utf8"
+    )
+  );
+  expect(module).toContain("templateIconCodes.has(code)");
+  expect(module).not.toContain("htmlEmbedCodeMayRun(");
+});
