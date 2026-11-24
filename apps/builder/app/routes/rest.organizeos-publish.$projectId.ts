@@ -33,6 +33,7 @@ import {
   type BuildStatusClient,
 } from "~/shared/db/publish-status.server";
 import { forwardCmsRequest } from "~/shared/organizeos-cms.server";
+import { orgEmbedsMayShip } from "@organizeos/site-components/org-script";
 
 /**
  * OrganizeOS fork: the Publish dialog's publish to the ticked addresses
@@ -72,6 +73,7 @@ const deps = (): PublishRouteDeps => ({
   getPublisher: getOrganizeosPublisher,
   publisherHost: env.PUBLISHER_HOST,
   platformUrl: env.ORGANIZEOS_APP_URL,
+  embedsMayShip: orgEmbedsMayShip(),
   // The publish step (docs/ORGANIZEOS-FORK.md section 9, "Site forms"): the
   // build the person just wrote, read on their own context; a refused build
   // is marked FAILED with the service client, as the publisher marks one.

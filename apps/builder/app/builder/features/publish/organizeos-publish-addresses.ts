@@ -102,16 +102,28 @@ const publishAnswerSchema = z.object({
 export const publishToTargets = async (
   projectId: string,
   keys: string[],
-  { replacePages = false }: { replacePages?: boolean } = {}
+  {
+    replacePages = false,
+    embeds = false,
+  }: {
+    replacePages?: boolean;
+    /**
+     * OrganizeOS fork: the orgEmbedsMayShip() this tab was built with, sent
+     * only when true; the route refuses a value that differs from its own
+     */
+    embeds?: boolean;
+  } = {}
 ): Promise<PublishOutcome> => {
   let response: Response;
   try {
     response = await fetch(organizeosPublishPath(projectId), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(
-        replacePages ? { targets: keys, replacePages: true } : { targets: keys }
-      ),
+      body: JSON.stringify({
+        targets: keys,
+        ...(replacePages ? { replacePages: true } : {}),
+        ...(embeds ? { embeds: true } : {}),
+      }),
       signal: AbortSignal.timeout(PUBLISH_REQUEST_TIMEOUT_MS),
     });
   } catch (error) {

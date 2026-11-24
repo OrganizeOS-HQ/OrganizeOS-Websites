@@ -98,6 +98,9 @@ export const publishErrorLine = (
       return outcome.message ?? "Forms could not be saved. Try again.";
     case "forbidden":
       return "You can't publish this site.";
+    // OrganizeOS fork: this tab was built with another embed switch
+    case "reload":
+      return "Reload to publish.";
     case "timeout":
       return "Publishing did not answer in time. Check the status and try again.";
     default:

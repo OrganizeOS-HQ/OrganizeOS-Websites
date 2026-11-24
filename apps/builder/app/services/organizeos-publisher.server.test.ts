@@ -171,7 +171,51 @@ describe("createOrganizeosPublisher", () => {
     client: makeClient(HAPPY_ROWS),
     repo: "OrganizeOS-HQ/OrganizeOS-Websites",
     githubToken: "gh-token",
+    // OrganizeOS fork: the cases below are a builder whose embeds may not ship
+    embedsMayShip: false,
   };
+
+  // OrganizeOS fork: the embeds input goes only when it is true, so a
+  // dispatch to a workflow that does not declare it (a revert) still works
+  // while the switch is off (spec 2026-11-20, 4.3)
+  test("dispatches embeds only when the builder ships them", async () => {
+    const fetcher = vi.fn(async () => new Response(null, { status: 204 }));
+    const off = createOrganizeosPublisherClient({ ...deps, fetcher });
+    await off.publish.mutate({ buildId: "build-1", destination: "saas" });
+    await off.publish.mutate({
+      buildId: "build-1",
+      destination: "saas",
+      targets: ["builtin"],
+      expectedOrganizationId: ORG_ID,
+    });
+    const on = createOrganizeosPublisherClient({
+      ...deps,
+      fetcher,
+      embedsMayShip: true,
+    });
+    await on.publish.mutate({ buildId: "build-1", destination: "saas" });
+    await on.publish.mutate({
+      buildId: "build-1",
+      destination: "saas",
+      targets: ["builtin"],
+      expectedOrganizationId: ORG_ID,
+    });
+
+    const bodies = (
+      fetcher.mock.calls as unknown as Array<[string, RequestInit]>
+    ).map(([, init]) => init.body as string);
+    expect(bodies[0]).toBe(
+      `{"ref":"main","inputs":{"build_id":"build-1","organization_id":"${ORG_ID}"}}`
+    );
+    expect("embeds" in JSON.parse(bodies[1]).inputs).toBe(false);
+    expect(JSON.parse(bodies[2]).inputs.embeds).toBe("true");
+    expect(JSON.parse(bodies[3]).inputs).toEqual({
+      build_id: "build-1",
+      organization_id: ORG_ID,
+      targets: '["builtin"]',
+      embeds: "true",
+    });
+  });
 
   test("dispatches the workflow with build + org inputs", async () => {
     const fetcher = vi.fn(async () => new Response(null, { status: 204 }));

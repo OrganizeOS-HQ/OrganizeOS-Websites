@@ -620,6 +620,7 @@ export const OrganizeosPublishContent = ({
     try {
       const outcome = await publishToTargets(project.id, tickedKeys, {
         replacePages,
+        embeds: orgEmbedsMayShip(),
       });
       if (outcome.ok === false) {
         setError(publishErrorLine(outcome));
