@@ -47,7 +47,17 @@ export type GeneratedCodeNames = {
   undeclared: string[];
   /** imports that a binding below the module's top takes the name of */
   shadowed: string[];
+  /** constructs no generated module uses: `import()`, `import.meta`, `this` */
+  forbidden: ForbiddenConstruct[];
 };
+
+/**
+ * What no module prebuild generates uses (docs/ORGANIZEOS-FORK.md section 10,
+ * "Custom code is checked first"): a crafted name in custom code would
+ * otherwise reach the sites' server functions as one of them, and neither an
+ * undeclared nor a shadowed name catches it.
+ */
+export type ForbiddenConstruct = "import()" | "import.meta" | "this";
 
 /**
  * The names a module of plain JavaScript reads or writes that nothing in it
@@ -58,6 +68,7 @@ export const readModuleNames = (code: string) => {
   const undeclared = new Set<string>();
   const imports = new Set<string>();
   const nested = new Set<string>();
+  const forbidden = new Set<ForbiddenConstruct>();
 
   const bind = (pattern: SyntaxNode, names: Set<string>) => {
     if (pattern.type === "Identifier") {
@@ -200,13 +211,25 @@ export const readModuleNames = (code: string) => {
           undeclared.add(node.name as string);
         }
         return;
+      case "ThisExpression":
+        forbidden.add("this");
+        return;
+      case "MetaProperty":
+        if ((node.meta as SyntaxNode).name === "import") {
+          forbidden.add("import.meta");
+        }
+        return;
+      case "ImportExpression":
+        forbidden.add("import()");
+        for (const child of childNodes(node)) {
+          visit(child, scope);
+        }
+        return;
       case "ImportDeclaration":
       case "ExportAllDeclaration":
       case "Literal":
       case "TemplateElement":
-      case "ThisExpression":
       case "Super":
-      case "MetaProperty":
       case "BreakStatement":
       case "ContinueStatement":
         return;
@@ -358,6 +381,7 @@ export const readModuleNames = (code: string) => {
     undeclared: [...undeclared],
     imports: [...imports],
     nested: [...nested],
+    forbidden: [...forbidden],
   };
 };
 
@@ -401,13 +425,16 @@ export const findGeneratedCodeProblems = async (
       (name) => generatedCodeGlobals.has(name) === false
     ),
     shadowed: stripped.imports.filter((name) => stripped.nested.includes(name)),
+    // esbuild's compiled tree turns a JSX `<this>` tag into a string, and
+    // TypeScript's stripped one keeps it as `this`: read both
+    forbidden: [...new Set([...compiled.forbidden, ...stripped.forbidden])],
   };
 };
 
 /**
  * Fails the publish when a module prebuild generated reads a name it does not
- * declare, past the globals it may read, or shadows an import, while org
- * script is paused.
+ * declare, past the globals it may read, shadows an import, or uses
+ * `import()`, `import.meta` or `this`, while org script is paused.
  */
 export const checkGeneratedModule = async (
   code: string,
@@ -417,13 +444,15 @@ export const checkGeneratedModule = async (
   if (mayRun) {
     return;
   }
-  const { undeclared, shadowed } = await findGeneratedCodeProblems(code);
-  if (undeclared.length > 0 || shadowed.length > 0) {
+  const { undeclared, shadowed, forbidden } =
+    await findGeneratedCodeProblems(code);
+  if (undeclared.length > 0 || shadowed.length > 0 || forbidden.length > 0) {
     const parts = [
       undeclared.length > 0
         ? `reads names it does not declare: ${undeclared.join(", ")}`
         : undefined,
       shadowed.length > 0 ? `shadows names: ${shadowed.join(", ")}` : undefined,
+      forbidden.length > 0 ? `uses ${forbidden.join(", ")}` : undefined,
     ].filter((part) => part !== undefined);
     throw new Error(
       `Org script is paused, and the generated module ${file} ${parts.join("; ")}. Nothing was published.`

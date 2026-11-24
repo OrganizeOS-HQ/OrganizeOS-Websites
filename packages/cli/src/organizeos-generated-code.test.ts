@@ -74,7 +74,7 @@ describe("findGeneratedCodeProblems", () => {
         export const getResources = (_props: { system: System }) => new Map<string, unknown>([]);
         export { Page };
       `)
-    ).toEqual({ undeclared: [], shadowed: [] });
+    ).toEqual({ undeclared: [], shadowed: [], forbidden: [] });
     expect([...generatedCodeGlobals].sort()).toEqual([
       "Array",
       "Error",
@@ -92,7 +92,11 @@ describe("findGeneratedCodeProblems", () => {
       await findGeneratedCodeProblems(
         `const Page = () => <div title={process?.env?.SECRET} onClick={() => { a = 1; set$a(a) }} />;\nexport { Page };`
       )
-    ).toEqual({ undeclared: ["process", "a", "set$a"], shadowed: [] });
+    ).toEqual({
+      undeclared: ["process", "a", "set$a"],
+      shadowed: [],
+      forbidden: [],
+    });
   });
 
   // A binding inside the module may not take the name of one it imports
@@ -106,7 +110,7 @@ describe("findGeneratedCodeProblems", () => {
         };
         export { Page };
       `)
-    ).toEqual({ undeclared: [], shadowed: ["Box"] });
+    ).toEqual({ undeclared: [], shadowed: ["Box"], forbidden: [] });
   });
 
   test("finds a shadowed import whatever text the module holds, and whatever its name ends in", async () => {
@@ -121,7 +125,7 @@ describe("findGeneratedCodeProblems", () => {
           export { Page };
         `),
         extra
-      ).toEqual({ undeclared: [], shadowed: ["Box"] });
+      ).toEqual({ undeclared: [], shadowed: ["Box"], forbidden: [] });
     }
     expect(
       await findGeneratedCodeProblems(`
@@ -132,7 +136,7 @@ describe("findGeneratedCodeProblems", () => {
         };
         export { Page };
       `)
-    ).toEqual({ undeclared: [], shadowed: ["Box_1"] });
+    ).toEqual({ undeclared: [], shadowed: ["Box_1"], forbidden: [] });
   });
 
   // A local named like one of the module's own exports, or an action's arg
@@ -158,7 +162,7 @@ describe("findGeneratedCodeProblems", () => {
         export const contactEmail = "b";
         export { Page };
       `)
-    ).toEqual({ undeclared: [], shadowed: [] });
+    ).toEqual({ undeclared: [], shadowed: [], forbidden: [] });
   });
 });
 
@@ -182,5 +186,47 @@ describe("checkGeneratedModule", () => {
     await expect(
       checkGeneratedModule("export const x = process;", "a.tsx", true)
     ).resolves.toBeUndefined();
+  });
+});
+
+// OrganizeOS fork: a generated module never uses import(), import.meta or
+// this (spec 2026-11-20, 4.4: crafted custom code would otherwise reach the
+// server as one of them). The check reads both syntax trees it builds.
+describe("the forbidden constructs", () => {
+  test.each([
+    [
+      "import()",
+      'export const Page = () => { import("https://x.example/a.js"); return null; };',
+      "import()",
+    ],
+    [
+      "import.meta",
+      "export const Page = () => import.meta.url;",
+      "import.meta",
+    ],
+    ["this", "export const Page = function () { return this; };", "this"],
+    ["a JSX this tag", "export const Page = () => <this />;", "this"],
+  ])("refuses a module that uses %s", async (_label, code, found) => {
+    expect((await findGeneratedCodeProblems(code)).forbidden).toEqual([found]);
+    await expect(checkGeneratedModule(code, "page.tsx", false)).rejects.toThrow(
+      found
+    );
+  });
+
+  test("a string that spells them is text", async () => {
+    expect(
+      (await findGeneratedCodeProblems('export const t = "import(this)";'))
+        .forbidden
+    ).toEqual([]);
+  });
+
+  test("new.target is not import.meta", async () => {
+    expect(
+      (
+        await findGeneratedCodeProblems(
+          "export function F() { return new.target; }"
+        )
+      ).forbidden
+    ).toEqual([]);
   });
 });
