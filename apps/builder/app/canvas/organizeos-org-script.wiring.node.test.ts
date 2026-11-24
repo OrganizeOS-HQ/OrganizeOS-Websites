@@ -233,3 +233,107 @@ test("the canvas module decides icons itself, never through a default", () => {
   expect(module).toContain("templateIconCodes.has(code)");
   expect(module).not.toContain("htmlEmbedCodeMayRun(");
 });
+
+// OrganizeOS fork: untrusted markup reaches a builder document only through
+// the sanitized insertion path (~/shared/organizeos-untrusted-markup.tsx,
+// which inserts DOM nodes and so writes none of these). Every other raw-HTML
+// sink in apps/builder/app is on this reviewed list, with its reason, and a
+// new one fails here until it is reviewed. Packages the builder bundles are
+// not covered (docs/ORGANIZEOS-FORK.md section 10).
+const rawHtmlPatterns = [
+  "dangerouslySetInnerHTML",
+  "__html",
+  ".innerHTML =",
+  ".innerHTML +=",
+  ".outerHTML =",
+  "insertAdjacentHTML(",
+  "createContextualFragment(",
+  "document.write(",
+  "srcDoc",
+  "setHTMLUnsafe(",
+  "parseFromString(",
+];
+
+const reviewedRawHtml: Record<string, Record<string, number>> = {
+  // the color-scheme bootstrap script, the builder's own text
+  "apps/builder/app/routes/_ui.tsx": { dangerouslySetInnerHTML: 1, __html: 1 },
+  // a component meta's icon, the registry's own markup
+  "apps/builder/app/builder/shared/instance-label.tsx": {
+    dangerouslySetInnerHTML: 1,
+    __html: 1,
+  },
+  // a style's text, escaped
+  "apps/builder/app/builder/features/navigator/css-preview.tsx": {
+    dangerouslySetInnerHTML: 1,
+    __html: 1,
+  },
+  // a component meta's description through micromark
+  "apps/builder/app/builder/features/settings-panel/property-label.tsx": {
+    dangerouslySetInnerHTML: 1,
+    __html: 1,
+  },
+  // the builder's own chevron icons
+  "apps/builder/app/shared/code-editor-base.tsx": { ".innerHTML =": 1 },
+  // clears a test document
+  "apps/builder/app/builder/shared/asset-manager/test-utils.tsx": {
+    ".innerHTML =": 1,
+  },
+  // CMS rich text: HTML read into an inert DOMParser document as data, to
+  // store, paste or import; never inserted into the live page
+  "apps/builder/app/builder/features/cms-panel/native/cms-logic.ts": {
+    "parseFromString(": 1,
+  },
+  "apps/builder/app/builder/features/cms-panel/native/rich-text-field.tsx": {
+    "parseFromString(": 3,
+  },
+  "apps/builder/app/builder/features/cms-panel/native/rich-text-html.ts": {
+    "parseFromString(": 1,
+  },
+};
+
+const builderApp = fileURLToPath(new URL("..", import.meta.url));
+const repositoryRoot = fileURLToPath(new URL("../../../..", import.meta.url));
+
+const sourceFiles = (directory: string): string[] =>
+  readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) {
+      return entry.name === "__generated__" ? [] : sourceFiles(path);
+    }
+    return /\.(?:ts|tsx|js|jsx|mjs)$/.test(entry.name) &&
+      /\.(?:test|spec|stories)\./.test(entry.name) === false
+      ? [path]
+      : [];
+  });
+
+test("only the insertion path and a reviewed list write raw HTML into a builder document", () => {
+  const found: Record<string, Record<string, number>> = {};
+  for (const file of sourceFiles(builderApp)) {
+    const source = readFileSync(file, "utf8");
+    const counts: Record<string, number> = {};
+    for (const pattern of rawHtmlPatterns) {
+      const count = source.split(pattern).length - 1;
+      if (count > 0) {
+        counts[pattern] = count;
+      }
+    }
+    if (Object.keys(counts).length > 0) {
+      found[relative(repositoryRoot, file)] = counts;
+    }
+  }
+  expect(found).toEqual(reviewedRawHtml);
+});
+
+test("the Markdown preview writes through the insertion path", () => {
+  const preview = readFileSync(
+    fileURLToPath(
+      new URL(
+        "../builder/features/text-file-editor/markdown-preview.tsx",
+        import.meta.url
+      )
+    ),
+    "utf8"
+  );
+  expect(preview).toContain("<UntrustedMarkup");
+  expect(preview).not.toContain("dangerouslySetInnerHTML");
+});
