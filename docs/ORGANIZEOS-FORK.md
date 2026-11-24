@@ -4786,9 +4786,17 @@ may:
   SVG's gradients, clips, masks and filters still render. CSS text is not
   rewritten, so an `#id` selector in an embed's CSS does not match on the
   canvas, nor does a `[data-…]` selector.
-- The builder UI's Markdown preview alone also keeps an HTML `img` `src` that
-  is a `blob:` URL of `http` or `https` (an image still uploading), through a
-  second DOMPurify instance whose hook sets `forceKeepAttr` for that one case.
+- The builder UI's Markdown preview has a second DOMPurify instance with its
+  own configuration, `untrustedPreviewMarkupConfig`: the canvas's, with the
+  `style` element and the `style` attribute also forbidden, since the preview
+  writes into the builder's own top document, where an org's style would
+  restyle the builder (the canvas keeps both: an embed's CSS styling its page
+  is what embeds are for). It alone also keeps an HTML `img` `src` that is a
+  `blob:` URL of `http` or `https` (an image still uploading), through a hook
+  that sets `forceKeepAttr` for that one case.
+- `untrustedMarkupPurifier`, the live canvas sanitizer, is exported for the
+  tests that observe or stub it; the wiring test fails when any other module
+  in `apps/builder/app` names it.
 - `UntrustedMarkup` renders the wrapper and fills it in a layout effect keyed
   on the wrapper and the markup, so a re-render keeps the inserted nodes and a
   selection, and new markup replaces every old node. When nothing renderable
@@ -4799,11 +4807,20 @@ Who uses it: `CanvasHtmlEmbed` and `CanvasMarkdownEmbed`
 (`canvas/organizeos-org-script.tsx`), registered for HTML Embed and Markdown
 Embed on the canvas in every mode (below), and the builder UI's Markdown
 preview (`features/text-file-editor/markdown-preview.tsx`, one marked change),
-which therefore shows less than the published Markdown Embed (no iframes or
-framed uploads, `data:` images, task-list checkboxes, audio, video, `picture`
-or `srcset`; prefixed ids, so an in-preview `#anchor` does not jump; and its
-MDX component placeholders lose their dotted box, which the preview's style
-selected by a `data-*` attribute). "Run scripts on canvas" leaves the HTML
+which therefore shows less than the published Markdown Embed. It loses:
+iframes, an uploaded document framed by a relative address among them;
+`data:` images; task-list checkboxes and every other form control; audio,
+video, `picture` and `srcset`; `<style>` blocks and inline `style`
+attributes; `target` on a link, so a raw `<a target="_blank">` opens in the
+builder's tab; `tabindex`; every `data-*` attribute, so its MDX component
+placeholders lose their dotted box, which the preview's style selected by
+one; a link whose address is not `http`, `https`, `mailto`, `tel`, a
+fragment, a query or a path (`sms:` among them); SVG `use`, `symbol`,
+`textPath`, `feImage`, `foreignObject` and the animation elements, MathML,
+`template`, `noscript` and an HTML `title`; and the plain names of ids and
+`name`s, which gain the `user-content-` prefix (an in-preview `#anchor` still
+jumps to an id the same preview defines, a plain name of at most 64
+characters, and to no other). "Run scripts on canvas" leaves the HTML
 Embed's settings: the meta the canvas registers drops `executeScriptOnCanvas`
 from `props` and `initialProps`, and a saved value is ignored; a project that
 saved it still lists it as an added attribute row under its raw name, because

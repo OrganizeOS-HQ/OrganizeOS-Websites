@@ -309,6 +309,18 @@ export const untrustedMarkupConfig: Readonly<Config> = Object.freeze({
   RETURN_DOM_FRAGMENT: true,
 });
 
+/**
+ * The builder UI's Markdown preview writes into the builder's own top
+ * document, where a style of the org's would restyle the builder itself, so
+ * its configuration also forbids the `style` element and attribute. The
+ * canvas keeps both: an embed's CSS styling the page is what embeds are for.
+ */
+export const untrustedPreviewMarkupConfig: Readonly<Config> = Object.freeze({
+  ...untrustedMarkupConfig,
+  FORBID_TAGS: [...(untrustedMarkupConfig.FORBID_TAGS as string[]), "style"],
+  FORBID_ATTR: [...(untrustedMarkupConfig.FORBID_ATTR as string[]), "style"],
+});
+
 const addressAttributes = new Set(["href", "src", "cite"]);
 const allowedSchemes = new Set(["http", "https", "mailto", "tel"]);
 // eslint-disable-next-line no-control-regex
@@ -336,6 +348,10 @@ const addressMayStay = (value: string) => {
 const blobImageAddress = /^blob:https?:\/\/[^\s"'<>]+$/;
 
 type Instances = { strict: DOMPurify; blobImages: DOMPurify };
+
+/** The canvas's configuration, or the Markdown preview's (`blobImages`). */
+const configOf = (blobImages: boolean): Readonly<Config> =>
+  blobImages ? untrustedPreviewMarkupConfig : untrustedMarkupConfig;
 const instancesByWindow = new WeakMap<Window, Instances>();
 
 const createInstance = (
@@ -343,7 +359,7 @@ const createInstance = (
   blobImages: boolean
 ): DOMPurify => {
   const purify = createDOMPurify(view);
-  purify.setConfig({ ...untrustedMarkupConfig });
+  purify.setConfig({ ...configOf(blobImages) });
   // the title element only inside SVG, where it is a tooltip, never as the
   // document's title
   purify.addHook("uponSanitizeElement", (node, data) => {
@@ -393,7 +409,11 @@ const instancesOf = (view: Window & typeof globalThis): Instances => {
   return instances;
 };
 
-/** The window's strict purifier, for the tests that observe what it produced. */
+/**
+ * The window's strict purifier, for the tests that observe or stub what it
+ * produces. No module but this one and its tests may name it:
+ * `organizeos-org-script.wiring.node.test.ts` fails on any other.
+ */
 export const untrustedMarkupPurifier = (
   view: Window & typeof globalThis
 ): DOMPurify => instancesOf(view).strict;
@@ -488,7 +508,7 @@ export const insertUntrustedMarkup = (
     return { rendered: false };
   }
   const result: unknown = purify.sanitize(markup, {
-    ...untrustedMarkupConfig,
+    ...configOf(blobImages),
     RETURN_DOM_FRAGMENT: true,
   });
   // DOMPurify gives back the dirty string when it is not supported, and may

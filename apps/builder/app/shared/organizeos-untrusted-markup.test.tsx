@@ -7,6 +7,7 @@ import {
   insertUntrustedMarkup,
   untrustedMarkupConfig,
   untrustedMarkupPurifier,
+  untrustedPreviewMarkupConfig,
   UntrustedMarkup,
 } from "./organizeos-untrusted-markup";
 import {
@@ -319,6 +320,118 @@ describe("insertUntrustedMarkup", () => {
         href
       ).toBe(false);
     }
+  });
+});
+
+// The Markdown preview writes into the builder's own top document: no style of
+// the org's may restyle the builder. The canvas keeps them (above).
+describe("the Markdown preview's configuration", () => {
+  test("drops the style element and the style attribute, and keeps the rest", () => {
+    const { wrapper, rendered } = insert(
+      '<style>.probe-preview { color: rgb(9, 9, 9) }</style><p style="color: red" class="probe-preview">x</p><img src="blob:https://x.example/1">',
+      { blobImages: true }
+    );
+    expect(rendered).toBe(true);
+    expect(wrapper.querySelector("style")).toBeNull();
+    expect(wrapper.querySelector("[style]")).toBeNull();
+    expect(wrapper.querySelector("p")?.textContent).toBe("x");
+    expect(wrapper.querySelector("img")?.getAttribute("src")).toBe(
+      "blob:https://x.example/1"
+    );
+    // the canvas's keeps both
+    const canvas = insert(
+      '<style>.a{}</style><p style="color: red">x</p>'
+    ).wrapper;
+    expect(canvas.querySelector("style")).not.toBeNull();
+    expect(canvas.querySelector("p")?.hasAttribute("style")).toBe(true);
+  });
+
+  test("is the canvas's, with style forbidden", () => {
+    expect(untrustedPreviewMarkupConfig).toEqual({
+      ...untrustedMarkupConfig,
+      FORBID_TAGS: [...(untrustedMarkupConfig.FORBID_TAGS ?? []), "style"],
+      FORBID_ATTR: [...(untrustedMarkupConfig.FORBID_ATTR ?? []), "style"],
+    });
+    expect(Object.isFrozen(untrustedPreviewMarkupConfig)).toBe(true);
+  });
+});
+
+// What insertUntrustedMarkup refuses when the sanitizer misbehaves: it inserts
+// only a fragment of this window's realm, from a sanitizer that says it works
+describe("insertUntrustedMarkup with a sanitizer that misbehaves", () => {
+  const withStub = <Key extends "sanitize" | "isSupported">(
+    key: Key,
+    value: unknown,
+    run: () => void
+  ) => {
+    const purify = untrustedMarkupPurifier(window) as unknown as Record<
+      string,
+      unknown
+    >;
+    const saved = purify[key];
+    purify[key] = value;
+    try {
+      run();
+    } finally {
+      purify[key] = saved;
+    }
+  };
+
+  const expectNothingInserted = () => {
+    const wrapper = document.createElement("div");
+    host.appendChild(wrapper);
+    expect(insertUntrustedMarkup(wrapper, "<p>a</p>")).toEqual({
+      rendered: false,
+    });
+    expect(wrapper.childNodes.length).toBe(0);
+  };
+
+  const liveFragment = (owner: Document) => {
+    const fragment = owner.createDocumentFragment();
+    fragment.appendChild(owner.createElement("p")).textContent = "a";
+    return fragment;
+  };
+
+  test("a sanitizer that is not supported inserts nothing, even given a fragment", () => {
+    withStub("isSupported", false, () => {
+      withStub("sanitize", () => liveFragment(document), expectNothingInserted);
+    });
+  });
+
+  test("a string from the sanitizer inserts nothing", () => {
+    withStub("sanitize", () => "<p>a</p>", expectNothingInserted);
+  });
+
+  test("null from the sanitizer inserts nothing", () => {
+    withStub("sanitize", () => null, expectNothingInserted);
+  });
+
+  test("a fragment of another live document inserts nothing", () => {
+    const frame = document.createElement("iframe");
+    host.appendChild(frame);
+    const other = frame.contentDocument as Document;
+    // of the other window's realm
+    withStub("sanitize", () => liveFragment(other), expectNothingInserted);
+    // and one made to pass as this realm's, owned by a document with a window
+    const disguised = liveFragment(other);
+    Object.setPrototypeOf(disguised, window.DocumentFragment.prototype);
+    expect(disguised instanceof window.DocumentFragment).toBe(true);
+    withStub("sanitize", () => disguised, expectNothingInserted);
+  });
+
+  test("the control: a fragment of this document is inserted", () => {
+    withStub(
+      "sanitize",
+      () => liveFragment(document),
+      () => {
+        const wrapper = document.createElement("div");
+        host.appendChild(wrapper);
+        expect(insertUntrustedMarkup(wrapper, "<p>a</p>")).toEqual({
+          rendered: true,
+        });
+        expect(wrapper.querySelector("p")?.textContent).toBe("a");
+      }
+    );
   });
 });
 

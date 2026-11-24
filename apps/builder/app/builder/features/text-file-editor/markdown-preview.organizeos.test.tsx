@@ -107,3 +107,15 @@ test("an iframe in the source renders no iframe", async () => {
   expect(region.querySelector("iframe")).toBeNull();
   expect(document.querySelector("iframe")).toBeNull();
 });
+
+// The preview is in the builder's own document: no style of the org's may
+// restyle the builder, whatever upstream's Markdown filter lets through
+test("a style element and a style attribute in the source do not survive", async () => {
+  render(
+    '# Styled\n\n<style>body { display: none }</style>\n\n<p style="color: red">x</p>\n\n<div style="position: fixed">y</div>'
+  );
+  const region = await preview((region) => region.querySelector("h1") !== null);
+  expect(region.querySelector("style")).toBeNull();
+  expect(region.querySelector("[style]")).toBeNull();
+  expect(getComputedStyle(document.body).display).not.toBe("none");
+});

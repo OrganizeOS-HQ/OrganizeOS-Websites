@@ -10,6 +10,7 @@ import {
 } from "@webstudio-is/sdk";
 import { ReactSdkContext } from "@webstudio-is/react-sdk/runtime";
 import { createAssetUrlsByPath } from "@webstudio-is/project-build/runtime";
+import { renderMarkdownHtml } from "@webstudio-is/sdk-components-react/markdown";
 import { toRuntimeAsset, type Asset } from "@webstudio-is/sdk";
 import {
   HtmlEmbed,
@@ -69,6 +70,9 @@ import {
 // mock reaches the canvas module, which reads orgEmbedsMayShip() at render and
 // in withOrgScriptPolicy's default.
 const { embeds } = vi.hoisted(() => ({ embeds: { mayShip: false } }));
+// OrganizeOS fork: upstream's Markdown renderer, observed, so a case can see
+// whether the canvas called it and make it throw
+vi.mock("@webstudio-is/sdk-components-react/markdown", { spy: true });
 vi.mock("@organizeos/site-components/org-script", async (importOriginal) => ({
   ...(await importOriginal<
     typeof import("@organizeos/site-components/org-script")
@@ -1072,6 +1076,19 @@ describe("CanvasHtmlEmbed once embeds may ship", () => {
           'Open the "Settings" panel to insert HTML code.'
         );
       });
+
+      // a Content Embed bound to a field that is null: upstream resolves
+      // String(code ?? ""), so the canvas never shows the text "null"
+      test("code that is null is blank, never the text null", () => {
+        const host = render(
+          mode,
+          <CanvasHtmlEmbed {...props} code={null as never} />
+        );
+        expect(host.textContent).not.toContain("null");
+        expect(host.textContent).toBe(
+          'Open the "Settings" panel to insert HTML code.'
+        );
+      });
     }
   );
 
@@ -1184,6 +1201,31 @@ describe("CanvasHtmlEmbed once embeds may ship", () => {
     rerender(modes[1], <CanvasHtmlEmbed code="<b>c</b>" />);
     expect(host.querySelector("p, i")).toBeNull();
     expect(host.querySelectorAll("b")).toHaveLength(1);
+  });
+});
+
+describe("CanvasMarkdownEmbed, whether it renders", () => {
+  afterEach(() => {
+    vi.mocked(renderMarkdownHtml).mockRestore();
+  });
+
+  test("while embeds may not ship, the renderer is not called", () => {
+    embeds.mayShip = false;
+    vi.mocked(renderMarkdownHtml).mockClear();
+    const host = render(modes[1], <CanvasMarkdownEmbed code="# Title" />);
+    expect(host.textContent).toContain("Markdown Embed is paused");
+    expect(renderMarkdownHtml).not.toHaveBeenCalled();
+  });
+
+  test("once embeds may ship, a renderer that throws shows the box", () => {
+    embeds.mayShip = true;
+    vi.mocked(renderMarkdownHtml).mockImplementation(() => {
+      throw new Error("renderer failed");
+    });
+    const host = render(modes[1], <CanvasMarkdownEmbed code="# Title" />);
+    expect(renderMarkdownHtml).toHaveBeenCalled();
+    expect(host.textContent).toBe(publishedOnly);
+    expect(host.querySelector("h1")).toBeNull();
   });
 });
 

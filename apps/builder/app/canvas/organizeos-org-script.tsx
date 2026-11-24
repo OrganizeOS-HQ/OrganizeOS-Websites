@@ -122,7 +122,8 @@ export const CanvasHtmlEmbed = forwardRef<
   // value whose String() throws shows the box
   const markup = useMemo(() => {
     try {
-      return resolveHtmlEmbedAssetUrls(String(code), assetUrlsByPath);
+      // as upstream resolves it: a null field renders nothing, not "null"
+      return resolveHtmlEmbedAssetUrls(String(code ?? ""), assetUrlsByPath);
     } catch {
       return undefined;
     }
@@ -135,11 +136,15 @@ export const CanvasHtmlEmbed = forwardRef<
   if (orgEmbedsMayShip() === false) {
     return <Notice {...rest} ref={ref} text={htmlEmbedPausedText} />;
   }
-  if (code === undefined || (typeof code === "string" && code.trim() === "")) {
+  if (
+    code === undefined ||
+    code === null ||
+    (typeof code === "string" && code.trim() === "")
+  ) {
     return (
       <HtmlEmbed
         {...rest}
-        code={savedCode}
+        code={code === null ? (undefined as never) : savedCode}
         $ws$executeScripts={false}
         ref={ref}
       />
@@ -166,31 +171,52 @@ CanvasHtmlEmbed.displayName = "CanvasHtmlEmbed";
  * own filter (`sanitize-html`, which keeps iframes) is not the canvas's
  * boundary.
  */
+type MarkdownEmbedProps = ComponentPropsWithoutRef<typeof MarkdownEmbed>;
+
+/**
+ * The Markdown, once embeds may ship: rendered and put in through the
+ * insertion path, or the box when nothing renderable is left or the renderer
+ * (or the canvas's image loader) throws.
+ */
+const ShippingMarkdownEmbed = forwardRef<HTMLDivElement, MarkdownEmbedProps>(
+  (props, ref) => {
+    const { code, children: _children, ...rest } = props;
+    const { imageLoader, renderer } = useContext(ReactSdkContext);
+    const markup = useMemo(() => {
+      try {
+        return renderMarkdownHtml(typeof code === "string" ? code : "", {
+          imageLoader,
+          renderer,
+        });
+      } catch {
+        return undefined;
+      }
+    }, [code, imageLoader, renderer]);
+    if (markup === undefined) {
+      return <Notice {...rest} ref={ref} text={publishedOnlyText} />;
+    }
+    return (
+      <UntrustedMarkup
+        {...rest}
+        ref={ref}
+        markup={markup}
+        renderFallback={renderPublishedOnly}
+      />
+    );
+  }
+);
+ShippingMarkdownEmbed.displayName = "ShippingMarkdownEmbed";
+
 export const CanvasMarkdownEmbed = forwardRef<
   HTMLDivElement,
-  ComponentPropsWithoutRef<typeof MarkdownEmbed>
+  MarkdownEmbedProps
 >((props, ref) => {
-  const { code, children: _children, ...rest } = props;
-  const { imageLoader, renderer } = useContext(ReactSdkContext);
-  const markup = useMemo(
-    () =>
-      renderMarkdownHtml(typeof code === "string" ? code : "", {
-        imageLoader,
-        renderer,
-      }),
-    [code, imageLoader, renderer]
-  );
+  // while embeds may not ship nothing is rendered or computed
   if (orgEmbedsMayShip() === false) {
+    const { code: _code, children: _children, ...rest } = props;
     return <Notice {...rest} ref={ref} text={markdownEmbedPausedText} />;
   }
-  return (
-    <UntrustedMarkup
-      {...rest}
-      ref={ref}
-      markup={markup}
-      renderFallback={renderPublishedOnly}
-    />
-  );
+  return <ShippingMarkdownEmbed {...props} ref={ref} />;
 });
 CanvasMarkdownEmbed.displayName = "CanvasMarkdownEmbed";
 

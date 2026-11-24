@@ -252,6 +252,10 @@ const rawHtmlPatterns = [
   "srcDoc",
   "setHTMLUnsafe(",
   "parseFromString(",
+  ".srcdoc",
+  "setHTML(",
+  "innerHTML:",
+  '["innerHTML"]',
 ];
 
 const reviewedRawHtml: Record<string, Record<string, number>> = {
@@ -322,6 +326,19 @@ test("only the insertion path and a reviewed list write raw HTML into a builder 
     }
   }
   expect(found).toEqual(reviewedRawHtml);
+});
+
+// The insertion path's live sanitizer is exported for its tests only: a module
+// that named it could add a hook to it, or change its configuration
+test("no module but the insertion path names its sanitizer", () => {
+  const namers = sourceFiles(builderApp)
+    .filter((file) =>
+      readFileSync(file, "utf8").includes("untrustedMarkupPurifier")
+    )
+    .map((file) => relative(repositoryRoot, file));
+  expect(namers).toEqual([
+    "apps/builder/app/shared/organizeos-untrusted-markup.tsx",
+  ]);
 });
 
 test("the Markdown preview writes through the insertion path", () => {
