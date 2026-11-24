@@ -127,6 +127,20 @@ vi.mock("./organizeos-generated-code", async (importOriginal) => {
   };
 });
 
+// OrganizeOS fork: the publish facts (organizeos-publish-facts.ts), with a
+// page's fact forced by one case to test the tripwire alone
+const facts = vi.hoisted(() => ({ forceFalse: false }));
+vi.mock("./organizeos-publish-facts", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("./organizeos-publish-facts")>();
+  return {
+    ...actual,
+    pageCarriesOrgCode: (
+      ...args: Parameters<typeof actual.pageCarriesOrgCode>
+    ) => (facts.forceFalse ? false : actual.pageCarriesOrgCode(...args)),
+  };
+});
+
 // OrganizeOS fork: Vitest's module runner has no import.meta.resolve, and it
 // resolves @organizeos/site-components with the webstudio condition, to the
 // package's source. Hand the CLI that source: it finds the package's build
@@ -730,6 +744,7 @@ beforeEach(async () => {
 afterEach(async () => {
   orgScript.mayRun = false;
   embeds.mayShip = false;
+  facts.forceFalse = false;
   consoleInfo.mockRestore();
   process.chdir(originalCwd);
   globalThis.fetch = originalFetch;
@@ -17148,5 +17163,246 @@ describe("the custom code name check", () => {
     await expect(
       readFile("app/__generated__/_index.tsx", "utf8")
     ).resolves.toContain('<b>{"ok"}</b>');
+  });
+});
+
+// OrganizeOS fork: each build reports whether it carries org code, to a path
+// outside the deployed directory (organizeos-publish-facts.ts, spec
+// 2026-11-20, 4.5)
+describe("the publish facts", () => {
+  const MenuIcon =
+    [...templateIconCodes].find((icon) => icon.includes("M2.667 8h10.666")) ??
+    "";
+  let factsDirectory: string;
+  let factsFile: string;
+
+  beforeEach(async () => {
+    factsDirectory = await mkdtemp(join(tmpdir(), "organizeos-facts-"));
+    factsFile = join(factsDirectory, "facts.json");
+  });
+
+  afterEach(async () => {
+    await rm(factsDirectory, { recursive: true, force: true });
+  });
+
+  const writeEmbeds = async ({
+    embeds: list = [],
+    jsonLd = false,
+    customCode,
+  }: {
+    embeds?: Array<{ component: string; code: string }>;
+    jsonLd?: boolean;
+    customCode?: string;
+  }) => {
+    const children = list.map((_, index) => `embed-${index}`);
+    if (jsonLd) {
+      children.push("json-ld");
+    }
+    const data = createSiteData({
+      instances: [
+        [
+          "root",
+          {
+            id: "root",
+            component: "Body",
+            children: children.map((value) => ({ type: "id", value })),
+          },
+        ],
+        ...list.map(
+          ({ component }, index) =>
+            [
+              `embed-${index}`,
+              { id: `embed-${index}`, component, children: [] },
+            ] as [string, Omit<Instance, "type">]
+        ),
+        ...(jsonLd
+          ? [
+              [
+                "json-ld",
+                { id: "json-ld", component: "JsonLd", children: [] },
+              ] as [string, Omit<Instance, "type">],
+            ]
+          : []),
+      ],
+      props: [
+        ...list.map(
+          ({ code }, index) =>
+            [
+              `embed-${index}:code`,
+              {
+                id: `embed-${index}:code`,
+                instanceId: `embed-${index}`,
+                name: "code",
+                type: "string",
+                value: code,
+              },
+            ] as [string, Prop]
+        ),
+        ...(jsonLd
+          ? [
+              [
+                "json-ld:code",
+                {
+                  id: "json-ld:code",
+                  instanceId: "json-ld",
+                  name: "code",
+                  type: "json",
+                  value: { "@context": "https://schema.org", name: "x" },
+                },
+              ] as [string, Prop],
+            ]
+          : []),
+      ],
+    });
+    const bundle =
+      customCode === undefined
+        ? data
+        : {
+            ...data,
+            build: {
+              ...data.build,
+              projectSettings: { meta: { code: customCode }, compiler: {} },
+            },
+          };
+    await writeFile(".webstudio/data.json", JSON.stringify(bundle));
+  };
+
+  const build = () =>
+    prebuild({
+      assets: false,
+      template: ["react-router"],
+      organizeosFactsFile: factsFile,
+    });
+
+  test("a build with a script embed carries org code", async () => {
+    embeds.mayShip = true;
+    await writeEmbeds({
+      embeds: [{ component: "HtmlEmbed", code: "<script>1</script>" }],
+    });
+    await build();
+    await expect(readFile(factsFile, "utf8")).resolves.toBe(
+      '{"orgScript":true}'
+    );
+  });
+
+  test("a build with a Markdown Embed carries org code", async () => {
+    embeds.mayShip = true;
+    await writeEmbeds({
+      embeds: [{ component: "MarkdownEmbed", code: "# Title" }],
+    });
+    await build();
+    await expect(readFile(factsFile, "utf8")).resolves.toBe(
+      '{"orgScript":true}'
+    );
+  });
+
+  test("a build with custom code only carries org code", async () => {
+    embeds.mayShip = true;
+    await writeEmbeds({ customCode: "<meta name=x content=y>" });
+    await build();
+    await expect(readFile(factsFile, "utf8")).resolves.toBe(
+      '{"orgScript":true}'
+    );
+  });
+
+  test("a build with icons only, or JSON-LD only, carries none", async () => {
+    embeds.mayShip = true;
+    await writeEmbeds({ embeds: [{ component: "HtmlEmbed", code: MenuIcon }] });
+    await build();
+    await expect(readFile(factsFile, "utf8")).resolves.toBe(
+      '{"orgScript":false}'
+    );
+    await writeEmbeds({ jsonLd: true });
+    await build();
+    await expect(readFile(factsFile, "utf8")).resolves.toBe(
+      '{"orgScript":false}'
+    );
+  });
+
+  test("with embeds off, a build that held a script embed carries none", async () => {
+    await writeEmbeds({
+      embeds: [{ component: "HtmlEmbed", code: "<script>1</script>" }],
+      customCode: "<meta name=x content=y>",
+    });
+    await build();
+    await expect(readFile(factsFile, "utf8")).resolves.toBe(
+      '{"orgScript":false}'
+    );
+  });
+
+  test("the tripwire fails the build when the fact is forced false", async () => {
+    embeds.mayShip = true;
+    facts.forceFalse = true;
+    await writeEmbeds({
+      embeds: [{ component: "HtmlEmbed", code: "<script>1</script>" }],
+    });
+    await expect(build()).rejects.toThrow(
+      /renders an embed, and the publish facts say it carries no org code/
+    );
+    await expect(readdir(factsDirectory)).resolves.toEqual([]);
+  });
+
+  test("the environment variable alone writes the file", async () => {
+    const previous = process.env.ORGANIZEOS_PUBLISH_FACTS_FILE;
+    process.env.ORGANIZEOS_PUBLISH_FACTS_FILE = factsFile;
+    try {
+      await writeEmbeds({});
+      await prebuild({ assets: false, template: ["react-router"] });
+      await expect(readFile(factsFile, "utf8")).resolves.toBe(
+        '{"orgScript":false}'
+      );
+    } finally {
+      if (previous === undefined) {
+        delete process.env.ORGANIZEOS_PUBLISH_FACTS_FILE;
+      } else {
+        process.env.ORGANIZEOS_PUBLISH_FACTS_FILE = previous;
+      }
+    }
+  });
+
+  test("writes nothing without a path, and nothing when the build fails", async () => {
+    const previous = process.env.ORGANIZEOS_PUBLISH_FACTS_FILE;
+    delete process.env.ORGANIZEOS_PUBLISH_FACTS_FILE;
+    try {
+      await writeEmbeds({});
+      await prebuild({ assets: false, template: ["react-router"] });
+      await expect(readdir(factsDirectory)).resolves.toEqual([]);
+    } finally {
+      if (previous !== undefined) {
+        process.env.ORGANIZEOS_PUBLISH_FACTS_FILE = previous;
+      }
+    }
+    embeds.mayShip = true;
+    await writeEmbeds({
+      customCode: '<div async/ ={import("https://x.example/a.js")}>',
+    });
+    await expect(build()).rejects.toThrow(/^Custom code cannot be published/);
+    await expect(readdir(factsDirectory)).resolves.toEqual([]);
+  });
+
+  test("the facts file is written after the assets", async () => {
+    vi.stubGlobal("fetch", async () => new Response(new Uint8Array([1, 2])));
+    await writeEmbeds({});
+    await prebuild({
+      assets: true,
+      template: ["react-router"],
+      organizeosFactsFile: factsFile,
+    });
+    const factsTime = (await stat(factsFile)).mtimeMs;
+    const newest = async (directory: string): Promise<number> => {
+      let latest = 0;
+      for (const entry of await readdir(directory, { withFileTypes: true })) {
+        const path = join(directory, entry.name);
+        latest = Math.max(
+          latest,
+          entry.isDirectory() ? await newest(path) : (await stat(path)).mtimeMs
+        );
+      }
+      return latest;
+    };
+    const assetsTime = await newest("public");
+    // the control: an asset was written
+    expect(assetsTime).toBeGreaterThan(0);
+    expect(factsTime).toBeGreaterThanOrEqual(assetsTime);
   });
 });
