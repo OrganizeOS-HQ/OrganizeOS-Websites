@@ -34,6 +34,7 @@ import {
   isElementReference,
   isEventAttributeName,
   isFrameDocumentName,
+  orgEmbedsMayShip,
   orgScriptMayRun,
   pageRedirectMayShip,
   pageRootIdsOf,
@@ -230,6 +231,7 @@ export const findPausedScript = ({
   resources,
   components = publishedComponents,
   mayRun = orgScriptMayRun(),
+  embedsMayShip = orgEmbedsMayShip(),
 }: {
   pages: undefined | Pages;
   /** Where 0.309.0 keeps the custom code; a loaded build has no pages meta */
@@ -243,6 +245,12 @@ export const findPausedScript = ({
   /** The components a published page imports */
   components?: ReadonlySet<Instance["component"]>;
   mayRun?: boolean;
+  /**
+   * OrganizeOS fork: HTML Embed, Content Embed, Markdown Embed, JSON-LD and
+   * the custom code publish (orgEmbedsMayShip()); the dialog passes it
+   * explicitly
+   */
+  embedsMayShip?: boolean;
 }): PausedScriptItem[] => {
   if (mayRun || pages === undefined) {
     return [];
@@ -273,6 +281,22 @@ export const findPausedScript = ({
     }
     if (componentMayShip(instance.component, components) === false) {
       return "Unknown component";
+    }
+    if (instance.component === "HtmlEmbed" && embedsMayShip) {
+      // with embeds on, only an embed with nothing to render is dropped, as
+      // `classify` drops it
+      const codes = instanceProps.filter((prop) => prop.name === "code");
+      const hasCode = codes.some(
+        (code) => code.type !== "string" || code.value.trim() !== ""
+      );
+      return hasCode ? undefined : "HTML Embed";
+    }
+    if (
+      embedsMayShip &&
+      (instance.component === "MarkdownEmbed" ||
+        instance.component === "JsonLd")
+    ) {
+      return;
     }
     if (instance.component === "HtmlEmbed") {
       // an expression is only known when the page renders: it is dropped
@@ -605,8 +629,9 @@ export const findPausedScript = ({
   }
 
   if (
-    (pages.meta?.code ?? "").trim() !== "" ||
-    (projectSettings?.meta.code ?? "").trim() !== ""
+    embedsMayShip === false &&
+    ((pages.meta?.code ?? "").trim() !== "" ||
+      (projectSettings?.meta.code ?? "").trim() !== "")
   ) {
     // Text, not a link: Settings shows no custom code while org script is
     // paused (shared/project-settings/section-general.tsx)

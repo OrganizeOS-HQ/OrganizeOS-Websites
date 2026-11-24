@@ -7,15 +7,16 @@ import { $projectSettings } from "~/shared/sync/data-stores";
 import { executeRuntimeMutation } from "~/shared/instance-utils/data";
 import { SectionGeneral } from "./section-general";
 
-// OrganizeOS fork: orgScriptMayRun is a constant false while org script is
-// paused (docs/ORGANIZEOS-FORK.md section 10); the case for after the unpause
-// flips it here
-const orgScript = vi.hoisted(() => ({ mayRun: false }));
+// OrganizeOS fork: orgScriptMayRun is a constant false, and the Custom code box
+// follows orgEmbedsMayShip() (docs/ORGANIZEOS-FORK.md section 10); the case for
+// after the flip turns embeds on here
+const orgScript = vi.hoisted(() => ({ mayRun: false, embeds: false }));
 vi.mock("@organizeos/site-components/org-script", async (importOriginal) => ({
   ...(await importOriginal<
     typeof import("@organizeos/site-components/org-script")
   >()),
   orgScriptMayRun: () => orgScript.mayRun,
+  orgEmbedsMayShip: () => orgScript.embeds,
 }));
 
 vi.mock("~/shared/instance-utils/data", { spy: true });
@@ -50,6 +51,7 @@ const getLabels = (host: HTMLElement) =>
 
 beforeEach(() => {
   orgScript.mayRun = false;
+  orgScript.embeds = false;
   vi.mocked(executeRuntimeMutation)
     .mockReset()
     .mockImplementation(() => undefined);
@@ -68,7 +70,7 @@ afterEach(() => {
 });
 
 describe("SectionGeneral, Custom code", () => {
-  test("while org script is paused there is no Custom code box", () => {
+  test("while embeds may not ship there is no Custom code box", () => {
     const host = renderSection("<script>1</script>");
     expect(getLabels(host)).not.toContain("Custom code");
     expect(getEditors(host)).toEqual([]);
@@ -76,8 +78,8 @@ describe("SectionGeneral, Custom code", () => {
     expect(host.textContent).not.toContain("paused");
   });
 
-  test("once org script may run it is the label and an editor, with no paragraph", () => {
-    orgScript.mayRun = true;
+  test("once embeds may ship it is the label and an editor, with no paragraph", () => {
+    orgScript.embeds = true;
     const host = renderSection("<script>1</script>");
     expect(getLabels(host)).toContain("Custom code");
     const editor = getEditors(host).at(-1);
@@ -85,6 +87,12 @@ describe("SectionGeneral, Custom code", () => {
     expect(editor?.getAttribute("contenteditable")).toBe("true");
     expect(host.textContent).not.toContain("<head>");
     expect(host.textContent).not.toContain("published site");
+  });
+
+  test("org script alone shows no box", () => {
+    orgScript.mayRun = true;
+    const host = renderSection("<script>1</script>");
+    expect(getLabels(host)).not.toContain("Custom code");
   });
 });
 

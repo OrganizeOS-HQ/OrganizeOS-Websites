@@ -151,6 +151,7 @@ const $pausedScript = computed(
       props,
       dataSources,
       resources,
+      embedsMayShip: orgEmbedsMayShip(),
     })
 );
 

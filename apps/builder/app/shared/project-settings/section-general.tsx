@@ -24,7 +24,7 @@ import { sectionSpacing } from "./utils";
 import { CodeEditor } from "~/shared/code-editor";
 import { CopyToClipboard } from "~/shared/copy-to-clipboard";
 import { executeRuntimeMutation } from "~/shared/instance-utils/data";
-import { orgScriptMayRun } from "@organizeos/site-components/org-script";
+import { orgEmbedsMayShip } from "@organizeos/site-components/org-script";
 
 const imgStyle = css({
   objectFit: "contain",
@@ -145,11 +145,12 @@ export const SectionGeneral = ({ projectId }: { projectId?: string }) => {
         </Grid>
       </Grid>
 
-      {/* OrganizeOS fork: while org script is paused (docs/ORGANIZEOS-FORK.md
-          section 10) there is no Custom code box; what is saved is kept and
-          runs again once scripts may run. When they may, the box is the label
-          and the editor, with no paragraph (builder UI rule, fork CLAUDE.md). */}
-      {orgScriptMayRun() && (
+      {/* OrganizeOS fork: while embeds may not ship (docs/ORGANIZEOS-FORK.md
+          section 10, orgEmbedsMayShip()) there is no Custom code box; what is
+          saved is kept and ships once embeds may. When they may, the box is
+          the label and the editor, with no paragraph (builder UI rule, fork
+          CLAUDE.md). */}
+      {orgEmbedsMayShip() && (
         <>
           <Separator />
 
