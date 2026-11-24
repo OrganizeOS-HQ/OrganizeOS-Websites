@@ -157,7 +157,10 @@ import {
   refuseMdxWhilePaused,
 } from "./organizeos-org-script";
 import { checkGeneratedModule } from "./organizeos-generated-code";
-import { pagesForSitemap } from "@organizeos/site-components/org-script";
+import {
+  orgEmbedsMayShip,
+  pagesForSitemap,
+} from "@organizeos/site-components/org-script";
 import { assertNoPreviewHeader } from "./organizeos-preview-header";
 import { createFramework as createRemixFramework } from "./framework-remix";
 import { createFramework as createReactRouterFramework } from "./framework-react-router";
@@ -1017,6 +1020,8 @@ export const prebuild = async (options: {
   // does not import (organizeos-org-script.ts).
   const frameworkComponents = frameworkComponentsOf(options.template);
   const siteData = dropOrgScript(parsedSiteData.data, {
+    // OrganizeOS fork: the embed switch, passed explicitly so a test's mock of it reaches the drop (organizeos-org-script.ts)
+    embedsMayShip: orgEmbedsMayShip(),
     components: frameworkComponents,
     log: options.silent ? undefined : (message) => log.info(message),
   });

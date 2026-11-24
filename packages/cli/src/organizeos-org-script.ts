@@ -94,6 +94,7 @@ import {
   isElementReference,
   isEventAttributeName,
   isFrameDocumentName,
+  orgEmbedsMayShip,
   orgScriptMayRun,
   pageRedirectMayShip,
   pausedPropNames,
@@ -479,16 +480,39 @@ const withShippedMeta = (
 // `checksTagProp`, in org-script.ts). A tag is one the builder offers when
 // `elementTagMayRun` says so; the canvas applies the same rule, and makes no
 // `animate` or `set` either (`elementTagMayRender`).
+// OrganizeOS fork: with orgEmbedsMayShip() on, an HTML Embed ships when it has
+// code to render: a `code` prop that is not a blank static string (a bound one
+// counts). One with nothing would print upstream's "Open the Settings panel"
+// placeholder on the live page.
+const htmlEmbedHasCode = (codeProps: Prop[]) =>
+  codeProps.some((prop) => prop.type !== "string" || prop.value.trim() !== "");
+
 const classify = (
   instance: Instance,
   props: Prop[] = [],
-  components: ReadonlySet<Instance["component"]>
+  components: ReadonlySet<Instance["component"]>,
+  embedsMayShip: boolean,
+  forcedHtmlEmbeds: ReadonlySet<Instance["id"]>
 ): undefined | Kind => {
   if (instanceIdMayRun(instance.id, false) === false) {
     return "reservedId";
   }
   if (componentMayShip(instance.component, components) === false) {
     return "unknownComponent";
+  }
+  if (instance.component === "HtmlEmbed" && embedsMayShip) {
+    // an embed whose every code prop the expression rules drop goes too
+    const codeProps = props.filter((prop) => prop.name === "code");
+    return htmlEmbedHasCode(codeProps) &&
+      forcedHtmlEmbeds.has(instance.id) === false
+      ? undefined
+      : "htmlEmbed";
+  }
+  if (
+    embedsMayShip &&
+    (instance.component === "MarkdownEmbed" || instance.component === "JsonLd")
+  ) {
+    return;
   }
   if (instance.component === "HtmlEmbed") {
     // An expression, a resource or a missing code is only known (or empty)
@@ -662,10 +686,17 @@ export const dropOrgScript = <Bundle extends PublishedProjectBundle>(
   bundle: Bundle,
   {
     mayRun = orgScriptMayRun(),
+    embedsMayShip = orgEmbedsMayShip(),
     components = publishedComponents,
     log,
   }: {
     mayRun?: boolean;
+    /**
+     * OrganizeOS fork: HTML Embed, Content Embed, Markdown Embed, JSON-LD and
+     * the custom code ship (org-script.ts, orgEmbedsMayShip()); every other
+     * rule holds. Prebuild passes it explicitly.
+     */
+    embedsMayShip?: boolean;
     components?: ReadonlySet<Instance["component"]>;
     log?: (message: string) => void;
   } = {}
@@ -673,6 +704,37 @@ export const dropOrgScript = <Bundle extends PublishedProjectBundle>(
   if (mayRun) {
     return bundle;
   }
+  // An HTML Embed that loses its every code prop to the rules below goes
+  // too: the drop runs again with it marked, until nothing more is marked
+  let forced = new Set<Instance["id"]>();
+  for (;;) {
+    const run = dropOrgScriptOnce(bundle, {
+      embedsMayShip,
+      components,
+      forcedHtmlEmbeds: forced,
+    });
+    if ([...run.losingCode].every((id) => forced.has(id))) {
+      if (run.message !== undefined) {
+        log?.(run.message);
+      }
+      return run.result;
+    }
+    forced = new Set([...forced, ...run.losingCode]);
+  }
+};
+
+const dropOrgScriptOnce = <Bundle extends PublishedProjectBundle>(
+  bundle: Bundle,
+  {
+    embedsMayShip,
+    components,
+    forcedHtmlEmbeds,
+  }: {
+    embedsMayShip: boolean;
+    components: ReadonlySet<Instance["component"]>;
+    forcedHtmlEmbeds: ReadonlySet<Instance["id"]>;
+  }
+): { result: Bundle; message?: string; losingCode: Set<Instance["id"]> } => {
   // Every rule reads one entry per id, the last, as the builder does, and so
   // does everything after it, and a stored Form as the component it publishes
   const { build: entries, duplicates } = withOneEntryPerId(bundle.build);
@@ -742,8 +804,9 @@ export const dropOrgScript = <Bundle extends PublishedProjectBundle>(
     dataSources: 0,
     redirects: 0,
     customCode:
-      (build.pages.meta?.code ?? "").trim() !== "" ||
-      (settingsCode ?? "").trim() !== "",
+      embedsMayShip === false &&
+      ((build.pages.meta?.code ?? "").trim() !== "" ||
+        (settingsCode ?? "").trim() !== ""),
     duplicateEntries: duplicates,
     collectionBindings: 0,
   };
@@ -765,7 +828,13 @@ export const dropOrgScript = <Bundle extends PublishedProjectBundle>(
     // The builder's global root is virtual: an instance stored with its id is
     // crafted, and goes. The global data sources stay.
     const kind =
-      classify(instance, propsByInstance.get(instance.id), components) ??
+      classify(
+        instance,
+        propsByInstance.get(instance.id),
+        components,
+        embedsMayShip,
+        forcedHtmlEmbeds
+      ) ??
       (xmlComponents.has(instance.component) &&
       publishedOnHtmlPages.has(instance.id)
         ? "xmlElement"
@@ -928,8 +997,34 @@ export const dropOrgScript = <Bundle extends PublishedProjectBundle>(
       pausedFields.get(page.id)?.has("redirect") === true
   ).length;
 
+  // A prop that ships: the same rule the kept props are filtered by below
+  const propShips = (prop: Prop) =>
+    pausedPropNames.has(prop.name) === false &&
+    propFails(prop) === false &&
+    (prop.type !== "parameter" || collidingIds.has(prop.value) === false) &&
+    pausedProps.has(prop.id) === false &&
+    namesPausedResource(prop) === false;
+  // With embeds on, a kept HTML Embed whose code the rules drop would print
+  // upstream's placeholder: it is marked, and the drop runs again
+  const losingCode = new Set<Instance["id"]>();
+  if (embedsMayShip) {
+    for (const [id, instance] of build.instances) {
+      if (instance.component !== "HtmlEmbed" || gone(id)) {
+        continue;
+      }
+      const codeProps = (propsByInstance.get(id) ?? []).filter(
+        (prop) => prop.name === "code"
+      );
+      if (htmlEmbedHasCode(codeProps.filter(propShips)) === false) {
+        losingCode.add(id);
+      }
+    }
+  }
+
+  // With embeds on, the custom code is kept: nothing to change for it
   const hasCode =
-    build.pages.meta?.code !== undefined || settingsCode !== undefined;
+    embedsMayShip === false &&
+    (build.pages.meta?.code !== undefined || settingsCode !== undefined);
   const hasRawHtml = build.props.some(([, prop]) =>
     pausedPropNames.has(prop.name)
   );
@@ -945,7 +1040,7 @@ export const dropOrgScript = <Bundle extends PublishedProjectBundle>(
     unsafePageRedirects === 0 &&
     shippedProjectRedirects?.length === projectRedirects?.length
   ) {
-    return bundle;
+    return { result: bundle, losingCode };
   }
 
   // The custom code goes, and so does a redirect to an unsafe address: a
@@ -953,7 +1048,7 @@ export const dropOrgScript = <Bundle extends PublishedProjectBundle>(
   // the others kept in order. So do the page settings that may not run.
   let pages = build.pages;
   const { meta } = pages;
-  if (meta !== undefined) {
+  if (meta !== undefined && embedsMayShip === false) {
     pages = { ...pages, meta: withoutCode(meta) };
   }
   if (unsafePageRedirects > 0 || pausedFields.size > 0) {
@@ -1103,7 +1198,7 @@ export const dropOrgScript = <Bundle extends PublishedProjectBundle>(
     build: {
       ...build,
       pages,
-      ...(projectSettings === undefined
+      ...(projectSettings === undefined || embedsMayShip
         ? {}
         : {
             projectSettings: {
@@ -1148,12 +1243,7 @@ export const dropOrgScript = <Bundle extends PublishedProjectBundle>(
       // publishes can hold such an action, so it is not counted)
       props: keptProps.filter(
         ([, prop]) =>
-          pausedPropNames.has(prop.name) === false &&
-          propFails(prop) === false &&
-          (prop.type !== "parameter" ||
-            collidingIds.has(prop.value) === false) &&
-          pausedProps.has(prop.id) === false &&
-          namesPausedResource(prop) === false &&
+          propShips(prop) &&
           (prop.type !== "action" ||
             checkAction(prop.value, { dataSourceIds: keptDataSourceIds }).ok)
       ),
@@ -1178,11 +1268,11 @@ export const dropOrgScript = <Bundle extends PublishedProjectBundle>(
     }
   }
 
-  const message = describeDroppedOrgScript(dropped);
-  if (message !== undefined) {
-    log?.(message);
-  }
-  return result;
+  return {
+    result,
+    message: describeDroppedOrgScript(dropped),
+    losingCode,
+  };
 };
 
 /** What publishing says when it refuses a build that would materialize MDX. */

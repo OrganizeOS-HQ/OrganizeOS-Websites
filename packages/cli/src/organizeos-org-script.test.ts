@@ -1461,6 +1461,158 @@ describe("dropOrgScript", () => {
 // dropOrgScript has run, and an MDX `ws:tag` takes any string, so nothing
 // would hold that content to the pause. The check reads the bundle alone, so
 // it runs before any asset body is read or downloaded.
+// OrganizeOS fork: with orgEmbedsMayShip() on, the five embed kinds ship and
+// every other rule of the pause still holds (spec 2026-11-20, 4.1).
+describe("dropOrgScript with embeds on", () => {
+  const embedsOn = { embedsMayShip: true };
+
+  test("keeps a script embed, a bound embed, a Markdown Embed, JSON-LD and the custom code", () => {
+    const bundle = createBundle({
+      instances: [
+        instance({
+          id: "root",
+          component: "Body",
+          children: ids("script", "bound", "markdown", "json-ld", "icon"),
+        }),
+        instance({
+          id: "script",
+          component: "HtmlEmbed",
+          children: ids("descendant"),
+        }),
+        instance({ id: "descendant", component: "ws:descendant" }),
+        instance({ id: "bound", component: "HtmlEmbed" }),
+        instance({ id: "markdown", component: "MarkdownEmbed" }),
+        instance({ id: "json-ld", component: "JsonLd" }),
+        instance({ id: "icon", component: "HtmlEmbed" }),
+      ],
+      props: [
+        stringProp("script", "code", '<script>alert("embed")</script>'),
+        stringProp("descendant", "selector", " p"),
+        expressionProp("bound", "code", '"<b>" + "bound" + "</b>"'),
+        stringProp("markdown", "code", "# Title"),
+        jsonProp("json-ld", "code", { "@context": "https://schema.org" }),
+        stringProp("icon", "code", MenuIcon),
+      ],
+      code: "<meta name=pages>",
+      projectSettings: {
+        meta: { code: '<script src="https://x.example/a.js"></script>' },
+        compiler: {},
+      },
+    });
+    const log = vi.fn();
+
+    const result = dropOrgScript(bundle, { ...embedsOn, log });
+
+    expect(instanceIds(result)).toEqual(instanceIds(bundle));
+    expect(propIds(result)).toEqual(propIds(bundle));
+    expect(result.build.projectSettings?.meta.code).toBe(
+      bundle.build.projectSettings?.meta.code
+    );
+    expect(result.build.pages.meta?.code).toBe(bundle.build.pages.meta?.code);
+    expect(log).not.toHaveBeenCalled();
+  });
+
+  test("drops an embed with no code, a blank one, and one whose code the expression rules drop", () => {
+    const bundle = createBundle({
+      instances: [
+        instance({
+          id: "root",
+          component: "Body",
+          children: ids("none", "blank", "paused", "kept"),
+        }),
+        instance({ id: "none", component: "HtmlEmbed" }),
+        instance({ id: "blank", component: "HtmlEmbed" }),
+        instance({
+          id: "paused",
+          component: "HtmlEmbed",
+          children: ids("paused-descendant"),
+        }),
+        instance({ id: "paused-descendant", component: "ws:descendant" }),
+        instance({ id: "kept", component: "Box" }),
+      ],
+      props: [
+        stringProp("blank", "code", "  "),
+        expressionProp("paused", "code", "globalThis.document.cookie"),
+        stringProp("paused-descendant", "selector", " p"),
+      ],
+    });
+    const log = vi.fn();
+
+    const result = dropOrgScript(bundle, { ...embedsOn, log });
+
+    expect(instanceIds(result)).toEqual(["root", "kept"]);
+    expect(childrenOf(result, "root")).toEqual(ids("kept"));
+    expect(propIds(result)).toEqual([]);
+    expect(log).toHaveBeenCalledWith(
+      "Org script is paused until OrganizeOS sites move to their own domain: left out 3 HTML Embeds."
+    );
+  });
+
+  test("still drops one sample of every other kind", () => {
+    const bundle = createBundle({
+      instances: [
+        instance({
+          id: "root",
+          component: "Body",
+          children: ids(
+            "raw",
+            "script",
+            "svg",
+            "link",
+            "unknown",
+            "handler",
+            "reference"
+          ),
+        }),
+        instance({ id: "raw", component: "Box" }),
+        instance({ id: "script", component: "ws:element", tag: "script" }),
+        instance({
+          id: "svg",
+          component: "ws:element",
+          tag: "svg",
+          children: ids("animate"),
+        }),
+        instance({ id: "animate", component: "ws:element", tag: "animate" }),
+        instance({ id: "link", component: "ws:element", tag: "a" }),
+        instance({ id: "unknown", component: "Unknown" }),
+        instance({ id: "handler", component: "ws:element", tag: "div" }),
+        instance({ id: "reference", component: "ws:element", tag: "div" }),
+      ],
+      props: [
+        jsonProp("raw", "dangerouslySetInnerHTML", { __html: "<b>1</b>" }),
+        stringProp("link", "href", "javascript:alert(1)"),
+        stringProp("handler", "onclick", "alert(1)"),
+        expressionProp("reference", "ref", "$ws$dataSource$x"),
+      ],
+    });
+
+    const on = dropOrgScript(bundle, embedsOn);
+    const off = dropOrgScript(bundle, { embedsMayShip: false });
+
+    expect(instanceIds(on)).toEqual([
+      "root",
+      "raw",
+      "svg",
+      "link",
+      "handler",
+      "reference",
+    ]);
+    expect(propIds(on)).toEqual([]);
+    expect(instanceIds(on)).toEqual(instanceIds(off));
+    expect(propIds(on)).toEqual(propIds(off));
+  });
+
+  test("with mayRun on, the bundle is returned as it is", () => {
+    const bundle = createBundle({
+      instances: [instance({ id: "root", component: "Body" })],
+      code: "<b>x</b>",
+    });
+    expect(dropOrgScript(bundle, { mayRun: true, embedsMayShip: false })).toBe(
+      bundle
+    );
+  });
+});
+
 describe("refuseMdxWhilePaused", () => {
   const refusal =
     "This site uses MDX content, which publishing does not support yet.";
@@ -1739,7 +1891,8 @@ describe("raw HTML in the runtime packages", () => {
     ]);
   });
 
-  // Each known user, and the component publishing leaves out for it
+  // Each known user, and the component publishing leaves out for it while
+  // embeds may not ship: the three are governed by orgEmbedsMayShip()
   const rawHtmlUsers = {
     "packages/sdk-components-react/src/html-embed.tsx": "HtmlEmbed",
     // D13: JSON-LD stays under this tripwire, and unavailable while paused
@@ -1759,7 +1912,40 @@ describe("raw HTML in the runtime packages", () => {
     expect(users).toEqual(Object.keys(rawHtmlUsers).sort());
   });
 
-  test("publishing leaves out each component that uses it", () => {
+  // a guard: JSON-LD ships with embeds on, and it does not count as org code
+  // (spec 2026-11-20, 4.5), because upstream escapes `<` in what it writes
+  test("JSON-LD's value cannot close its script element in the published markup", async () => {
+    const { renderToString } = await import("react-dom/server");
+    const { createElement } = await import("react");
+    const { ReactSdkContext } = await import("@webstudio-is/react-sdk/runtime");
+    const { JsonLd } =
+      await import("@webstudio-is/sdk-components-react/components");
+    const markup = renderToString(
+      createElement(
+        ReactSdkContext.Provider,
+        {
+          value: {
+            renderer: undefined,
+            assetBaseUrl: "/",
+            imageLoader: () => "",
+            resources: {},
+            breakpoints: [],
+            onError: () => {},
+          },
+        },
+        createElement(JsonLd, {
+          code: {
+            "@context": "https://schema.org",
+            name: "</script><script>alert(1)</script>",
+          },
+        } as never)
+      )
+    );
+    expect(markup.match(/<script/g)).toHaveLength(1);
+    expect(markup.match(/<\/script/g)).toHaveLength(1);
+  });
+
+  test("publishing leaves out each component that uses it, while embeds may not ship", () => {
     for (const component of Object.values(rawHtmlUsers)) {
       const bundle = createBundle({
         instances: [
@@ -1770,7 +1956,7 @@ describe("raw HTML in the runtime packages", () => {
         props: [stringProp("user", "code", "<b>org markup</b>")],
       });
 
-      const result = dropOrgScript(bundle);
+      const result = dropOrgScript(bundle, { embedsMayShip: false });
 
       expect(instanceIds(result), component).toEqual(["root"]);
       expect(propIds(result), component).toEqual([]);

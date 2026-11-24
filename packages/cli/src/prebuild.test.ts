@@ -156,6 +156,16 @@ vi.mock("./organizeos-components", async (importOriginal) => {
 // of them publishes as if org script may run (publishAsIfOrgScriptMayRun); the
 // fork's own cases run with the pause in place.
 const orgScript = vi.hoisted(() => ({ mayRun: false }));
+// OrganizeOS fork: the embed switch (orgEmbedsMayShip()), held off unless a
+// case turns it on. Prebuild passes it to dropOrgScript explicitly, so the mock
+// reaches the drop.
+const embeds = vi.hoisted(() => ({ mayShip: false }));
+vi.mock("@organizeos/site-components/org-script", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@organizeos/site-components/org-script")
+  >()),
+  orgEmbedsMayShip: () => embeds.mayShip,
+}));
 vi.mock("./organizeos-org-script", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("./organizeos-org-script")>();
@@ -719,6 +729,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   orgScript.mayRun = false;
+  embeds.mayShip = false;
   consoleInfo.mockRestore();
   process.chdir(originalCwd);
   globalThis.fetch = originalFetch;
@@ -17089,12 +17100,32 @@ describe("the custom code name check", () => {
   };
 
   test("custom code with a name JSX cannot hold fails the publish at emission, naming Custom code", async () => {
-    publishAsIfOrgScriptMayRun();
+    embeds.mayShip = true;
     await writeCustomCode({ projectSettingsCode: reviewerPayload });
     await expect(
       prebuild({ assets: false, template: ["react-router"] })
     ).rejects.toThrow(/^Custom code cannot be published/);
     expect(existsSync("app/__generated__/_index.tsx")).toBe(false);
+  });
+
+  test("with org script allowed to run, custom code is checked all the same", async () => {
+    publishAsIfOrgScriptMayRun();
+    await writeCustomCode({ projectSettingsCode: reviewerPayload });
+    await expect(
+      prebuild({ assets: false, template: ["react-router"] })
+    ).rejects.toThrow(/^Custom code cannot be published/);
+  });
+
+  test("with embeds on, ordinary custom code is compiled", async () => {
+    embeds.mayShip = true;
+    await writeCustomCode({
+      projectSettingsCode:
+        '<script async src="https://www.googletagmanager.com/gtag/js?id=G-1"></script>',
+    });
+    await prebuild({ assets: false, template: ["react-router"] });
+    await expect(
+      readFile("app/__generated__/_index.tsx", "utf8")
+    ).resolves.toContain("googletagmanager");
   });
 
   test("with embeds off, saved custom code is cleared and not checked", async () => {
@@ -17108,7 +17139,7 @@ describe("the custom code name check", () => {
   });
 
   test("a stale pages meta code shadowed by project settings is not checked", async () => {
-    publishAsIfOrgScriptMayRun();
+    embeds.mayShip = true;
     await writeCustomCode({
       projectSettingsCode: "<b>ok</b>",
       pagesCode: '<b @click="x">',
