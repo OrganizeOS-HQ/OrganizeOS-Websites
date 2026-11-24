@@ -1945,7 +1945,8 @@ describe("raw HTML in the runtime packages", () => {
     expect(markup.match(/<\/script/g)).toHaveLength(1);
   });
 
-  test("publishing leaves out each component that uses it, while embeds may not ship", () => {
+  // while embeds may not ship (the title is level-1 coverage)
+  test("publishing leaves out each component that uses it", () => {
     for (const component of Object.values(rawHtmlUsers)) {
       const bundle = createBundle({
         instances: [

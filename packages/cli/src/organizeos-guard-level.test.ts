@@ -377,7 +377,7 @@ const expressionsLeftOut = async () => {
     modules.includes("PROBE_SECRET") === false &&
     JSON.stringify(
       await findGeneratedCodeProblems(`${imports}\n${modules}`)
-    ) === JSON.stringify({ undeclared: [], shadowed: [] }) &&
+    ) === JSON.stringify({ undeclared: [], shadowed: [], forbidden: [] }) &&
     findPausedExpressions({
       pages: build.pages.pages,
       instances,
