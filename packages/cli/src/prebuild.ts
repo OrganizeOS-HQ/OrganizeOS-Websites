@@ -164,7 +164,10 @@ import { createFramework as createReactRouterFramework } from "./framework-react
 import { createFramework as createVikeSsgFramework } from "./framework-vike-ssg";
 import { routeTemplatesDirectory } from "./framework";
 import { readSsgAssetResourceFetchTemplate } from "./ssg-asset-resource-fetch-template";
-import { assertBuildCodeValid } from "./organizeos-code-check";
+import {
+  assertBuildCodeValid,
+  assertCustomCodeNamesValid,
+} from "./organizeos-code-check";
 
 export const generatedFilesManifest = join(
   ".webstudio",
@@ -1948,6 +1951,10 @@ export const createManagedFormResourceFetch = ({ request, context, projectDomain
     const favIconAsset = assets.get(projectMeta?.faviconAssetId ?? "")?.name;
 
     const pagePath = getPagePath(page.id, pages);
+    // OrganizeOS fork: custom code's tag and attribute names are written into the home page's module as code (organizeos-code-check.ts)
+    if (pagePath === "/" && projectMeta?.code) {
+      assertCustomCodeNamesValid(projectMeta.code);
+    }
 
     const breakpoints = siteData.build.breakpoints
       .map(([_, value]) => ({

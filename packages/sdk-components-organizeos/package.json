@@ -103,7 +103,8 @@
   "dependencies": {
     "@webstudio-is/expression": "workspace:*",
     "@webstudio-is/icons": "workspace:*",
-    "acorn": "^8.14.1"
+    "acorn": "^8.14.1",
+    "parse5": "7.3.0"
   },
   "devDependencies": {
     "@fontsource-variable/bricolage-grotesque": "^5.3.0",

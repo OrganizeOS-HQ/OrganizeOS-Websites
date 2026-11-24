@@ -6,6 +6,7 @@ import type {
   Resource,
 } from "@webstudio-is/sdk";
 import {
+  checkCustomCodeNames,
   findCodeCheckFailure,
   pagesToCheck,
 } from "@organizeos/site-components/org-script";
@@ -16,6 +17,11 @@ import {
  * @organizeos/site-components), so a value prebuild would refuse is named
  * here instead of in a run log the builder never sees. One line naming the
  * page or element and the field, or undefined when everything passes.
+ *
+ * `customCode` is the site's custom code exactly as prebuild would compile it,
+ * passed only when it would ship (embeds may ship and it is not blank). Its
+ * tag and attribute names are checked as prebuild checks them
+ * (custom-code-names.ts).
  */
 export const findPublishBlocker = ({
   pages,
@@ -23,12 +29,14 @@ export const findPublishBlocker = ({
   props,
   resources,
   dataSources,
+  customCode,
 }: {
   pages: Pages | undefined;
   instances: Map<Instance["id"], Instance>;
   props: Map<Prop["id"], Prop>;
   resources: Map<Resource["id"], Resource>;
   dataSources: Map<DataSource["id"], DataSource>;
+  customCode?: string;
 }): string | undefined => {
   const failure = findCodeCheckFailure({
     pages: pages === undefined ? [] : pagesToCheck(pages),
@@ -38,6 +46,12 @@ export const findPublishBlocker = ({
     dataSources: dataSources.values(),
   });
   if (failure === undefined) {
+    if (customCode !== undefined) {
+      const names = checkCustomCodeNames(customCode);
+      if (names.ok === false) {
+        return `Can't publish: Custom code, "${names.name}".`;
+      }
+    }
     return;
   }
   const { place, field, reason } = failure;

@@ -3154,3 +3154,7 @@ export const findPausedExpressions = (build: {
 // Input validation for expressions and generated names, read by the builder
 // and the CLI through this entry (code-check.ts).
 export * from "./code-check";
+
+// Input validation for the site-wide custom code's tag and attribute names,
+// read by the builder and the CLI through this entry (custom-code-names.ts).
+export * from "./custom-code-names";

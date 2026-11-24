@@ -57,6 +57,7 @@ import {
 } from "./organizeos-publish-paused-script";
 import { tickedCheckboxCss } from "./organizeos-publish-checkbox";
 import { findPublishBlocker } from "./organizeos-publish-code-check";
+import { orgEmbedsMayShip } from "@organizeos/site-components/org-script";
 import {
   getOrganizeosPublishState,
   type OrganizeosPublishState,
@@ -597,12 +598,18 @@ export const OrganizeosPublishContent = ({
     setError(undefined);
     setConfirmingReplace(false);
     // a value that fails input validation would stop the build; name it here
+    // OrganizeOS fork: custom code is checked only when it would ship, on the
+    // string prebuild compiles (organizeos-publish-code-check.ts)
+    const customCode = ($projectSettings.get()?.meta ?? $pages.get()?.meta)
+      ?.code;
     const blocker = findPublishBlocker({
       pages: $pages.get(),
       instances: $instances.get(),
       props: $props.get(),
       resources: $resources.get(),
       dataSources: $dataSources.get(),
+      customCode:
+        orgEmbedsMayShip() && customCode?.trim() ? customCode : undefined,
     });
     if (blocker !== undefined) {
       setError(blocker);
