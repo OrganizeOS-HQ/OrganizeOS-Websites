@@ -47,6 +47,16 @@ The caret and the typed value are not pinned.
 - Built for a collapsed caret only. A range with an end in a code block keeps the end-of-document write (unruled; T13.1 names a caret). Candidates: (a) as built; (b) after the code block of the range's focus.
 - **Ruled (T40.4):** T13.1 holds for a range too. `insertImage` runs the removal step on the range, removes a range left with an end in a code block (as the insertion would), and takes the caret that leaves as the place: in a code block, the image lands directly after it (the collapsed caret's code path); elsewhere, at that place. The end-of-document fallback is only for a place that is gone. Pinned: `range("C1w", 1, "C1w", 2)` in `<p>Pw</p><pre><code>C1w</code></pre><p>Nw</p>` writes `<p>Pw</p><pre><code>Cw</code></pre><p><img /></p><p>Nw</p>`. Measured on the branch, not pinned: `Pw@1..C1w@1` gives `<p>P<img />1w</p><p>Nw</p>` (the removal leaves the place in the paragraph); `C1w@1..Nw@1` gives `<p>Pw</p><pre><code>Cw</code></pre><p><img /></p>`; `C1w@0..C1w@3` gives `<p>Pw</p><pre><code></code></pre><p><img /></p><p>Nw</p>`.
 
+**Ruled (T41.2):** the range goes by the field's removal, the one Backspace over it runs (`DELETE_CHARACTER_COMMAND`, backward), for every range; the image lands at the caret that leaves (after the code block when that caret is in one). In these cells the field's removal removes the text inside the code block too, so no raw `removeText()` is left in `insertImage`. One call, one undo step. Pinned in `rich-text-line-toolbar.test.tsx` (T13.1 block), each equal on the branch to the ruling's literal:
+
+| Range (in `<p>Pw</p><pre><code>C1w</code></pre><p>Nw</p>`) | Branch (pinned)                                            | `<base>` (measured, 1 call, undo restores)                                                   |
+| ---------------------------------------------------------- | ---------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `Pw@1..C1w@1`                                              | `<p>P<img />1w</p><p>Nw</p>`                               | `<p>Pw</p><pre><code>C1w</code></pre><p>Nw</p><p><img /></p>` (range kept, image at the end) |
+| `C1w@1..Nw@1`                                              | `<p>Pw</p><pre><code>Cw</code></pre><p><img /></p>`        | `<p>Pw</p><pre><code>C1w</code></pre><p>Nw</p><p><img /></p>`                                |
+| `C1w@0..C1w@3`                                             | `<p>Pw</p><pre><code></code></pre><p><img /></p><p>Nw</p>` | `<p>Pw</p><pre><code>C1w</code></pre><p>Nw</p><p><img /></p>`                                |
+
+`Pw@1..C1w@1`'s place (after the removal) is in a paragraph, not a code block, yet the branch does **not** equal `<base>` (D1): `<base>` removes nothing for a range with an end in a code block and appends the image at the end. Sent with the batch.
+
 ## P19-6: the Link command's end placement, narrowed
 
 The Link command (16.11) runs the removal step's end placement (`$lastPointToBlockEnd`, then `$endsIntoText`), exported as `$rangeEndsIntoText`, not `$prepareRemoval(selection, "removal")` whole: `$prepareRemoval` also removes the line break of T23.1/T30.2 (a range ending at the start of a break-led line after a block), a removal no Link ruling names. The placement acts only when an end is an element point. Measured over the 90 generator cells: the writes of the 70 cells that did not throw are unchanged.
@@ -71,6 +81,7 @@ The right-padding test therefore does not tell Shift on `pointerdown` from Shift
 - With the editable scrolled so its right edge is in view (`scrollIntoView({ inline: "end" })`), check 5's probe at `<proto>` gives a caret at the point 30 of 30 with Shift and 30 of 30 without, both shapes.
 - A grid at `<proto>` and on the branch, both shapes, the editable scrolled into view: 3 px inside the left and the right edge, at the heights of `Aw`, the rule, `Cw`, 3 px below the top and 3 px above the bottom. At every point the caret with Shift equals the caret without, and the two builds agree.
 - No point inside the editable was found where the test fails at `<proto>`. The test is unchanged and stays a control ("control: 16.16: ..."); the eight `Lw` cells stay controls.
+- **T41.1:** 16.16 withdrawn as a defect. The right-padding control now scrolls the editable's right edge into view first and presses 3 px inside it; it asserts that `elementFromPoint` there is inside the editable (a real press).
 
 ## P19-9: Divider out of a root quote at the content's end, the paragraph after the rule (T10.8, check 2 A1) (ruled: T40.2)
 

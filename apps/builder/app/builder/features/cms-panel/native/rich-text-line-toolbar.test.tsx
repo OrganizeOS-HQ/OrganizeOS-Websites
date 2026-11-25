@@ -1015,11 +1015,25 @@ describe("clicks (T9.2 L, T10.8, 15.7, 16.16)", () => {
   // 16.16: a Shift+press anywhere inside the editable element, its padding
   // included, gives the caret the same press without Shift gives
   const paddingPoint = (where: "right" | "bottom") => {
+    if (where === "right") {
+      // T41.1: the editable is wider than the test page's viewport; its
+      // right edge is scrolled into view so the press reaches it
+      editable()!.scrollIntoView({ block: "nearest", inline: "end" });
+    }
     const box = editable()!.getBoundingClientRect();
     const line = spanOf("Aw").getBoundingClientRect();
-    return where === "right"
-      ? { x: box.right - 3, y: line.top + line.height / 2 }
-      : { x: box.left + box.width / 2, y: box.bottom - 3 };
+    const point =
+      where === "right"
+        ? { x: box.right - 3, y: line.top + line.height / 2 }
+        : { x: box.left + box.width / 2, y: box.bottom - 3 };
+    if (where === "right") {
+      const hit = document.elementFromPoint(point.x, point.y);
+      expect(
+        hit !== null && editable()!.contains(hit),
+        "the point is inside the field"
+      ).toBe(true);
+    }
+    return point;
   };
   for (const shape of ["ordinary", "lined"] as const) {
     for (const [where, count] of [
@@ -1133,6 +1147,32 @@ describe("T13.1: an image from a code-block caret lands after the code block", (
       action: imageButton,
       write: "<p>Pw</p><pre><code>Cw</code></pre><p><img /></p><p>Nw</p>",
       source: "T13.1, T40.4 (a range: the place after the removal step)",
+    },
+    // T41.2: the field's removal over the range (Backspace's), then Image at
+    // the caret that leaves
+    {
+      name: "T41.2: Image from a range Pw@1..C1w@1: the field's removal, then Image at the caret left",
+      stored: ROOT,
+      place: range("Pw", 1, "C1w", 1),
+      action: imageButton,
+      write: "<p>P<img />1w</p><p>Nw</p>",
+      source: "T41.2",
+    },
+    {
+      name: "T41.2: Image from a range C1w@1..Nw@1: the field's removal, then Image after the code block",
+      stored: ROOT,
+      place: range("C1w", 1, "Nw", 1),
+      action: imageButton,
+      write: "<p>Pw</p><pre><code>Cw</code></pre><p><img /></p>",
+      source: "T41.2",
+    },
+    {
+      name: "T41.2: Image from a range C1w@0..C1w@3: the emptied code block stays, the image after it",
+      stored: ROOT,
+      place: range("C1w", 0, "C1w", 3),
+      action: imageButton,
+      write: "<p>Pw</p><pre><code></code></pre><p><img /></p><p>Nw</p>",
+      source: "T41.2",
     },
     // a real click in the gap between the code block and the rule leaves
     // the caret after the rule at <base>, 451f20f04 and the branch, never

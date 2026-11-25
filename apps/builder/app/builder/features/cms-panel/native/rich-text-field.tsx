@@ -37,6 +37,7 @@ import {
   COMMAND_PRIORITY_LOW,
   COMMAND_PRIORITY_NORMAL,
   CONTROLLED_TEXT_INSERTION_COMMAND,
+  DELETE_CHARACTER_COMMAND,
   FORMAT_TEXT_COMMAND,
   ParagraphNode,
   PASTE_COMMAND,
@@ -122,12 +123,7 @@ import {
   isPressing,
   removeKeptLines,
 } from "./rich-text-line-points";
-import {
-  $prepareRemoval,
-  $rangeEndsIntoText,
-  $removeWhereNoTextStands,
-  $tagRemoval,
-} from "./rich-text-line-removal";
+import { $rangeEndsIntoText } from "./rich-text-line-removal";
 import {
   $quotedLineContent,
   $refuseBlockTypeOnLine,
@@ -1099,8 +1095,8 @@ type ImageUpload = {
 
 /**
  * Inserts the image where the caret was when Image was chosen; after the
- * code block that place is in (for a range, its place after the removal
- * step); or in a new paragraph at the end when that place is gone.
+ * code block that place is in (for a range, the caret the field's removal
+ * leaves); or in a new paragraph at the end when that place is gone.
  */
 const insertImage = (
   editor: LexicalEditor,
@@ -1139,36 +1135,16 @@ const insertImage = (
       caret !== null &&
       $getNodeByKey(caret.anchor.key) !== null &&
       $getNodeByKey(caret.focus.key) !== null;
-    let place: RangeSelection | null = isAttached ? caret : null;
-    if (place !== null && place.isCollapsed() === false) {
-      $setSelection(place.clone());
-      const placed = $getSelection();
-      if ($isRangeSelection(placed)) {
-        // a range starts as the editing commands start it (their first
-        // handler); one that holds nothing once its ends are in place
-        // (15.10) is the caret left at the block's end: no removal, no mark
-        $selectionIntoAdjacentBlocks();
-        if ($prepareRemoval(placed, "removal") === false) {
-          $tagRemoval();
-          $removeWhereNoTextStands(placed);
-        }
-      }
-      // T13.1 holds for a range too (T40.4): the place is the one the
-      // removal step leaves
-      const removed = $getSelection();
-      place = $isRangeSelection(removed) ? removed : null;
-    }
     const $inCode = (point: RangeSelection["anchor"]) =>
       $findMatchingParent(point.getNode(), $isCodeNode);
-    if (
-      place !== null &&
-      place !== caret &&
-      place.isCollapsed() === false &&
-      ($inCode(place.anchor) !== null || $inCode(place.focus) !== null)
-    ) {
-      // a range with an end in a code block is removed as the insertion
-      // would remove it; the caret it leaves is the place
-      place.removeText();
+    let place: RangeSelection | null = isAttached ? caret : null;
+    if (place !== null && place.isCollapsed() === false) {
+      // T41.2: a range goes by the field's own removal, the one Backspace
+      // over it runs (T36.1); the caret that leaves is the place (T40.4)
+      $setSelection(place.clone());
+      editor.dispatchCommand(DELETE_CHARACTER_COMMAND, true);
+      const removed = $getSelection();
+      place = $isRangeSelection(removed) ? removed : null;
     }
     if (
       place !== null &&
