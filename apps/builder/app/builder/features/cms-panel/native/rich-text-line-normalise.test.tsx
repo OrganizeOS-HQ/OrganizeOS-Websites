@@ -44,9 +44,46 @@ import {
   writeRichTextHeadless,
 } from "./rich-text-html";
 import { registerLineTransforms } from "./rich-text-line-normalise";
+import { sanitizeRichTextHtml } from "./rich-text-sanitize";
 import { $createCmsLineNode, $isCmsLineNode } from "./rich-text-line-node";
 
 const paragraph = blockType("Paragraph");
+
+/** The value's items as "depth:text", in reading order (as the structure test reads them). */
+const outline = (html: string) => {
+  const template = document.createElement("template");
+  template.innerHTML = html;
+  const lines: string[] = [];
+  const walk = (node: Element, depth: number) => {
+    for (const child of node.children) {
+      if (child.tagName === "UL" || child.tagName === "OL") {
+        walk(child, depth + 1);
+      } else if (child.tagName === "LI") {
+        const own = [...child.childNodes]
+          .filter(
+            (entry) =>
+              entry.nodeType === Node.TEXT_NODE ||
+              (entry instanceof Element &&
+                ["UL", "OL"].includes(entry.tagName) === false)
+          )
+          .map((entry) => entry.textContent)
+          .join("");
+        if (own !== "") {
+          lines.push(`${depth}:${own}`);
+        }
+        walk(child, depth);
+      } else if (child.tagName === "BLOCKQUOTE") {
+        walk(child, depth + 1);
+      } else if (child.tagName === "HR") {
+        lines.push(`${depth}:---`);
+      } else {
+        lines.push(`${depth}:${child.textContent}`);
+      }
+    }
+  };
+  walk(template.content as unknown as Element, 0);
+  return lines;
+};
 
 describe("D3: lines that meet (5.8)", () => {
   test("D3 case 1: a rule between two lines goes, no break", async () => {
@@ -357,6 +394,29 @@ describe("5.5: the lift and the line step", () => {
       source: "section 10, M34",
     });
   });
+
+  test("5.5: two paragraphs pasted into a nested item (the lift runs before the line step)", async () => {
+    // the input and outline of rich-text-structure.test.tsx's "depth 2,
+    // two paragraphs" (spec section 14)
+    const record = await recordEdit({
+      stored: "<ul><li>a<ul><li>b</li><li>c</li></ul></li></ul>",
+      place: at("b"),
+      action: pasteHtml("<p>one</p><p>two</p>", "x"),
+    });
+    expect(record.calls, "calls").toBe(1);
+    expect(record.undoRestores, "undo restores the state before").toBe(true);
+    expect(record.redoEquals, "redo equals the write").toBe(true);
+    expect(record.errors, "console errors").toEqual([]);
+    expect(record.slowest, "slowest step in ms").toBeLessThan(2000);
+    const written = exportRichTextHtml(editorOf()!);
+    expect(outline(sanitizeRichTextHtml(written)), written).toEqual([
+      "1:a",
+      "2:bone",
+      "1:two",
+      "2:c",
+    ]);
+    expectFixedPoint(written);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -591,7 +651,7 @@ describe("where a line may stand (5.1)", () => {
     }
   });
 
-  test("the headless writer registers the link rule", () => {
+  test("control: the headless writer registers the link rule", () => {
     const out = writeRichTextHeadless(
       '<ul><li>T0w<a href="https://example.org/">L<hr>w</a><blockquote><p>Q1w</p></blockquote></li></ul>'
     );
