@@ -1,0 +1,3714 @@
+{
+  "L|quote|text|para|start|0|k": {
+    "before": "text:Nw@0",
+    "write": "<blockquote><p>Pw</p></blockquote><hr /><p>kNw</p>",
+    "calls": 1,
+    "caret": "text:kNw@1"
+  },
+  "L|quote|text|para|start|0|bs": {
+    "before": "text:Nw@0",
+    "write": "<blockquote><p>Pw</p></blockquote><p>Nw</p>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|quote|text|para|start|0|del": {
+    "before": "text:Nw@0",
+    "write": "<blockquote><p>Pw</p></blockquote><hr /><p>w</p>",
+    "calls": 1,
+    "caret": "text:w@0"
+  },
+  "L|quote|text|para|start|0|enter": {
+    "before": "text:Nw@0",
+    "write": "<blockquote><p>Pw</p></blockquote><hr /><p></p><p>Nw</p>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|quote|text|para|start|0|plain": {
+    "before": "text:Nw@0",
+    "write": "<blockquote><p>Pw</p></blockquote><hr /><p>ZqNw</p>",
+    "calls": 1,
+    "caret": "text:ZqNw@2"
+  },
+  "L|quote|text|para|start|0|htmlPaste": {
+    "before": "text:Nw@0",
+    "write": "<blockquote><p>Pw</p></blockquote><hr /><p><b><strong>Hq</strong></b>Nw</p>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|quote|text|para|start|0|cut": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "",
+      "plain": "",
+      "data": false
+    }
+  },
+  "L|quote|text|para|start|0|copy": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "",
+      "plain": "",
+      "data": false
+    }
+  },
+  "L|quote|text|para|start|1|k": {
+    "before": "text:Nw@0|element:quote@1",
+    "write": "<blockquote><p>PwkNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PwkNw@3"
+  },
+  "L|quote|text|para|start|1|bs": {
+    "before": "text:Nw@0|element:quote@1",
+    "write": "<blockquote><p>PwNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PwNw@2"
+  },
+  "L|quote|text|para|start|1|del": {
+    "before": "text:Nw@0|element:quote@1",
+    "write": "<blockquote><p>PwNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PwNw@2"
+  },
+  "L|quote|text|para|start|1|enter": {
+    "before": "text:Nw@0|element:quote@1",
+    "write": "<blockquote><p>Pw</p><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|quote|text|para|start|1|plain": {
+    "before": "text:Nw@0|element:quote@1",
+    "write": "<blockquote><p>PwZqNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PwZqNw@4"
+  },
+  "L|quote|text|para|start|1|htmlPaste": {
+    "before": "text:Nw@0|element:quote@1",
+    "write": "<blockquote><p>Pw<b><strong>Hq</strong></b>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|quote|text|para|start|1|cut": {
+    "before": "text:Nw@0|element:quote@1",
+    "write": "<blockquote><p>PwNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PwNw@2",
+    "clip": {
+      "html": "<blockquote><p></p></blockquote><hr /><p></p>",
+      "plain": "\n\n\n",
+      "data": true
+    }
+  },
+  "L|quote|text|para|start|1|copy": {
+    "before": "text:Nw@0|element:quote@1",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|element:quote@1",
+    "clip": {
+      "html": "<blockquote><p>Pw</p></blockquote><hr /><p></p>",
+      "plain": "\n\n\n",
+      "data": true
+    }
+  },
+  "L|quote|text|para|start|2|k": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<blockquote><p>PkNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PkNw@2"
+  },
+  "L|quote|text|para|start|2|bs": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<blockquote><p>PNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PNw@1"
+  },
+  "L|quote|text|para|start|2|del": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<blockquote><p>PNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PNw@1"
+  },
+  "L|quote|text|para|start|2|enter": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<blockquote><p>P</p><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|quote|text|para|start|2|plain": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<blockquote><p>PZqNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PZqNw@3"
+  },
+  "L|quote|text|para|start|2|htmlPaste": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<blockquote><p>P<b><strong>Hq</strong></b>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|quote|text|para|start|2|cut": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<blockquote><p>PNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PNw@1",
+    "clip": {
+      "html": "<blockquote><p>w</p></blockquote><hr /><p></p>",
+      "plain": "w\n\n\n",
+      "data": true
+    }
+  },
+  "L|quote|text|para|start|2|copy": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|text:Pw@1",
+    "clip": {
+      "html": "<blockquote><p>w</p></blockquote><hr /><p></p>",
+      "plain": "w\n\n\n",
+      "data": true
+    }
+  },
+  "L|quote|text|para|start|3|k": {
+    "before": "text:Nw@0|text:Pw@0",
+    "write": "<blockquote><p>kNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:kNw@1"
+  },
+  "L|quote|text|para|start|3|bs": {
+    "before": "text:Nw@0|text:Pw@0",
+    "write": "<blockquote><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|quote|text|para|start|3|del": {
+    "before": "text:Nw@0|text:Pw@0",
+    "write": "<blockquote><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|quote|text|para|start|3|enter": {
+    "before": "text:Nw@0|text:Pw@0",
+    "write": "<blockquote><p></p><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|quote|text|para|start|3|plain": {
+    "before": "text:Nw@0|text:Pw@0",
+    "write": "<blockquote><p>ZqNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:ZqNw@2"
+  },
+  "L|quote|text|para|start|3|htmlPaste": {
+    "before": "text:Nw@0|text:Pw@0",
+    "write": "<blockquote><p><b><strong>Hq</strong></b>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|quote|text|para|start|3|cut": {
+    "before": "text:Nw@0|text:Pw@0",
+    "write": "<blockquote><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "<blockquote><p>Pw</p></blockquote><hr /><p></p>",
+      "plain": "Pw\n\n\n",
+      "data": true
+    }
+  },
+  "L|quote|text|para|start|3|copy": {
+    "before": "text:Nw@0|text:Pw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|text:Pw@0",
+    "clip": {
+      "html": "<blockquote><p>Pw</p></blockquote><hr /><p></p>",
+      "plain": "Pw\n\n\n",
+      "data": true
+    }
+  },
+  "L|quote|text|quote|start|0|k": {
+    "before": "text:Nw@0",
+    "write": "<blockquote><p>Pw</p></blockquote><hr /><blockquote><p>kNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:kNw@1"
+  },
+  "L|quote|text|quote|start|0|bs": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0"
+  },
+  "L|quote|text|quote|start|0|del": {
+    "before": "text:Nw@0",
+    "write": "<blockquote><p>Pw</p></blockquote><hr /><blockquote><p>w</p></blockquote>",
+    "calls": 1,
+    "caret": "text:w@0"
+  },
+  "L|quote|text|quote|start|0|enter": {
+    "before": "text:Nw@0",
+    "write": "<blockquote><p>Pw</p></blockquote><hr /><blockquote><p></p><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|quote|text|quote|start|0|plain": {
+    "before": "text:Nw@0",
+    "write": "<blockquote><p>Pw</p></blockquote><hr /><blockquote><p>ZqNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:ZqNw@2"
+  },
+  "L|quote|text|quote|start|0|htmlPaste": {
+    "before": "text:Nw@0",
+    "write": "<blockquote><p>Pw</p></blockquote><hr /><blockquote><p><b><strong>Hq</strong></b>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|quote|text|quote|start|0|cut": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "",
+      "plain": "",
+      "data": false
+    }
+  },
+  "L|quote|text|quote|start|0|copy": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "",
+      "plain": "",
+      "data": false
+    }
+  },
+  "L|quote|text|quote|start|1|k": {
+    "before": "text:Nw@0",
+    "write": "<blockquote><p>Pw</p></blockquote><hr /><blockquote><p>kNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:kNw@1"
+  },
+  "L|quote|text|quote|start|1|bs": {
+    "before": "text:Nw@0",
+    "write": "<blockquote><p>Pw</p></blockquote><blockquote><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|quote|text|quote|start|1|del": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0"
+  },
+  "L|quote|text|quote|start|1|enter": {
+    "before": "text:Nw@0",
+    "write": "<blockquote><p>Pw</p></blockquote><hr /><blockquote><p></p><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|quote|text|quote|start|1|plain": {
+    "before": "text:Nw@0",
+    "write": "<blockquote><p>Pw</p></blockquote><hr /><blockquote><p>ZqNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:ZqNw@2"
+  },
+  "L|quote|text|quote|start|1|htmlPaste": {
+    "before": "text:Nw@0",
+    "write": "<blockquote><p>Pw</p></blockquote><hr /><blockquote><p><b><strong>Hq</strong></b>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|quote|text|quote|start|1|cut": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "",
+      "plain": "",
+      "data": false
+    }
+  },
+  "L|quote|text|quote|start|1|copy": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "",
+      "plain": "",
+      "data": false
+    }
+  },
+  "L|quote|text|quote|start|2|k": {
+    "before": "text:Nw@0|element:root@1",
+    "write": "<blockquote><p>Pw</p></blockquote><p>kNw</p>",
+    "calls": 1,
+    "caret": "text:kNw@1"
+  },
+  "L|quote|text|quote|start|2|bs": {
+    "before": "text:Nw@0|element:root@1",
+    "write": "<blockquote><p>Pw</p></blockquote><blockquote><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|quote|text|quote|start|2|del": {
+    "before": "text:Nw@0|element:root@1",
+    "write": "<blockquote><p>Pw</p></blockquote><blockquote><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|quote|text|quote|start|2|enter": {
+    "before": "text:Nw@0|element:root@1",
+    "write": "<blockquote><p>Pw</p></blockquote><blockquote><p></p><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|quote|text|quote|start|2|plain": {
+    "before": "text:Nw@0|element:root@1",
+    "write": "<blockquote><p>Pw</p></blockquote><p>ZqNw</p>",
+    "calls": 1,
+    "caret": "text:ZqNw@2"
+  },
+  "L|quote|text|quote|start|2|htmlPaste": {
+    "before": "text:Nw@0|element:root@1",
+    "write": "<blockquote><p>Pw</p></blockquote><p>HqNw</p>",
+    "calls": 1,
+    "caret": "text:HqNw@2"
+  },
+  "L|quote|text|quote|start|2|cut": {
+    "before": "text:Nw@0|element:root@1",
+    "write": "<blockquote><p>Pw</p></blockquote><blockquote><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "<hr /><blockquote><p></p></blockquote>",
+      "plain": "\n\n",
+      "data": true
+    }
+  },
+  "L|quote|text|quote|start|2|copy": {
+    "before": "text:Nw@0|element:root@1",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|element:root@1",
+    "clip": {
+      "html": "<hr /><blockquote><p></p></blockquote>",
+      "plain": "\n\n",
+      "data": true
+    }
+  },
+  "L|quote|text|quote|start|3|k": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<blockquote><p>PwkNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PwkNw@3"
+  },
+  "L|quote|text|quote|start|3|bs": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<blockquote><p>PwNw</p></blockquote><blockquote></blockquote>",
+    "calls": 1,
+    "caret": "text:PwNw@2"
+  },
+  "L|quote|text|quote|start|3|del": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<blockquote><p>PwNw</p></blockquote><blockquote></blockquote>",
+    "calls": 1,
+    "caret": "text:PwNw@2"
+  },
+  "L|quote|text|quote|start|3|enter": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<blockquote><p>Pw</p><p>Nw</p></blockquote><blockquote></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|quote|text|quote|start|3|plain": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<blockquote><p>PwZqNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PwZqNw@4"
+  },
+  "L|quote|text|quote|start|3|htmlPaste": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<blockquote><p>Pw<b><strong>Hq</strong></b>Nw</p></blockquote><blockquote></blockquote>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|quote|text|quote|start|3|cut": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<blockquote><p>PwNw</p></blockquote><blockquote></blockquote>",
+    "calls": 1,
+    "caret": "text:PwNw@2",
+    "clip": {
+      "html": "<blockquote><p></p></blockquote><hr /><blockquote><p></p></blockquote>",
+      "plain": "\n\n\n",
+      "data": true
+    }
+  },
+  "L|quote|text|quote|start|3|copy": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|text:Pw@2",
+    "clip": {
+      "html": "<blockquote><p></p></blockquote><hr /><blockquote><p></p></blockquote>",
+      "plain": "\n\n\n",
+      "data": true
+    }
+  },
+  "L|quote|img|para|start|0|k": {
+    "before": "text:Nw@0",
+    "write": "<blockquote><p>Pw<img /></p></blockquote><hr /><p>kNw</p>",
+    "calls": 1,
+    "caret": "text:kNw@1"
+  },
+  "L|quote|img|para|start|0|bs": {
+    "before": "text:Nw@0",
+    "write": "<blockquote><p>Pw<img /></p></blockquote><p>Nw</p>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|quote|img|para|start|0|del": {
+    "before": "text:Nw@0",
+    "write": "<blockquote><p>Pw<img /></p></blockquote><hr /><p>w</p>",
+    "calls": 1,
+    "caret": "text:w@0"
+  },
+  "L|quote|img|para|start|0|enter": {
+    "before": "text:Nw@0",
+    "write": "<blockquote><p>Pw<img /></p></blockquote><hr /><p></p><p>Nw</p>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|quote|img|para|start|0|plain": {
+    "before": "text:Nw@0",
+    "write": "<blockquote><p>Pw<img /></p></blockquote><hr /><p>ZqNw</p>",
+    "calls": 1,
+    "caret": "text:ZqNw@2"
+  },
+  "L|quote|img|para|start|0|htmlPaste": {
+    "before": "text:Nw@0",
+    "write": "<blockquote><p>Pw<img /></p></blockquote><hr /><p><b><strong>Hq</strong></b>Nw</p>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|quote|img|para|start|0|cut": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "",
+      "plain": "",
+      "data": false
+    }
+  },
+  "L|quote|img|para|start|0|copy": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "",
+      "plain": "",
+      "data": false
+    }
+  },
+  "L|quote|img|para|start|1|k": {
+    "before": "text:Nw@0|element:quote@1",
+    "write": "<blockquote><p>Pw<img />kNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:kNw@1"
+  },
+  "L|quote|img|para|start|1|bs": {
+    "before": "text:Nw@0|element:quote@1",
+    "write": "<blockquote><p>PwNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PwNw@2"
+  },
+  "L|quote|img|para|start|1|del": {
+    "before": "text:Nw@0|element:quote@1",
+    "write": "<blockquote><p>PwNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PwNw@2"
+  },
+  "L|quote|img|para|start|1|enter": {
+    "before": "text:Nw@0|element:quote@1",
+    "write": "<blockquote><p>Pw</p><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|quote|img|para|start|1|plain": {
+    "before": "text:Nw@0|element:quote@1",
+    "write": "<blockquote><p>Pw<img />ZqNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:ZqNw@2"
+  },
+  "L|quote|img|para|start|1|htmlPaste": {
+    "before": "text:Nw@0|element:quote@1",
+    "write": "<blockquote><p>Pw<b><strong>Hq</strong></b>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|quote|img|para|start|1|cut": {
+    "before": "text:Nw@0|element:quote@1",
+    "write": "<blockquote><p>PwNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PwNw@2",
+    "clip": {
+      "html": "<blockquote><p><img /></p></blockquote><hr /><p></p>",
+      "plain": "\n\n\n",
+      "data": true
+    }
+  },
+  "L|quote|img|para|start|1|copy": {
+    "before": "text:Nw@0|element:quote@1",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|element:quote@1",
+    "clip": {
+      "html": "<blockquote><p><img /></p></blockquote><hr /><p></p>",
+      "plain": "\n\n\n",
+      "data": true
+    }
+  },
+  "L|quote|img|para|start|2|k": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<blockquote><p>PwkNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PwkNw@3"
+  },
+  "L|quote|img|para|start|2|bs": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<blockquote><p>PwNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PwNw@2"
+  },
+  "L|quote|img|para|start|2|del": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<blockquote><p>PwNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PwNw@2"
+  },
+  "L|quote|img|para|start|2|enter": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<blockquote><p>Pw</p><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|quote|img|para|start|2|plain": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<blockquote><p>PwZqNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PwZqNw@4"
+  },
+  "L|quote|img|para|start|2|htmlPaste": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<blockquote><p>Pw<b><strong>Hq</strong></b>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|quote|img|para|start|2|cut": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<blockquote><p>PwNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PwNw@2",
+    "clip": {
+      "html": "<blockquote><p><img /></p></blockquote><hr /><p></p>",
+      "plain": "\n\n\n",
+      "data": true
+    }
+  },
+  "L|quote|img|para|start|2|copy": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|text:Pw@2",
+    "clip": {
+      "html": "<blockquote><p><img /></p></blockquote><hr /><p></p>",
+      "plain": "\n\n\n",
+      "data": true
+    }
+  },
+  "L|quote|img|para|start|3|k": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<blockquote><p>PkNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PkNw@2"
+  },
+  "L|quote|img|para|start|3|bs": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<blockquote><p>PNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PNw@1"
+  },
+  "L|quote|img|para|start|3|del": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<blockquote><p>PNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PNw@1"
+  },
+  "L|quote|img|para|start|3|enter": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<blockquote><p>P</p><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|quote|img|para|start|3|plain": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<blockquote><p>PZqNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PZqNw@3"
+  },
+  "L|quote|img|para|start|3|htmlPaste": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<blockquote><p>P<b><strong>Hq</strong></b>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|quote|img|para|start|3|cut": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<blockquote><p>PNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PNw@1",
+    "clip": {
+      "html": "<blockquote><p>w<img /></p></blockquote><hr /><p></p>",
+      "plain": "w\n\n\n",
+      "data": true
+    }
+  },
+  "L|quote|img|para|start|3|copy": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|text:Pw@1",
+    "clip": {
+      "html": "<blockquote><p>w<img /></p></blockquote><hr /><p></p>",
+      "plain": "w\n\n\n",
+      "data": true
+    }
+  },
+  "L|quote|link|para|start|0|k": {
+    "before": "text:Nw@0",
+    "write": "<blockquote><p>Pw<a>Lw</a></p></blockquote><hr /><p>kNw</p>",
+    "calls": 1,
+    "caret": "text:kNw@1"
+  },
+  "L|quote|link|para|start|0|bs": {
+    "before": "text:Nw@0",
+    "write": "<blockquote><p>Pw<a>Lw</a></p></blockquote><p>Nw</p>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|quote|link|para|start|0|del": {
+    "before": "text:Nw@0",
+    "write": "<blockquote><p>Pw<a>Lw</a></p></blockquote><hr /><p>w</p>",
+    "calls": 1,
+    "caret": "text:w@0"
+  },
+  "L|quote|link|para|start|0|enter": {
+    "before": "text:Nw@0",
+    "write": "<blockquote><p>Pw<a>Lw</a></p></blockquote><hr /><p></p><p>Nw</p>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|quote|link|para|start|0|plain": {
+    "before": "text:Nw@0",
+    "write": "<blockquote><p>Pw<a>Lw</a></p></blockquote><hr /><p>ZqNw</p>",
+    "calls": 1,
+    "caret": "text:ZqNw@2"
+  },
+  "L|quote|link|para|start|0|htmlPaste": {
+    "before": "text:Nw@0",
+    "write": "<blockquote><p>Pw<a>Lw</a></p></blockquote><hr /><p><b><strong>Hq</strong></b>Nw</p>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|quote|link|para|start|0|cut": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "",
+      "plain": "",
+      "data": false
+    }
+  },
+  "L|quote|link|para|start|0|copy": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "",
+      "plain": "",
+      "data": false
+    }
+  },
+  "L|quote|link|para|start|1|k": {
+    "before": "text:Nw@0|element:quote@1",
+    "write": "<blockquote><p>Pw<a>Lw</a>kNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:kNw@1"
+  },
+  "L|quote|link|para|start|1|bs": {
+    "before": "text:Nw@0|element:quote@1",
+    "write": "<blockquote><p>Pw<a>Lw</a>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|quote|link|para|start|1|del": {
+    "before": "text:Nw@0|element:quote@1",
+    "write": "<blockquote><p>Pw<a>Lw</a>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|quote|link|para|start|1|enter": {
+    "before": "text:Nw@0|element:quote@1",
+    "write": "<blockquote><p>Pw<a>Lw</a></p><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|quote|link|para|start|1|plain": {
+    "before": "text:Nw@0|element:quote@1",
+    "write": "<blockquote><p>Pw<a>Lw</a>ZqNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:ZqNw@2"
+  },
+  "L|quote|link|para|start|1|htmlPaste": {
+    "before": "text:Nw@0|element:quote@1",
+    "write": "<blockquote><p>Pw<a>Lw</a><b><strong>Hq</strong></b>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|quote|link|para|start|1|cut": {
+    "before": "text:Nw@0|element:quote@1",
+    "write": "<blockquote><p>Pw<a>Lw</a>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "<blockquote><p><a></a></p></blockquote><hr /><p></p>",
+      "plain": "\n\n\n",
+      "data": true
+    }
+  },
+  "L|quote|link|para|start|1|copy": {
+    "before": "text:Nw@0|element:quote@1",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|element:quote@1",
+    "clip": {
+      "html": "<blockquote><p><a>Lw</a></p></blockquote><hr /><p></p>",
+      "plain": "\n\n\n",
+      "data": true
+    }
+  },
+  "L|quote|link|para|start|2|k": {
+    "before": "text:Nw@0|text:Lw@1",
+    "write": "<blockquote><p>Pw<a>L</a>kNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:kNw@1"
+  },
+  "L|quote|link|para|start|2|bs": {
+    "before": "text:Nw@0|text:Lw@1",
+    "write": "<blockquote><p>Pw<a>L</a>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|quote|link|para|start|2|del": {
+    "before": "text:Nw@0|text:Lw@1",
+    "write": "<blockquote><p>Pw<a>L</a>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|quote|link|para|start|2|enter": {
+    "before": "text:Nw@0|text:Lw@1",
+    "write": "<blockquote><p>Pw<a>L</a></p><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|quote|link|para|start|2|plain": {
+    "before": "text:Nw@0|text:Lw@1",
+    "write": "<blockquote><p>Pw<a>L</a>ZqNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:ZqNw@2"
+  },
+  "L|quote|link|para|start|2|htmlPaste": {
+    "before": "text:Nw@0|text:Lw@1",
+    "write": "<blockquote><p>Pw<a>L</a><b><strong>Hq</strong></b>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|quote|link|para|start|2|cut": {
+    "before": "text:Nw@0|text:Lw@1",
+    "write": "<blockquote><p>Pw<a>L</a>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "<blockquote><p><a>w</a></p></blockquote><hr /><p></p>",
+      "plain": "w\n\n\n",
+      "data": true
+    }
+  },
+  "L|quote|link|para|start|2|copy": {
+    "before": "text:Nw@0|text:Lw@1",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|text:Lw@1",
+    "clip": {
+      "html": "<blockquote><p><a>w</a></p></blockquote><hr /><p></p>",
+      "plain": "w\n\n\n",
+      "data": true
+    }
+  },
+  "L|quote|link|para|start|3|k": {
+    "before": "text:Nw@0|text:Lw@0",
+    "write": "<blockquote><p>PwkNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PwkNw@3"
+  },
+  "L|quote|link|para|start|3|bs": {
+    "before": "text:Nw@0|text:Lw@0",
+    "write": "<blockquote><p>PwNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PwNw@2"
+  },
+  "L|quote|link|para|start|3|del": {
+    "before": "text:Nw@0|text:Lw@0",
+    "write": "<blockquote><p>PwNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PwNw@2"
+  },
+  "L|quote|link|para|start|3|enter": {
+    "before": "text:Nw@0|text:Lw@0",
+    "write": "<blockquote><p>Pw</p><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|quote|link|para|start|3|plain": {
+    "before": "text:Nw@0|text:Lw@0",
+    "write": "<blockquote><p>PwZqNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PwZqNw@4"
+  },
+  "L|quote|link|para|start|3|htmlPaste": {
+    "before": "text:Nw@0|text:Lw@0",
+    "write": "<blockquote><p>Pw<b><strong>Hq</strong></b>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|quote|link|para|start|3|cut": {
+    "before": "text:Nw@0|text:Lw@0",
+    "write": "<blockquote><p>PwNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PwNw@2",
+    "clip": {
+      "html": "<blockquote><p><a>Lw</a></p></blockquote><hr /><p></p>",
+      "plain": "Lw\n\n\n",
+      "data": true
+    }
+  },
+  "L|quote|link|para|start|3|copy": {
+    "before": "text:Nw@0|text:Lw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|text:Lw@0",
+    "clip": {
+      "html": "<blockquote><p><a>Lw</a></p></blockquote><hr /><p></p>",
+      "plain": "Lw\n\n\n",
+      "data": true
+    }
+  },
+  "L|quote|br|para|start|0|k": {
+    "before": "text:Nw@0",
+    "write": "<blockquote><p>Pw<br /></p></blockquote><hr /><p>kNw</p>",
+    "calls": 1,
+    "caret": "text:kNw@1"
+  },
+  "L|quote|br|para|start|0|bs": {
+    "before": "text:Nw@0",
+    "write": "<blockquote><p>Pw<br /></p></blockquote><p>Nw</p>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|quote|br|para|start|0|del": {
+    "before": "text:Nw@0",
+    "write": "<blockquote><p>Pw<br /></p></blockquote><hr /><p>w</p>",
+    "calls": 1,
+    "caret": "text:w@0"
+  },
+  "L|quote|br|para|start|0|enter": {
+    "before": "text:Nw@0",
+    "write": "<blockquote><p>Pw<br /></p></blockquote><hr /><p></p><p>Nw</p>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|quote|br|para|start|0|plain": {
+    "before": "text:Nw@0",
+    "write": "<blockquote><p>Pw<br /></p></blockquote><hr /><p>ZqNw</p>",
+    "calls": 1,
+    "caret": "text:ZqNw@2"
+  },
+  "L|quote|br|para|start|0|htmlPaste": {
+    "before": "text:Nw@0",
+    "write": "<blockquote><p>Pw<br /></p></blockquote><hr /><p><b><strong>Hq</strong></b>Nw</p>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|quote|br|para|start|0|cut": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "",
+      "plain": "",
+      "data": false
+    }
+  },
+  "L|quote|br|para|start|0|copy": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "",
+      "plain": "",
+      "data": false
+    }
+  },
+  "L|quote|br|para|start|1|k": {
+    "before": "text:Nw@0|element:quote@1",
+    "write": "<blockquote><p>Pw<br />kNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:kNw@1"
+  },
+  "L|quote|br|para|start|1|bs": {
+    "before": "text:Nw@0|element:quote@1",
+    "write": "<blockquote><p>PwNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PwNw@2"
+  },
+  "L|quote|br|para|start|1|del": {
+    "before": "text:Nw@0|element:quote@1",
+    "write": "<blockquote><p>PwNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PwNw@2"
+  },
+  "L|quote|br|para|start|1|enter": {
+    "before": "text:Nw@0|element:quote@1",
+    "write": "<blockquote><p>Pw</p><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|quote|br|para|start|1|plain": {
+    "before": "text:Nw@0|element:quote@1",
+    "write": "<blockquote><p>Pw<br />ZqNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:ZqNw@2"
+  },
+  "L|quote|br|para|start|1|htmlPaste": {
+    "before": "text:Nw@0|element:quote@1",
+    "write": "<blockquote><p>Pw<b><strong>Hq</strong></b>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|quote|br|para|start|1|cut": {
+    "before": "text:Nw@0|element:quote@1",
+    "write": "<blockquote><p>PwNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PwNw@2",
+    "clip": {
+      "html": "<blockquote><p><br /></p></blockquote><hr /><p></p>",
+      "plain": "\n\n\n\n",
+      "data": true
+    }
+  },
+  "L|quote|br|para|start|1|copy": {
+    "before": "text:Nw@0|element:quote@1",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|element:quote@1",
+    "clip": {
+      "html": "<blockquote><p><br /></p></blockquote><hr /><p></p>",
+      "plain": "\n\n\n\n",
+      "data": true
+    }
+  },
+  "L|quote|br|para|start|2|k": {
+    "before": "text:Nw@0|element:paragraph@1",
+    "write": "<blockquote><p>PwkNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PwkNw@3"
+  },
+  "L|quote|br|para|start|2|bs": {
+    "before": "text:Nw@0|element:paragraph@1",
+    "write": "<blockquote><p>PwNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PwNw@2"
+  },
+  "L|quote|br|para|start|2|del": {
+    "before": "text:Nw@0|element:paragraph@1",
+    "write": "<blockquote><p>PwNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PwNw@2"
+  },
+  "L|quote|br|para|start|2|enter": {
+    "before": "text:Nw@0|element:paragraph@1",
+    "write": "<blockquote><p>Pw</p><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|quote|br|para|start|2|plain": {
+    "before": "text:Nw@0|element:paragraph@1",
+    "write": "<blockquote><p>PwZqNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PwZqNw@4"
+  },
+  "L|quote|br|para|start|2|htmlPaste": {
+    "before": "text:Nw@0|element:paragraph@1",
+    "write": "<blockquote><p>Pw<b><strong>Hq</strong></b>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|quote|br|para|start|2|cut": {
+    "before": "text:Nw@0|element:paragraph@1",
+    "write": "<blockquote><p>PwNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PwNw@2",
+    "clip": {
+      "html": "<blockquote><p><br /></p></blockquote><hr /><p></p>",
+      "plain": "\n\n\n\n",
+      "data": true
+    }
+  },
+  "L|quote|br|para|start|2|copy": {
+    "before": "text:Nw@0|element:paragraph@1",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|element:paragraph@1",
+    "clip": {
+      "html": "<blockquote><p><br /></p></blockquote><hr /><p></p>",
+      "plain": "\n\n\n\n",
+      "data": true
+    }
+  },
+  "L|quote|br|para|start|3|k": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<blockquote><p>PkNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PkNw@2"
+  },
+  "L|quote|br|para|start|3|bs": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<blockquote><p>PNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PNw@1"
+  },
+  "L|quote|br|para|start|3|del": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<blockquote><p>PNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PNw@1"
+  },
+  "L|quote|br|para|start|3|enter": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<blockquote><p>P</p><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|quote|br|para|start|3|plain": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<blockquote><p>PZqNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PZqNw@3"
+  },
+  "L|quote|br|para|start|3|htmlPaste": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<blockquote><p>P<b><strong>Hq</strong></b>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|quote|br|para|start|3|cut": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<blockquote><p>PNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:PNw@1",
+    "clip": {
+      "html": "<blockquote><p>w<br /></p></blockquote><hr /><p></p>",
+      "plain": "w\n\n\n\n",
+      "data": true
+    }
+  },
+  "L|quote|br|para|start|3|copy": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|text:Pw@1",
+    "clip": {
+      "html": "<blockquote><p>w<br /></p></blockquote><hr /><p></p>",
+      "plain": "w\n\n\n\n",
+      "data": true
+    }
+  },
+  "L|list|text|para|start|0|k": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Pw</li></ul><hr /><p>kNw</p>",
+    "calls": 1,
+    "caret": "text:kNw@1"
+  },
+  "L|list|text|para|start|0|bs": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Pw</li></ul><p>Nw</p>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list|text|para|start|0|del": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Pw</li></ul><hr /><p>w</p>",
+    "calls": 1,
+    "caret": "text:w@0"
+  },
+  "L|list|text|para|start|0|enter": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Pw</li></ul><hr /><p></p><p>Nw</p>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list|text|para|start|0|plain": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Pw</li></ul><hr /><p>ZqNw</p>",
+    "calls": 1,
+    "caret": "text:ZqNw@2"
+  },
+  "L|list|text|para|start|0|htmlPaste": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Pw</li></ul><hr /><p><b><strong>Hq</strong></b>Nw</p>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|list|text|para|start|0|cut": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "",
+      "plain": "",
+      "data": false
+    }
+  },
+  "L|list|text|para|start|0|copy": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "",
+      "plain": "",
+      "data": false
+    }
+  },
+  "L|list|text|para|start|1|k": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<ul><li>PwkNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PwkNw@3"
+  },
+  "L|list|text|para|start|1|bs": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<ul><li>PwNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PwNw@2"
+  },
+  "L|list|text|para|start|1|del": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<ul><li>PwNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PwNw@2"
+  },
+  "L|list|text|para|start|1|enter": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<ul><li>Pw</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list|text|para|start|1|plain": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<ul><li>PwZqNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PwZqNw@4"
+  },
+  "L|list|text|para|start|1|htmlPaste": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<ul><li>Pw<b><strong>Hq</strong></b>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|list|text|para|start|1|cut": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<ul><li>PwNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PwNw@2",
+    "clip": {
+      "html": "<ul><li></li></ul><hr /><p></p>",
+      "plain": "\n\n\n",
+      "data": true
+    }
+  },
+  "L|list|text|para|start|1|copy": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|text:Pw@2",
+    "clip": {
+      "html": "<ul><li></li></ul><hr /><p></p>",
+      "plain": "\n\n\n",
+      "data": true
+    }
+  },
+  "L|list|text|para|start|2|k": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<ul><li>PkNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PkNw@2"
+  },
+  "L|list|text|para|start|2|bs": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<ul><li>PNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PNw@1"
+  },
+  "L|list|text|para|start|2|del": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<ul><li>PNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PNw@1"
+  },
+  "L|list|text|para|start|2|enter": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<ul><li>P</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list|text|para|start|2|plain": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<ul><li>PZqNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PZqNw@3"
+  },
+  "L|list|text|para|start|2|htmlPaste": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<ul><li>P<b><strong>Hq</strong></b>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|list|text|para|start|2|cut": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<ul><li>PNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PNw@1",
+    "clip": {
+      "html": "<ul><li>w</li></ul><hr /><p></p>",
+      "plain": "w\n\n\n",
+      "data": true
+    }
+  },
+  "L|list|text|para|start|2|copy": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|text:Pw@1",
+    "clip": {
+      "html": "<ul><li>w</li></ul><hr /><p></p>",
+      "plain": "w\n\n\n",
+      "data": true
+    }
+  },
+  "L|list|text|para|start|3|k": {
+    "before": "text:Nw@0|text:Pw@0",
+    "write": "<ul><li>kNw</li></ul>",
+    "calls": 1,
+    "caret": "text:kNw@1"
+  },
+  "L|list|text|para|start|3|bs": {
+    "before": "text:Nw@0|text:Pw@0",
+    "write": "<ul><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list|text|para|start|3|del": {
+    "before": "text:Nw@0|text:Pw@0",
+    "write": "<ul><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list|text|para|start|3|enter": {
+    "before": "text:Nw@0|text:Pw@0",
+    "write": "<ul><li></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list|text|para|start|3|plain": {
+    "before": "text:Nw@0|text:Pw@0",
+    "write": "<ul><li>ZqNw</li></ul>",
+    "calls": 1,
+    "caret": "text:ZqNw@2"
+  },
+  "L|list|text|para|start|3|htmlPaste": {
+    "before": "text:Nw@0|text:Pw@0",
+    "write": "<ul><li><b><strong>Hq</strong></b>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|list|text|para|start|3|cut": {
+    "before": "text:Nw@0|text:Pw@0",
+    "write": "<ul><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "<ul><li>Pw</li></ul><hr /><p></p>",
+      "plain": "Pw\n\n\n",
+      "data": true
+    }
+  },
+  "L|list|text|para|start|3|copy": {
+    "before": "text:Nw@0|text:Pw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|text:Pw@0",
+    "clip": {
+      "html": "<ul><li>Pw</li></ul><hr /><p></p>",
+      "plain": "Pw\n\n\n",
+      "data": true
+    }
+  },
+  "L|list|text|quote|start|0|k": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Pw</li></ul><hr /><blockquote><p>kNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:kNw@1"
+  },
+  "L|list|text|quote|start|0|bs": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0"
+  },
+  "L|list|text|quote|start|0|del": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Pw</li></ul><hr /><blockquote><p>w</p></blockquote>",
+    "calls": 1,
+    "caret": "text:w@0"
+  },
+  "L|list|text|quote|start|0|enter": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Pw</li></ul><hr /><blockquote><p></p><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list|text|quote|start|0|plain": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Pw</li></ul><hr /><blockquote><p>ZqNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:ZqNw@2"
+  },
+  "L|list|text|quote|start|0|htmlPaste": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Pw</li></ul><hr /><blockquote><p><b><strong>Hq</strong></b>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|list|text|quote|start|0|cut": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "",
+      "plain": "",
+      "data": false
+    }
+  },
+  "L|list|text|quote|start|0|copy": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "",
+      "plain": "",
+      "data": false
+    }
+  },
+  "L|list|text|quote|start|1|k": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Pw</li></ul><hr /><blockquote><p>kNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:kNw@1"
+  },
+  "L|list|text|quote|start|1|bs": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Pw</li></ul><blockquote><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list|text|quote|start|1|del": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0"
+  },
+  "L|list|text|quote|start|1|enter": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Pw</li></ul><hr /><blockquote><p></p><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list|text|quote|start|1|plain": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Pw</li></ul><hr /><blockquote><p>ZqNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:ZqNw@2"
+  },
+  "L|list|text|quote|start|1|htmlPaste": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Pw</li></ul><hr /><blockquote><p><b><strong>Hq</strong></b>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|list|text|quote|start|1|cut": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "",
+      "plain": "",
+      "data": false
+    }
+  },
+  "L|list|text|quote|start|1|copy": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "",
+      "plain": "",
+      "data": false
+    }
+  },
+  "L|list|text|quote|start|2|k": {
+    "before": "text:Nw@0|element:root@1",
+    "write": "<ul><li>Pw</li></ul><p>kNw</p>",
+    "calls": 1,
+    "caret": "text:kNw@1"
+  },
+  "L|list|text|quote|start|2|bs": {
+    "before": "text:Nw@0|element:root@1",
+    "write": "<ul><li>Pw</li></ul><blockquote><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list|text|quote|start|2|del": {
+    "before": "text:Nw@0|element:root@1",
+    "write": "<ul><li>Pw</li></ul><blockquote><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list|text|quote|start|2|enter": {
+    "before": "text:Nw@0|element:root@1",
+    "write": "<ul><li>Pw</li></ul><blockquote><p></p><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list|text|quote|start|2|plain": {
+    "before": "text:Nw@0|element:root@1",
+    "write": "<ul><li>Pw</li></ul><p>ZqNw</p>",
+    "calls": 1,
+    "caret": "text:ZqNw@2"
+  },
+  "L|list|text|quote|start|2|htmlPaste": {
+    "before": "text:Nw@0|element:root@1",
+    "write": "<ul><li>Pw</li></ul><p>HqNw</p>",
+    "calls": 1,
+    "caret": "text:HqNw@2"
+  },
+  "L|list|text|quote|start|2|cut": {
+    "before": "text:Nw@0|element:root@1",
+    "write": "<ul><li>Pw</li></ul><blockquote><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "<hr /><blockquote><p></p></blockquote>",
+      "plain": "\n\n",
+      "data": true
+    }
+  },
+  "L|list|text|quote|start|2|copy": {
+    "before": "text:Nw@0|element:root@1",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|element:root@1",
+    "clip": {
+      "html": "<hr /><blockquote><p></p></blockquote>",
+      "plain": "\n\n",
+      "data": true
+    }
+  },
+  "L|list|text|quote|start|3|k": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<ul><li>PwkNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PwkNw@3"
+  },
+  "L|list|text|quote|start|3|bs": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<ul><li>PwNw</li></ul><blockquote></blockquote>",
+    "calls": 1,
+    "caret": "text:PwNw@2"
+  },
+  "L|list|text|quote|start|3|del": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<ul><li>PwNw</li></ul><blockquote></blockquote>",
+    "calls": 1,
+    "caret": "text:PwNw@2"
+  },
+  "L|list|text|quote|start|3|enter": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<ul><li>Pw</li><li>Nw</li></ul><blockquote></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list|text|quote|start|3|plain": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<ul><li>PwZqNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PwZqNw@4"
+  },
+  "L|list|text|quote|start|3|htmlPaste": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<ul><li>Pw<b><strong>Hq</strong></b>Nw</li></ul><blockquote></blockquote>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|list|text|quote|start|3|cut": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<ul><li>PwNw</li></ul><blockquote></blockquote>",
+    "calls": 1,
+    "caret": "text:PwNw@2",
+    "clip": {
+      "html": "<ul><li></li></ul><hr /><blockquote><p></p></blockquote>",
+      "plain": "\n\n\n",
+      "data": true
+    }
+  },
+  "L|list|text|quote|start|3|copy": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|text:Pw@2",
+    "clip": {
+      "html": "<ul><li></li></ul><hr /><blockquote><p></p></blockquote>",
+      "plain": "\n\n\n",
+      "data": true
+    }
+  },
+  "L|list|img|para|start|0|k": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Pw<img /></li></ul><hr /><p>kNw</p>",
+    "calls": 1,
+    "caret": "text:kNw@1"
+  },
+  "L|list|img|para|start|0|bs": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Pw<img /></li></ul><p>Nw</p>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list|img|para|start|0|del": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Pw<img /></li></ul><hr /><p>w</p>",
+    "calls": 1,
+    "caret": "text:w@0"
+  },
+  "L|list|img|para|start|0|enter": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Pw<img /></li></ul><hr /><p></p><p>Nw</p>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list|img|para|start|0|plain": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Pw<img /></li></ul><hr /><p>ZqNw</p>",
+    "calls": 1,
+    "caret": "text:ZqNw@2"
+  },
+  "L|list|img|para|start|0|htmlPaste": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Pw<img /></li></ul><hr /><p><b><strong>Hq</strong></b>Nw</p>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|list|img|para|start|0|cut": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "",
+      "plain": "",
+      "data": false
+    }
+  },
+  "L|list|img|para|start|0|copy": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "",
+      "plain": "",
+      "data": false
+    }
+  },
+  "L|list|img|para|start|1|k": {
+    "before": "text:Nw@0|element:listitem@1",
+    "write": "<ul><li>PwkNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PwkNw@3"
+  },
+  "L|list|img|para|start|1|bs": {
+    "before": "text:Nw@0|element:listitem@1",
+    "write": "<ul><li>PwNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PwNw@2"
+  },
+  "L|list|img|para|start|1|del": {
+    "before": "text:Nw@0|element:listitem@1",
+    "write": "<ul><li>PwNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PwNw@2"
+  },
+  "L|list|img|para|start|1|enter": {
+    "before": "text:Nw@0|element:listitem@1",
+    "write": "<ul><li>Pw</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list|img|para|start|1|plain": {
+    "before": "text:Nw@0|element:listitem@1",
+    "write": "<ul><li>PwZqNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PwZqNw@4"
+  },
+  "L|list|img|para|start|1|htmlPaste": {
+    "before": "text:Nw@0|element:listitem@1",
+    "write": "<ul><li>Pw<b><strong>Hq</strong></b>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|list|img|para|start|1|cut": {
+    "before": "text:Nw@0|element:listitem@1",
+    "write": "<ul><li>PwNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PwNw@2",
+    "clip": {
+      "html": "<ul><li><img /></li></ul><hr /><p></p>",
+      "plain": "\n\n\n",
+      "data": true
+    }
+  },
+  "L|list|img|para|start|1|copy": {
+    "before": "text:Nw@0|element:listitem@1",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|element:listitem@1",
+    "clip": {
+      "html": "<ul><li><img /></li></ul><hr /><p></p>",
+      "plain": "\n\n\n",
+      "data": true
+    }
+  },
+  "L|list|img|para|start|2|k": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<ul><li>PwkNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PwkNw@3"
+  },
+  "L|list|img|para|start|2|bs": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<ul><li>PwNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PwNw@2"
+  },
+  "L|list|img|para|start|2|del": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<ul><li>PwNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PwNw@2"
+  },
+  "L|list|img|para|start|2|enter": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<ul><li>Pw</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list|img|para|start|2|plain": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<ul><li>PwZqNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PwZqNw@4"
+  },
+  "L|list|img|para|start|2|htmlPaste": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<ul><li>Pw<b><strong>Hq</strong></b>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|list|img|para|start|2|cut": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<ul><li>PwNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PwNw@2",
+    "clip": {
+      "html": "<ul><li><img /></li></ul><hr /><p></p>",
+      "plain": "\n\n\n",
+      "data": true
+    }
+  },
+  "L|list|img|para|start|2|copy": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|text:Pw@2",
+    "clip": {
+      "html": "<ul><li><img /></li></ul><hr /><p></p>",
+      "plain": "\n\n\n",
+      "data": true
+    }
+  },
+  "L|list|img|para|start|3|k": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<ul><li>PkNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PkNw@2"
+  },
+  "L|list|img|para|start|3|bs": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<ul><li>PNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PNw@1"
+  },
+  "L|list|img|para|start|3|del": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<ul><li>PNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PNw@1"
+  },
+  "L|list|img|para|start|3|enter": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<ul><li>P</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list|img|para|start|3|plain": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<ul><li>PZqNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PZqNw@3"
+  },
+  "L|list|img|para|start|3|htmlPaste": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<ul><li>P<b><strong>Hq</strong></b>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|list|img|para|start|3|cut": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<ul><li>PNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PNw@1",
+    "clip": {
+      "html": "<ul><li>w<img /></li></ul><hr /><p></p>",
+      "plain": "w\n\n\n",
+      "data": true
+    }
+  },
+  "L|list|img|para|start|3|copy": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|text:Pw@1",
+    "clip": {
+      "html": "<ul><li>w<img /></li></ul><hr /><p></p>",
+      "plain": "w\n\n\n",
+      "data": true
+    }
+  },
+  "L|list|link|para|start|0|k": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Pw<a>Lw</a></li></ul><hr /><p>kNw</p>",
+    "calls": 1,
+    "caret": "text:kNw@1"
+  },
+  "L|list|link|para|start|0|bs": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Pw<a>Lw</a></li></ul><p>Nw</p>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list|link|para|start|0|del": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Pw<a>Lw</a></li></ul><hr /><p>w</p>",
+    "calls": 1,
+    "caret": "text:w@0"
+  },
+  "L|list|link|para|start|0|enter": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Pw<a>Lw</a></li></ul><hr /><p></p><p>Nw</p>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list|link|para|start|0|plain": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Pw<a>Lw</a></li></ul><hr /><p>ZqNw</p>",
+    "calls": 1,
+    "caret": "text:ZqNw@2"
+  },
+  "L|list|link|para|start|0|htmlPaste": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Pw<a>Lw</a></li></ul><hr /><p><b><strong>Hq</strong></b>Nw</p>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|list|link|para|start|0|cut": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "",
+      "plain": "",
+      "data": false
+    }
+  },
+  "L|list|link|para|start|0|copy": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "",
+      "plain": "",
+      "data": false
+    }
+  },
+  "L|list|link|para|start|1|k": {
+    "before": "text:Nw@0|text:Lw@2",
+    "write": "<ul><li>Pw<a>Lw</a>kNw</li></ul>",
+    "calls": 1,
+    "caret": "text:kNw@1"
+  },
+  "L|list|link|para|start|1|bs": {
+    "before": "text:Nw@0|text:Lw@2",
+    "write": "<ul><li>Pw<a>Lw</a>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list|link|para|start|1|del": {
+    "before": "text:Nw@0|text:Lw@2",
+    "write": "<ul><li>Pw<a>Lw</a>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list|link|para|start|1|enter": {
+    "before": "text:Nw@0|text:Lw@2",
+    "write": "<ul><li>Pw<a>Lw</a></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list|link|para|start|1|plain": {
+    "before": "text:Nw@0|text:Lw@2",
+    "write": "<ul><li>Pw<a>Lw</a>ZqNw</li></ul>",
+    "calls": 1,
+    "caret": "text:ZqNw@2"
+  },
+  "L|list|link|para|start|1|htmlPaste": {
+    "before": "text:Nw@0|text:Lw@2",
+    "write": "<ul><li>Pw<a>Lw</a><b><strong>Hq</strong></b>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|list|link|para|start|1|cut": {
+    "before": "text:Nw@0|text:Lw@2",
+    "write": "<ul><li>Pw<a>Lw</a>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "<ul><li><a></a></li></ul><hr /><p></p>",
+      "plain": "\n\n\n",
+      "data": true
+    }
+  },
+  "L|list|link|para|start|1|copy": {
+    "before": "text:Nw@0|text:Lw@2",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|text:Lw@2",
+    "clip": {
+      "html": "<ul><li><a></a></li></ul><hr /><p></p>",
+      "plain": "\n\n\n",
+      "data": true
+    }
+  },
+  "L|list|link|para|start|2|k": {
+    "before": "text:Nw@0|text:Lw@1",
+    "write": "<ul><li>Pw<a>L</a>kNw</li></ul>",
+    "calls": 1,
+    "caret": "text:kNw@1"
+  },
+  "L|list|link|para|start|2|bs": {
+    "before": "text:Nw@0|text:Lw@1",
+    "write": "<ul><li>Pw<a>L</a>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list|link|para|start|2|del": {
+    "before": "text:Nw@0|text:Lw@1",
+    "write": "<ul><li>Pw<a>L</a>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list|link|para|start|2|enter": {
+    "before": "text:Nw@0|text:Lw@1",
+    "write": "<ul><li>Pw<a>L</a></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list|link|para|start|2|plain": {
+    "before": "text:Nw@0|text:Lw@1",
+    "write": "<ul><li>Pw<a>L</a>ZqNw</li></ul>",
+    "calls": 1,
+    "caret": "text:ZqNw@2"
+  },
+  "L|list|link|para|start|2|htmlPaste": {
+    "before": "text:Nw@0|text:Lw@1",
+    "write": "<ul><li>Pw<a>L</a><b><strong>Hq</strong></b>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|list|link|para|start|2|cut": {
+    "before": "text:Nw@0|text:Lw@1",
+    "write": "<ul><li>Pw<a>L</a>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "<ul><li><a>w</a></li></ul><hr /><p></p>",
+      "plain": "w\n\n\n",
+      "data": true
+    }
+  },
+  "L|list|link|para|start|2|copy": {
+    "before": "text:Nw@0|text:Lw@1",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|text:Lw@1",
+    "clip": {
+      "html": "<ul><li><a>w</a></li></ul><hr /><p></p>",
+      "plain": "w\n\n\n",
+      "data": true
+    }
+  },
+  "L|list|link|para|start|3|k": {
+    "before": "text:Nw@0|text:Lw@0",
+    "write": "<ul><li>PwkNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PwkNw@3"
+  },
+  "L|list|link|para|start|3|bs": {
+    "before": "text:Nw@0|text:Lw@0",
+    "write": "<ul><li>PwNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PwNw@2"
+  },
+  "L|list|link|para|start|3|del": {
+    "before": "text:Nw@0|text:Lw@0",
+    "write": "<ul><li>PwNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PwNw@2"
+  },
+  "L|list|link|para|start|3|enter": {
+    "before": "text:Nw@0|text:Lw@0",
+    "write": "<ul><li>Pw</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list|link|para|start|3|plain": {
+    "before": "text:Nw@0|text:Lw@0",
+    "write": "<ul><li>PwZqNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PwZqNw@4"
+  },
+  "L|list|link|para|start|3|htmlPaste": {
+    "before": "text:Nw@0|text:Lw@0",
+    "write": "<ul><li>Pw<b><strong>Hq</strong></b>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|list|link|para|start|3|cut": {
+    "before": "text:Nw@0|text:Lw@0",
+    "write": "<ul><li>PwNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PwNw@2",
+    "clip": {
+      "html": "<ul><li><a>Lw</a></li></ul><hr /><p></p>",
+      "plain": "Lw\n\n\n",
+      "data": true
+    }
+  },
+  "L|list|link|para|start|3|copy": {
+    "before": "text:Nw@0|text:Lw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|text:Lw@0",
+    "clip": {
+      "html": "<ul><li><a>Lw</a></li></ul><hr /><p></p>",
+      "plain": "Lw\n\n\n",
+      "data": true
+    }
+  },
+  "L|list|br|para|start|0|k": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Pw<br /></li></ul><hr /><p>kNw</p>",
+    "calls": 1,
+    "caret": "text:kNw@1"
+  },
+  "L|list|br|para|start|0|bs": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Pw<br /></li></ul><p>Nw</p>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list|br|para|start|0|del": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Pw<br /></li></ul><hr /><p>w</p>",
+    "calls": 1,
+    "caret": "text:w@0"
+  },
+  "L|list|br|para|start|0|enter": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Pw<br /></li></ul><hr /><p></p><p>Nw</p>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list|br|para|start|0|plain": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Pw<br /></li></ul><hr /><p>ZqNw</p>",
+    "calls": 1,
+    "caret": "text:ZqNw@2"
+  },
+  "L|list|br|para|start|0|htmlPaste": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Pw<br /></li></ul><hr /><p><b><strong>Hq</strong></b>Nw</p>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|list|br|para|start|0|cut": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "",
+      "plain": "",
+      "data": false
+    }
+  },
+  "L|list|br|para|start|0|copy": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "",
+      "plain": "",
+      "data": false
+    }
+  },
+  "L|list|br|para|start|1|k": {
+    "before": "text:Nw@0|element:listitem@1",
+    "write": "<ul><li>PwkNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PwkNw@3"
+  },
+  "L|list|br|para|start|1|bs": {
+    "before": "text:Nw@0|element:listitem@1",
+    "write": "<ul><li>PwNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PwNw@2"
+  },
+  "L|list|br|para|start|1|del": {
+    "before": "text:Nw@0|element:listitem@1",
+    "write": "<ul><li>PwNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PwNw@2"
+  },
+  "L|list|br|para|start|1|enter": {
+    "before": "text:Nw@0|element:listitem@1",
+    "write": "<ul><li>Pw</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list|br|para|start|1|plain": {
+    "before": "text:Nw@0|element:listitem@1",
+    "write": "<ul><li>PwZqNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PwZqNw@4"
+  },
+  "L|list|br|para|start|1|htmlPaste": {
+    "before": "text:Nw@0|element:listitem@1",
+    "write": "<ul><li>Pw<b><strong>Hq</strong></b>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|list|br|para|start|1|cut": {
+    "before": "text:Nw@0|element:listitem@1",
+    "write": "<ul><li>PwNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PwNw@2",
+    "clip": {
+      "html": "<ul><li><br /></li></ul><hr /><p></p>",
+      "plain": "\n\n\n\n",
+      "data": true
+    }
+  },
+  "L|list|br|para|start|1|copy": {
+    "before": "text:Nw@0|element:listitem@1",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|element:listitem@1",
+    "clip": {
+      "html": "<ul><li><br /></li></ul><hr /><p></p>",
+      "plain": "\n\n\n\n",
+      "data": true
+    }
+  },
+  "L|list|br|para|start|2|k": {
+    "before": "text:Nw@0|element:listitem@1",
+    "write": "<ul><li>PwkNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PwkNw@3"
+  },
+  "L|list|br|para|start|2|bs": {
+    "before": "text:Nw@0|element:listitem@1",
+    "write": "<ul><li>PwNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PwNw@2"
+  },
+  "L|list|br|para|start|2|del": {
+    "before": "text:Nw@0|element:listitem@1",
+    "write": "<ul><li>PwNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PwNw@2"
+  },
+  "L|list|br|para|start|2|enter": {
+    "before": "text:Nw@0|element:listitem@1",
+    "write": "<ul><li>Pw</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list|br|para|start|2|plain": {
+    "before": "text:Nw@0|element:listitem@1",
+    "write": "<ul><li>PwZqNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PwZqNw@4"
+  },
+  "L|list|br|para|start|2|htmlPaste": {
+    "before": "text:Nw@0|element:listitem@1",
+    "write": "<ul><li>Pw<b><strong>Hq</strong></b>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|list|br|para|start|2|cut": {
+    "before": "text:Nw@0|element:listitem@1",
+    "write": "<ul><li>PwNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PwNw@2",
+    "clip": {
+      "html": "<ul><li><br /></li></ul><hr /><p></p>",
+      "plain": "\n\n\n\n",
+      "data": true
+    }
+  },
+  "L|list|br|para|start|2|copy": {
+    "before": "text:Nw@0|element:listitem@1",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|element:listitem@1",
+    "clip": {
+      "html": "<ul><li><br /></li></ul><hr /><p></p>",
+      "plain": "\n\n\n\n",
+      "data": true
+    }
+  },
+  "L|list|br|para|start|3|k": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<ul><li>PkNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PkNw@2"
+  },
+  "L|list|br|para|start|3|bs": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<ul><li>PNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PNw@1"
+  },
+  "L|list|br|para|start|3|del": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<ul><li>PNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PNw@1"
+  },
+  "L|list|br|para|start|3|enter": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<ul><li>P</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list|br|para|start|3|plain": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<ul><li>PZqNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PZqNw@3"
+  },
+  "L|list|br|para|start|3|htmlPaste": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<ul><li>P<b><strong>Hq</strong></b>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|list|br|para|start|3|cut": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<ul><li>PNw</li></ul>",
+    "calls": 1,
+    "caret": "text:PNw@1",
+    "clip": {
+      "html": "<ul><li>w<br /></li></ul><hr /><p></p>",
+      "plain": "w\n\n\n\n",
+      "data": true
+    }
+  },
+  "L|list|br|para|start|3|copy": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|text:Pw@1",
+    "clip": {
+      "html": "<ul><li>w<br /></li></ul><hr /><p></p>",
+      "plain": "w\n\n\n\n",
+      "data": true
+    }
+  },
+  "L|list2|text|para|start|0|k": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Aw<ul><li>Pw</li></ul></li></ul><hr /><p>kNw</p>",
+    "calls": 1,
+    "caret": "text:kNw@1"
+  },
+  "L|list2|text|para|start|0|bs": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Aw<ul><li>Pw</li></ul></li></ul><p>Nw</p>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list2|text|para|start|0|del": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Aw<ul><li>Pw</li></ul></li></ul><hr /><p>w</p>",
+    "calls": 1,
+    "caret": "text:w@0"
+  },
+  "L|list2|text|para|start|0|enter": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Aw<ul><li>Pw</li></ul></li></ul><hr /><p></p><p>Nw</p>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list2|text|para|start|0|plain": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Aw<ul><li>Pw</li></ul></li></ul><hr /><p>ZqNw</p>",
+    "calls": 1,
+    "caret": "text:ZqNw@2"
+  },
+  "L|list2|text|para|start|0|htmlPaste": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Aw<ul><li>Pw</li></ul></li></ul><hr /><p><b><strong>Hq</strong></b>Nw</p>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|list2|text|para|start|0|cut": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "",
+      "plain": "",
+      "data": false
+    }
+  },
+  "L|list2|text|para|start|0|copy": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "",
+      "plain": "",
+      "data": false
+    }
+  },
+  "L|list2|text|para|start|1|k": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<ul><li>Aw<ul><li>PwkNw</li></ul></li></ul>",
+    "calls": 1,
+    "caret": "text:PwkNw@3"
+  },
+  "L|list2|text|para|start|1|bs": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<ul><li>Aw<ul><li>PwNw</li></ul></li></ul>",
+    "calls": 1,
+    "caret": "text:PwNw@2"
+  },
+  "L|list2|text|para|start|1|del": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<ul><li>Aw<ul><li>PwNw</li></ul></li></ul>",
+    "calls": 1,
+    "caret": "text:PwNw@2"
+  },
+  "L|list2|text|para|start|1|enter": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<ul><li>Aw<ul><li>Pw</li><li>Nw</li></ul></li></ul>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list2|text|para|start|1|plain": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<ul><li>Aw<ul><li>PwZqNw</li></ul></li></ul>",
+    "calls": 1,
+    "caret": "text:PwZqNw@4"
+  },
+  "L|list2|text|para|start|1|htmlPaste": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<ul><li>Aw<ul><li>Pw<b><strong>Hq</strong></b>Nw</li></ul></li></ul>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|list2|text|para|start|1|cut": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<ul><li>Aw<ul><li>PwNw</li></ul></li></ul>",
+    "calls": 1,
+    "caret": "text:PwNw@2",
+    "clip": {
+      "html": "<ul><li><ul><li></li></ul></li></ul><hr /><p></p>",
+      "plain": "\n\n\n",
+      "data": true
+    }
+  },
+  "L|list2|text|para|start|1|copy": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|text:Pw@2",
+    "clip": {
+      "html": "<ul><li><ul><li></li></ul></li></ul><hr /><p></p>",
+      "plain": "\n\n\n",
+      "data": true
+    }
+  },
+  "L|list2|text|para|start|2|k": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<ul><li>Aw<ul><li>PkNw</li></ul></li></ul>",
+    "calls": 1,
+    "caret": "text:PkNw@2"
+  },
+  "L|list2|text|para|start|2|bs": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<ul><li>Aw<ul><li>PNw</li></ul></li></ul>",
+    "calls": 1,
+    "caret": "text:PNw@1"
+  },
+  "L|list2|text|para|start|2|del": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<ul><li>Aw<ul><li>PNw</li></ul></li></ul>",
+    "calls": 1,
+    "caret": "text:PNw@1"
+  },
+  "L|list2|text|para|start|2|enter": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<ul><li>Aw<ul><li>P</li><li>Nw</li></ul></li></ul>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list2|text|para|start|2|plain": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<ul><li>Aw<ul><li>PZqNw</li></ul></li></ul>",
+    "calls": 1,
+    "caret": "text:PZqNw@3"
+  },
+  "L|list2|text|para|start|2|htmlPaste": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<ul><li>Aw<ul><li>P<b><strong>Hq</strong></b>Nw</li></ul></li></ul>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|list2|text|para|start|2|cut": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<ul><li>Aw<ul><li>PNw</li></ul></li></ul>",
+    "calls": 1,
+    "caret": "text:PNw@1",
+    "clip": {
+      "html": "<ul><li><ul><li>w</li></ul></li></ul><hr /><p></p>",
+      "plain": "w\n\n\n",
+      "data": true
+    }
+  },
+  "L|list2|text|para|start|2|copy": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|text:Pw@1",
+    "clip": {
+      "html": "<ul><li><ul><li>w</li></ul></li></ul><hr /><p></p>",
+      "plain": "w\n\n\n",
+      "data": true
+    }
+  },
+  "L|list2|text|para|start|3|k": {
+    "before": "text:Nw@0|text:Pw@0",
+    "write": "<ul><li>Aw<ul><li>kNw</li></ul></li></ul>",
+    "calls": 1,
+    "caret": "text:kNw@1"
+  },
+  "L|list2|text|para|start|3|bs": {
+    "before": "text:Nw@0|text:Pw@0",
+    "write": "<ul><li>Aw<ul><li>Nw</li></ul></li></ul>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list2|text|para|start|3|del": {
+    "before": "text:Nw@0|text:Pw@0",
+    "write": "<ul><li>Aw<ul><li>Nw</li></ul></li></ul>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list2|text|para|start|3|enter": {
+    "before": "text:Nw@0|text:Pw@0",
+    "write": "<ul><li>Aw<ul><li></li><li>Nw</li></ul></li></ul>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list2|text|para|start|3|plain": {
+    "before": "text:Nw@0|text:Pw@0",
+    "write": "<ul><li>Aw<ul><li>ZqNw</li></ul></li></ul>",
+    "calls": 1,
+    "caret": "text:ZqNw@2"
+  },
+  "L|list2|text|para|start|3|htmlPaste": {
+    "before": "text:Nw@0|text:Pw@0",
+    "write": "<ul><li>Aw<ul><li><b><strong>Hq</strong></b>Nw</li></ul></li></ul>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|list2|text|para|start|3|cut": {
+    "before": "text:Nw@0|text:Pw@0",
+    "write": "<ul><li>Aw<ul><li>Nw</li></ul></li></ul>",
+    "calls": 1,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "<ul><li><ul><li>Pw</li></ul></li></ul><hr /><p></p>",
+      "plain": "Pw\n\n\n",
+      "data": true
+    }
+  },
+  "L|list2|text|para|start|3|copy": {
+    "before": "text:Nw@0|text:Pw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|text:Pw@0",
+    "clip": {
+      "html": "<ul><li><ul><li>Pw</li></ul></li></ul><hr /><p></p>",
+      "plain": "Pw\n\n\n",
+      "data": true
+    }
+  },
+  "L|list2|text|quote|start|0|k": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Aw<ul><li>Pw</li></ul></li></ul><hr /><blockquote><p>kNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:kNw@1"
+  },
+  "L|list2|text|quote|start|0|bs": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0"
+  },
+  "L|list2|text|quote|start|0|del": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Aw<ul><li>Pw</li></ul></li></ul><hr /><blockquote><p>w</p></blockquote>",
+    "calls": 1,
+    "caret": "text:w@0"
+  },
+  "L|list2|text|quote|start|0|enter": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Aw<ul><li>Pw</li></ul></li></ul><hr /><blockquote><p></p><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list2|text|quote|start|0|plain": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Aw<ul><li>Pw</li></ul></li></ul><hr /><blockquote><p>ZqNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:ZqNw@2"
+  },
+  "L|list2|text|quote|start|0|htmlPaste": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Aw<ul><li>Pw</li></ul></li></ul><hr /><blockquote><p><b><strong>Hq</strong></b>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|list2|text|quote|start|0|cut": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "",
+      "plain": "",
+      "data": false
+    }
+  },
+  "L|list2|text|quote|start|0|copy": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "",
+      "plain": "",
+      "data": false
+    }
+  },
+  "L|list2|text|quote|start|1|k": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Aw<ul><li>Pw</li></ul></li></ul><hr /><blockquote><p>kNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:kNw@1"
+  },
+  "L|list2|text|quote|start|1|bs": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Aw<ul><li>Pw</li></ul></li></ul><blockquote><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list2|text|quote|start|1|del": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0"
+  },
+  "L|list2|text|quote|start|1|enter": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Aw<ul><li>Pw</li></ul></li></ul><hr /><blockquote><p></p><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list2|text|quote|start|1|plain": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Aw<ul><li>Pw</li></ul></li></ul><hr /><blockquote><p>ZqNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:ZqNw@2"
+  },
+  "L|list2|text|quote|start|1|htmlPaste": {
+    "before": "text:Nw@0",
+    "write": "<ul><li>Aw<ul><li>Pw</li></ul></li></ul><hr /><blockquote><p><b><strong>Hq</strong></b>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|list2|text|quote|start|1|cut": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "",
+      "plain": "",
+      "data": false
+    }
+  },
+  "L|list2|text|quote|start|1|copy": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "",
+      "plain": "",
+      "data": false
+    }
+  },
+  "L|list2|text|quote|start|2|k": {
+    "before": "text:Nw@0|element:root@1",
+    "write": "<ul><li>Aw<ul><li>Pw</li></ul></li></ul><p>kNw</p>",
+    "calls": 1,
+    "caret": "text:kNw@1"
+  },
+  "L|list2|text|quote|start|2|bs": {
+    "before": "text:Nw@0|element:root@1",
+    "write": "<ul><li>Aw<ul><li>Pw</li></ul></li></ul><blockquote><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list2|text|quote|start|2|del": {
+    "before": "text:Nw@0|element:root@1",
+    "write": "<ul><li>Aw<ul><li>Pw</li></ul></li></ul><blockquote><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list2|text|quote|start|2|enter": {
+    "before": "text:Nw@0|element:root@1",
+    "write": "<ul><li>Aw<ul><li>Pw</li></ul></li></ul><blockquote><p></p><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list2|text|quote|start|2|plain": {
+    "before": "text:Nw@0|element:root@1",
+    "write": "<ul><li>Aw<ul><li>Pw</li></ul></li></ul><p>ZqNw</p>",
+    "calls": 1,
+    "caret": "text:ZqNw@2"
+  },
+  "L|list2|text|quote|start|2|htmlPaste": {
+    "before": "text:Nw@0|element:root@1",
+    "write": "<ul><li>Aw<ul><li>Pw</li></ul></li></ul><p>HqNw</p>",
+    "calls": 1,
+    "caret": "text:HqNw@2"
+  },
+  "L|list2|text|quote|start|2|cut": {
+    "before": "text:Nw@0|element:root@1",
+    "write": "<ul><li>Aw<ul><li>Pw</li></ul></li></ul><blockquote><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "<hr /><blockquote><p></p></blockquote>",
+      "plain": "\n\n",
+      "data": true
+    }
+  },
+  "L|list2|text|quote|start|2|copy": {
+    "before": "text:Nw@0|element:root@1",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|element:root@1",
+    "clip": {
+      "html": "<hr /><blockquote><p></p></blockquote>",
+      "plain": "\n\n",
+      "data": true
+    }
+  },
+  "L|list2|text|quote|start|3|k": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<ul><li>Aw<ul><li>PwkNw</li></ul></li></ul>",
+    "calls": 1,
+    "caret": "text:PwkNw@3"
+  },
+  "L|list2|text|quote|start|3|bs": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<ul><li>Aw<ul><li>PwNw</li></ul></li></ul><blockquote></blockquote>",
+    "calls": 1,
+    "caret": "text:PwNw@2"
+  },
+  "L|list2|text|quote|start|3|del": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<ul><li>Aw<ul><li>PwNw</li></ul></li></ul><blockquote></blockquote>",
+    "calls": 1,
+    "caret": "text:PwNw@2"
+  },
+  "L|list2|text|quote|start|3|enter": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<ul><li>Aw<ul><li>Pw</li><li>Nw</li></ul></li></ul><blockquote></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|list2|text|quote|start|3|plain": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<ul><li>Aw<ul><li>PwZqNw</li></ul></li></ul>",
+    "calls": 1,
+    "caret": "text:PwZqNw@4"
+  },
+  "L|list2|text|quote|start|3|htmlPaste": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<ul><li>Aw<ul><li>Pw<b><strong>Hq</strong></b>Nw</li></ul></li></ul><blockquote></blockquote>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|list2|text|quote|start|3|cut": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<ul><li>Aw<ul><li>PwNw</li></ul></li></ul><blockquote></blockquote>",
+    "calls": 1,
+    "caret": "text:PwNw@2",
+    "clip": {
+      "html": "<ul><li><ul><li></li></ul></li></ul><hr /><blockquote><p></p></blockquote>",
+      "plain": "\n\n\n",
+      "data": true
+    }
+  },
+  "L|list2|text|quote|start|3|copy": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|text:Pw@2",
+    "clip": {
+      "html": "<ul><li><ul><li></li></ul></li></ul><hr /><blockquote><p></p></blockquote>",
+      "plain": "\n\n\n",
+      "data": true
+    }
+  },
+  "L|para|text|para|start|0|k": {
+    "before": "text:Nw@0",
+    "write": "<p>Pw</p><hr /><p>kNw</p>",
+    "calls": 1,
+    "caret": "text:kNw@1"
+  },
+  "L|para|text|para|start|0|bs": {
+    "before": "text:Nw@0",
+    "write": "<p>Pw</p><p>Nw</p>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|para|text|para|start|0|del": {
+    "before": "text:Nw@0",
+    "write": "<p>Pw</p><hr /><p>w</p>",
+    "calls": 1,
+    "caret": "text:w@0"
+  },
+  "L|para|text|para|start|0|enter": {
+    "before": "text:Nw@0",
+    "write": "<p>Pw</p><hr /><p></p><p>Nw</p>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|para|text|para|start|0|plain": {
+    "before": "text:Nw@0",
+    "write": "<p>Pw</p><hr /><p>ZqNw</p>",
+    "calls": 1,
+    "caret": "text:ZqNw@2"
+  },
+  "L|para|text|para|start|0|htmlPaste": {
+    "before": "text:Nw@0",
+    "write": "<p>Pw</p><hr /><p><b><strong>Hq</strong></b>Nw</p>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|para|text|para|start|0|cut": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "",
+      "plain": "",
+      "data": false
+    }
+  },
+  "L|para|text|para|start|0|copy": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "",
+      "plain": "",
+      "data": false
+    }
+  },
+  "L|para|text|para|start|1|k": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<p>PwkNw</p>",
+    "calls": 1,
+    "caret": "text:PwkNw@3"
+  },
+  "L|para|text|para|start|1|bs": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<p>PwNw</p>",
+    "calls": 1,
+    "caret": "text:PwNw@2"
+  },
+  "L|para|text|para|start|1|del": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<p>PwNw</p>",
+    "calls": 1,
+    "caret": "text:PwNw@2"
+  },
+  "L|para|text|para|start|1|enter": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<p>Pw</p><p>Nw</p>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|para|text|para|start|1|plain": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<p>PwZqNw</p>",
+    "calls": 1,
+    "caret": "text:PwZqNw@4"
+  },
+  "L|para|text|para|start|1|htmlPaste": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<p>Pw<b><strong>Hq</strong></b>Nw</p>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|para|text|para|start|1|cut": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<p>PwNw</p>",
+    "calls": 1,
+    "caret": "text:PwNw@2",
+    "clip": {
+      "html": "<p></p><hr /><p></p>",
+      "plain": "\n\n\n",
+      "data": true
+    }
+  },
+  "L|para|text|para|start|1|copy": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|text:Pw@2",
+    "clip": {
+      "html": "<p></p><hr /><p></p>",
+      "plain": "\n\n\n",
+      "data": true
+    }
+  },
+  "L|para|text|para|start|2|k": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<p>PkNw</p>",
+    "calls": 1,
+    "caret": "text:PkNw@2"
+  },
+  "L|para|text|para|start|2|bs": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<p>PNw</p>",
+    "calls": 1,
+    "caret": "text:PNw@1"
+  },
+  "L|para|text|para|start|2|del": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<p>PNw</p>",
+    "calls": 1,
+    "caret": "text:PNw@1"
+  },
+  "L|para|text|para|start|2|enter": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<p>P</p><p>Nw</p>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|para|text|para|start|2|plain": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<p>PZqNw</p>",
+    "calls": 1,
+    "caret": "text:PZqNw@3"
+  },
+  "L|para|text|para|start|2|htmlPaste": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<p>P<b><strong>Hq</strong></b>Nw</p>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|para|text|para|start|2|cut": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<p>PNw</p>",
+    "calls": 1,
+    "caret": "text:PNw@1",
+    "clip": {
+      "html": "<p>w</p><hr /><p></p>",
+      "plain": "w\n\n\n",
+      "data": true
+    }
+  },
+  "L|para|text|para|start|2|copy": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|text:Pw@1",
+    "clip": {
+      "html": "<p>w</p><hr /><p></p>",
+      "plain": "w\n\n\n",
+      "data": true
+    }
+  },
+  "L|para|text|para|start|3|k": {
+    "before": "text:Nw@0|text:Pw@0",
+    "write": "<p>kNw</p>",
+    "calls": 1,
+    "caret": "text:kNw@1"
+  },
+  "L|para|text|para|start|3|bs": {
+    "before": "text:Nw@0|text:Pw@0",
+    "write": "<p>Nw</p>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|para|text|para|start|3|del": {
+    "before": "text:Nw@0|text:Pw@0",
+    "write": "<p>Nw</p>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|para|text|para|start|3|enter": {
+    "before": "text:Nw@0|text:Pw@0",
+    "write": "<p></p><p>Nw</p>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|para|text|para|start|3|plain": {
+    "before": "text:Nw@0|text:Pw@0",
+    "write": "<p>ZqNw</p>",
+    "calls": 1,
+    "caret": "text:ZqNw@2"
+  },
+  "L|para|text|para|start|3|htmlPaste": {
+    "before": "text:Nw@0|text:Pw@0",
+    "write": "<p><b><strong>Hq</strong></b>Nw</p>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|para|text|para|start|3|cut": {
+    "before": "text:Nw@0|text:Pw@0",
+    "write": "<p>Nw</p>",
+    "calls": 1,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "<p>Pw</p><hr /><p></p>",
+      "plain": "Pw\n\n\n",
+      "data": true
+    }
+  },
+  "L|para|text|para|start|3|copy": {
+    "before": "text:Nw@0|text:Pw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|text:Pw@0",
+    "clip": {
+      "html": "<p>Pw</p><hr /><p></p>",
+      "plain": "Pw\n\n\n",
+      "data": true
+    }
+  },
+  "L|para|text|quote|start|0|k": {
+    "before": "text:Nw@0",
+    "write": "<p>Pw</p><hr /><blockquote><p>kNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:kNw@1"
+  },
+  "L|para|text|quote|start|0|bs": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0"
+  },
+  "L|para|text|quote|start|0|del": {
+    "before": "text:Nw@0",
+    "write": "<p>Pw</p><hr /><blockquote><p>w</p></blockquote>",
+    "calls": 1,
+    "caret": "text:w@0"
+  },
+  "L|para|text|quote|start|0|enter": {
+    "before": "text:Nw@0",
+    "write": "<p>Pw</p><hr /><blockquote><p></p><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|para|text|quote|start|0|plain": {
+    "before": "text:Nw@0",
+    "write": "<p>Pw</p><hr /><blockquote><p>ZqNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:ZqNw@2"
+  },
+  "L|para|text|quote|start|0|htmlPaste": {
+    "before": "text:Nw@0",
+    "write": "<p>Pw</p><hr /><blockquote><p><b><strong>Hq</strong></b>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|para|text|quote|start|0|cut": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "",
+      "plain": "",
+      "data": false
+    }
+  },
+  "L|para|text|quote|start|0|copy": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "",
+      "plain": "",
+      "data": false
+    }
+  },
+  "L|para|text|quote|start|1|k": {
+    "before": "text:Nw@0",
+    "write": "<p>Pw</p><hr /><blockquote><p>kNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:kNw@1"
+  },
+  "L|para|text|quote|start|1|bs": {
+    "before": "text:Nw@0",
+    "write": "<p>Pw</p><blockquote><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|para|text|quote|start|1|del": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0"
+  },
+  "L|para|text|quote|start|1|enter": {
+    "before": "text:Nw@0",
+    "write": "<p>Pw</p><hr /><blockquote><p></p><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|para|text|quote|start|1|plain": {
+    "before": "text:Nw@0",
+    "write": "<p>Pw</p><hr /><blockquote><p>ZqNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:ZqNw@2"
+  },
+  "L|para|text|quote|start|1|htmlPaste": {
+    "before": "text:Nw@0",
+    "write": "<p>Pw</p><hr /><blockquote><p><b><strong>Hq</strong></b>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|para|text|quote|start|1|cut": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "",
+      "plain": "",
+      "data": false
+    }
+  },
+  "L|para|text|quote|start|1|copy": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "",
+      "plain": "",
+      "data": false
+    }
+  },
+  "L|para|text|quote|start|2|k": {
+    "before": "text:Nw@0|element:root@1",
+    "write": "<p>Pw</p><p>kNw</p>",
+    "calls": 1,
+    "caret": "text:kNw@1"
+  },
+  "L|para|text|quote|start|2|bs": {
+    "before": "text:Nw@0|element:root@1",
+    "write": "<p>Pw</p><blockquote><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|para|text|quote|start|2|del": {
+    "before": "text:Nw@0|element:root@1",
+    "write": "<p>Pw</p><blockquote><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|para|text|quote|start|2|enter": {
+    "before": "text:Nw@0|element:root@1",
+    "write": "<p>Pw</p><blockquote><p></p><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|para|text|quote|start|2|plain": {
+    "before": "text:Nw@0|element:root@1",
+    "write": "<p>Pw</p><p>ZqNw</p>",
+    "calls": 1,
+    "caret": "text:ZqNw@2"
+  },
+  "L|para|text|quote|start|2|htmlPaste": {
+    "before": "text:Nw@0|element:root@1",
+    "write": "<p>Pw</p><p>HqNw</p>",
+    "calls": 1,
+    "caret": "text:HqNw@2"
+  },
+  "L|para|text|quote|start|2|cut": {
+    "before": "text:Nw@0|element:root@1",
+    "write": "<p>Pw</p><blockquote><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "<hr /><blockquote><p></p></blockquote>",
+      "plain": "\n\n",
+      "data": true
+    }
+  },
+  "L|para|text|quote|start|2|copy": {
+    "before": "text:Nw@0|element:root@1",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|element:root@1",
+    "clip": {
+      "html": "<hr /><blockquote><p></p></blockquote>",
+      "plain": "\n\n",
+      "data": true
+    }
+  },
+  "L|para|text|quote|start|3|k": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<p>PwkNw</p>",
+    "calls": 1,
+    "caret": "text:PwkNw@3"
+  },
+  "L|para|text|quote|start|3|bs": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<p>PwNw</p><blockquote></blockquote>",
+    "calls": 1,
+    "caret": "text:PwNw@2"
+  },
+  "L|para|text|quote|start|3|del": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<p>PwNw</p><blockquote></blockquote>",
+    "calls": 1,
+    "caret": "text:PwNw@2"
+  },
+  "L|para|text|quote|start|3|enter": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<p>Pw</p><p>Nw</p><blockquote></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|para|text|quote|start|3|plain": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<p>PwZqNw</p>",
+    "calls": 1,
+    "caret": "text:PwZqNw@4"
+  },
+  "L|para|text|quote|start|3|htmlPaste": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<p>Pw<b><strong>Hq</strong></b>Nw</p><blockquote></blockquote>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|para|text|quote|start|3|cut": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<p>PwNw</p><blockquote></blockquote>",
+    "calls": 1,
+    "caret": "text:PwNw@2",
+    "clip": {
+      "html": "<p></p><hr /><blockquote><p></p></blockquote>",
+      "plain": "\n\n\n",
+      "data": true
+    }
+  },
+  "L|para|text|quote|start|3|copy": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|text:Pw@2",
+    "clip": {
+      "html": "<p></p><hr /><blockquote><p></p></blockquote>",
+      "plain": "\n\n\n",
+      "data": true
+    }
+  },
+  "L|heading|text|para|start|0|k": {
+    "before": "text:Nw@0",
+    "write": "<h3>Pw</h3><hr /><p>kNw</p>",
+    "calls": 1,
+    "caret": "text:kNw@1"
+  },
+  "L|heading|text|para|start|0|bs": {
+    "before": "text:Nw@0",
+    "write": "<h3>Pw</h3><p>Nw</p>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|heading|text|para|start|0|del": {
+    "before": "text:Nw@0",
+    "write": "<h3>Pw</h3><hr /><p>w</p>",
+    "calls": 1,
+    "caret": "text:w@0"
+  },
+  "L|heading|text|para|start|0|enter": {
+    "before": "text:Nw@0",
+    "write": "<h3>Pw</h3><hr /><p></p><p>Nw</p>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|heading|text|para|start|0|plain": {
+    "before": "text:Nw@0",
+    "write": "<h3>Pw</h3><hr /><p>ZqNw</p>",
+    "calls": 1,
+    "caret": "text:ZqNw@2"
+  },
+  "L|heading|text|para|start|0|htmlPaste": {
+    "before": "text:Nw@0",
+    "write": "<h3>Pw</h3><hr /><p><b><strong>Hq</strong></b>Nw</p>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|heading|text|para|start|0|cut": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "",
+      "plain": "",
+      "data": false
+    }
+  },
+  "L|heading|text|para|start|0|copy": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "",
+      "plain": "",
+      "data": false
+    }
+  },
+  "L|heading|text|para|start|1|k": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<h3>PwkNw</h3>",
+    "calls": 1,
+    "caret": "text:PwkNw@3"
+  },
+  "L|heading|text|para|start|1|bs": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<h3>PwNw</h3>",
+    "calls": 1,
+    "caret": "text:PwNw@2"
+  },
+  "L|heading|text|para|start|1|del": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<h3>PwNw</h3>",
+    "calls": 1,
+    "caret": "text:PwNw@2"
+  },
+  "L|heading|text|para|start|1|enter": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<h3>Pw</h3><h3>Nw</h3>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|heading|text|para|start|1|plain": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<h3>PwZqNw</h3>",
+    "calls": 1,
+    "caret": "text:PwZqNw@4"
+  },
+  "L|heading|text|para|start|1|htmlPaste": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<h3>Pw<b><strong>Hq</strong></b>Nw</h3>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|heading|text|para|start|1|cut": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<h3>PwNw</h3>",
+    "calls": 1,
+    "caret": "text:PwNw@2",
+    "clip": {
+      "html": "<h3></h3><hr /><p></p>",
+      "plain": "\n\n\n",
+      "data": true
+    }
+  },
+  "L|heading|text|para|start|1|copy": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|text:Pw@2",
+    "clip": {
+      "html": "<h3></h3><hr /><p></p>",
+      "plain": "\n\n\n",
+      "data": true
+    }
+  },
+  "L|heading|text|para|start|2|k": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<h3>PkNw</h3>",
+    "calls": 1,
+    "caret": "text:PkNw@2"
+  },
+  "L|heading|text|para|start|2|bs": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<h3>PNw</h3>",
+    "calls": 1,
+    "caret": "text:PNw@1"
+  },
+  "L|heading|text|para|start|2|del": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<h3>PNw</h3>",
+    "calls": 1,
+    "caret": "text:PNw@1"
+  },
+  "L|heading|text|para|start|2|enter": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<h3>P</h3><h3>Nw</h3>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|heading|text|para|start|2|plain": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<h3>PZqNw</h3>",
+    "calls": 1,
+    "caret": "text:PZqNw@3"
+  },
+  "L|heading|text|para|start|2|htmlPaste": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<h3>P<b><strong>Hq</strong></b>Nw</h3>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|heading|text|para|start|2|cut": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": "<h3>PNw</h3>",
+    "calls": 1,
+    "caret": "text:PNw@1",
+    "clip": {
+      "html": "<h3>w</h3><hr /><p></p>",
+      "plain": "w\n\n\n",
+      "data": true
+    }
+  },
+  "L|heading|text|para|start|2|copy": {
+    "before": "text:Nw@0|text:Pw@1",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|text:Pw@1",
+    "clip": {
+      "html": "<h3>w</h3><hr /><p></p>",
+      "plain": "w\n\n\n",
+      "data": true
+    }
+  },
+  "L|heading|text|para|start|3|k": {
+    "before": "text:Nw@0|text:Pw@0",
+    "write": "<h3>kNw</h3>",
+    "calls": 1,
+    "caret": "text:kNw@1"
+  },
+  "L|heading|text|para|start|3|bs": {
+    "before": "text:Nw@0|text:Pw@0",
+    "write": "<h3>Nw</h3>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|heading|text|para|start|3|del": {
+    "before": "text:Nw@0|text:Pw@0",
+    "write": "<h3>Nw</h3>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|heading|text|para|start|3|enter": {
+    "before": "text:Nw@0|text:Pw@0",
+    "write": "<p></p><h3>Nw</h3>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|heading|text|para|start|3|plain": {
+    "before": "text:Nw@0|text:Pw@0",
+    "write": "<h3>ZqNw</h3>",
+    "calls": 1,
+    "caret": "text:ZqNw@2"
+  },
+  "L|heading|text|para|start|3|htmlPaste": {
+    "before": "text:Nw@0|text:Pw@0",
+    "write": "<h3><b><strong>Hq</strong></b>Nw</h3>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|heading|text|para|start|3|cut": {
+    "before": "text:Nw@0|text:Pw@0",
+    "write": "<h3>Nw</h3>",
+    "calls": 1,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "<h3>Pw</h3><hr /><p></p>",
+      "plain": "Pw\n\n\n",
+      "data": true
+    }
+  },
+  "L|heading|text|para|start|3|copy": {
+    "before": "text:Nw@0|text:Pw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|text:Pw@0",
+    "clip": {
+      "html": "<h3>Pw</h3><hr /><p></p>",
+      "plain": "Pw\n\n\n",
+      "data": true
+    }
+  },
+  "L|heading|text|quote|start|0|k": {
+    "before": "text:Nw@0",
+    "write": "<h3>Pw</h3><hr /><blockquote><p>kNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:kNw@1"
+  },
+  "L|heading|text|quote|start|0|bs": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0"
+  },
+  "L|heading|text|quote|start|0|del": {
+    "before": "text:Nw@0",
+    "write": "<h3>Pw</h3><hr /><blockquote><p>w</p></blockquote>",
+    "calls": 1,
+    "caret": "text:w@0"
+  },
+  "L|heading|text|quote|start|0|enter": {
+    "before": "text:Nw@0",
+    "write": "<h3>Pw</h3><hr /><blockquote><p></p><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|heading|text|quote|start|0|plain": {
+    "before": "text:Nw@0",
+    "write": "<h3>Pw</h3><hr /><blockquote><p>ZqNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:ZqNw@2"
+  },
+  "L|heading|text|quote|start|0|htmlPaste": {
+    "before": "text:Nw@0",
+    "write": "<h3>Pw</h3><hr /><blockquote><p><b><strong>Hq</strong></b>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|heading|text|quote|start|0|cut": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "",
+      "plain": "",
+      "data": false
+    }
+  },
+  "L|heading|text|quote|start|0|copy": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "",
+      "plain": "",
+      "data": false
+    }
+  },
+  "L|heading|text|quote|start|1|k": {
+    "before": "text:Nw@0",
+    "write": "<h3>Pw</h3><hr /><blockquote><p>kNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:kNw@1"
+  },
+  "L|heading|text|quote|start|1|bs": {
+    "before": "text:Nw@0",
+    "write": "<h3>Pw</h3><blockquote><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|heading|text|quote|start|1|del": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0"
+  },
+  "L|heading|text|quote|start|1|enter": {
+    "before": "text:Nw@0",
+    "write": "<h3>Pw</h3><hr /><blockquote><p></p><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|heading|text|quote|start|1|plain": {
+    "before": "text:Nw@0",
+    "write": "<h3>Pw</h3><hr /><blockquote><p>ZqNw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:ZqNw@2"
+  },
+  "L|heading|text|quote|start|1|htmlPaste": {
+    "before": "text:Nw@0",
+    "write": "<h3>Pw</h3><hr /><blockquote><p><b><strong>Hq</strong></b>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|heading|text|quote|start|1|cut": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "",
+      "plain": "",
+      "data": false
+    }
+  },
+  "L|heading|text|quote|start|1|copy": {
+    "before": "text:Nw@0",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "",
+      "plain": "",
+      "data": false
+    }
+  },
+  "L|heading|text|quote|start|2|k": {
+    "before": "text:Nw@0|element:root@1",
+    "write": "<h3>Pw</h3><p>kNw</p>",
+    "calls": 1,
+    "caret": "text:kNw@1"
+  },
+  "L|heading|text|quote|start|2|bs": {
+    "before": "text:Nw@0|element:root@1",
+    "write": "<h3>Pw</h3><blockquote><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|heading|text|quote|start|2|del": {
+    "before": "text:Nw@0|element:root@1",
+    "write": "<h3>Pw</h3><blockquote><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|heading|text|quote|start|2|enter": {
+    "before": "text:Nw@0|element:root@1",
+    "write": "<h3>Pw</h3><blockquote><p></p><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|heading|text|quote|start|2|plain": {
+    "before": "text:Nw@0|element:root@1",
+    "write": "<h3>Pw</h3><p>ZqNw</p>",
+    "calls": 1,
+    "caret": "text:ZqNw@2"
+  },
+  "L|heading|text|quote|start|2|htmlPaste": {
+    "before": "text:Nw@0|element:root@1",
+    "write": "<h3>Pw</h3><p>HqNw</p>",
+    "calls": 1,
+    "caret": "text:HqNw@2"
+  },
+  "L|heading|text|quote|start|2|cut": {
+    "before": "text:Nw@0|element:root@1",
+    "write": "<h3>Pw</h3><blockquote><p>Nw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0",
+    "clip": {
+      "html": "<hr /><blockquote><p></p></blockquote>",
+      "plain": "\n\n",
+      "data": true
+    }
+  },
+  "L|heading|text|quote|start|2|copy": {
+    "before": "text:Nw@0|element:root@1",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|element:root@1",
+    "clip": {
+      "html": "<hr /><blockquote><p></p></blockquote>",
+      "plain": "\n\n",
+      "data": true
+    }
+  },
+  "L|heading|text|quote|start|3|k": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<h3>PwkNw</h3>",
+    "calls": 1,
+    "caret": "text:PwkNw@3"
+  },
+  "L|heading|text|quote|start|3|bs": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<h3>PwNw</h3><blockquote></blockquote>",
+    "calls": 1,
+    "caret": "text:PwNw@2"
+  },
+  "L|heading|text|quote|start|3|del": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<h3>PwNw</h3><blockquote></blockquote>",
+    "calls": 1,
+    "caret": "text:PwNw@2"
+  },
+  "L|heading|text|quote|start|3|enter": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<h3>Pw</h3><h3>Nw</h3><blockquote></blockquote>",
+    "calls": 1,
+    "caret": "text:Nw@0"
+  },
+  "L|heading|text|quote|start|3|plain": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<h3>PwZqNw</h3>",
+    "calls": 1,
+    "caret": "text:PwZqNw@4"
+  },
+  "L|heading|text|quote|start|3|htmlPaste": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<h3>Pw<b><strong>Hq</strong></b>Nw</h3><blockquote></blockquote>",
+    "calls": 1,
+    "caret": "text:Hq@2"
+  },
+  "L|heading|text|quote|start|3|cut": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": "<h3>PwNw</h3><blockquote></blockquote>",
+    "calls": 1,
+    "caret": "text:PwNw@2",
+    "clip": {
+      "html": "<h3></h3><hr /><blockquote><p></p></blockquote>",
+      "plain": "\n\n\n",
+      "data": true
+    }
+  },
+  "L|heading|text|quote|start|3|copy": {
+    "before": "text:Nw@0|text:Pw@2",
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0|text:Pw@2",
+    "clip": {
+      "html": "<h3></h3><hr /><blockquote><p></p></blockquote>",
+      "plain": "\n\n\n",
+      "data": true
+    }
+  }
+}

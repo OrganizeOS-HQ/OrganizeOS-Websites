@@ -121,7 +121,7 @@ import {
   isPressing,
   removeKeptLines,
 } from "./rich-text-line-points";
-import { $tagRemoval } from "./rich-text-line-removal";
+import { $prepareRemoval, $tagRemoval } from "./rich-text-line-removal";
 import {
   $quotedLineContent,
   $refuseBlockTypeOnLine,
@@ -1140,7 +1140,9 @@ const insertImage = (
       $findMatchingParent(caret.focus.getNode(), $isCodeNode) === null
     ) {
       $setSelection(caret.clone());
-      if (caret.isCollapsed() === false) {
+      const placed = $getSelection();
+      if ($isRangeSelection(placed) && placed.isCollapsed() === false) {
+        $prepareRemoval(placed, "removal");
         $tagRemoval();
       }
       $resolveLinedPoints(true);

@@ -20,6 +20,7 @@ import {
   $isRootOrShadowRoot,
   $isTextNode,
   $setSelection,
+  CONTROLLED_TEXT_INSERTION_COMMAND,
   DELETE_CHARACTER_COMMAND,
   DELETE_LINE_COMMAND,
   DELETE_WORD_COMMAND,
@@ -30,6 +31,7 @@ import {
   type EditorState,
   type LexicalEditor,
   type LexicalNode,
+  PASTE_COMMAND,
   type PointType,
   type RangeSelection,
   REMOVE_TEXT_COMMAND,
@@ -427,11 +429,14 @@ const $pointOffNodeEnd = (selection: RangeSelection, isBackward?: boolean) => {
   // a caret moves only for a delete whose direction is known (a key's own
   // command dispatches the directed delete next); a forward delete with
   // nothing after it in the content has nothing to remove: the caret stays
-  // and the update changes nothing
+  // and the update changes nothing; nor does one before a root-level rule,
+  // which Lexical's delete steps past as at the end of the same block
+  // ending in text (16.10: no onChange that repeats the value)
   if (
     selection.isCollapsed() &&
     (isBackward === undefined ||
-      (isBackward === false && $nothingAfter(holder)))
+      (isBackward === false &&
+        ($nothingAfter(holder) || $rootRuleAfter(holder))))
   ) {
     return;
   }
@@ -605,6 +610,20 @@ export const $lineFormAtContentStart = () => {
   );
 };
 
+/**
+ * The first node after this one, its ancestors' included, is a rule at the
+ * root: the node ends the last block before a root-level rule.
+ */
+const $rootRuleAfter = (node: LexicalNode) => {
+  for (let at: LexicalNode | null = node; at !== null; at = at.getParent()) {
+    const next = at.getNextSibling();
+    if (next !== null) {
+      return isBlockDecorator(next) && $isRootOrShadowRoot(at.getParent());
+    }
+  }
+  return false;
+};
+
 /** No node after this one, its ancestors' included: the content's end. */
 const $nothingAfter = (node: LexicalNode) => {
   for (let at: LexicalNode | null = node; at !== null; at = at.getParent()) {
@@ -746,33 +765,103 @@ export const $lastPointToBlockEnd = (
 };
 
 /**
- * Marks a removal and puts its ends where the line rules read them. True
- * when the range holds nothing once its ends are in place (15.10): there
- * is nothing to remove, and the selection is the caret there.
+ * T23.1: a removal whose range ends at the start of a line that holds only
+ * a line break, directly after a block, joins that line as an empty
+ * paragraph joins the block before it: the line and its break go, nothing
+ * is added to the block, and the break is never pulled into it (D3's
+ * fourth case, 5.5). The last point moves past the break, so the removal
+ * takes it with the boundary. True when it moved.
+ */
+const $lastPointPastLoneBreak = (selection: RangeSelection) => {
+  if (selection.isCollapsed()) {
+    return false;
+  }
+  const { end } = $endsInOrder(selection);
+  const node = end.getNode();
+  let line: LexicalNode | null = null;
+  if (end.type === "element" && end.offset === 0 && $isCmsLineNode(node)) {
+    line = node;
+  } else if (
+    end.type === "element" &&
+    $isElementNode(node) &&
+    isLinedContainer(node)
+  ) {
+    line = node.getChildAtIndex(end.offset);
+  } else if (
+    end.type === "text" &&
+    end.offset === 0 &&
+    node.getTextContentSize() === 0 &&
+    $isCmsLineNode(node.getParent()) &&
+    node.getPreviousSibling() === null
+  ) {
+    line = node.getParent();
+  }
+  if ($isCmsLineNode(line) === false) {
+    return false;
+  }
+  const children = line
+    .getChildren()
+    .filter(
+      (child) => $isTextNode(child) === false || child.getTextContentSize() > 0
+    );
+  const block = line.getPreviousSibling();
+  if (
+    children.length !== 1 ||
+    isLineBreak(children[0]) === false ||
+    $isElementNode(block) === false ||
+    $isCmsLineNode(block) ||
+    block.isInline()
+  ) {
+    return false;
+  }
+  end.set(line.getKey(), line.getChildrenSize(), "element");
+  return true;
+};
+
+/**
+ * The removal step (5.4), before Lexical removes: it puts the range's ends
+ * where the line rules read them, for every entry point. True when the
+ * range holds nothing once its ends are in place (15.10): there is nothing
+ * to remove, and the selection is the caret there; false otherwise, at a
+ * collapsed caret included. `isBackward` is a delete's direction: a
+ * collapsed caret moves only for a delete (Lexical's delete extends from
+ * it). For `"clipboard"` only the ends the writer shares with the removal
+ * move (15.10, and a first point before a block); the writer places the
+ * rest in its scratch editor (Task 18).
+ */
+export const $prepareRemoval = (
+  selection: RangeSelection,
+  use: "removal" | "clipboard",
+  isBackward?: boolean
+): boolean => {
+  if (use === "clipboard") {
+    return $lastPointToBlockEnd(selection, "writer") && selection.isCollapsed();
+  }
+  if ($lastPointToBlockEnd(selection) && selection.isCollapsed()) {
+    return true;
+  }
+  if (selection.isCollapsed() === false && lineSpike.on) {
+    $lastPointPastLoneBreak(selection);
+    // 15.11 (3): the removal uses the ends the clipboard writer uses
+    $endsIntoText(selection, false);
+  }
+  $pointOffNodeEnd(selection, isBackward);
+  return false;
+};
+
+/**
+ * Marks a removal: the removal mark, the lines that hold the caret, D3's
+ * break-after for a collapsed delete and for a range from a line into a
+ * block, and the blocks the range starts and ends in. It moves no point
+ * (the ends are `$prepareRemoval`'s, run first) and returns false.
  */
 export const $tagRemoval = (isBackward?: boolean): boolean => {
   const selection = $getSelection();
-  if (
-    $isRangeSelection(selection) &&
-    $lastPointToBlockEnd(selection) &&
-    selection.isCollapsed()
-  ) {
-    return true;
-  }
-  // 15.11 (3): the removal uses the ends the clipboard writer uses
-  if (
-    $isRangeSelection(selection) &&
-    selection.isCollapsed() === false &&
-    lineSpike.on
-  ) {
-    $endsIntoText(selection, false);
-  }
   $mark(REMOVAL_TAG);
   $noteRemovalLines();
   if ($isRangeSelection(selection) === false) {
     return false;
   }
-  $pointOffNodeEnd(selection, isBackward);
   // E3: D3's break is decided here, before the edit, from the selection:
   // a delete at a caret that joins a block's text into the line before it
   // (Backspace at the block's start) or into this line (Delete at the
@@ -1137,24 +1226,90 @@ export const $removalMark = (
   if ($hasMark(HEAD_PATH_TAG)) {
     return false;
   }
-  if (deleteCommands.includes(command)) {
-    return $tagRemoval(payload as boolean);
-  }
-  // the two key commands pass their direction, as the delete commands do
-  if (command === KEY_BACKSPACE_COMMAND) {
-    return $tagRemoval(true);
-  }
-  if (command === KEY_DELETE_COMMAND) {
-    return $tagRemoval(false);
-  }
-  if (removeCommands.includes(command)) {
-    return $tagRemoval(undefined);
-  }
+  // the delete commands and the two key commands carry their direction
+  const isDelete =
+    deleteCommands.includes(command) ||
+    command === KEY_BACKSPACE_COMMAND ||
+    command === KEY_DELETE_COMMAND;
+  const isBackward = deleteCommands.includes(command)
+    ? (payload as boolean)
+    : command === KEY_BACKSPACE_COMMAND
+      ? true
+      : command === KEY_DELETE_COMMAND
+        ? false
+        : undefined;
+  const removes = isDelete || removeCommands.includes(command);
   const selection = $getSelection();
-  if ($isRangeSelection(selection) && selection.isCollapsed() === false) {
-    $tagRemoval();
+  if ($isRangeSelection(selection) === false) {
+    // a node selection: the delete and remove commands mark it
+    if (removes) {
+      $tagRemoval(isBackward);
+    }
+    return false;
+  }
+  // a collapsed caret starts a removal only on the delete commands
+  // (T12.15): elsewhere it reaches the command's own handlers as it stands
+  if (selection.isCollapsed() && isDelete === false) {
+    return false;
+  }
+  if ($prepareRemoval(selection, "removal", isBackward)) {
+    // the range holds nothing (15.10): a delete removes nothing; any other
+    // command runs at the caret left at the block's end
+    return removes;
+  }
+  $tagRemoval(isBackward);
+  // 15.10's mirror: a letter or a paste over a range that starts on a
+  // container where no text can stand (the root after a block, before a
+  // rule) is the removal, then the key at the caret it leaves, as after
+  // Backspace over the range; Lexical's own insert there takes the block
+  // the range ends in out of its container
+  if (
+    (command === CONTROLLED_TEXT_INSERTION_COMMAND ||
+      command === PASTE_COMMAND) &&
+    $startsWhereNoTextStands(selection)
+  ) {
+    selection.removeText();
+    $caretIntoBlockAfter(selection);
   }
   return false;
+};
+
+/** A container where no text can stand: the root, a list, an unlined quote. */
+const $holdsNoText = (node: LexicalNode) =>
+  ($isRootOrShadowRoot(node) || $isListNode(node) || $isQuoteNode(node)) &&
+  isLinedContainer(node) === false;
+
+const $startsWhereNoTextStands = (selection: RangeSelection) => {
+  const { start } = $endsInOrder(selection);
+  return start.type === "element" && $holdsNoText(start.getNode());
+};
+
+/** A caret where no text can stand, directly before a block, takes its content start. */
+const $caretIntoBlockAfter = (selection: RangeSelection) => {
+  const { anchor } = selection;
+  const holder = anchor.getNode();
+  if (
+    selection.isCollapsed() === false ||
+    anchor.type !== "element" ||
+    $holdsNoText(holder) === false
+  ) {
+    return;
+  }
+  const block = (holder as ElementNode).getChildAtIndex(anchor.offset);
+  if ($isElementNode(block) === false || block.isInline()) {
+    return;
+  }
+  const first = block.getFirstDescendant();
+  if ($isTextNode(first)) {
+    selection.anchor.set(first.getKey(), 0, "text");
+    selection.focus.set(first.getKey(), 0, "text");
+  } else if ($isElementNode(first)) {
+    selection.anchor.set(first.getKey(), 0, "element");
+    selection.focus.set(first.getKey(), 0, "element");
+  } else if (first === null) {
+    selection.anchor.set(block.getKey(), 0, "element");
+    selection.focus.set(block.getKey(), 0, "element");
+  }
 };
 
 /**
