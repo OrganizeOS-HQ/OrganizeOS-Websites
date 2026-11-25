@@ -13,11 +13,15 @@ name: Publish site
 # a fact of the build, not of the CLI: prebuild writes it, last, to a facts
 # file outside the directory vercel deploy uploads, and the run fails before
 # anything deploys when the file is missing or malformed, or says the build
-# carries org code while this CLI's orgEmbedsMayShip() is off. The guard level
-# and the switches are read from the CLI it built, never from configuration.
-# The builder sends the embeds input, true, only when it ships embeds; the run
-# fails when that differs from this CLI's orgEmbedsMayShip() (the minutes
-# between a flip merging and the builder deploying).
+# carries org code while this CLI's orgEmbedsMayShip() is off. Embeds ship:
+# orgEmbedsMayShip() is on and the guard level is 2, so a build whose HTML
+# Embeds, Markdown Embeds or custom code carry org code reports true, and
+# OrganizeOS serves it only at that level. The guard level and the switches
+# are read from the CLI it built, never from configuration. The builder sends
+# the embeds input, true, only when it ships embeds; the run fails when that
+# differs from this CLI's orgEmbedsMayShip() (the minutes between a flip
+# merging and the builder deploying), so a dispatch without it fails while
+# embeds ship.
 #
 # The builder's Publish dialog sends the addresses the admin ticked as the
 # targets input, a JSON array of keys (builtin, or a host the org's site is
@@ -158,11 +162,12 @@ jobs:
       - name: Read the embeds flag
         # OrganizeOS fork: the builder that dispatched ships embeds
         # (orgEmbedsMayShip(), docs/ORGANIZEOS-FORK.md section 5). It sends the
-        # input only when true, so a workflow without it accepts every dispatch
-        # while the switch is off. Untrusted text, checked before anything
-        # installs: absent or empty writes false; exactly true writes true;
-        # anything else fails the run here, writing nothing. "Read the org
-        # script switch" compares it with this run's CLI.
+        # input only when true, so a builder whose switch is off can still
+        # dispatch to a workflow that does not declare it (after a revert).
+        # Untrusted text, checked before anything installs: absent or empty
+        # writes false; exactly true writes true; anything else fails the run
+        # here, writing nothing. "Read the org script switch" compares it with
+        # this run's CLI.
         id: embeds
         env:
           EMBEDS: ${{ inputs.embeds }}
@@ -224,7 +229,8 @@ jobs:
         # anything deploys, unless this run's CLI has the address rule and
         # orgScriptMayRun() is false, the embeds input equals its
         # orgEmbedsMayShip(), and the facts are exactly { "orgScript": boolean },
-        # true only while embeds may ship. Its output is that boolean, written
+        # true only while embeds may ship (they do: true is now a build that
+        # carries an embed or custom code). Its output is that boolean, written
         # only after every check.
         id: org-script
         working-directory: packages/cli
@@ -244,7 +250,7 @@ jobs:
             }
             const mayRun = orgScriptMayRun();
             if (mayRun !== false) {
-              fail("orgScriptMayRun() is " + JSON.stringify(mayRun) + ". OrganizeOS launches a Website only from a build that carries no org script: turn the switch on only together with that gate.");
+              fail("orgScriptMayRun() is " + JSON.stringify(mayRun) + ". Org content other than the embeds orgEmbedsMayShip() governs stays data: this switch stays off.");
             }
             const embeds = orgEmbedsMayShip();
             if (typeof embeds !== "boolean" || String(embeds) !== process.env.EMBEDS) {

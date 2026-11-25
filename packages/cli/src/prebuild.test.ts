@@ -33,6 +33,7 @@ import { parse as parseModule } from "acorn";
 import { simple as walkSimple } from "acorn-walk";
 import {
   findPausedExpressions,
+  orgEmbedsMayShip,
   orgScriptMayRun,
   templateIconCodes,
   type PublishedPage,
@@ -171,15 +172,20 @@ vi.mock("./organizeos-components", async (importOriginal) => {
 // fork's own cases run with the pause in place.
 const orgScript = vi.hoisted(() => ({ mayRun: false }));
 // OrganizeOS fork: the embed switch (orgEmbedsMayShip()), held off unless a
-// case turns it on. Prebuild passes it to dropOrgScript explicitly, so the mock
-// reaches the drop.
-const embeds = vi.hoisted(() => ({ mayShip: false }));
-vi.mock("@organizeos/site-components/org-script", async (importOriginal) => ({
-  ...(await importOriginal<
-    typeof import("@organizeos/site-components/org-script")
-  >()),
-  orgEmbedsMayShip: () => embeds.mayShip,
-}));
+// case turns it on, or reads the real one (real). Prebuild passes it to
+// dropOrgScript explicitly, so the mock reaches the drop.
+const embeds = vi.hoisted(() => ({ mayShip: false, real: false }));
+vi.mock("@organizeos/site-components/org-script", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@organizeos/site-components/org-script")
+    >();
+  return {
+    ...actual,
+    orgEmbedsMayShip: () =>
+      embeds.real ? actual.orgEmbedsMayShip() : embeds.mayShip,
+  };
+});
 vi.mock("./organizeos-org-script", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("./organizeos-org-script")>();
@@ -744,6 +750,7 @@ beforeEach(async () => {
 afterEach(async () => {
   orgScript.mayRun = false;
   embeds.mayShip = false;
+  embeds.real = false;
   facts.forceFalse = false;
   consoleInfo.mockRestore();
   process.chdir(originalCwd);
@@ -17313,6 +17320,24 @@ describe("the publish facts", () => {
       '{"orgScript":false}'
     );
     await writeEmbeds({ jsonLd: true });
+    await build();
+    await expect(readFile(factsFile, "utf8")).resolves.toBe(
+      '{"orgScript":false}'
+    );
+  });
+
+  // the switch at its real default (spec 2026-11-20, PR C)
+  test("with the embed switch at its default, a build with a script embed carries org code and one with icons only none", async () => {
+    embeds.real = true;
+    expect(orgEmbedsMayShip()).toBe(true);
+    await writeEmbeds({
+      embeds: [{ component: "HtmlEmbed", code: "<script>1</script>" }],
+    });
+    await build();
+    await expect(readFile(factsFile, "utf8")).resolves.toBe(
+      '{"orgScript":true}'
+    );
+    await writeEmbeds({ embeds: [{ component: "HtmlEmbed", code: MenuIcon }] });
     await build();
     await expect(readFile(factsFile, "utf8")).resolves.toBe(
       '{"orgScript":false}'

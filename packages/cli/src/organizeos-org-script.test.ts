@@ -15,6 +15,7 @@ import { isMdxFileAsset, type Instance, type Prop } from "@webstudio-is/sdk";
 import { standardAttributesToReactProps } from "@webstudio-is/react-sdk";
 import { getJsxPropName } from "@webstudio-is/content-engine/jsx-attributes";
 import {
+  orgEmbedsMayShip,
   pausedPropNames,
   templateIconCodes,
 } from "@organizeos/site-components/org-script";
@@ -1618,6 +1619,43 @@ describe("dropOrgScript with embeds on", () => {
     expect(dropOrgScript(bundle, { mayRun: true, embedsMayShip: false })).toBe(
       bundle
     );
+  });
+});
+
+// OrganizeOS fork: the switch at its real default, passed as prebuild passes
+// it (spec 2026-11-20, PR C)
+describe("dropOrgScript as prebuild calls it, with the embed switch at its default", () => {
+  test("keeps a script embed and the custom code, and still drops a script element and an unsafe address", () => {
+    expect(orgEmbedsMayShip()).toBe(true);
+    const code = '<script src="https://x.example/a.js"></script>';
+    const bundle = createBundle({
+      instances: [
+        instance({
+          id: "root",
+          component: "Body",
+          children: ids("embed", "script", "link"),
+        }),
+        instance({ id: "embed", component: "HtmlEmbed" }),
+        instance({ id: "script", component: "ws:element", tag: "script" }),
+        instance({ id: "link", component: "ws:element", tag: "a" }),
+      ],
+      props: [
+        stringProp("embed", "code", '<script>alert("embed")</script>'),
+        stringProp("script", "src", "https://x.example/b.js"),
+        stringProp("link", "href", "javascript:alert(1)"),
+      ],
+      projectSettings: { meta: { code }, compiler: {} },
+    });
+
+    const result = dropOrgScriptWith(bundle, {
+      embedsMayShip: orgEmbedsMayShip(),
+      log: () => {},
+    });
+
+    expect(instanceIds(result)).toEqual(["root", "embed", "link"]);
+    expect(childrenOf(result, "root")).toEqual(ids("embed", "link"));
+    expect(propIds(result)).toEqual(["embed:code"]);
+    expect(result.build.projectSettings?.meta.code).toBe(code);
   });
 });
 

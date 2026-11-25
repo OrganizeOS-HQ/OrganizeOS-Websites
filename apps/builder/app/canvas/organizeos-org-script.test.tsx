@@ -9,7 +9,10 @@ import {
   type WsComponentMeta,
 } from "@webstudio-is/sdk";
 import { ReactSdkContext } from "@webstudio-is/react-sdk/runtime";
-import { createAssetUrlsByPath } from "@webstudio-is/project-build/runtime";
+import {
+  createAssetUrlsByPath,
+  listBuilderComponentPanelItems,
+} from "@webstudio-is/project-build/runtime";
 import { renderMarkdownHtml } from "@webstudio-is/sdk-components-react/markdown";
 import { toRuntimeAsset, type Asset } from "@webstudio-is/sdk";
 import {
@@ -30,6 +33,7 @@ import {
   componentMayShip,
   elementTagMayRender,
   findPausedExpressions,
+  orgEmbedsMayShip,
   propMayShip,
   propNameMayRun,
   templateIconCodes,
@@ -66,19 +70,26 @@ import {
   nextFrames,
 } from "~/shared/organizeos-untrusted-markup.test-helpers";
 
-// OrganizeOS fork: the embed switch, held off unless a test turns it on. The
-// mock reaches the canvas module, which reads orgEmbedsMayShip() at render and
-// in withOrgScriptPolicy's default.
-const { embeds } = vi.hoisted(() => ({ embeds: { mayShip: false } }));
+// OrganizeOS fork: the embed switch, held off unless a test turns it on, or
+// reads the real one (real). The mock reaches the canvas module, which reads
+// orgEmbedsMayShip() at render and in withOrgScriptPolicy's default.
+const { embeds } = vi.hoisted(() => ({
+  embeds: { mayShip: false, real: false },
+}));
 // OrganizeOS fork: upstream's Markdown renderer, observed, so a case can see
 // whether the canvas called it and make it throw
 vi.mock("@webstudio-is/sdk-components-react/markdown", { spy: true });
-vi.mock("@organizeos/site-components/org-script", async (importOriginal) => ({
-  ...(await importOriginal<
-    typeof import("@organizeos/site-components/org-script")
-  >()),
-  orgEmbedsMayShip: () => embeds.mayShip,
-}));
+vi.mock("@organizeos/site-components/org-script", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@organizeos/site-components/org-script")
+    >();
+  return {
+    ...actual,
+    orgEmbedsMayShip: () =>
+      embeds.real ? actual.orgEmbedsMayShip() : embeds.mayShip,
+  };
+});
 
 (
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -98,6 +109,7 @@ afterEach(() => {
   delete (window as { upstreamX?: number }).upstreamX;
   delete (window as { __pwned?: unknown }).__pwned;
   embeds.mayShip = false;
+  embeds.real = false;
 });
 
 /** The canvas's registration (canvas.tsx), into the registry stores. */
@@ -760,6 +772,81 @@ describe("the command palette", () => {
     expect(names).toEqual(
       expect.arrayContaining(["Vimeo", "YouTube", "form", "ws:element"])
     );
+  });
+});
+
+// OrganizeOS fork: the switch at its real default (spec 2026-11-20, PR C)
+describe("with the embed switch at its default", () => {
+  beforeEach(() => {
+    embeds.real = true;
+  });
+
+  afterEach(() => {
+    closeCommandPanel();
+    resetRegistry();
+  });
+
+  test("embeds may ship", () => {
+    expect(orgEmbedsMayShip()).toBe(true);
+  });
+
+  test("the canvas registers its own embeds, and the Components panel and the palette list HTML Embed, Markdown Embed and JSON-LD", () => {
+    registerAsCanvas();
+    const components = $registeredComponents.get();
+    expect(components.get("HtmlEmbed")).toBe(CanvasHtmlEmbed);
+    expect(components.get("MarkdownEmbed")).toBe(CanvasMarkdownEmbed);
+    expect(
+      $registeredComponentMetas.get().get("HtmlEmbed")?.props
+    ).not.toHaveProperty("executeScriptOnCanvas");
+
+    const panel = Array.from(
+      listBuilderComponentPanelItems({
+        metas: $registeredComponentMetas.get(),
+        templates: $registeredTemplates.get(),
+      }).values()
+    )
+      .flat()
+      .map((item) => item.name);
+    expect(panel).toEqual(
+      expect.arrayContaining([
+        "HtmlEmbed",
+        "ContentEmbed",
+        "MarkdownEmbed",
+        "JsonLd",
+      ])
+    );
+
+    openCommandPanel();
+    expect($componentOptions.get().map((option) => option.component)).toEqual(
+      expect.arrayContaining([
+        "HtmlEmbed",
+        "ContentEmbed",
+        "MarkdownEmbed",
+        "JsonLd",
+      ])
+    );
+  });
+
+  test("an HTML Embed shows its markup on the canvas, through the insertion path", async () => {
+    const host = render(
+      { name: "canvas", renderer: "canvas" },
+      <CanvasHtmlEmbed code={`<p class="note">Hello</p>${scriptAndHandler}`} />
+    );
+    await nextFrames();
+    expect(host.querySelector("p.note")?.textContent).toBe("Hello");
+    expect(host.textContent).not.toContain(publishedOnly);
+    assertInert(document.body);
+    expect((window as { x?: number }).x).toBeUndefined();
+  });
+
+  test("a Markdown Embed shows its markup on the canvas, through the insertion path", async () => {
+    const host = render(
+      { name: "canvas", renderer: "canvas" },
+      <CanvasMarkdownEmbed code={"# Title\n\n[x](javascript:alert(1))"} />
+    );
+    await nextFrames();
+    expect(host.querySelector("h1")?.textContent).toBe("Title");
+    assertInert(document.body);
   });
 });
 

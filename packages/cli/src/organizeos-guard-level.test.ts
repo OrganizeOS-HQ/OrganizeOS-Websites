@@ -1524,23 +1524,23 @@ describe("the covering-test lookup", () => {
 });
 
 describe("ORGANIZEOS_GUARD_LEVEL", () => {
-  // Every level-1 requirement holds and is covered, so the level is 1; a
+  // Every level-2 requirement holds and is covered, so the level is 2; a
   // change to it is a reviewed change that edits this pin.
-  test("is 1, with every level-1 requirement in this repository", () => {
-    expect(ORGANIZEOS_GUARD_LEVEL).toBe(1);
+  test("is 2, with every level-2 requirement in this repository", () => {
+    expect(ORGANIZEOS_GUARD_LEVEL).toBe(2);
   });
 
-  test("is an integer from 0 to 32767, and at most 1", () => {
+  test("is an integer from 0 to 32767, and at most 2", () => {
     expect(Number.isInteger(ORGANIZEOS_GUARD_LEVEL)).toBe(true);
     expect(ORGANIZEOS_GUARD_LEVEL).toBeGreaterThanOrEqual(0);
     expect(ORGANIZEOS_GUARD_LEVEL).toBeLessThanOrEqual(32767);
-    // no level above 1 is defined here
-    expect(ORGANIZEOS_GUARD_LEVEL).toBeLessThanOrEqual(1);
+    // no level above 2 is defined here
+    expect(ORGANIZEOS_GUARD_LEVEL).toBeLessThanOrEqual(2);
   });
 
   test.each(
     present.map((requirement) => [requirement.name, requirement] as const)
-  )("level 1: %s holds", async (_name, requirement) => {
+  )("this level: %s holds", async (_name, requirement) => {
     expect(await requirement.holds()).toBe(true);
   });
 
@@ -1551,11 +1551,11 @@ describe("ORGANIZEOS_GUARD_LEVEL", () => {
           [covering.path.join(" > "), covering.file, covering] as const
       )
     )
-  )("level 1 is covered by %s in %s", async (_path, _file, covering) => {
+  )("this level is covered by %s in %s", async (_path, _file, covering) => {
     expect(await isCovered(covering)).toBe(true);
   });
 
-  test("a level of 1 or more means every level-1 requirement holds", async () => {
+  test("a level of 1 or more means every requirement of that level holds", async () => {
     if (ORGANIZEOS_GUARD_LEVEL >= 1) {
       for (const requirement of requirementsFor(ORGANIZEOS_GUARD_LEVEL)) {
         expect(await requirement.holds(), requirement.name).toBe(true);

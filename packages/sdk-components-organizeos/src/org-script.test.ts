@@ -108,18 +108,18 @@ const icons = {
 };
 
 describe("orgScriptMayRun", () => {
-  // T1. Turning the switch on is a reviewed change that edits this test with
-  // it (docs/ORGANIZEOS-FORK.md section 10).
+  // T1. The switch stays off for good; changing it is a reviewed change that
+  // edits this test with it (docs/ORGANIZEOS-FORK.md section 10).
   test("is off", () => {
     expect(orgScriptMayRun()).toBe(false);
   });
 });
 
 describe("orgEmbedsMayShip", () => {
-  // Embeds ship once the platform accepts org code (spec 2026-11-20, PR C);
-  // turning it on is a reviewed change that edits this pin.
-  test("is off", () => {
-    expect(orgEmbedsMayShip()).toBe(false);
+  // Embeds ship since the platform accepts org code (spec 2026-11-20, PR C);
+  // turning it off again is a reviewed change that edits this pin.
+  test("is on", () => {
+    expect(orgEmbedsMayShip()).toBe(true);
   });
 });
 
