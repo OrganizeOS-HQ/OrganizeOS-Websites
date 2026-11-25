@@ -686,7 +686,7 @@ describe("Divider: A1 and A2 for every block, the item-end click, a root quote (
       },
     ]),
     {
-      name: "out of a root quote: the rule at the root, both quotes split",
+      name: "out of a root quote mid-text (Q1w@1): the rule at the root, both quotes split",
       stored: `<blockquote><ul><li>${QUOTE("Q1w")}</li></ul></blockquote>`,
       place: at("Q1w", 1),
       action: divider,
@@ -695,17 +695,15 @@ describe("Divider: A1 and A2 for every block, the item-end click, a root quote (
     },
   ]);
 
-  // T10.8 names the rule at the root; the paragraph after it is unruled
-  // (p-records-task19.md, P19-9), so it is not pinned
-  test("out of a root quote at the content's end: the rule at the root, after the quote", async () => {
+  test("out of a root quote at the content's end (Q1w@end): the rule at the root after the quote, an empty paragraph after it", async () => {
     const quote = `<blockquote><ul><li>${QUOTE("Q1w")}</li></ul></blockquote>`;
     await expectEdit({
       stored: quote,
       place: at("Q1w"),
       action: divider,
-      writeMatches: (written) => {
-        expect(short(written).startsWith(`${quote}<hr />`), "write").toBe(true);
-      },
+      write: `${quote}<hr /><p></p>`,
+      typed: `${quote}<hr /><p>k</p>`,
+      source: "T10.8; check 2 A1; T40.2 (P19-9)",
     });
   });
 });
@@ -1127,6 +1125,14 @@ describe("T13.1: an image from a code-block caret lands after the code block", (
       action: imageButton,
       write: "<p>Pw</p><pre><code>C1w</code></pre><p><img /></p><p>Nw</p>",
       source: "ruled, not built at the carry: T13.1",
+    },
+    {
+      name: "T13.1: Image from a range in a root code block (T40.4)",
+      stored: ROOT,
+      place: range("C1w", 1, "C1w", 2),
+      action: imageButton,
+      write: "<p>Pw</p><pre><code>Cw</code></pre><p><img /></p><p>Nw</p>",
+      source: "T13.1, T40.4 (a range: the place after the removal step)",
     },
     // a real click in the gap between the code block and the rule leaves
     // the caret after the rule at <base>, 451f20f04 and the branch, never

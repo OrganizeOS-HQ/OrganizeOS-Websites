@@ -1026,5 +1026,33 @@ describe("15.14: the press's own caret, a popover open", () => {
       await keys("k")();
       expect(onChange).not.toHaveBeenCalled();
     });
+    // T40.1 (P19-7): a press on the menu's own surface closes it; the close
+    // is not a press in the editor, so the editor takes the focus and the
+    // letter lands at the caret held before the menu opened
+    test(`${shape}: the block-type menu open, a press on the menu closes it and the letter lands at the caret held before it opened`, async () => {
+      const stored = SHAPES[shape]("<hr>");
+      const onChange = await mount(stored);
+      await at("Cw", 1)();
+      await userEvent.click(
+        document.querySelector<HTMLElement>('[aria-label="Block type"]')!
+      );
+      await settle();
+      expect(document.querySelector('[role="listbox"]')).not.toBeNull();
+      const point = pointIn("Aw", 1);
+      const hit = document.elementFromPoint(point.x, point.y);
+      expect(
+        hit !== null && editable()!.contains(hit) === false,
+        `the point on the menu (${hit?.tagName})`
+      ).toBe(true);
+      await mouse("mousePressed", point);
+      await mouse("mouseReleased", point);
+      await settle();
+      expect(document.querySelector('[role="listbox"]')).toBeNull();
+      expect(document.activeElement, "the focus").toBe(editable());
+      await keys("k")();
+      expect(short(lastHtml(onChange))).toBe(
+        short(stored.replace(">Cw<", ">Ckw<"))
+      );
+    });
   }
 });

@@ -1099,8 +1099,8 @@ type ImageUpload = {
 
 /**
  * Inserts the image where the caret was when Image was chosen; after the
- * code block a caret in one was in; or in a new paragraph at the end when
- * that place is gone (or is a range with an end in a code block).
+ * code block that place is in (for a range, its place after the removal
+ * step); or in a new paragraph at the end when that place is gone.
  */
 const insertImage = (
   editor: LexicalEditor,
@@ -1139,15 +1139,11 @@ const insertImage = (
       caret !== null &&
       $getNodeByKey(caret.anchor.key) !== null &&
       $getNodeByKey(caret.focus.key) !== null;
-    if (
-      caret !== null &&
-      isAttached &&
-      $findMatchingParent(caret.anchor.getNode(), $isCodeNode) === null &&
-      $findMatchingParent(caret.focus.getNode(), $isCodeNode) === null
-    ) {
-      $setSelection(caret.clone());
+    let place: RangeSelection | null = isAttached ? caret : null;
+    if (place !== null && place.isCollapsed() === false) {
+      $setSelection(place.clone());
       const placed = $getSelection();
-      if ($isRangeSelection(placed) && placed.isCollapsed() === false) {
+      if ($isRangeSelection(placed)) {
         // a range starts as the editing commands start it (their first
         // handler); one that holds nothing once its ends are in place
         // (15.10) is the caret left at the block's end: no removal, no mark
@@ -1156,6 +1152,31 @@ const insertImage = (
           $tagRemoval();
           $removeWhereNoTextStands(placed);
         }
+      }
+      // T13.1 holds for a range too (T40.4): the place is the one the
+      // removal step leaves
+      const removed = $getSelection();
+      place = $isRangeSelection(removed) ? removed : null;
+    }
+    const $inCode = (point: RangeSelection["anchor"]) =>
+      $findMatchingParent(point.getNode(), $isCodeNode);
+    if (
+      place !== null &&
+      place !== caret &&
+      place.isCollapsed() === false &&
+      ($inCode(place.anchor) !== null || $inCode(place.focus) !== null)
+    ) {
+      // a range with an end in a code block is removed as the insertion
+      // would remove it; the caret it leaves is the place
+      place.removeText();
+    }
+    if (
+      place !== null &&
+      $inCode(place.anchor) === null &&
+      $inCode(place.focus) === null
+    ) {
+      if (place === caret) {
+        $setSelection(place.clone());
       }
       $resolveLinedPoints(true);
       const selection = $getSelection() as RangeSelection;
@@ -1169,9 +1190,7 @@ const insertImage = (
     // the image directly after that block, in the block's own container: a
     // paragraph at the root and in a quote, a line in a list item
     const code =
-      caret !== null && isAttached && caret.isCollapsed()
-        ? $findMatchingParent(caret.anchor.getNode(), $isCodeNode)
-        : null;
+      place !== null ? ($inCode(place.focus) ?? $inCode(place.anchor)) : null;
     if (code !== null) {
       code.insertAfter(paragraph);
       $keepPress();
