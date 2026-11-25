@@ -246,7 +246,7 @@ describe("withOrgScriptPolicy", () => {
     });
   });
 
-  // JSON-LD is left out at publish while org script is paused (the CLI's
+  // JSON-LD is left out at publish while embeds may not ship (the CLI's
   // dropOrgScript), so the panel does not offer it either. On the canvas it
   // renders as inert text, so its component stays.
   test("hides JSON-LD, and keeps its component", () => {
@@ -870,7 +870,7 @@ describe("CanvasHtmlEmbed while embeds may not ship", () => {
         mode,
         <CanvasHtmlEmbed {...props} code={scriptAndHandler} />
       );
-      expect(host.textContent).toContain("HTML Embed is paused");
+      expect(host.textContent).toContain("HTML Embed is off");
       expect(host.querySelector("script")).toBeNull();
       expect(host.querySelector("img")).toBeNull();
       expect(host.innerHTML).not.toContain("window.x");
@@ -890,7 +890,7 @@ describe("CanvasHtmlEmbed while embeds may not ship", () => {
           mode,
           <CanvasHtmlEmbed {...props} code={code as never} />
         );
-        expect(host.textContent).toContain("HTML Embed is paused");
+        expect(host.textContent).toContain("HTML Embed is off");
         expect(host.querySelector("script")).toBeNull();
         expect(host.querySelector("img")).toBeNull();
         expect(host.querySelector("svg")).toBeNull();
@@ -904,14 +904,14 @@ describe("CanvasHtmlEmbed while embeds may not ship", () => {
         mode,
         <CanvasHtmlEmbed {...props} code={undefined as never} />
       );
-      expect(host.textContent).toContain("HTML Embed is paused");
+      expect(host.textContent).toContain("HTML Embed is off");
     });
 
     // T6. A guard on the exception
     test.each([...templateIconCodes])("renders a template icon", (icon) => {
       const host = render(mode, <CanvasHtmlEmbed {...props} code={icon} />);
       expect(host.querySelector("svg")).not.toBeNull();
-      expect(host.textContent).not.toContain("paused");
+      expect(host.textContent).not.toContain("is off");
     });
   });
 
@@ -964,7 +964,7 @@ describe("CanvasHtmlEmbed while embeds may not ship", () => {
       />
     );
     const notice = host.firstElementChild as HTMLDivElement;
-    expect(notice.textContent).toContain("HTML Embed is paused");
+    expect(notice.textContent).toContain("HTML Embed is off");
     const props = hostProps(notice);
     // the control: these are the props the embed passed on
     expect(props["data-ws-id"]).toBe("embed-3");
@@ -977,13 +977,13 @@ describe("CanvasHtmlEmbed while embeds may not ship", () => {
       <CanvasHtmlEmbed code={MenuIcon} $ws$executeScripts />
     );
     expect(host.querySelector("svg")).not.toBeNull();
-    expect(host.textContent).not.toContain("paused");
+    expect(host.textContent).not.toContain("is off");
   });
 
   test("tells the admin what is going on", () => {
     const host = render(modes[0], <CanvasHtmlEmbed code={scriptAndHandler} />);
     expect(host.textContent).toBe(
-      "HTML Embed is paused. Its code is kept, but it isn't published and doesn't run here: scripts on your site could read the OrganizeOS sign-in of people who visit."
+      "HTML Embed is off. Its code is kept, but it isn't published."
     );
   });
 });
@@ -1009,7 +1009,7 @@ describe("CanvasMarkdownEmbed while embeds may not ship", () => {
     // drops both too.
     test("shows the notice, and none of the markdown", () => {
       const host = render(mode, <CanvasMarkdownEmbed code={markdown} />);
-      expect(host.textContent).toContain("Markdown Embed is paused");
+      expect(host.textContent).toContain("Markdown Embed is off");
       expect(host.querySelector("a")).toBeNull();
     });
 
@@ -1020,7 +1020,7 @@ describe("CanvasMarkdownEmbed while embeds may not ship", () => {
         mode,
         <CanvasMarkdownEmbed code={[markdown] as never} />
       );
-      expect(host.textContent).toContain("Markdown Embed is paused");
+      expect(host.textContent).toContain("Markdown Embed is off");
       expect(host.querySelector("a")).toBeNull();
     });
   });
@@ -1042,7 +1042,7 @@ describe("CanvasMarkdownEmbed while embeds may not ship", () => {
     expect(notice.className).toBe("c2");
     expect(notice.style.display).toBe("block");
     expect(notice.textContent).toBe(
-      "Markdown Embed is paused. Its content is kept, but it isn't published and isn't shown here: a link in it could run script that reads the OrganizeOS sign-in of people who visit."
+      "Markdown Embed is off. Its content is kept, but it isn't published."
     );
   });
 });
@@ -1300,7 +1300,7 @@ describe("CanvasMarkdownEmbed, whether it renders", () => {
     embeds.mayShip = false;
     vi.mocked(renderMarkdownHtml).mockClear();
     const host = render(modes[1], <CanvasMarkdownEmbed code="# Title" />);
-    expect(host.textContent).toContain("Markdown Embed is paused");
+    expect(host.textContent).toContain("Markdown Embed is off");
     expect(renderMarkdownHtml).not.toHaveBeenCalled();
   });
 

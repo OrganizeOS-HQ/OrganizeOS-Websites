@@ -953,7 +953,7 @@ describe("dropOrgScript", () => {
 
     expect(propIds(result)).toEqual([]);
     expect(log).toHaveBeenCalledWith(
-      "Not published, org script stays off: left out 1 HTML Embed, 1 element with a tag the builder does not offer and 1 raw HTML property."
+      "Not published: left out 1 HTML Embed, 1 element with a tag the builder does not offer and 1 raw HTML property."
     );
   });
 
@@ -1106,7 +1106,7 @@ describe("dropOrgScript", () => {
 
     expect(result.build.projectSettings?.meta).toEqual({ siteName: "Site" });
     expect(log).toHaveBeenCalledWith(
-      "Not published, org script stays off: left out the site's custom code."
+      "Not published: left out the site's custom code."
     );
   });
 
@@ -1158,7 +1158,7 @@ describe("dropOrgScript", () => {
     expect(instanceIds(result)).toEqual(["root", "kept"]);
     expect(propIds(result)).toEqual([]);
     expect(log).toHaveBeenCalledWith(
-      "Not published, org script stays off: left out 1 JSON-LD element."
+      "Not published: left out 1 JSON-LD element."
     );
     expect(dropOrgScript(bundle, { mayRun: true })).toBe(bundle);
   });
@@ -1382,9 +1382,7 @@ describe("dropOrgScript", () => {
       );
 
       expect(log).toHaveBeenCalledTimes(1);
-      expect(log).toHaveBeenCalledWith(
-        "Not published, org script stays off: left out 1 HTML Embed."
-      );
+      expect(log).toHaveBeenCalledWith("Not published: left out 1 HTML Embed.");
     });
 
     test("counts an embed that a Slot's Fragment shows both in the templates and on the page", () => {
@@ -1427,9 +1425,7 @@ describe("dropOrgScript", () => {
 
       dropOrgScript(bundle, { log });
 
-      expect(log).toHaveBeenCalledWith(
-        "Not published, org script stays off: left out 1 HTML Embed."
-      );
+      expect(log).toHaveBeenCalledWith("Not published: left out 1 HTML Embed.");
     });
   });
 
@@ -1460,7 +1456,7 @@ describe("dropOrgScript", () => {
 
     expect(log).toHaveBeenCalledTimes(1);
     expect(log).toHaveBeenCalledWith(
-      "Not published, org script stays off: left out 2 HTML Embeds, 1 Markdown Embed, 1 element with a tag the builder does not offer, 1 animate or set element, 1 raw HTML property and the site's custom code."
+      "Not published: left out 2 HTML Embeds, 1 Markdown Embed, 1 element with a tag the builder does not offer, 1 animate or set element, 1 raw HTML property and the site's custom code."
     );
   });
 });
@@ -1553,7 +1549,7 @@ describe("dropOrgScript with embeds on", () => {
     expect(childrenOf(result, "root")).toEqual(ids("kept"));
     expect(propIds(result)).toEqual([]);
     expect(log).toHaveBeenCalledWith(
-      "Not published, org script stays off: left out 3 HTML Embeds."
+      "Not published: left out 3 HTML Embeds with no code."
     );
   });
 
@@ -1830,47 +1826,60 @@ describe("describeDroppedOrgScript", () => {
     expect(describeDroppedOrgScript(none)).toBeUndefined();
   });
 
+  test("with embeds on, names an HTML Embed it left out as one with no code", () => {
+    expect(
+      describeDroppedOrgScript(
+        { ...none, htmlEmbeds: 1 },
+        { embedsMayShip: true }
+      )
+    ).toBe("Not published: left out 1 HTML Embed with no code.");
+    expect(
+      describeDroppedOrgScript(
+        { ...none, htmlEmbeds: 2, customCode: false },
+        { embedsMayShip: true }
+      )
+    ).toBe("Not published: left out 2 HTML Embeds with no code.");
+  });
+
   test("names only what was left out", () => {
     expect(describeDroppedOrgScript({ ...none, htmlEmbeds: 1 })).toBe(
-      "Not published, org script stays off: left out 1 HTML Embed."
+      "Not published: left out 1 HTML Embed."
     );
     expect(describeDroppedOrgScript({ ...none, rawHtmlProps: 2 })).toBe(
-      "Not published, org script stays off: left out 2 raw HTML properties."
+      "Not published: left out 2 raw HTML properties."
     );
     expect(describeDroppedOrgScript({ ...none, unsafeActions: 1 })).toBe(
-      "Not published, org script stays off: left out 1 unsafe action."
+      "Not published: left out 1 unsafe action."
     );
     expect(describeDroppedOrgScript({ ...none, unknownComponents: 2 })).toBe(
-      "Not published, org script stays off: left out 2 unknown components."
+      "Not published: left out 2 unknown components."
     );
     expect(describeDroppedOrgScript({ ...none, reservedIds: 1 })).toBe(
-      "Not published, org script stays off: left out 1 element with a reserved id."
+      "Not published: left out 1 element with a reserved id."
     );
     expect(
       describeDroppedOrgScript({ ...none, conflictingDataSources: 1 })
-    ).toBe(
-      "Not published, org script stays off: left out 1 variable with a conflicting id."
-    );
+    ).toBe("Not published: left out 1 variable with a conflicting id.");
     expect(describeDroppedOrgScript({ ...none, collectionBindings: 2 })).toBe(
-      "Not published, org script stays off: left out 2 Collection items or keys that are not a parameter."
+      "Not published: left out 2 Collection items or keys that are not a parameter."
     );
     expect(describeDroppedOrgScript({ ...none, duplicateEntries: 2 })).toBe(
-      "Not published, org script stays off: left out 2 duplicate entries."
+      "Not published: left out 2 duplicate entries."
     );
     expect(describeDroppedOrgScript({ ...none, elementReferences: 2 })).toBe(
-      "Not published, org script stays off: left out 2 element references."
+      "Not published: left out 2 element references."
     );
     expect(describeDroppedOrgScript({ ...none, expressions: 1 })).toBe(
-      "Not published, org script stays off: left out 1 expression."
+      "Not published: left out 1 expression."
     );
     expect(describeDroppedOrgScript({ ...none, dataSources: 1 })).toBe(
-      "Not published, org script stays off: left out 1 data source."
+      "Not published: left out 1 data source."
     );
     expect(describeDroppedOrgScript({ ...none, resources: 2 })).toBe(
-      "Not published, org script stays off: left out 2 Resources."
+      "Not published: left out 2 Resources."
     );
     expect(describeDroppedOrgScript({ ...none, customCode: true })).toBe(
-      "Not published, org script stays off: left out the site's custom code."
+      "Not published: left out the site's custom code."
     );
     expect(
       describeDroppedOrgScript({
@@ -1879,7 +1888,7 @@ describe("describeDroppedOrgScript", () => {
         elementsWithUnknownTag: 2,
       })
     ).toBe(
-      "Not published, org script stays off: left out 3 HTML Embeds and 2 elements with a tag the builder does not offer."
+      "Not published: left out 3 HTML Embeds and 2 elements with a tag the builder does not offer."
     );
   });
 });

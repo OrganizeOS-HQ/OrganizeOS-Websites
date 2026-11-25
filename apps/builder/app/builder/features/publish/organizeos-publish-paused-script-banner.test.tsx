@@ -273,9 +273,7 @@ describe("PausedScriptBanner", () => {
     expect(items).toEqual(["HTML Embed on Home", "Custom code"]);
     // the heading and the list: no explanation
     const list = host.querySelector("ul");
-    expect(list?.previousElementSibling?.textContent).toBe(
-      "Paused, not published"
-    );
+    expect(list?.previousElementSibling?.textContent).toBe("Not published");
     expect(list?.previousElementSibling?.previousElementSibling).toBeNull();
     expect(list?.nextElementSibling).toBeNull();
   });

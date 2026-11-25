@@ -50,13 +50,14 @@ import {
 import { findPageAndSelectorByInstanceId } from "@webstudio-is/project-build/runtime";
 
 /**
- * What the Publish dialog lists as paused (docs/ORGANIZEOS-FORK.md section 10).
- * It mirrors what publishing drops (packages/cli/src/organizeos-org-script.ts)
- * for the things a designer put there on purpose: HTML Embeds that are not a
- * template icon, Markdown Embeds, JSON-LD (owner decision D13), the SVG elements
- * that can set a link to a javascript: URL, props that write raw markup into an
- * element, and the site's custom code, from the project's settings and from the
- * pages' meta alike. Elements with a tag the builder does not offer are listed too:
+ * What the Publish dialog lists as not published (docs/ORGANIZEOS-FORK.md
+ * section 10). It mirrors what publishing drops
+ * (packages/cli/src/organizeos-org-script.ts) for the things a designer put
+ * there on purpose: with embeds on, an HTML Embed with no code; with embeds
+ * off, HTML Embeds that are not a template icon, Markdown Embeds, JSON-LD and
+ * the site's custom code, from the project's settings and from the pages' meta
+ * alike; and whatever the switch says, the SVG elements that can set a link to
+ * a javascript: URL and props that write raw markup into an element. Elements with a tag the builder does not offer are listed too:
  * publishing drops each of them with everything inside it, the props panel can
  * add a `tag` or `data-ws-tag` prop to any component, and the canvas only skips
  * that prop, so the element looks fine there. So are the unsafe values
@@ -289,7 +290,7 @@ export const findPausedScript = ({
       const hasCode = codes.some(
         (code) => code.type !== "string" || code.value.trim() !== ""
       );
-      return hasCode ? undefined : "HTML Embed";
+      return hasCode ? undefined : "Empty HTML Embed";
     }
     if (
       embedsMayShip &&
@@ -633,8 +634,8 @@ export const findPausedScript = ({
     ((pages.meta?.code ?? "").trim() !== "" ||
       (projectSettings?.meta.code ?? "").trim() !== "")
   ) {
-    // Text, not a link: Settings shows no custom code while org script is
-    // paused (shared/project-settings/section-general.tsx)
+    // Text, not a link: Settings shows no custom code while embeds may not
+    // ship (shared/project-settings/section-general.tsx)
     items.push({ label: "Custom code" });
   }
   return items;

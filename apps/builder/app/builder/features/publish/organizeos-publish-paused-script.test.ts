@@ -165,7 +165,7 @@ describe("findPausedScript with embeds on", () => {
     const props = toProps([stringProp("blank", "code", "  ")]);
     expect(
       find({ ...embedsOn, instances, props }).map(({ label }) => label)
-    ).toEqual(["HTML Embed on Home", "HTML Embed on Home"]);
+    ).toEqual(["Empty HTML Embed on Home", "Empty HTML Embed on Home"]);
   });
 
   test("with embeds on, still lists a dangerouslySetInnerHTML prop and an unsupported tag", () => {

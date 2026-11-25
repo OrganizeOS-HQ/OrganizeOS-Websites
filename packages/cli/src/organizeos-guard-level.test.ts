@@ -39,7 +39,10 @@ import {
   assertBuildCodeValid,
   assertCustomCodeNamesValid,
 } from "./organizeos-code-check";
-import { pageCarriesOrgCode } from "./organizeos-publish-facts";
+import {
+  customCodeCarriesOrgCode,
+  pageCarriesOrgCode,
+} from "./organizeos-publish-facts";
 import { findGeneratedCodeProblems } from "./organizeos-generated-code";
 
 // The publish workflow sends ORGANIZEOS_GUARD_LEVEL to OrganizeOS as
@@ -49,7 +52,7 @@ import { findGeneratedCodeProblems } from "./organizeos-generated-code";
 // that runs here and the tests that cover it fully, which must still exist and
 // run: neither commented out nor skipped. Level 2 (a build that carries org
 // code may go live, spec 2026-11-20-builder-code-embeds-design.md, 4.5) is
-// defined and checked here while the level stays 1.
+// the level this commit reports; level 1 stays defined and checked too.
 
 const root = fileURLToPath(new URL("../../..", import.meta.url));
 
@@ -571,17 +574,37 @@ const unshippableLeftOutKeepingEmbeds = () => {
 const reviewerPayload = '<div async/ ={import("https://x.example/a.js")}>';
 
 const factsTellTheTruth = () => {
-  const sample = (code: string) =>
+  const sample = (component: string, code: Prop) =>
     pageCarriesOrgCode({
       rootInstanceId: "root",
       instances: new Map([
         instance("root", "Body", { children: children("embed") }),
-        instance("embed", "HtmlEmbed"),
+        instance("embed", component),
       ]),
-      props: new Map([prop("embed", "code", code)]),
+      props: new Map([[code.id, code]]),
     });
+  const code = (value: Partial<Prop>) =>
+    ({ id: "embed:code", instanceId: "embed", name: "code", ...value }) as Prop;
   const icon = [...templateIconCodes][0];
-  return sample("<script>1</script>") === true && sample(icon) === false;
+  return (
+    sample(
+      "HtmlEmbed",
+      code({ type: "string", value: "<script>1</script>" })
+    ) === true &&
+    sample("HtmlEmbed", code({ type: "string", value: icon })) === false &&
+    // a bound embed counts: what it renders is known only when the page loads
+    sample("HtmlEmbed", code({ type: "expression", value: '"<b>1</b>"' })) ===
+      true &&
+    sample("MarkdownEmbed", code({ type: "string", value: "# Title" })) ===
+      true &&
+    sample(
+      "JsonLd",
+      code({ type: "json", value: { "@context": "https://schema.org" } })
+    ) === false &&
+    customCodeCarriesOrgCode("<meta name=x content=y>") === true &&
+    customCodeCarriesOrgCode(" \n ") === false &&
+    customCodeCarriesOrgCode(undefined) === false
+  );
 };
 
 const customCodeNamesChecked = () => {
@@ -610,13 +633,35 @@ const moduleCheckRefusesForbidden = async () => {
   );
 };
 
+/**
+ * The pin, the module, and its wiring, read as text: the module imports
+ * DOMPurify and exports the insert function, the pinned canvas config and the
+ * component, and the canvas embeds and the Markdown preview import that
+ * component. The tests it names (coveredBy) prove what it does.
+ */
 const insertionPathExists = () => {
   const builder = JSON.parse(
     readFileSync(`${root}apps/builder/package.json`, "utf8")
   ) as { dependencies?: Record<string, string> };
+  const modulePath = `${root}apps/builder/app/shared/organizeos-untrusted-markup.tsx`;
+  if (existsSync(modulePath) === false) {
+    return false;
+  }
+  const source = readFileSync(modulePath, "utf8");
+  const importsComponent =
+    'import { UntrustedMarkup } from "~/shared/organizeos-untrusted-markup";';
   return (
     /^\d+\.\d+\.\d+$/.test(builder.dependencies?.dompurify ?? "") &&
-    existsSync(`${root}apps/builder/app/shared/organizeos-untrusted-markup.tsx`)
+    /^import [^;]*from "dompurify";$/m.test(source) &&
+    /^export const insertUntrustedMarkup = /m.test(source) &&
+    /^export const untrustedMarkupConfig: /m.test(source) &&
+    /^export const UntrustedMarkup = /m.test(source) &&
+    [
+      "apps/builder/app/canvas/organizeos-org-script.tsx",
+      "apps/builder/app/builder/features/text-file-editor/markdown-preview.tsx",
+    ].every((file) =>
+      readFileSync(`${root}${file}`, "utf8").includes(importsComponent)
+    )
   );
 };
 

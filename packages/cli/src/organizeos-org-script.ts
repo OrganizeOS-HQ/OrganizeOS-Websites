@@ -218,13 +218,24 @@ const plural = (count: number, one: string, many: string) =>
   `${count} ${count === 1 ? one : many}`;
 
 /** The line the publish workflow logs, for support. Nothing left out, no line. */
-export const describeDroppedOrgScript = (dropped: DroppedOrgScript) => {
+export const describeDroppedOrgScript = (
+  dropped: DroppedOrgScript,
+  // with embeds on, the only HTML Embed publishing drops is one with nothing
+  // to render
+  { embedsMayShip = false }: { embedsMayShip?: boolean } = {}
+) => {
   const parts = [
     dropped.duplicateEntries > 0
       ? plural(dropped.duplicateEntries, "duplicate entry", "duplicate entries")
       : undefined,
     dropped.htmlEmbeds > 0
-      ? plural(dropped.htmlEmbeds, "HTML Embed", "HTML Embeds")
+      ? embedsMayShip
+        ? plural(
+            dropped.htmlEmbeds,
+            "HTML Embed with no code",
+            "HTML Embeds with no code"
+          )
+        : plural(dropped.htmlEmbeds, "HTML Embed", "HTML Embeds")
       : undefined,
     dropped.markdownEmbeds > 0
       ? plural(dropped.markdownEmbeds, "Markdown Embed", "Markdown Embeds")
@@ -332,7 +343,7 @@ export const describeDroppedOrgScript = (dropped: DroppedOrgScript) => {
     parts.length === 1
       ? parts[0]
       : `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`;
-  return `Not published, org script stays off: left out ${list}.`;
+  return `Not published: left out ${list}.`;
 };
 
 const withoutCode = <Meta extends { code?: string }>(meta: Meta) => {
@@ -529,7 +540,7 @@ const classify = (
   // D13: JSON-LD writes its code into a <script> with
   // dangerouslySetInnerHTML, the third component in the runtime packages
   // that does (organizeos-org-script.test.ts, "raw HTML in the runtime
-  // packages"), and it stays unavailable while org script is paused.
+  // packages"), and it ships exactly when orgEmbedsMayShip().
   if (instance.component === "JsonLd") {
     return "jsonLd";
   }
@@ -1266,7 +1277,7 @@ const dropOrgScriptOnce = <Bundle extends PublishedProjectBundle>(
 
   return {
     result,
-    message: describeDroppedOrgScript(dropped),
+    message: describeDroppedOrgScript(dropped, { embedsMayShip }),
     losingCode,
   };
 };
