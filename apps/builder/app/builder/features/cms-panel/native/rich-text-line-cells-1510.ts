@@ -509,16 +509,6 @@ export const differenceOf = (
   if (errors.some((error) => error.includes("selection has been lost"))) {
     return "the head loses the selection and writes nothing";
   }
-  // the Shift step past a rule moves the focus at the key (T29.7), and the
-  // key reads the page's selection back (15.12), whichever the field's
-  // selection shows when it is read
-  if (
-    fixture.before !== record.before ||
-    (record.page?.startsWith("text:") === true &&
-      record.before.split("|").pop()?.startsWith("element:") === true)
-  ) {
-    return "the presses end elsewhere (the Shift step past a rule, T29.7; the page's selection read back at the key, 15.12)";
-  }
   const head = fixture.write;
   const built = record.write;
   if (
@@ -555,6 +545,18 @@ export const differenceOf = (
     !/<hr/.test(head)
   ) {
     return "the head loses the rule and what follows (15.10)";
+  }
+  // the Shift step past a rule moves the focus at the key (T29.7), and the
+  // key reads the page's selection back (15.12), whichever the field's
+  // selection shows when it is read. The field's selection after the
+  // presses depends on timing, so this class comes after the classes the
+  // write names: a cell's name is then the same whatever the timing.
+  if (
+    fixture.before !== record.before ||
+    (record.page?.startsWith("text:") === true &&
+      record.before.split("|").pop()?.startsWith("element:") === true)
+  ) {
+    return "the presses end elsewhere (the Shift step past a rule, T29.7; the page's selection read back at the key, 15.12)";
   }
   if (head === built && fixture.calls === record.calls) {
     if (
