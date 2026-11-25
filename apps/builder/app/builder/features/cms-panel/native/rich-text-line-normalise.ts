@@ -11,10 +11,11 @@ import {
   $createRangeSelection,
   $getEditor,
   $getNodeByKey,
+  $getSelection,
   $hasUpdateTag,
   $isElementNode,
-  $isNodeSelection,
   $isParagraphNode,
+  $isRangeSelection,
   $isTextNode,
   $setSelection,
   ElementNode,
@@ -37,6 +38,7 @@ import {
   lineSpike,
   setPoint,
 } from "./rich-text-line-node";
+import { $previousNodeSelectionKeys } from "./rich-text-line-node-selection";
 import { $resolveLinedPoints } from "./rich-text-line-points";
 import {
   $dropEmptied,
@@ -157,6 +159,115 @@ const $linesNeedingBreak = (
  * a delete): the caret goes to the join, as the head's caret lands between
  * the two texts it joins.
  */
+/**
+ * The keys of the node selection the state before this update held, when
+ * every one of its nodes is gone now; otherwise null.
+ */
+const $previousNodeSelectionGone = () => {
+  const keys = $previousNodeSelectionKeys();
+  if (keys === null || keys.length === 0) {
+    return null;
+  }
+  const gone = keys.every((key) => {
+    const now = $getNodeByKey(key);
+    return now === null || now.isAttached() === false;
+  });
+  return gone ? keys : null;
+};
+
+/**
+ * 5.8: a node selection in this lined container went (Backspace, Delete, a
+ * cut) and the caret Lexical left is an element point at the end of the
+ * block directly before the first removed node (its `selectPrevious` onto
+ * a block): the caret goes to the end of that block's content, where the
+ * head's point on the unlined item resolves (5.3). A text caret, or one a
+ * rule of this update set elsewhere, stays.
+ */
+const $caretBeforeRemovedNodes = (container: ElementNode) => {
+  if ($hasUpdateTag("paste") || $hasMark(PASTE_OVER_NODE_MARK)) {
+    return;
+  }
+  const keys = $previousNodeSelectionGone();
+  if (keys === null) {
+    return;
+  }
+  const containerKey = container.getKey();
+  // in the state before: the node directly before the first removed node,
+  // a line's own previous sibling where the node led its line
+  const beforeKey = $getEditor()
+    .getEditorState()
+    .read(() => {
+      const nodes = keys
+        .map((key) => $getNodeByKey(key))
+        .filter((node) => node !== null);
+      const first = nodes.find((node) =>
+        nodes.every((other) => other === node || node.isBefore(other))
+      );
+      let node: LexicalNode | null = first ?? null;
+      while (node !== null) {
+        const parent: ElementNode | null = node.getParent();
+        if (parent === null) {
+          return null;
+        }
+        const inContainer =
+          parent.getKey() === containerKey ||
+          ($isCmsLineNode(parent) &&
+            parent.getParent()?.getKey() === containerKey);
+        if (inContainer === false) {
+          return null;
+        }
+        const previous = node.getPreviousSibling();
+        if (previous !== null) {
+          return previous.getKey();
+        }
+        node = $isCmsLineNode(parent) ? parent : null;
+      }
+      return null;
+    });
+  let end = beforeKey === null ? null : $getNodeByKey(beforeKey);
+  if (
+    end === null ||
+    end.isAttached() === false ||
+    $isElementNode(end) === false ||
+    end.isInline() ||
+    $isCmsLineNode(end)
+  ) {
+    return;
+  }
+  const selection = $getSelection();
+  if (
+    $isRangeSelection(selection) === false ||
+    selection.isCollapsed() === false ||
+    selection.anchor.type !== "element" ||
+    selection.anchor.key !== end.getKey() ||
+    selection.anchor.offset !== end.getChildrenSize()
+  ) {
+    return;
+  }
+  // its deepest last place
+  while ($isElementNode(end) && end.isInline() === false) {
+    const last: LexicalNode | null = end.getLastChild();
+    if (last === null) {
+      break;
+    }
+    end = last;
+  }
+  const range = $createRangeSelection();
+  if ($isTextNode(end)) {
+    range.anchor.set(end.getKey(), end.getTextContentSize(), "text");
+    range.focus.set(end.getKey(), end.getTextContentSize(), "text");
+  } else if ($isElementNode(end) && end.isInline() === false) {
+    range.anchor.set(end.getKey(), 0, "element");
+    range.focus.set(end.getKey(), 0, "element");
+  } else {
+    const parent = end.getParentOrThrow();
+    const index = end.getIndexWithinParent() + 1;
+    range.anchor.set(parent.getKey(), index, "element");
+    range.focus.set(parent.getKey(), index, "element");
+  }
+  $setSelection(range);
+};
+
 const $caretAtJoinOfRemovedNode = (line: CmsLineNode) => {
   const last = line.getLastChild();
   return $caretAfterRemovedNode(last ?? line, last === null);
@@ -173,15 +284,7 @@ const $caretAfterRemovedNode = (node: LexicalNode, inside: boolean) => {
     return false;
   }
   // the state before this update held a node selection whose nodes are gone
-  const before = $getEditor().getEditorState()._selection;
-  if ($isNodeSelection(before) === false) {
-    return false;
-  }
-  const gone = [...before._nodes].every((key) => {
-    const now = $getNodeByKey(key);
-    return now === null || now.isAttached() === false;
-  });
-  if (gone === false) {
+  if ($previousNodeSelectionGone() === null) {
     return false;
   }
   const range = $createRangeSelection();
@@ -494,6 +597,7 @@ const $keepContainer = (container: ElementNode) => {
   }
   $normaliseLines(container);
   if (container.isAttached()) {
+    $caretBeforeRemovedNodes(container);
     $resolveLinedPoints(true);
   }
 };

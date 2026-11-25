@@ -107,7 +107,7 @@ import {
   registerCompositionStep,
 } from "./rich-text-line-history";
 import { lineSpike } from "./rich-text-line-node";
-import { registerTypingAfterSelectedNode } from "./rich-text-line-node-selection";
+import { registerLineInputListener } from "./rich-text-line-node-selection";
 import {
   $unwrapLines,
   registerLineTransforms,
@@ -927,7 +927,7 @@ const TransformsPlugin = ({ namespace }: { namespace: string }) => {
           theme: editorTheme,
           nodes: editorNodes,
         }),
-        registerTypingAfterSelectedNode(editor),
+        registerLineInputListener(editor),
         registerCompositionStep(editor)
       ),
     [editor, namespace]

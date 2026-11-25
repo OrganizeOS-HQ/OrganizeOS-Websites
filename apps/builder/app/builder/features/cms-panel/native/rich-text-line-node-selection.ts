@@ -1,4 +1,4 @@
-// Node selections in a lined container, their handlers, and the root listeners of the typing after a selected node.
+// Node selections in a lined container, their handlers, and the line code's root input listeners.
 import { $insertDataTransferForRichText } from "@lexical/clipboard";
 import {
   $createRangeSelection,
@@ -11,8 +11,10 @@ import {
   CONTROLLED_TEXT_INSERTION_COMMAND,
   type LexicalCommand,
   type LexicalEditor,
+  type NodeKey,
   PASTE_COMMAND,
 } from "lexical";
+import { objectKlassEquals } from "@lexical/utils";
 import {
   $isCmsLineNode,
   isBlockDecorator,
@@ -101,8 +103,8 @@ export const $nodeSelectionPaste = (
   }
   const selection = $getSelection();
   const data =
-    command === PASTE_COMMAND && payload instanceof ClipboardEvent
-      ? payload.clipboardData
+    command === PASTE_COMMAND && objectKlassEquals(payload, ClipboardEvent)
+      ? (payload as ClipboardEvent).clipboardData
       : null;
   const isRich =
     data !== null &&
@@ -162,143 +164,155 @@ export const $headPathOnRemove = (): boolean => {
 };
 
 /**
- * Typed text with a block node-selected in a lined container lands
- * directly after the node, which stays (D15). Lexical leaves text typed
- * over a node selection to the browser, so the field takes the
- * `beforeinput` first.
+ * The keys of the node selection the state before this update held, or
+ * null when it held none (public API).
  */
-export const registerTypingAfterSelectedNode = (editor: LexicalEditor) =>
-  linesOff
-    ? () => {}
-    : editor.registerRootListener((root, previous) => {
-        // a composition at the start of a line that starts with a link lands
-        // before the link, as a typed letter does: the caret stands on the
-        // line's start before the composition begins
-        const onCompositionStart = () => {
-          const $atLinkLedLineStart = () => {
-            const selection = $getSelection();
-            if (
-              $isRangeSelection(selection) === false ||
-              selection.isCollapsed() === false
-            ) {
-              return false;
-            }
-            const point = selection.anchor;
-            const text = point.getNode();
-            const link = text.getParent();
-            const line = link?.getParent() ?? null;
-            return (
-              point.type === "text" &&
-              point.offset === 0 &&
-              $isElementNode(link) &&
-              link.isInline() &&
-              link.getFirstChild()?.is(text) === true &&
-              $isCmsLineNode(line) &&
-              line.getFirstChild()?.is(link) === true
-            );
-          };
-          if (editor.getEditorState().read($atLinkLedLineStart) === false) {
-            return;
-          }
-          editor.update(
-            () => {
-              const selection = $getSelection();
-              if (
-                $isRangeSelection(selection) === false ||
-                selection.isCollapsed() === false
-              ) {
-                return;
-              }
-              const point = selection.anchor;
-              const text = point.getNode();
-              const link = text.getParent();
-              const line = link?.getParent() ?? null;
-              if (
-                point.type !== "text" ||
-                point.offset !== 0 ||
-                $isElementNode(link) === false ||
-                link.isInline() === false ||
-                link.getFirstChild()?.is(text) !== true ||
-                $isCmsLineNode(line) === false ||
-                line.getFirstChild()?.is(link) !== true
-              ) {
-                return;
-              }
-              // a point move only: no tag
-              point.set(line.getKey(), 0, "element");
-              selection.focus.set(line.getKey(), 0, "element");
-            },
-            { discrete: true }
-          );
-        };
-        previous?.removeEventListener(
-          "compositionstart",
-          onCompositionStart,
-          true
-        );
-        root?.addEventListener("compositionstart", onCompositionStart, true);
-        const onBeforeInput = (event: InputEvent) => {
-          // Safari's text replacement over a range: the controlled text
-          // insertion, so the removal is marked like typed text (5.4)
-          if (
-            event.inputType === "insertText" &&
-            event.data === null &&
-            event.dataTransfer !== null
-          ) {
-            const ranged = editor.getEditorState().read(() => {
-              const selection = $getSelection();
-              return (
-                $isRangeSelection(selection) &&
-                selection.isCollapsed() === false
-              );
-            });
-            if (ranged) {
-              event.preventDefault();
-              event.stopImmediatePropagation();
-              editor.dispatchCommand(
-                CONTROLLED_TEXT_INSERTION_COMMAND,
-                event.dataTransfer.getData("text/plain")
-              );
-            }
-            return;
-          }
-          if (event.inputType !== "insertText" || event.data === null) {
-            return;
-          }
-          let handled = false;
-          editor.update(() => {
-            const selection = $getSelection();
-            if ($isNodeSelection(selection) === false) {
-              return;
-            }
-            const node = selection.getNodes().at(-1);
-            if (
-              node === undefined ||
-              isBlockDecorator(node) === false ||
-              isLinedContainer(node.getParent()) === false
-            ) {
-              return;
-            }
-            $nodeSelectionIntoLine(false, true);
-            const range = $getSelection();
-            if ($isRangeSelection(range)) {
-              range.insertText(event.data ?? "");
-              handled = true;
-            }
-          });
-          if (handled) {
-            event.preventDefault();
-            event.stopImmediatePropagation();
-          }
-        };
-        previous?.removeEventListener(
-          "beforeinput",
-          onBeforeInput as EventListener,
-          true
-        );
-        root?.addEventListener(
-          "beforeinput",
-          onBeforeInput as EventListener,
-          true
+export const $previousNodeSelectionKeys = (): NodeKey[] | null =>
+  $getEditor()
+    .getEditorState()
+    .read(() => {
+      const selection = $getSelection();
+      return $isNodeSelection(selection)
+        ? selection.getNodes().map((node) => node.getKey())
+        : null;
+    });
+
+/**
+ * The root's input listeners of the line code: its `beforeinput` handler
+ * (typed text with a block node-selected in a lined container lands
+ * directly after the node, which stays (D15); Lexical leaves text typed
+ * over a node selection to the browser, so the field takes the
+ * `beforeinput` first; and Safari's text replacement), and its
+ * `compositionstart` handler (the move before a leading link). Each is
+ * created once per registration and follows the root: removed from the
+ * previous root, added to the new one, and removed at the cleanup.
+ */
+export const registerLineInputListener = (editor: LexicalEditor) => {
+  if (linesOff) {
+    return () => {};
+  }
+  // a composition at the start of a line that starts with a link lands
+  // before the link, as a typed letter does: the caret stands on the
+  // line's start before the composition begins
+  const onCompositionStart = () => {
+    const $atLinkLedLineStart = () => {
+      const selection = $getSelection();
+      if (
+        $isRangeSelection(selection) === false ||
+        selection.isCollapsed() === false
+      ) {
+        return false;
+      }
+      const point = selection.anchor;
+      const text = point.getNode();
+      const link = text.getParent();
+      const line = link?.getParent() ?? null;
+      return (
+        point.type === "text" &&
+        point.offset === 0 &&
+        $isElementNode(link) &&
+        link.isInline() &&
+        link.getFirstChild()?.is(text) === true &&
+        $isCmsLineNode(line) &&
+        line.getFirstChild()?.is(link) === true
+      );
+    };
+    if (editor.getEditorState().read($atLinkLedLineStart) === false) {
+      return;
+    }
+    editor.update(
+      () => {
+        const selection = $getSelection();
+        if (
+          $isRangeSelection(selection) === false ||
+          selection.isCollapsed() === false
+        ) {
+          return;
+        }
+        const point = selection.anchor;
+        const text = point.getNode();
+        const link = text.getParent();
+        const line = link?.getParent() ?? null;
+        if (
+          point.type !== "text" ||
+          point.offset !== 0 ||
+          $isElementNode(link) === false ||
+          link.isInline() === false ||
+          link.getFirstChild()?.is(text) !== true ||
+          $isCmsLineNode(line) === false ||
+          line.getFirstChild()?.is(link) !== true
+        ) {
+          return;
+        }
+        // a point move only: no tag
+        point.set(line.getKey(), 0, "element");
+        selection.focus.set(line.getKey(), 0, "element");
+      },
+      { discrete: true }
+    );
+  };
+  const onBeforeInput = (event: InputEvent) => {
+    // Safari's text replacement over a range: the controlled text
+    // insertion, so the removal is marked like typed text (5.4)
+    if (
+      event.inputType === "insertText" &&
+      event.data === null &&
+      event.dataTransfer !== null
+    ) {
+      const ranged = editor.getEditorState().read(() => {
+        const selection = $getSelection();
+        return (
+          $isRangeSelection(selection) && selection.isCollapsed() === false
         );
       });
+      if (ranged) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        editor.dispatchCommand(
+          CONTROLLED_TEXT_INSERTION_COMMAND,
+          event.dataTransfer.getData("text/plain")
+        );
+      }
+      return;
+    }
+    if (event.inputType !== "insertText" || event.data === null) {
+      return;
+    }
+    let handled = false;
+    editor.update(() => {
+      const selection = $getSelection();
+      if ($isNodeSelection(selection) === false) {
+        return;
+      }
+      const node = selection.getNodes().at(-1);
+      if (
+        node === undefined ||
+        isBlockDecorator(node) === false ||
+        isLinedContainer(node.getParent()) === false
+      ) {
+        return;
+      }
+      $nodeSelectionIntoLine(false, true);
+      const range = $getSelection();
+      if ($isRangeSelection(range)) {
+        range.insertText(event.data ?? "");
+        handled = true;
+      }
+    });
+    if (handled) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+  };
+  // Lexical's cleanup calls the listener with (null, root)
+  return editor.registerRootListener((root, previous) => {
+    previous?.removeEventListener("compositionstart", onCompositionStart, true);
+    previous?.removeEventListener(
+      "beforeinput",
+      onBeforeInput as EventListener,
+      true
+    );
+    root?.addEventListener("compositionstart", onCompositionStart, true);
+    root?.addEventListener("beforeinput", onBeforeInput as EventListener, true);
+  });
+};
