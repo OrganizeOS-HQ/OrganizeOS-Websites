@@ -266,7 +266,7 @@ export const linkCells = (): LinkCell[] => {
 /**
  * The fixture's cells: the lined cells where `451f20f04` throws (10: check
  * 5 counts 8, leaving out the two `BLtrail|other` cells, which throw at
- * `<base>` too) and the ordinary cells where `<base>` throws (12), each
+ * `<base>` too) and the ordinary cells where `<base>` throws (10), each
  * measured with the toolbar's Link (Task 19 Step 1b).
  */
 export const LINK_ELEMENT_END_IDS: readonly string[] = [

@@ -693,17 +693,21 @@ describe("Divider: A1 and A2 for every block, the item-end click, a root quote (
       write: `<blockquote><ul><li>${QUOTE("Q")}</li></ul></blockquote><hr /><blockquote><ul><li>${QUOTE("1w")}</li></ul></blockquote>`,
       source: "T10.8; measured at <base> and 451f20f04",
     },
-    {
-      name: "out of a root quote at the content's end: the rule at the root, the caret where the head's Divider leaves it after the last paragraph",
-      stored: `<blockquote><ul><li>${QUOTE("Q1w")}</li></ul></blockquote>`,
+  ]);
+
+  // T10.8 names the rule at the root; the paragraph after it is unruled
+  // (p-records-task19.md, P19-9), so it is not pinned
+  test("out of a root quote at the content's end: the rule at the root, after the quote", async () => {
+    const quote = `<blockquote><ul><li>${QUOTE("Q1w")}</li></ul></blockquote>`;
+    await expectEdit({
+      stored: quote,
       place: at("Q1w"),
       action: divider,
-      write: `<blockquote><ul><li>${QUOTE("Q1w")}</li></ul></blockquote><hr /><p></p>`,
-      typed: `<blockquote><ul><li>${QUOTE("Q1w")}</li></ul></blockquote><hr /><p>k</p>`,
-      source:
-        "T10.8, check 2 A1 (the head after a last paragraph: <p>Aw</p><hr /><p></p>, measured); measured at 451f20f04",
-    },
-  ]);
+      writeMatches: (written) => {
+        expect(short(written).startsWith(`${quote}<hr />`), "write").toBe(true);
+      },
+    });
+  });
 });
 
 describe("Divider at every caret of a block in a lined item (check 5, the history lens)", () => {
@@ -1024,7 +1028,7 @@ describe("clicks (T9.2 L, T10.8, 15.7, 16.16)", () => {
       ["right", 30],
       ["bottom", 5],
     ] as const) {
-      test(`16.16: a Shift+press in the ${where} padding after a node selection gives the caret the same press without Shift gives: ${shape}, ${count} runs`, async () => {
+      test(`${where === "right" ? "control: " : ""}16.16: a Shift+press in the ${where} padding after a node selection gives the caret the same press without Shift gives: ${shape}, ${count} runs`, async () => {
         const carets: string[] = [];
         for (let run = 0; run < count; run += 1) {
           for (const shift of [false, true]) {

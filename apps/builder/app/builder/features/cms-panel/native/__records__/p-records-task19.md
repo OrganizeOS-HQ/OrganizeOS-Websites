@@ -25,7 +25,7 @@ The generator (`item1Cells("link", ["linkBtn"])` of check 5's keys probe, rewrit
 - `<base>` throws in 12 ordinary cells: `ULend|next`, `ULend|other`, `RPend|next`, `RHend|next`, `RQend|next`, each fwd and bwd (and in the 2 lined `BLtrail|other` cells).
 - The branch before the fix threw in the same 20 cells as `<proto>`.
 
-The fixture holds the 22 cells (10 lined, 12 ordinary): the count other than 8 is this record. With the fix, the branch throws in none of the 90, and only those 20 cells' writes change (the other 70 are equal to the branch before the fix).
+The fixture holds 20 cells (10 lined, 10 ordinary; `LINK_ELEMENT_END_IDS` and the fixture file agree). The 12 at `<base>` are those 10 ordinary cells plus the 2 lined `BLtrail|other` cells, which the 10 lined cells include. The count other than 8 is this record. With the fix, the branch throws in none of the 90, and only those 20 cells' writes change (the other 70 are equal to the branch before the fix).
 
 ## P19-3: V11's caret and typed value (T14.4)
 
@@ -59,3 +59,15 @@ The test presses a word the menu does not cover (a long last line; the test asse
 ## P19-8: Step 1e (T11.10)
 
 With Shift decided on `click` instead of `pointerdown` (scratch, reverted), these fail: the 15.7 "repeated" and "selectionchange-first" cells at `Aw` and `Cw` (ordinary and lined, rule and image: 16 tests), and 16.16's bottom-padding test (ordinary and lined). They pass: the eight 15.7 cells at `Lw` (retitled "control: ..."), and 16.16's right-padding test (30 runs), whose point gives the same caret with and without Shift at `<base>` too (the rule stays node-selected).
+The right-padding test therefore does not tell Shift on `pointerdown` from Shift on `click`: it is retitled "control: 16.16: ..." and is a control, not a pin of the fix.
+
+## P19-9: Divider out of a root quote at the content's end, the paragraph after the rule (T10.8, check 2 A1)
+
+- Stored: `<blockquote><ul><li><blockquote><p>Q1w</p></blockquote></li></ul></blockquote>`.
+- Place: the caret at the end of `Q1w` (`at("Q1w")`, `text:Q1w@3`).
+- Action: the toolbar's Divider.
+- The branch writes `<blockquote><ul><li><blockquote><p>Q1w</p></blockquote></li></ul></blockquote><hr /><p></p>` (1 call); typed `k` after it gives `...</blockquote><hr /><p>k</p>`.
+- `<base>` writes `<blockquote><ul><li></li></ul></blockquote><hr /><blockquote><ul><li><blockquote><p>Q1w</p></blockquote></li></ul></blockquote>` (1 call, caret `text:Q1w@0`); typed `k` gives `...<hr /><blockquote><ul><li><blockquote><p>kQ1w</p></blockquote></li></ul></blockquote>`. Measured in the `<base>` worktree with the kit copied in.
+- T10.8 names the rule at the root after the quote; no rule names the empty paragraph after it. Candidates: (a) the empty paragraph is the caret's new place, as built (check 2 A1 names it for a last paragraph: `<p>Aw</p><hr /><p></p>`); (b) it is a copy that T9.2 A forbids.
+- The test keeps only what T10.8 names: the write starts with the quote followed by a root `<hr />`. The write and the typed value are not pinned.
+- The task placed this cell at Q1w@end ("both quotes split"); the test titled for it is at Q1w@1 (~689, "out of a root quote: the rule at the root, both quotes split"), and the end case is a separate row.
