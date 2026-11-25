@@ -659,10 +659,10 @@ describe("T23.1: a removal that ends at the start of a line holding only a line 
   const CB = LI(`${PRE("C0w")}<br>`);
   const HB = LI("<h3>H0w</h3><br>");
   const pressPlace = (word: string) => then(at(word, 2), shiftRight(2));
-  // a text paste over these ranges is P13-5 (T23.1 names the letter and
-  // Backspace; Delete and the cut follow from Backspace)
+  // T23.1 holds for every entry point (T30.3)
   const entries: Array<[string, Step, (block: string) => string]> = [
     ["a letter", letter, (block) => `${block}k`],
+    ["a text paste", pasteText("Aq"), (block) => `${block}Aq`],
     ["Backspace", backspace, (block) => block],
     ["Delete", del, (block) => block],
     ["a cut", cut, (block) => block],
@@ -717,6 +717,98 @@ describe("T23.1: a removal that ends at the start of a line holding only a line 
       source: "T23.1; ruled, not built at the carry",
     });
   });
+});
+
+describe("T30.1: T23.1 over the whole word of the block: the emptied block holds the caret and exports nothing", () => {
+  for (const [name, stored, word, empty, typed] of [
+    ["a heading", LI("<h3>H0w</h3><br>"), "H0w", "heading", "<h3>k</h3>"],
+    ["a code block", LI(`${PRE("C0w")}<br>`), "C0w", "code", PRE("k")],
+  ] as const) {
+    test(`${name}, Backspace, then a letter`, async () => {
+      await expectEdit({
+        stored,
+        place: rangeToLineStart(word, 0),
+        action: backspace,
+        write: W("<li></li>"),
+        caret: `element:${empty}@0`,
+        typed: W(`<li>${typed}</li>`),
+        source: "T30.1 (P13-1)",
+      });
+    });
+  }
+});
+
+describe("T30.2: a removal that ends at the start of a line led by a line break, directly after a block, removes that break; the rest of the line stays a line after the block", () => {
+  const ITEM = LI("<h3>H0w</h3><br>Tw");
+  const QUOTE = "<blockquote><h3>H0w</h3><br>Tw</blockquote>";
+  test("Backspace from H0w@2 in an item", async () => {
+    await expectEdit({
+      stored: ITEM,
+      place: rangeToLineStart("H0w", 2),
+      action: backspace,
+      write: W("<li><h3>H0</h3>Tw</li>"),
+      caret: "text:H0@2",
+      source: "T30.2 (P13-2)",
+    });
+  });
+  test("Backspace from H0w@2 in a quote", async () => {
+    await expectEdit({
+      stored: QUOTE,
+      place: rangeToLineStart("H0w", 2),
+      action: backspace,
+      write: "<blockquote><h3>H0</h3>Tw</blockquote>",
+      caret: "text:H0@2",
+      source: "T30.2 (P13-2)",
+    });
+  });
+  test("Backspace from H0w@0 in a quote: the caret in the emptied heading, then a letter", async () => {
+    // the write while the heading is empty is P13-6 (not pinned)
+    const record = await recordEdit(
+      { stored: QUOTE, place: rangeToLineStart("H0w", 0), action: backspace },
+      { typeAfter: true }
+    );
+    expect(record.calls, "calls").toBe(1);
+    expect(record.caret, "caret").toBe("element:heading@0");
+    expect(record.typed, "typed").toBe("<blockquote><h3>k</h3>Tw</blockquote>");
+    expect(record.undoRestores, "undo restores the state before").toBe(true);
+    expect(record.redoEquals, "redo equals the write").toBe(true);
+    expect(record.errors, "console errors").toEqual([]);
+    expect(record.slowest, "slowest step in ms").toBeLessThan(2000);
+  });
+  // every other entry point: Backspace over the range, then the key (a
+  // delete and a cut write what Backspace writes)
+  const others: Array<[string, Step, boolean]> = [
+    ["a letter", letter, true],
+    ["a text paste", pasteText("Aq"), true],
+    ["Enter", enter, true],
+    ["Delete", del, false],
+    ["a cut", cut, false],
+  ];
+  for (const [where, stored] of [
+    ["an item", ITEM],
+    ["a quote", QUOTE],
+  ] as const) {
+    for (const offset of [2, 0]) {
+      for (const [name, action, keyAfter] of others) {
+        test(`${name} from H0w@${offset} in ${where} is Backspace, then the key`, async () => {
+          const place = rangeToLineStart("H0w", offset);
+          const oracle = await recordEdit({
+            stored,
+            place: keyAfter ? then(place, backspace) : place,
+            action: keyAfter ? action : backspace,
+          });
+          expect(oracle.write, "the oracle keeps the line").toContain("Tw");
+          await expectEdit({
+            stored,
+            place,
+            action,
+            write: oracle.write,
+            source: "T30.2, T30.3: derived (Backspace, then the key)",
+          });
+        });
+      }
+    }
+  }
 });
 
 // ---------------------------------------------------------------------------

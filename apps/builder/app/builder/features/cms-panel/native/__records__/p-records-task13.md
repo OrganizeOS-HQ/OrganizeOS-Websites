@@ -46,9 +46,21 @@ Measured at the branch (Task 13's work on 3dbfe6a), at `<base>` (SP/r1-base, 2a9
 - T23.1 names the letter and Backspace over these ranges (Delete and the cut follow from Backspace); it names no paste. The test pinned the branch's write until the review; the pin is removed.
 - Candidates: (a) the branch's: T23.1's join, then the paste at the caret it leaves (the letter's form); (b) `<base>`'s: the line's break stays.
 
+## P13-6: T30.2 from the block's start: the emptied heading beside the line's rest (the stored form)
+
+- Stored: `<blockquote><h3>H0w</h3><br>Tw</blockquote>` (and `<ul><li>Pw</li><li><h3>H0w</h3><br>Tw</li><li>Nw</li></ul>`).
+- Place: `rangeToLineStart("H0w", 0)` (`H0w@0` to the start of the line `<br>Tw`).
+- Action: Backspace (Delete and the cut give the same).
+- Built to T30.2 (the break goes, the rest stays a line after the block, the heading emptied holds the caret): caret `element:heading@0`, one onChange, undo and redo hold; a letter then writes `<blockquote><h3>k</h3>Tw</blockquote>` (the item: `<ul><li>Pw</li><li><h3>k</h3>Tw</li><li>Nw</li></ul>`), as ruled.
+- Branch write: `<blockquote><h3></h3>Tw</blockquote>` (the item: `<ul><li>Pw</li><li><h3></h3>Tw</li><li>Nw</li></ul>`). T30.2 gives `<blockquote>Tw</blockquote>`.
+- The ordinary twin in a quote (`<blockquote><h3>H0w</h3><p></p><p>Tw</p></blockquote>`, `H0w@0` to the empty paragraph's start, Backspace) writes `<blockquote><h3></h3><p>Tw</p></blockquote>`, caret `element:heading@0`: an emptied heading beside other content exports `<h3></h3>`; it exports nothing only where it is the container's one child (P13-1). At the root the twin writes `<p></p><p>Tw</p>` (Lexical makes the emptied heading a paragraph).
+- `<base>`: not measured here (P13-2's `<base>` write from `H0w@2` keeps the break).
+- Not pinned: the test pins the caret, one onChange, undo, redo and the letter after. Candidates: (a) the branch's `<blockquote><h3></h3>Tw</blockquote>` (the twin's form); (b) T30.2's `<blockquote>Tw</blockquote>` (the empty heading left out of the value while it holds the caret).
+
 ## Built without a P record (named here for the commit body)
 
 - 16.10: Delete at a caret at the end of a quote or list ending in an image or a link, before a root-level rule (`R|quote|img|none|end|0|del` and seven more cells of `base-1510`, image and link ends): at 3dbfe6a it handed out the value before (one onChange, value unchanged, D19); `<base>` writes nothing. Now nothing is written, as at `<base>` and as with a text end.
 - 15.10's mirror: a letter or a paste over a range from the root before a rule into the start of a quote's text after it (`L|*|text|quote|start|2|k`, `plain`, `htmlPaste`: 15 cells) took the quote's paragraph out of the quote (the head too); now it is Backspace over the range, then the key, as the mirror's rule asks.
 - 15.10, Image over the range one press past a quote's end before a root-level rule (`<blockquote><p>Pw</p></blockquote><hr><p>Nw</p>`, `Pw@end`, Shift+ArrowRight): at 668cb94 the result of the removal step was ignored and the removal was marked over what is then a caret (the write was the same); now no mark, and the write is Image's one press earlier (Step 2: non-delete commands, false and no mark).
 - 15.10's mirror, Shift+Enter and Image over a range from the root before a rule (`L|*|text|quote|start|2`, 5 shapes each: no onChange at 668cb94) and Image over a range from a quote's end into the paragraph after the rule (`L|quote|*|para|start|1`, 4 cells: the paragraph's content left directly in the quote at 668cb94): now Backspace over the range, then the key, as the mirror's rule asks. Image now starts a range as the editing commands do (`$selectionIntoAdjacentBlocks`).
+- T30.2's widened rule applies where the range starts in the block before the line. A range from before the block (the removal class sweep's lined `line break` cells, `A0w@1` over a quote to the start of `<br>B1w`) removes the block whole; the line then stands after no block, and the break stays as the range leaves it (the sweep's property: the removal takes what the range holds). Applied to those 64 cells, the rule would remove the break too (`PwAB1wNw` in place of `PwA↵B1wNw`).

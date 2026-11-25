@@ -107,7 +107,7 @@ const holds = async ({
 };
 
 describe("no tag outlives its update", () => {
-  test("the point rule moves a point off a lined container, then a letter", async () => {
+  test("control: the point rule moves a point off a lined container, then a letter", async () => {
     const stored =
       "<ul><li>Pw</li><li>T9w<h3>X0w</h3><hr /></li><li>Nw</li></ul>";
     await holds({
@@ -120,7 +120,7 @@ describe("no tag outlives its update", () => {
       write: "<ul><li>Pwk</li><li>T9w<h3>X0w</h3><hr /></li><li>Nw</li></ul>",
     });
   });
-  test("an arrow steps off a node-selected rule, then a letter", async () => {
+  test("control: an arrow steps off a node-selected rule, then a letter", async () => {
     await holds({
       stored: "<ul><li>xq<hr />yq</li></ul>",
       correction: then(at("xq"), keys("{ArrowRight}"), keys("{ArrowRight}")),
@@ -128,7 +128,7 @@ describe("no tag outlives its update", () => {
       write: "<ul><li>xq<hr />kyq</li></ul>",
     });
   });
-  test("a Delete at the content's end after an image removes nothing, then a letter", async () => {
+  test("control: a Delete at the content's end after an image removes nothing, then a letter", async () => {
     await holds({
       stored: `<ul><li>Pw</li><li><h3>X0w${IMG40}</h3></li></ul>`,
       correction: async () => {
@@ -157,7 +157,7 @@ describe("no tag outlives its update", () => {
       composing: true,
     });
   });
-  test("a typing run, a point the point rule corrects, then a letter: the letter is its own step, the run one step", async () => {
+  test("control: a typing run, a point the point rule corrects, then a letter: the letter is its own step, the run one step", async () => {
     const stored = LI("T0w<hr />");
     const onChange = await mount(stored);
     let corrected = 0;
@@ -191,7 +191,7 @@ describe("no tag outlives its update", () => {
     await keys("{Control>}z{/Control}")();
     expect(short(lastHtml(onChange))).toBe(short(stored));
   });
-  test("the selection-change step makes a caret line, then a letter", async () => {
+  test("control: the selection-change step makes a caret line, then a letter", async () => {
     await holds({
       stored: LI("T0w<hr>"),
       correction: async () => {
@@ -207,7 +207,7 @@ describe("no tag outlives its update", () => {
       edit: letter,
     });
   });
-  test("the selection-change step removes a caret line, then a letter", async () => {
+  test("control: the selection-change step removes a caret line, then a letter", async () => {
     await holds({
       stored: LI("T0w<hr>"),
       correction: async () => {
@@ -220,7 +220,7 @@ describe("no tag outlives its update", () => {
       edit: letter,
     });
   });
-  test("the kept-line removal, then a letter", async () => {
+  test("control: the kept-line removal, then a letter", async () => {
     await holds({
       stored: "<ul><li>Pw</li><li><hr>T1w</li><li>Aw T2w</li><li>Nw</li></ul>",
       correction: async () => {
@@ -232,7 +232,7 @@ describe("no tag outlives its update", () => {
       edit: letter,
     });
   });
-  test("the read-back, then a letter", async () => {
+  test("control: the read-back, then a letter", async () => {
     await holds({
       stored: LI("T0w<hr>T2w"),
       correction: async () => {
@@ -323,7 +323,7 @@ const clickItemEnd =
   };
 
 describe("C2: an empty caret line beside a line or a block gives its point back", () => {
-  test("C2: QRB, Backspace on the rule", async () => {
+  test("control: C2: QRB, Backspace on the rule", async () => {
     await expectEdit({
       stored: LI(`${Q("Q0w")}<hr><br>`),
       place: then(clickRuleStart, backspace),

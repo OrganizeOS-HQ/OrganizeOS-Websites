@@ -766,18 +766,21 @@ export const $lastPointToBlockEnd = (
 };
 
 /**
- * T23.1: a removal whose range ends at the start of a line that holds only
- * a line break, directly after a block, joins that line as an empty
- * paragraph joins the block before it: the line and its break go, nothing
- * is added to the block, and the break is never pulled into it (D3's
- * fourth case, 5.5). The last point moves past the break, so the removal
- * takes it with the boundary. True when it moved.
+ * T23.1 (widened by T30.2): a removal whose range ends at the start of a
+ * line that starts with a line break, directly after a block, removes that
+ * break, as Backspace there does (D3 group C), and nothing is pulled into
+ * the block (D3's fourth case, 5.5). A line that holds only the break is
+ * left empty and goes: the last point moves past the break, so the removal
+ * takes it with the boundary. Otherwise the break goes here and the last
+ * point moves to the block's end, so the rest of the line stays a line
+ * after the block (only where the range starts in the block). True when it
+ * moved.
  */
 const $lastPointPastLoneBreak = (selection: RangeSelection) => {
   if (selection.isCollapsed()) {
     return false;
   }
-  const { end } = $endsInOrder(selection);
+  const { start, end } = $endsInOrder(selection);
   const node = end.getNode();
   let line: LexicalNode | null = null;
   if (end.type === "element" && end.offset === 0 && $isCmsLineNode(node)) {
@@ -807,7 +810,7 @@ const $lastPointPastLoneBreak = (selection: RangeSelection) => {
     );
   const block = line.getPreviousSibling();
   if (
-    children.length !== 1 ||
+    children.length === 0 ||
     isLineBreak(children[0]) === false ||
     $isElementNode(block) === false ||
     $isCmsLineNode(block) ||
@@ -815,7 +818,29 @@ const $lastPointPastLoneBreak = (selection: RangeSelection) => {
   ) {
     return false;
   }
-  end.set(line.getKey(), line.getChildrenSize(), "element");
+  if (children.length === 1) {
+    end.set(line.getKey(), line.getChildrenSize(), "element");
+    return true;
+  }
+  // the block stays only where the range starts in it: a range from before
+  // the block removes it whole, and the line then stands after no block
+  const first = start.getNode();
+  if (first.is(block) === false && block.isParentOf(first) === false) {
+    return false;
+  }
+  children[0].remove();
+  const last = block.getLastDescendant();
+  if ($isTextNode(last)) {
+    end.set(last.getKey(), last.getTextContentSize(), "text");
+  } else if (last === null) {
+    end.set(block.getKey(), 0, "element");
+  } else {
+    end.set(
+      last.getParentOrThrow().getKey(),
+      last.getIndexWithinParent() + 1,
+      "element"
+    );
+  }
   return true;
 };
 

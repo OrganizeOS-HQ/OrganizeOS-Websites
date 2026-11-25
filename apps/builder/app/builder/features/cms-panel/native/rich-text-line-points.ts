@@ -959,6 +959,8 @@ export const pointRules = (editor: LexicalEditor, tracker?: EditTracker) => {
     if (editor.getRootElement() === null) {
       return;
     }
+    // no real gesture reaches the keeper here with a page range: a press on
+    // a rule node-selects it and leaves the page no range to put back
     keepPageRange(editor, () =>
       editor.update(() => $resolveAfterPress(press), { discrete: true })
     );
@@ -1068,6 +1070,8 @@ export const pointRules = (editor: LexicalEditor, tracker?: EditTracker) => {
     // 16.18: a key or an edit in the field ends an open press before it is
     // handled; its held step runs here
     presses.delete(editor);
+    // after a press on a rule no real gesture reaches the keeper here with a
+    // page range: the press node-selects the rule and the page holds none
     keepPageRange(editor, () =>
       editor.update(
         () => {
@@ -1098,6 +1102,8 @@ export const pointRules = (editor: LexicalEditor, tracker?: EditTracker) => {
       return;
     }
     presses.delete(editor);
+    // no real gesture reaches the keeper here with a node selected: the
+    // click that node-selects a rule or an image also ends the press
     keepPageRange(editor, () =>
       editor.update(
         () => {

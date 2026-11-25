@@ -276,6 +276,8 @@ const ImageView = ({ nodeKey, attributes, caption }: ImageViewProps) => {
   // B: the popover's actions are edits: lines a press's caret left go first
   const closedByPressInEditor = useRef(false);
   const edit = (change: (node: CmsImageNode | CmsFigureNode) => void) => {
+    // its page-range keeper is reached by no real gesture with the image
+    // node-selected: the popover's close leaves a caret beside the image
     removeKeptLines(editor);
     editor.update(() => {
       const node = $getNodeByKey(nodeKey);
