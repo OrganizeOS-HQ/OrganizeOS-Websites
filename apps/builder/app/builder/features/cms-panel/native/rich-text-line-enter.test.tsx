@@ -712,6 +712,38 @@ describe("T23.1 by Enter: a range ending at a break-led line's start after a blo
   }
 });
 
+describe("Enter over a range that empties a quote of the item it does not start in drops the quote (5.4, T35.2)", () => {
+  runRows([
+    {
+      name: "T35.2: T0w@1 to Q1w@3 in T0w, quote, T2w: the new item holds T2w, the quote is gone",
+      stored: TQT,
+      place: range("T0w", 1, "Q1w", 3),
+      action: enter,
+      write: W("<li>T</li><li>T2w</li>"),
+      typed: W("<li>T</li><li>kT2w</li>"),
+      source: "5.4 (Emptied), T35.2 (P15-4)",
+    },
+    {
+      name: "T35.2: T0w@2 to Q1w@3 in T0w, quote, rule: the new item holds the rule",
+      stored: LI(`T0w${QUOTE("Q1w")}<hr>`),
+      place: range("T0w", 2, "Q1w", 3),
+      action: enter,
+      write: W("<li>T0</li><li><hr /></li>"),
+      typed: W("<li>T0</li><li>k<hr /></li>"),
+      source: "5.4 (Emptied), T35.2 (P15-4)",
+    },
+    {
+      name: "T35.2: T0w@0 to Q1w@3 in T0w, quote: the whole item, an empty item stays",
+      stored: LI(`T0w${QUOTE("Q1w")}`),
+      place: range("T0w", 0, "Q1w", 3),
+      action: enter,
+      write: "<ul><li>Pw</li><li></li><li></li><li>Nw</li></ul>",
+      typed: "<ul><li>Pw</li><li></li><li>k</li><li>Nw</li></ul>",
+      source: "5.4 (Emptied), T35.2 (P15-4)",
+    },
+  ]);
+});
+
 describe("M2: a rule-led root quote (spec 5.7)", () => {
   const RQ = "<blockquote><hr>X2w</blockquote>";
   runRows([

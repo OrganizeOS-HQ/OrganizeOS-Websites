@@ -31,6 +31,7 @@ Measured at the branch (Task 15's work on 06bd637), at `<base>` (SP/r1-base, 2a9
 - Branch now (the oracle's for the first two): `W(<li>T</li><li>T2w</li>)`, typed `...<li>kT2w</li>...`; `W(<li>T0</li><li><hr /></li>)`, typed `...<li>k<hr /></li>...`; the third keeps its write, typed `<ul><li>Pw</li><li></li><li>k</li><li>Nw</li></ul>` (its oracle, Backspace then Enter, takes the emptied item out of the list: `<ul><li>Pw</li></ul><p></p><ul><li>Nw</li></ul>`).
 - `<base>`: the empty quote stays (`W(<li>T</li><li><blockquote></blockquote>T2w</li>)`; `W(<li>T0</li><li><blockquote></blockquote><hr /></li>)`; `W(<li></li>)` for the third).
 - Built for M13b (5.4 "Emptied": the quote held no point and lost all its children); only M13a and M13b are pinned. Shift+Enter over the same ranges is unchanged. Ordinary content is unchanged (measured on nine shapes: a paragraph into a quote, list, nested list, second quote; equal before and after this task).
+- Ruled (T35.2): the change stands (5.4); three cells are pinned with the writes above in `rich-text-line-enter.test.tsx` ("Enter over a range that empties a quote ...").
 
 ## P15-5: T11.4's oracle and M8g disagree for a range Lexical removes itself
 
@@ -38,3 +39,4 @@ Measured at the branch (Task 15's work on 06bd637), at `<base>` (SP/r1-base, 2a9
 - M8g (confirm, spec 5.4) and the test on the branch: `<ul><li></li><li></li><li>Bw</li></ul>`. The oracle, Backspace then Enter: `<p></p><ul><li>Bw</li></ul>` (Lexical's list rule for Enter in an empty item).
 - Also, ordinary content, both builds: `<p>Aw</p><blockquote><p>Qw</p></blockquote><p>Zw</p>`, `Aw@0 to Qw@2`, Enter: `<p></p><p></p><p>Zw</p>` (`<base>` keeps an empty quote as well); the oracle `<blockquote></blockquote><p></p><p>Zw</p>`. `<h2>Aw</h2><blockquote><p>Qw</p></blockquote><p>Zw</p>`, the same range: `<h2></h2><p></p><p>Zw</p>`; the oracle `<p></p><p></p><p>Zw</p>` (Backspace turns an emptied first heading of the root into a paragraph).
 - The branch removes the range itself only for 16.8 (an end on the root) and M13b's class (P15-4); every other range keeps Lexical's removal and split, as M8g requires. Candidates: (a) as built (T11.4's oracle for ranges with an end on the root and for M13b's class; M8g's head write elsewhere); (b) T11.4's oracle for every range, which changes M8g and the two ordinary writes above.
+- Ruled (T35.1): (a) as built. Enter and Shift+Enter over a range are the removal of the range, then the break at the point it leaves (Lexical's order; M8g stays).
