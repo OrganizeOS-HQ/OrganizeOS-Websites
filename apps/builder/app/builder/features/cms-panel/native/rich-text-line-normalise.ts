@@ -14,6 +14,7 @@ import {
   $getSelection,
   $hasUpdateTag,
   $isElementNode,
+  $isNodeSelection,
   $isParagraphNode,
   $isRangeSelection,
   $isTextNode,
@@ -21,6 +22,7 @@ import {
   ElementNode,
   type LexicalEditor,
   type LexicalNode,
+  type NodeKey,
   ParagraphNode,
 } from "lexical";
 import {
@@ -38,7 +40,6 @@ import {
   lineSpike,
   setPoint,
 } from "./rich-text-line-node";
-import { $previousNodeSelectionKeys } from "./rich-text-line-node-selection";
 import { $resolveLinedPoints } from "./rich-text-line-points";
 import {
   $dropEmptied,
@@ -155,10 +156,19 @@ const $linesNeedingBreak = (
 };
 
 /**
- * Two lines meet because a node-selected block between them went (a cut,
- * a delete): the caret goes to the join, as the head's caret lands between
- * the two texts it joins.
+ * The keys of the node selection the state before this update held, or
+ * null when it held none (public API).
  */
+export const $previousNodeSelectionKeys = (): NodeKey[] | null =>
+  $getEditor()
+    .getEditorState()
+    .read(() => {
+      const selection = $getSelection();
+      return $isNodeSelection(selection)
+        ? selection.getNodes().map((node) => node.getKey())
+        : null;
+    });
+
 /**
  * The keys of the node selection the state before this update held, when
  * every one of its nodes is gone now; otherwise null.
@@ -268,6 +278,11 @@ const $caretBeforeRemovedNodes = (container: ElementNode) => {
   $setSelection(range);
 };
 
+/**
+ * Two lines meet because a node-selected block between them went (a cut,
+ * a delete): the caret goes to the join, as the head's caret lands between
+ * the two texts it joins.
+ */
 const $caretAtJoinOfRemovedNode = (line: CmsLineNode) => {
   const last = line.getLastChild();
   return $caretAfterRemovedNode(last ?? line, last === null);

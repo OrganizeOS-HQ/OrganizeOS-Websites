@@ -132,10 +132,11 @@ const ROWS: Row[] = [
     source: "from M14j; spec 5.7",
   },
   {
-    // M14l is a typed-only row (T23): the write only
+    // M14l (T23): Enter writes nothing; the letter after it lands after the rule
     name: "FS0: Enter",
     action: enter,
     write: null,
+    typed: "<ul><li>xq<hr />kyq</li></ul>",
     source: "from M14l; spec 5.7",
   },
   {
@@ -177,10 +178,11 @@ const ROWS: Row[] = [
     source: "from M58; D15 (the head's result)",
   },
   {
-    // M30 is a typed-only row (T23): the write only
+    // M30 (T23): the composition writes the head's result; the letter after it lands after the rule
     name: "D15: composed text keeps the head's result",
     action: ime("a"),
     write: "<ul><li>axq<hr />yq</li></ul>",
+    typed: "<ul><li>axq<hr />kyq</li></ul>",
     source: "from M30; D15",
   },
   {

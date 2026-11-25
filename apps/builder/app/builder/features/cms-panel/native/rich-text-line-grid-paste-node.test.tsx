@@ -24,6 +24,16 @@ type Recorded =
   | { failed: string };
 const fixture = pasteNodeJson as Record<string, Recorded>;
 
+const P16_3_SHAPES = new Set([
+  "QR",
+  "QQR",
+  "QRL",
+  "QRR",
+  "QRd2",
+  "QRol",
+  "RQR",
+]);
+
 const isPlain = (cell: PasteNodeCell) =>
   cell.kind === "plain" || cell.kind === "plain2";
 
@@ -56,8 +66,9 @@ describe("14.8: a paste with a rule node-selected in a lined item", () => {
           withoutSelectedRules(atPoint.write ?? atPoint.htmlBefore, cell.rules)
         );
         // where the caret goes when nothing is inserted and the rule goes
-        // is no rule's (P16-3)
-        if (cell.kind !== "emptyP") {
+        // is no rule's in the shapes where the rule ends the item or stands
+        // before a list or another rule (P16-3)
+        if (!(cell.kind === "emptyP" && P16_3_SHAPES.has(cell.shape))) {
           expect(record.typed, "the letter after it").toBe(
             withoutSelectedRules(atPoint.typed ?? "", cell.rules)
           );

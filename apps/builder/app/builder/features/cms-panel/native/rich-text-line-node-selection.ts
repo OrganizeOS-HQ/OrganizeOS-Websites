@@ -11,7 +11,6 @@ import {
   CONTROLLED_TEXT_INSERTION_COMMAND,
   type LexicalCommand,
   type LexicalEditor,
-  type NodeKey,
   PASTE_COMMAND,
 } from "lexical";
 import { objectKlassEquals } from "@lexical/utils";
@@ -162,20 +161,6 @@ export const $headPathOnRemove = (): boolean => {
   }
   return false;
 };
-
-/**
- * The keys of the node selection the state before this update held, or
- * null when it held none (public API).
- */
-export const $previousNodeSelectionKeys = (): NodeKey[] | null =>
-  $getEditor()
-    .getEditorState()
-    .read(() => {
-      const selection = $getSelection();
-      return $isNodeSelection(selection)
-        ? selection.getNodes().map((node) => node.getKey())
-        : null;
-    });
 
 /**
  * The root's input listeners of the line code: its `beforeinput` handler

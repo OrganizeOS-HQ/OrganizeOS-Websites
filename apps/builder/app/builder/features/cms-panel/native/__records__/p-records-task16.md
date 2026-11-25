@@ -2,26 +2,27 @@
 
 Measured at the branch (Task 16's work on 1c41131) and at `<base>` (SP/r1-base, 2a96a45, rich-text project). Writes are `short()`; "typed" is the value after a letter k typed right after the action. Nothing here is pinned in a test except where a line says so.
 
-## P16-1: FS0 at the root (M14k): one onChange that repeats the value
+## P16-1: FS0 at the root (M14k): the repeated value gives 0 onChanges and no undo step (ruled; Task 20 builds it)
 
 - Stored: `<p>xq</p><hr><p>yq</p>`. Place: `nodeAfter("xq")` (the rule node-selected). Action: paste `<hr>`.
 - `<base>` (M14k): write `<p>xq</p><hr /><p>yq</p>`, 1 onChange, the value as it stood.
-- Branch: the same, 1 onChange whose value equals the value before. `expectEdit` refuses it (D19), and 16.10 makes the count 0 in R1 once the change handler compares values (Task 20, T26.2).
-- Pinned: the value after the paste, no console error, the 2,000 ms bound. Not pinned: the onChange count and the undo step. Candidates: (a) 0 onChanges, the rule replaced in the history (one undo step, no onChange); (b) 0 onChanges and no undo step.
+- Branch: the same, 1 onChange whose value equals the value before. `expectEdit` refuses it (D19).
+- Ruled: 16.10 and T33.4 give 0 onChanges and no undo step. Task 20 builds it (the change handler compares values, T26.2); no test here pins the count or the undo step. Pinned: the value after the paste, no console error, the 2,000 ms bound.
 
-## P16-2: a composition's onChange count, with or without a root change
+## P16-2: a composition's onChange count (ruled: one; Task 20 builds it)
 
 - Stored: `<p>Pw</p><p>T0w</p>`. Place: `Pw@2`, a letter, quiet, `T0w@1`. Action: `ime("a")`.
-- Branch, with and without `setRootElement(null)` then the same element first: 3 onChanges, `PwkT0w`, `PwkTa0w`, `PwkTa0w` (the last repeats the one before). The task's plain test expects one onChange for the composition.
-- The count during a composition is Task 20's (T29: P11-1's count, 16.10, 16.21). Pinned: the last value `<p>Pwk</p><p>Ta0w</p>`, one undo gives the state before the composition (`sameState`), a second undo `<p>Pw</p><p>T0w</p>`, and the listener counts. Candidates: (a) one onChange once Task 20's compare lands; (b) two (the start and the end).
+- Branch, with and without `setRootElement(null)` then the same element first: 3 onChanges, `PwkT0w`, `PwkTa0w`, `PwkTa0w` (the last repeats the one before).
+- Ruled: 16.10 and T29.6 give one onChange for the composition. Task 20 builds it; no test here pins the count. Pinned: the last value `<p>Pwk</p><p>Ta0w</p>`, one undo gives the state before the composition (`sameState`), a second undo `<p>Pw</p><p>T0w</p>`, and the listener counts.
 
 ## P16-3: an empty-paragraph paste over a rule after a leading block: where the letter lands
 
-- Stored: the 14 block-led cells of `base-paste-node` whose rule is the item's last child or stands before a block (`QR`, `QQR`, `QRL`, `QRR`, `QRd2`, `QRol`, `RQR`, by click, arrow and both rules): e.g. `LI(<blockquote><p>Q0w</p></blockquote><hr>)`.
+- Stored: the 16 cells of `base-paste-node` with the kind `emptyP` whose shape is `QR`, `QQR`, `QRL`, `QRR`, `QRd2`, `QRol` or `RQR`, where the rule is the item's last child or stands before a list or another rule (click: 7 cells; arrow: `QR`, `QQR`, `QRL`, `QRd2`, `QRol`, 5 cells; `QRR` and `RQR` by arrow and by both rules, 4 cells). E.g. `LI(<blockquote><p>Q0w</p></blockquote><hr>)`.
+- The other 8 emptyP cells of block-led shapes (`QRT`, `QRB`, `QRQ`, `QRTQ`, by click and by arrow) are compared for the letter as every other cell is, and pass. `QRQ`, whose rule stands before a block, passes too.
 - Place: the rule node-selected (a click, arrows, or both rules by code). Action: paste `<p></p>` (text/plain empty), then k.
 - Branch: the rule goes (one onChange, the write equals the paste at D18's caret with the rule removed: `W(<li><blockquote><p>Q0w</p></blockquote></li>)`), and the letter lands at the quote's end: `...<p>Q0wk</p>...`.
 - The oracle (the same paste at the point after the rule, the rule kept, then the rule taken out of the result) leaves the caret in the line after the rule, so its letter lands after the quote: `...</blockquote>k...`. `<base>`: the head runs away in these cells (fixture `failed: runaway`).
-- No rule names the caret when the paste inserts nothing and the rule goes. Pinned: the write and the count; the letter is not compared for empty-paragraph cells. Candidates: (a) the branch's (5.8: after a node selection is removed, the caret is at the end of the content before it); (b) the line after the quote, where the paste's caret stood.
+- No rule names the caret when the paste inserts nothing and the rule goes. Pinned: the write and the count; the letter is not compared for these 16 cells. Candidates: (a) the branch's (5.8: after a node selection is removed, the caret is at the end of the content before it); (b) the line after the quote, where the paste's caret stood.
 
 ## P16-4: the test of "the paste at D18's caret" keeps the rule, then takes it out
 
@@ -32,7 +33,7 @@ Measured at the branch (Task 16's work on 1c41131) and at `<base>` (SP/r1-base, 
 ## P16-5: the listener counts on the field's root
 
 - The task's plain test expects "exactly one active `beforeinput`, one `compositionstart` and one `compositionend` listener of the line code on the root". The field's root also holds the point rules' capture listeners (`rich-text-line-points.ts`: `beforeinput` and `compositionstart`, among others), so the line code has two `beforeinput` and two `compositionstart` capture listeners on the root.
-- Built: on the field, the capture listeners of the three types are the same set after a root change as after the mount (before the fix: one more `beforeinput` and one more `compositionstart`, the old handlers never removed). On an editor holding only `registerLineInputListener` and `registerCompositionStep`, exactly one of each after registering and after a root change, and none after the cleanup.
+- Built: on the field, the capture listeners of the three types are the same count per type after a root change as after the mount (before the fix: one more `beforeinput` and one more `compositionstart`, the old handlers never removed). On an editor holding only `registerLineInputListener` and `registerCompositionStep`, exactly one of each after registering and after a root change, and none after the cleanup.
 - "Typing with a rule selected after a root change inserts once" passed before the fix as well: the first of the doubled `beforeinput` handlers stops the event (`stopImmediatePropagation`), so the second never runs. The failing tests before the fix were the two listener-count tests.
 
 ## P16-6: `base-paste-node` at `<base>`: 126 runaways, 8 cells the arrows cannot reach (information)
