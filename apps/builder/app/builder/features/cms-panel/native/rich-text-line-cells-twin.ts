@@ -45,7 +45,7 @@ export type TwinCell = {
   putBack: string;
 };
 
-const MARK = "\u0001";
+export const MARK = "\u0001";
 const LINK = `<a href="https://example.org/l">Lw</a>`;
 // the prototype's image size: a click on the kit's 2 by 3 image, then
 // Escape, can leave the caret before it in a line after a quote
@@ -170,7 +170,7 @@ const atTwinWord =
     await settle();
   };
 
-const cell = (
+export const cell = (
   name: string,
   marked: string,
   edge: Edge,

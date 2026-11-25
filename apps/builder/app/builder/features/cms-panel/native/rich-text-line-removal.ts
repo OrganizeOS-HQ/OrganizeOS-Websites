@@ -26,6 +26,7 @@ import {
   DELETE_WORD_COMMAND,
   ElementNode,
   INSERT_LINE_BREAK_COMMAND,
+  INSERT_PARAGRAPH_COMMAND,
   KEY_BACKSPACE_COMMAND,
   KEY_DELETE_COMMAND,
   type LexicalCommand,
@@ -107,6 +108,9 @@ export const BREAK_AFTER_TAG = "cms-break-after:";
  * for these only, never for a removal over a range.
  */
 const COLLAPSED_BACK_TAG = "cms-collapsed-back";
+
+/** Enter or Shift+Enter over a range with an end on the root (16.8). */
+const ENTER_ROOT_END_TAG = "cms-enter-root-end";
 
 /** A paste the line code runs over a node selection (Lexical's own paste is tagged "paste"). */
 export const PASTE_OVER_NODE_MARK = "cms-paste-over-node";
@@ -1368,6 +1372,17 @@ export const $removalMark = (
   if (selection.isCollapsed() && isDelete === false) {
     return false;
   }
+  // 16.8: Enter or Shift+Enter over a range with an end on the root, read
+  // before the removal step moves that end
+  if (
+    (command === INSERT_PARAGRAPH_COMMAND ||
+      command === INSERT_LINE_BREAK_COMMAND) &&
+    [selection.anchor, selection.focus].some((point) =>
+      $isRootOrShadowRoot(point.getNode())
+    )
+  ) {
+    $mark(ENTER_ROOT_END_TAG);
+  }
   if ($prepareRemoval(selection, "removal", isBackward)) {
     // the range holds nothing (15.10): a delete removes nothing; any other
     // command runs at the caret left at the block's end
@@ -1460,21 +1475,76 @@ export const $nothingHeldKey = (event: KeyboardEvent | null): boolean => {
 };
 
 /**
- * E1: Enter or Shift+Enter over a range from a line into a block is the
- * removal (with D3's break, decided before the edit by the removal's
- * mark), then the key at its caret.
+ * Enter and Shift+Enter over a range (16.8, T11.4): the removal of the
+ * range first, then the key at the caret the removal leaves, as Backspace
+ * over the range and then the key. The removal step and the marks are the
+ * removal mark's, which runs before this on both commands. A range from a
+ * line into a block is the join with D3's break, decided before the edit
+ * by the removal's mark (E1). Any other range Lexical's own insert removes
+ * and splits as at the head (5.4: a triple-click then Enter leaves two
+ * empty items, M8g), except in two cases, where the range is removed here
+ * and the key runs at the caret left:
+ * - an end of the range was on the root (marked by the removal mark before
+ *   its removal step moved it): Lexical's insert returns before removing a
+ *   range whose anchor is on the root (16.8). The range is removed as
+ *   Backspace removes it: Lexical's delete over a range, which also drops
+ *   an emptied first block of the root that has a sibling;
+ * - the range ends at the content end of a block of a lined container
+ *   (a quote or a nested list's item) that it does not start in: the
+ *   removal empties that block, and it goes before the key, whose split
+ *   would otherwise carry it to the new item with the caret in it (5.4
+ *   "Emptied", M13b).
+ * A range that still holds nothing once removed takes the removal step's
+ * caret, and a caret left where no text stands, directly before a block,
+ * takes that block's start. False: the key runs.
  */
 export const $enterRangeWithBreak = (): boolean => {
   const selection = $getSelection();
-  if ($isRangeSelection(selection) && selection.isCollapsed() === false) {
-    const start = selection.isBackward() ? selection.focus : selection.anchor;
-    const line = $findMatchingParent(start.getNode(), $isCmsLineNode);
+  if ($isRangeSelection(selection) === false || selection.isCollapsed()) {
+    return false;
+  }
+  const start = selection.isBackward() ? selection.focus : selection.anchor;
+  const line = $findMatchingParent(start.getNode(), $isCmsLineNode);
+  if ($isCmsLineNode(line) && $hasMark(`${BREAK_AFTER_TAG}${line.getKey()}`)) {
+    $removeRangeWithBreak(selection);
+    return false;
+  }
+  const end = selection.isBackward() ? selection.anchor : selection.focus;
+  const container = $findMatchingParent(end.getNode(), isListItemOrQuote);
+  const emptiesLinedBlock =
+    container !== null &&
+    isLinedContainer(container.getParent()) &&
+    container.is(start.getNode()) === false &&
+    container.isParentOf(start.getNode()) === false &&
+    $atContentEdge(end, container, false);
+  const onRoot = $hasMark(ENTER_ROOT_END_TAG);
+  if (onRoot === false && emptiesLinedBlock === false) {
+    return false;
+  }
+  const ends: LexicalNode[] = [];
+  for (let at: LexicalNode | null = end.getNode(); at; at = at.getParent()) {
+    ends.push(at);
+  }
+  if (onRoot) {
+    selection.deleteCharacter(true);
+  } else {
+    selection.removeText();
+  }
+  // what the removal emptied goes now, as after the removal's own update
+  // (5.4), so the key's split does not put the caret into it
+  for (const node of ends) {
+    const inContainer = isListItemOrQuote(node.getParent());
     if (
-      $isCmsLineNode(line) &&
-      $hasMark(`${BREAK_AFTER_TAG}${line.getKey()}`)
+      node.isAttached() &&
+      $isElementNode(node) &&
+      (inContainer || isListItemOrQuote(node))
     ) {
-      $removeRangeWithBreak(selection);
+      $dropEmptied(node);
     }
   }
+  if (selection.isCollapsed() === false) {
+    $lastPointToBlockEnd(selection);
+  }
+  $caretIntoBlockAfter(selection);
   return false;
 };

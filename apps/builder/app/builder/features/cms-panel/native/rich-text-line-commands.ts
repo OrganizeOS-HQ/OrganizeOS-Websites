@@ -89,7 +89,7 @@ export const LINE_HANDLER_IDS = [
   "removal.nothingHeldKey", // 451f20f04 LN 3032-3047 (15.10): $lastPointToBlockEnd; where the range then holds nothing, preventDefault, $setSelection(moved), true
   "removal.mark",
   "enter.heading", // `$enterInHeading()` (INSERT_PARAGRAPH only), from the Divider handler at `451f20f04` (rich-text-line-node.ts 2895-2897)
-  "enter.rangeWithBreak", // E1: Enter or Shift+Enter over a range from a line into a block, `$removeRangeWithBreak` (451f20f04 2902-2913); returns false so the key runs at the caret
+  "enter.rangeWithBreak", // Enter or Shift+Enter over any range (16.8, T11.4): the removal, then the key at the caret it leaves; a range from a line into a block is E1's join, `$removeRangeWithBreak` (451f20f04 2902-2913); returns false so the key runs at the caret
   "nodeSelection.typeIntoLine",
   "nodeSelection.paste",
   "nodeSelection.headPath",

@@ -227,57 +227,68 @@ export class CmsLineNode extends ElementNode {
   }
 
   /**
-   * Enter in a line in an item splits the item: what follows the caret and
-   * the item's later children go to a new item. In a quote, a paragraph
-   * follows the line.
+   * Enter in a line (D2, D19). Lexical has split the line at the caret and
+   * moves what followed the caret in it to the node this returns. Four
+   * cases, each its own branch below.
    */
   insertNewAfter(
     selection: RangeSelection,
     restoreSelection = true
   ): ElementNode {
     const parent = this.getParent();
-    if ($isListItemNode(parent)) {
-      const item = $createListItemNode();
-      const rest = this.getNextSiblings();
-      parent.insertAfter(item);
-      if (this.isEmpty() && rest.length === 0) {
-        this.remove();
-        return item;
-      }
-      // at the line's end, before a block: the new item starts with that
-      // block and the caret goes to its start, as at the head
-      const point = selection.anchor;
-      const last = this.getLastDescendant();
-      const atEnd =
-        (point.key === this.getKey() &&
-          point.offset === this.getChildrenSize()) ||
-        (last !== null &&
-          point.key === last.getKey() &&
-          point.offset === last.getTextContentSize());
-      if (
-        atEnd &&
-        rest.length > 0 &&
-        $isElementNode(rest[0]) &&
-        rest[0].isInline() === false
-      ) {
-        item.append(...rest);
-        return item;
-      }
-      const line = $createCmsLineNode();
-      item.append(line, ...rest);
-      return line;
-    }
-    // at the line's start in a quote: an empty line (one line break)
-    // stays before, and the text stays a line (D2, D19)
+    const isItem = $isListItemNode(parent);
+    const rest = this.getNextSiblings();
     const point = selection.anchor;
+    // 5.8, an empty last line: Enter moves to a new item and the line goes
+    if (isItem && this.isEmpty() && rest.length === 0) {
+      const item = $createListItemNode();
+      parent.insertAfter(item);
+      this.remove();
+      return item;
+    }
+    // TQT, a line's end before a block: the new item starts with that
+    // block and the caret goes to its start, as at the head
+    const last = this.getLastDescendant();
+    const atEnd =
+      (point.key === this.getKey() &&
+        point.offset === this.getChildrenSize()) ||
+      (last !== null &&
+        point.key === last.getKey() &&
+        point.offset === last.getTextContentSize());
+    if (
+      isItem &&
+      atEnd &&
+      rest.length > 0 &&
+      $isElementNode(rest[0]) &&
+      rest[0].isInline() === false
+    ) {
+      const item = $createListItemNode();
+      parent.insertAfter(item);
+      item.append(...rest);
+      return item;
+    }
+    // D19, a line's start in a quote: an empty line (one line break) stays
+    // before, and the text stays a line. This relies on Lexical reading the
+    // nodes after the caret before it calls this, so the line is still
+    // whole here (Task 21 pins it)
     const first = this.getFirstDescendant();
     const atStart =
       (point.key === this.getKey() && point.offset === 0) ||
       (first !== null && point.key === first.getKey() && point.offset === 0);
-    if (atStart && this.isEmpty() === false) {
+    if (isItem === false && atStart && this.isEmpty() === false) {
       const line = $createCmsLineNode();
       this.insertAfter(line, restoreSelection);
       this.append($createLineBreakNode());
+      return line;
+    }
+    // the default split: in an item, what follows the caret and the item's
+    // later children go to a new item; in a quote, a paragraph follows the
+    // line
+    if (isItem) {
+      const item = $createListItemNode();
+      parent.insertAfter(item);
+      const line = $createCmsLineNode();
+      item.append(line, ...rest);
       return line;
     }
     const paragraph = $createParagraphNode();
