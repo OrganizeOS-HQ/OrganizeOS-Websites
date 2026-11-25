@@ -11,6 +11,7 @@ Measured at the branch (Task 18's work, on 218ec9d) and at `<base>` (SP/r1-base,
 - Pinned: the content only (the test "the ten ranges beside a root-level rule" compares what each copy holds with what the fixture cell holds). Candidates: (a) the branch's inline copy (15.10's move for every block before the point); (b) `<base>`'s paragraph (15.10's move only after a nested block, a quote or a list, as check 4's line 84 words it).
 - Reachable by real input: a real drag from `A0w` onto the rule ends at `element:root@1` (the test "a real drag from A0w onto the rule" asserts that end), so this is what a person gets, not only a range placed by structure.
 - Check 4's text reads toward (b): its lines 82 and 84 name the class as "the caret at the end of a nested block (a quote, a list) that a root-level rule follows", say "a paragraph or a heading before the rule never takes a root point", and rule the move for a last point "directly after a nested block". The cause on the branch is the carried `$lastPointToBlockEnd`, which treats any block before the point as nested, a top-level paragraph included.
+- **Ruled (T39.1): candidate (b).** The writer takes 15.10's last-point move only after a nested block; a last point on the root after a top-level paragraph or heading stays for the writer (`$lastPointToBlockEnd`'s `"writer"` use), so the copy is `<base>`'s `<p>0w</p>`. The removal is unchanged (it takes `0w`). Pinned: the three formats against `base-1511-copy` in both directions, and the real drag from `A0w` (`<p>A0w</p>`).
 
 ## P18-2: 16.7 in a lined item: a range that ends between two quotes still carries the second quote's shell
 
@@ -29,6 +30,8 @@ Measured at the branch (Task 18's work, on 218ec9d) and at `<base>` (SP/r1-base,
 
   The ruled result (16.7) is the branch's without the last `<blockquote><p></p></blockquote>` and its `quote(paragraph())`; neither build gives it. The oracle's text is `0wQ1w`, `1w`, `wT0wQ1w`.
 
+- **Ruled (T39.2): candidate (a).** The copy carries the second quote's empty shell. Pinned in the three cells, both directions ("Task 18: an end at the next block's start carries its empty shell (T39.2)"): the three formats above, the copy holding exactly what the range holds, and no `Q2w` (where `<base>` copies the whole second quote).
+
 ## P18-3: 16.7 before an item: a range that ends at a list's point before an item carries the item's empty shell
 
 - Stored: (lined) `LI(T0w<blockquote><p>Q1w</p></blockquote>)`, the end the list's point before the `Nw` item; (unlined, the "list-before-item" case the first build dropped) `<ul><li>Aw</li><li>Bw</li></ul><p>Zw</p>`, the end the list's point before the `Bw` item. Place: by structure after a real click, each start below, both directions (same results either way). Action: copy. Measured at the branch on 9ca6600 and at `<base>` 2a96a45.
@@ -42,6 +45,7 @@ Measured at the branch (Task 18's work, on 218ec9d) and at `<base>` (SP/r1-base,
   | unlined | `Aw@1`  | `<ul><li>w</li><li></li></ul>`                                                | `list(listitem('w'),listitem())`                                         | `w\n`           |
 
 - Not pinned. Candidates: (a) both builds' clipboard with the empty `<li></li>` (the range as Lexical holds it is a text end at the next item's start, which check 4, 15.11 keeps with the block's shell: D6); (b) no shell of the item (16.7 and K14: the range's end, as placed, is a point between blocks and the range does not enter the item), which needs the writer to read the end before Lexical's normalisation or to treat a text end at an item's start, reached from a list point, as that point.
+- **Ruled (T39.2): candidate (a).** The copy carries the next item's empty shell. Pinned in the four cells, both directions, in the same describe: the three formats above and the copy holding exactly what the range holds.
 
 ## P18-4: not used
 
@@ -52,6 +56,7 @@ The grid's 16.6 check now compares the empty elements of the raw text/html and o
 - Cells (grid `rich-text-line-grid-clipboard.test.tsx`, named in its `NO_RANGE`): `real03 imgLineEnd-QTIQ` (`LI(<blockquote><p>Q0w</p></blockquote>T1w<img><blockquote><p>Q2w</p></blockquote>)`, click `T1w@1`, Shift+click the image's right edge), `real04 imgLineEnd-QTIQ` (the same shape, click `Q2w@1`), `real11 imgLineStart-TQIT` (`LI(T0w<blockquote><p>Q1w</p></blockquote><img>T2w)`, click `T0w@1`, Shift+click the image's left edge). Action: copy; and, after a remount and the same input, cut.
 - At the branch (9ca6600) and at `<base>` (2a96a45) alike: the image's popover opens, focus moves to its input, and Lexical holds no selection (T12.1; T27.1: no real input node-selects an image, so D15's node-selection rules do not apply). The copy and the cut write no `text/html`, no editor data and no `text/plain` (the field's handler returns `false` with no selection), fire no onChange, and change nothing.
 - Pinned: the state reached (no selection, the popover open), ruled by T12.1. Not pinned: the copy's and the cut's result (nothing written, nothing removed), which no ruling names for a cut while an image's popover holds focus. Candidates: (a) as both builds: nothing; (b) a cut or copy of the image the popover is open on.
+- **Ruled (T39.3): controls.** Pinned in the grid's three `NO_RANGE` cells: a copy and a cut, by the event (a sentinel on its clipboard) and by a real key (a sentinel on the system clipboard), leave the sentinel and the value unchanged, with no onChange.
 
 ## Built without a P record
 

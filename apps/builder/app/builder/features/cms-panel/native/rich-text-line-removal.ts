@@ -16,6 +16,7 @@ import {
   $getSelection,
   $isDecoratorNode,
   $isElementNode,
+  $isParagraphNode,
   $isRangeSelection,
   $isRootOrShadowRoot,
   $isTextNode,
@@ -703,8 +704,10 @@ export const $lineFormHasNothing = () => {
  * root, a list, a quote) directly after a nested block holds what the
  * range ending at that block's content end holds, and moves there: its
  * last text's end, else the place after its last child. A last point
- * after a rule stays. E: an end directly before a block takes its content
- * start (for the writer, a first point only). True when it moved.
+ * after a rule stays. For the writer (T39.1) a last point on the root after
+ * a paragraph or a heading stays too. E: an end directly before a block
+ * takes its content start (for the writer, a first point only). True when
+ * it moved.
  */
 export const $lastPointToBlockEnd = (
   selection: RangeSelection,
@@ -728,7 +731,13 @@ export const $lastPointToBlockEnd = (
     const block = (last.getNode() as ElementNode).getChildAtIndex(
       last.offset - 1
     );
-    if (isBlock(block)) {
+    // T39.1: for the writer, a last point after a top-level paragraph or
+    // heading stays; only a nested block (a quote, a list) moves it
+    const topLevelLeaf =
+      use === "writer" &&
+      $isRootOrShadowRoot(last.getNode()) &&
+      ($isParagraphNode(block) || $isHeadingNode(block));
+    if (isBlock(block) && topLevelLeaf === false) {
       const end = block.getLastDescendant();
       if ($isTextNode(end)) {
         last.set(end.getKey(), end.getTextContentSize(), "text");

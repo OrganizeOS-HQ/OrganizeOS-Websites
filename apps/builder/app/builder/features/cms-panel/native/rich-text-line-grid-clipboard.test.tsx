@@ -12,7 +12,8 @@
 // - D6: the clipboard holds nothing outside the selection and everything in
 //   it; a cut removes exactly what its clipboard holds (P and S stay).
 import { describe, expect, test, vi } from "vitest";
-import { userEvent } from "@vitest/browser/context";
+import { act } from "react-dom/test-utils";
+import { commands, userEvent } from "@vitest/browser/context";
 import {
   $createRangeSelection,
   $getRoot,
@@ -43,6 +44,13 @@ import {
   UNLINED_CASES,
 } from "./rich-text-line-writer-cases";
 import { editable, editorOf, settle } from "./rich-text-test-harness";
+import { exportRichTextHtml } from "./rich-text-html";
+
+declare module "@vitest/browser/context" {
+  interface BrowserCommands {
+    grantClipboard: () => Promise<void>;
+  }
+}
 
 const EDITOR_DATA = "application/x-lexical-editor";
 
@@ -295,7 +303,8 @@ const beyond = (found: Counts, entered: Counts) =>
  * The cells whose real input leaves the field no range: a Shift+click on an
  * image opens its popover, and Lexical holds no selection while it is open
  * (T12.1; T27.1: no real input node-selects an image, so D15 does not
- * apply). What their copy and cut do is P18-5, not pinned here.
+ * apply). Their copy and cut are controls (T39.3, P18-5): the clipboard
+ * sentinel stays and the value is unchanged.
  */
 const NO_RANGE = [
   'real03 imgLineEnd-QTIQ | {"k":"shiftclickImg","click":["T1w",1],"img":0,"side":"right"}',
@@ -341,6 +350,42 @@ const runCell = async (cell: Case) => {
   if (NO_RANGE.includes(cell.id)) {
     expect(noSelection, "Lexical holds no selection (T12.1)").toBe(true);
     expect(popovers, "the image's popover is open (T12.1)").toBeGreaterThan(0);
+    // T39.3 (P18-5): controls. A copy and a cut, by the event and by a real
+    // key, leave the clipboard sentinel and the value as they were
+    for (const kind of ["copy", "cut"] as const) {
+      const onSentinel = await mount(cell.html);
+      await place(cell);
+      const value = exportRichTextHtml(editorOf()!);
+      onSentinel.mockClear();
+      const transfer = new DataTransfer();
+      transfer.setData("text/plain", "Zz");
+      await act(async () => {
+        editable()!.dispatchEvent(
+          new ClipboardEvent(kind, {
+            bubbles: true,
+            cancelable: true,
+            clipboardData: transfer,
+          })
+        );
+      });
+      await settle();
+      expect(
+        Object.fromEntries(transfer.types.map((t) => [t, transfer.getData(t)])),
+        `${kind}: the event's clipboard sentinel stays`
+      ).toEqual({ "text/plain": "Zz" });
+      await commands.grantClipboard();
+      await navigator.clipboard.writeText("Zz");
+      await userEvent.keyboard(
+        `{Control>}${kind === "copy" ? "c" : "x"}{/Control}`
+      );
+      await settle();
+      expect(
+        await navigator.clipboard.readText(),
+        `${kind}: the clipboard sentinel stays`
+      ).toBe("Zz");
+      expect(onSentinel.mock.calls.length, `${kind}: no onChange`).toBe(0);
+      expect(exportRichTextHtml(editorOf()!), `${kind}: the value`).toBe(value);
+    }
     return;
   }
   expect(before, "the real input leaves a range").not.toBeNull();

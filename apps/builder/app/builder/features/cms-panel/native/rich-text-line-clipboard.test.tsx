@@ -849,6 +849,35 @@ const HEAD_COPIES_MORE = new Set([
   "pair-back beforeRule..afterRule",
 ]);
 
+/**
+ * T39.1 (P18-1): a last point on the root after a top-level paragraph stays
+ * for the writer, so these two cells copy as `<base>` does, in all three
+ * formats.
+ */
+const HEAD_COPIES_THE_SAME = new Set([
+  "beforeRule -> prevP A0w@1",
+  "prevP A0w@1 -> beforeRule",
+]);
+
+/** The three formats: the bare text/html, the editor data's nodes, text/plain. */
+const threeFormats = (data: Record<string, string>) => ({
+  html: bare(data["text/html"]),
+  data: JSON.parse(data[EDITOR_DATA] ?? "{}").nodes,
+  text: data["text/plain"],
+});
+
+/** The editor data as a shape: `type(children)`, a text as `'text'`. */
+const dataShape = (json: string | undefined) => {
+  type J = { type: string; text?: string; children?: J[] };
+  const walk = (node: J): string =>
+    node.text !== undefined
+      ? `'${node.text}'`
+      : node.children === undefined
+        ? node.type
+        : `${node.type}(${node.children.map(walk).join(",")})`;
+  return (JSON.parse(json ?? "{}").nodes as J[]).map(walk).join(",");
+};
+
 /** A real drag from the start of `word` onto the root-level rule (check 4, 15.11: it ends before the rule). */
 const dragOntoRule =
   (word: string): Step =>
@@ -956,6 +985,11 @@ describe("Task 18: the ten ranges beside a root-level rule (base-1511-copy)", ()
         text: (copied["text/plain"] ?? "").replace(/\n/g, ""),
         ...heldOfHtml(copied["text/html"]),
       };
+      if (HEAD_COPIES_THE_SAME.has(name)) {
+        expect(threeFormats(copied), "T39.1: the head's copy").toEqual(
+          threeFormats(head.clipboard)
+        );
+      }
       if (HEAD_COPIES_MORE.has(name)) {
         expect(ownHeld, "the head copies more than the range").not.toEqual(
           headHeld
@@ -970,12 +1004,28 @@ describe("Task 18: the ten ranges beside a root-level rule (base-1511-copy)", ()
   // word that ends on the rule
   for (const word of ["A0w", "B2w"]) {
     test(`a real drag from ${word} onto the rule: the copy, the removal and the cut equal the oracle`, async () => {
-      await expectRootRuleCell("<p>A0w</p><hr><p>B2w</p>", async () => {
-        await dragOntoRule(word)();
-        expect(caretKey(), "the drag ends before the rule").toMatch(
-          /element:root@1/
-        );
-      });
+      const copied = await expectRootRuleCell(
+        "<p>A0w</p><hr><p>B2w</p>",
+        async () => {
+          await dragOntoRule(word)();
+          expect(caretKey(), "the drag ends before the rule").toMatch(
+            /element:root@1/
+          );
+        }
+      );
+      if (word === "A0w") {
+        // T39.1: the paragraph before the rule is top-level, so the copy
+        // keeps it, as the head's does
+        expect({
+          html: bare(copied["text/html"]),
+          data: dataShape(copied[EDITOR_DATA]),
+          text: copied["text/plain"],
+        }).toEqual({
+          html: "<p>A0w</p>",
+          data: "paragraph('A0w')",
+          text: "A0w\n",
+        });
+      }
     });
   }
 });
@@ -1063,8 +1113,8 @@ describe("Task 18: 16.7, the shell rule holds in a list item and a quote", () =>
   });
 
   // K14 in a lined item. The cells whose end is a point between two quotes
-  // (P18-2) or before an item (P18-3) do not give the ruled result and are
-  // not pinned here
+  // (P18-2) or before an item (P18-3) carry the next block's empty shell
+  // (T39.2) and are pinned in the describe below
   type Shell = { tag: string; type: string; most: number };
   const inLine: Array<{
     name: string;
@@ -1150,6 +1200,135 @@ describe("Task 18: 16.7, the shell rule holds in a list item and a quote", () =>
             countTypes(held[EDITOR_DATA], shell.type),
             `no shell in the editor data: ${shell.type}`
           ).toBeLessThanOrEqual(shell.most);
+        }
+      });
+    }
+  }
+});
+
+// T39.2 (P18-2, P18-3): an end that reaches the writer as a text end at the
+// next block's start (the field's point step, or Lexical's own) copies that
+// block's empty shell (check 4, 15.11, D6), and the copy holds exactly what
+// the range holds
+describe("Task 18: an end at the next block's start carries its empty shell (T39.2)", () => {
+  const TQQT = LI(
+    "T0w<blockquote><p>Q1w</p></blockquote><blockquote><p>Q2w</p></blockquote>T3w"
+  );
+  const TQ = LI("T0w<blockquote><p>Q1w</p></blockquote>");
+  const cells: Array<{
+    name: string;
+    stored: string;
+    from: string;
+    $end: () => { key: string; offset: number; type: "element" };
+    html: string;
+    data: string;
+    text: string;
+    /** `<base>` copies the whole second quote here (P18-2). */
+    notQ2?: boolean;
+  }> = [
+    {
+      name: "P18-2: T0w@1 to the point between two quotes",
+      stored: TQQT,
+      from: "T0w",
+      $end: $besideNode("quote", "after", 0),
+      html: "0w<blockquote><p>Q1w</p></blockquote><blockquote><p></p></blockquote>",
+      data: "'0w',quote(paragraph('Q1w')),quote(paragraph())",
+      text: "0w\nQ1w\n",
+      notQ2: true,
+    },
+    {
+      name: "P18-2: Q1w@1 to the point between two quotes",
+      stored: TQQT,
+      from: "Q1w",
+      $end: $besideNode("quote", "after", 0),
+      html: "<blockquote><p>1w</p></blockquote><blockquote><p></p></blockquote>",
+      data: "quote(paragraph('1w')),quote(paragraph())",
+      text: "1w\n",
+      notQ2: true,
+    },
+    {
+      name: "P18-2: Pw@1 to the point between two quotes",
+      stored: TQQT,
+      from: "Pw",
+      $end: $besideNode("quote", "after", 0),
+      html: "<ul><li>w</li><li>T0w<blockquote><p>Q1w</p></blockquote><blockquote><p></p></blockquote></li></ul>",
+      data: "list(listitem('w'),listitem('T0w',quote(paragraph('Q1w')),quote(paragraph())))",
+      text: "w\nT0w\nQ1w\n",
+      notQ2: true,
+    },
+    {
+      name: "P18-3: T0w@1 to the list's point before the next item",
+      stored: TQ,
+      from: "T0w",
+      $end: $besideNode("listitem", "before", 2),
+      html: "<ul><li>0w<blockquote><p>Q1w</p></blockquote></li><li></li></ul>",
+      data: "list(listitem('0w',quote(paragraph('Q1w'))),listitem())",
+      text: "0w\nQ1w\n",
+    },
+    {
+      name: "P18-3: Q1w@1 to the list's point before the next item",
+      stored: TQ,
+      from: "Q1w",
+      $end: $besideNode("listitem", "before", 2),
+      html: "<ul><li><blockquote><p>1w</p></blockquote></li><li></li></ul>",
+      data: "list(listitem(quote(paragraph('1w'))),listitem())",
+      text: "1w\n",
+    },
+    {
+      name: "P18-3: Pw@1 to the list's point before the next item",
+      stored: TQ,
+      from: "Pw",
+      $end: $besideNode("listitem", "before", 2),
+      html: "<ul><li>w</li><li>T0w<blockquote><p>Q1w</p></blockquote></li><li></li></ul>",
+      data: "list(listitem('w'),listitem('T0w',quote(paragraph('Q1w'))),listitem())",
+      text: "w\nT0w\nQ1w\n",
+    },
+    {
+      name: "P18-3: an unlined list, Aw@1 to the point before the next item",
+      stored: "<ul><li>Aw</li><li>Bw</li></ul><p>Zw</p>",
+      from: "Aw",
+      $end: $besideNode("listitem", "before", 1),
+      html: "<ul><li>w</li><li></li></ul>",
+      data: "list(listitem('w'),listitem())",
+      text: "w\n",
+    },
+  ];
+  for (const cell of cells) {
+    for (const backward of [false, true]) {
+      test(`${cell.name}${backward ? ", backward" : ""}`, async () => {
+        const onChange = await mount(cell.stored);
+        const $start = $textPoint(cell.from, 1);
+        await (
+          backward ? setRange(cell.$end, $start) : setRange($start, cell.$end)
+        )();
+        const { h } = oracleParts();
+        await copyKeeps(onChange)();
+        const held = clipboard();
+        expect({
+          html: bare(held["text/html"]),
+          data: dataShape(held[EDITOR_DATA]),
+          text: held["text/plain"],
+        }).toEqual({ html: cell.html, data: cell.data, text: cell.text });
+        // the copy holds exactly what the range holds
+        expect(
+          {
+            text: (held["text/plain"] ?? "").replace(/\n/g, ""),
+            ...heldOfHtml(held["text/html"]),
+          },
+          "the copy holds H"
+        ).toEqual({
+          text: h.text,
+          images: h.images,
+          rules: h.rules,
+          html: h.text,
+        });
+        if (cell.notQ2 === true) {
+          expect(held["text/html"], "not the whole second quote").not.toContain(
+            "Q2w"
+          );
+          expect(held[EDITOR_DATA], "not the whole second quote").not.toContain(
+            "Q2w"
+          );
         }
       });
     }
