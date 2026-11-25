@@ -1489,8 +1489,8 @@ export const $nothingHeldKey = (event: KeyboardEvent | null): boolean => {
  *   range whose anchor is on the root (16.8). The range is removed as
  *   Backspace removes it: Lexical's delete over a range, which also drops
  *   an emptied first block of the root that has a sibling;
- * - the range ends at the content end of a block of a lined container
- *   (a quote or a nested list's item) that it does not start in: the
+ * - the range ends at the content end of a quote whose parent is a lined
+ *   container (a lined item or a lined quote) and that it does not start in: the
  *   removal empties that block, and it goes before the key, whose split
  *   would otherwise carry it to the new item with the caret in it (5.4
  *   "Emptied", M13b).
