@@ -310,6 +310,7 @@ export const registerCompositionStep = (editor: LexicalEditor) => {
   );
 };
 
+/** Lexical's history, held where the line rules can reach it (K). */
 export const CmsHistoryPlugin = () => {
   const [editor] = useLexicalComposerContext();
   const [historyState] = useState(createEmptyHistoryState);

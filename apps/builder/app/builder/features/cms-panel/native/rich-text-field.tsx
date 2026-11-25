@@ -2652,7 +2652,6 @@ const ImageEditingPlugin = () => {
   return null;
 };
 
-/** Lexical's history, held where the line rules can reach it (K). */
 /** The value the field reports for the editor's document. */
 const fieldValueOf = (editor: LexicalEditor): FieldValue => {
   const html = exportRichTextHtml(editor);
