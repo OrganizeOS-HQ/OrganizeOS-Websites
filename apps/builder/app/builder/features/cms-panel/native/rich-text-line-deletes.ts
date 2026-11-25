@@ -4,6 +4,8 @@ import { $isListItemNode } from "@lexical/list";
 import { $isHeadingNode, $isQuoteNode } from "@lexical/rich-text";
 import { $findMatchingParent } from "@lexical/utils";
 import {
+  $addUpdateTag,
+  $createParagraphNode,
   $getEditor,
   $getSelection,
   $isDecoratorNode,
@@ -22,6 +24,7 @@ import {
 import {
   $atContentEdge,
   $childAtEdge,
+  $createCmsLineNode,
   $isCmsLineNode,
   isBlockDecorator,
   isLineBreak,
@@ -92,6 +95,10 @@ export const $emptyLine = (
     beside.remove();
     return true;
   }
+  if (isBackward === false && $isQuoteNode(beside)) {
+    $emptyLineBeforeQuote(line, beside, command);
+    return true;
+  }
   // no rule that way: Lexical's own delete runs from the line. The join
   // cells of 5.3 (TR@2 and RR@2 forward, RT@0 and RR@0 backward: a rule on
   // the line's other side, the item's edge that way and an item beyond)
@@ -112,6 +119,29 @@ export const $emptyLine = (
     return true;
   }
   return false;
+};
+
+/**
+ * T33.4 (P14-7): forward at an empty line that holds the caret before a
+ * quote, Delete and Ctrl+Delete remove the line and the quote stays, the
+ * caret at its start; the line form removes nothing (the line form at a
+ * line's end before a block, P7-lineForward). The value is unchanged (an
+ * empty line exports nothing), so neither is an edit: no onChange, no
+ * undo step (16.10; the field's change plugin skips history-merge
+ * updates). First example: `LI(k<blockquote><p>Q1w</p></blockquote>)`,
+ * a click after k, Backspace, then Delete.
+ */
+const $emptyLineBeforeQuote = (
+  line: ElementNode,
+  quote: ElementNode,
+  command: LexicalCommand<unknown>
+) => {
+  if (command === DELETE_LINE_COMMAND) {
+    return;
+  }
+  $addUpdateTag("history-merge");
+  line.remove();
+  quote.selectStart();
 };
 
 // D3's fourth case and D9: Backspace at a block's start removes a line
@@ -514,7 +544,7 @@ export const $noReorderingJoin = (
     return false;
   }
   const first = holder.getFirstChild();
-  if (first === null || $isTextNode(first) || isLineBreak(first)) {
+  if (first === null) {
     return false;
   }
   const parent = holder.getParent();
@@ -525,8 +555,60 @@ export const $noReorderingJoin = (
   if ($isCodeNode(before) === false) {
     return false;
   }
+  if (codeCanHold(first)) {
+    // the key rows leave the join to the delete commands
+    if (event === null) {
+      $leaveBehindWhatCodeCannotHold(holder);
+    }
+    return false;
+  }
   event?.preventDefault();
   return true;
+};
+
+/** A child a code block holds: text and line breaks only. */
+const codeCanHold = (node: LexicalNode) =>
+  $isTextNode(node) || isLineBreak(node);
+
+/**
+ * T33.3 (P14-2): a join into a code block carries what the block can hold
+ * up to the first child it cannot hold (an image, a link); from that child
+ * on, the rest stays behind: a paragraph after the code block at the
+ * root, a line after it in a list item (first example: Backspace at T1w's
+ * start in `<pre><code>C0w</code></pre><p>T1w<a href="https://example.org/">
+ * Lw</a></p>` writes `<pre><code>C0wT1w</code></pre><p><a href=
+ * "https://example.org/">Lw</a></p>`). Splits the rest off before the
+ * join, which Lexical's delete then makes with what is left. A quote's
+ * paragraph is not ruled (P14-10) and is left as it was.
+ */
+const $leaveBehindWhatCodeCannotHold = (holder: ElementNode) => {
+  const parent = holder.getParent();
+  const atRoot = $isParagraphNode(holder) && $isRootOrShadowRoot(parent);
+  const inItem = $isCmsLineNode(holder) && $isListItemNode(parent);
+  // a line led by a line break joins nothing (D3 group C)
+  if (
+    (atRoot === false && inItem === false) ||
+    (inItem && $isTextNode(holder.getFirstChild()) === false)
+  ) {
+    return;
+  }
+  const stop = holder
+    .getChildren()
+    .find((child) => codeCanHold(child) === false);
+  if (stop === undefined) {
+    return;
+  }
+  const rest = atRoot ? $createParagraphNode() : $createCmsLineNode();
+  const moved: LexicalNode[] = [];
+  for (
+    let node: LexicalNode | null = stop;
+    node !== null;
+    node = node.getNextSibling()
+  ) {
+    moved.push(node);
+  }
+  rest.append(...moved);
+  holder.insertAfter(rest);
 };
 
 /** A caret at the start of a lined item's line that a block stands before. */

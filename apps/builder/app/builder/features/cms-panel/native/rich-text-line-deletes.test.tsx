@@ -1,10 +1,19 @@
 import { describe, expect, test } from "vitest";
-import { $getSelection, $isRangeSelection, type LexicalNode } from "lexical";
+import { act } from "react-dom/test-utils";
+import { $isHeadingNode } from "@lexical/rich-text";
+import { $dfs } from "@lexical/utils";
+import {
+  $getSelection,
+  $isRangeSelection,
+  type ElementNode,
+  type LexicalNode,
+} from "lexical";
 import { isLinedContainer } from "./rich-text-line-node";
 import {
   at,
   backspace,
   beside,
+  caretKey,
   del,
   expectEdit,
   IMG,
@@ -31,7 +40,8 @@ import {
 import { undoDepth } from "./rich-text-line-test-kit-branch";
 import { keyChangesNothingCells } from "./rich-text-line-cells-key-changes-nothing";
 import keyChangesNothingJson from "./__fixtures__/rich-text-line-base-key-changes-nothing.json";
-import { editorOf, lastHtml } from "./rich-text-test-harness";
+import { exportRichTextHtml } from "./rich-text-html";
+import { click, editorOf, lastHtml, settle } from "./rich-text-test-harness";
 
 describe("the delete precedence (5.8)", () => {
   test("the empty line's rule runs before Lexical's join", async () => {
@@ -73,6 +83,7 @@ type Row = {
   action: Step;
   write: string | null;
   caret?: string;
+  typed?: string;
   source: string;
 };
 
@@ -190,15 +201,17 @@ const ROWS: Row[] = [
     caret: "text:Q1w@0",
     source: "spec 5.7; P7-Ctrl+Delete (carry)",
   },
-  // P7-Backspace, P7-Ctrl+Backspace, P7-lineBack: the write only (the
-  // caret waits on a ruling, Task 14's P record)
+  // P7-Backspace, P7-Ctrl+Backspace, P7-lineBack: the emptied line keeps
+  // the caret, and a letter lands before the quote, outside it (T33.1)
   {
     name: "BQ el1 Backspace removes the line break only",
     stored: BQ,
     place: itemPoint(1, 1),
     action: backspace,
     write: W("<li><blockquote><p>Q1w</p></blockquote></li>"),
-    source: "P7-Backspace (carry): D18, 5.4, D3 fourth case",
+    caret: "element:listitem@0",
+    typed: W("<li>k<blockquote><p>Q1w</p></blockquote></li>"),
+    source: "P7-Backspace (carry): D18, 5.4, D3 fourth case; T33.1 (P14-1)",
   },
   {
     name: "BQ el1 Ctrl+Backspace",
@@ -206,7 +219,9 @@ const ROWS: Row[] = [
     place: itemPoint(1, 1),
     action: wordBack,
     write: W("<li><blockquote><p>Q1w</p></blockquote></li>"),
-    source: "P7-Ctrl+Backspace (carry): the twin rule",
+    caret: "element:listitem@0",
+    typed: W("<li>k<blockquote><p>Q1w</p></blockquote></li>"),
+    source: "P7-Ctrl+Backspace (carry): the twin rule; T33.1 (P14-1)",
   },
   {
     name: "BQ el1 line form backward",
@@ -214,7 +229,9 @@ const ROWS: Row[] = [
     place: itemPoint(1, 1),
     action: lineBack,
     write: W("<li><blockquote><p>Q1w</p></blockquote></li>"),
-    source: "P7-lineBack (carry)",
+    caret: "element:listitem@0",
+    typed: W("<li>k<blockquote><p>Q1w</p></blockquote></li>"),
+    source: "P7-lineBack (carry); T33.1 (P14-1)",
   },
   {
     name: "BQ el1 line form forward removes nothing",
@@ -633,6 +650,7 @@ describe("deletes at a resolved caret (D3 fourth case, D9, D5, V5, V6, V12, KS1 
         action: row.action,
         write: row.write,
         caret: row.caret,
+        typed: row.typed,
         source: row.source,
       });
     });
@@ -812,6 +830,87 @@ describe("an empty line outside 5.3's join cells keeps Lexical's word and line d
       "<ul><li><hr />T1w</li><li>Nw</li></ul>"
     );
   });
+  test("the first item's empty first line, Backspace: the line lifts with the item as an empty paragraph holding the caret", async () => {
+    await expectEdit({
+      stored: FIRST,
+      place: itemPoint(0, 0),
+      action: backspace,
+      write: "<p></p><hr /><p>T1w</p><ul><li>Nw</li></ul>",
+      caret: "element:paragraph@0",
+      source: "T33.5 (P14-8): the branch's write; 5.3",
+    });
+  });
+});
+
+describe("T33.4: forward at an emptied line before a quote (P14-7, 16.10)", () => {
+  const QUOTE = "<blockquote><p>Q1w</p></blockquote>";
+  for (const [shape, rule, line] of [
+    ["LI(k<blockquote>)", "", "element:listitem@0"],
+    ["LI(<hr>k<blockquote>)", "<hr />", "element:listitem@1"],
+  ] as const) {
+    const stored = LI(`${rule}k${QUOTE}`);
+    const emptied = W(`<li>${rule}${QUOTE}</li>`);
+    for (const [key, action, caret, removes] of [
+      ["Delete", del, "text:Q1w@0", "removes the empty line, the quote stays"],
+      [
+        "Ctrl+Delete",
+        wordForward,
+        "text:Q1w@0",
+        "gives Delete's write (the empty line goes)",
+      ],
+      ["lineForward", lineForward, line, "removes nothing"],
+    ] as const) {
+      test(`${shape}, a click after k, Backspace, then ${key} ${removes}: no onChange, no undo step`, async () => {
+        const onChange = await mount(stored);
+        await then(at("k"), backspace)();
+        const editor = editorOf()!;
+        expect(short(lastHtml(onChange)), "the Backspace").toBe(emptied);
+        expect(caretKey(editor), "the emptied line holds the caret").toBe(line);
+        const depth = undoDepth();
+        onChange.mockClear();
+        await action();
+        expect(
+          onChange,
+          "16.10: the value is unchanged"
+        ).not.toHaveBeenCalled();
+        expect(short(exportRichTextHtml(editor))).toBe(emptied);
+        expect(caretKey(editor), "caret").toBe(caret);
+        expect(undoDepth(), "no undo step").toEqual(depth);
+        await keys("{Control>}z{/Control}")();
+        expect(short(lastHtml(onChange)), "one undo undoes the Backspace").toBe(
+          W(`<li>${rule}k${QUOTE}</li>`)
+        );
+      });
+    }
+  }
+});
+
+describe("T33.6: an empty heading in a root quote after a root rule (P14-9)", () => {
+  /** An element point at offset 0 of the first heading, set directly. */
+  const headingStart: Step = async () => {
+    const editor = editorOf()!;
+    await click(editor.getRootElement());
+    await act(async () => {
+      editor.update(() => {
+        const heading = $dfs().find(({ node }) => $isHeadingNode(node));
+        expect(heading, "the heading").toBeDefined();
+        (heading!.node as ElementNode).select(0, 0);
+      });
+    });
+    await settle();
+  };
+  test("Backspace equals <base>'s write (the rule and the quote go; not a fixed point)", async () => {
+    await expectEdit({
+      stored: "<hr><blockquote><h3></h3></blockquote>",
+      place: headingStart,
+      action: backspace,
+      // <base>'s write, recorded as a literal: the <base> equality (T33.6)
+      write: "",
+      caret: "element:paragraph@0",
+      fixedPoint: false,
+      source: "T33.6 (P14-9): equal to <base>, not a fixed point",
+    });
+  });
 });
 
 describe("F2 in R1, and check 5's delete rules (Step 1b)", () => {
@@ -915,6 +1014,70 @@ describe("F2 in R1, and check 5's delete rules (Step 1b)", () => {
       source: "check 5, 16.13 (measured at 451f20f04 and the head)",
     });
   });
+
+  // T33.3 (P14-2): a join into a code block carries what the block can
+  // hold up to the first child it cannot hold; from that child on, the
+  // rest stays behind (a paragraph after the code block at the root, a
+  // line after it in an item). The image cells are both builds' write;
+  // the link cells keep the link and its address behind
+  const ADDRESS = `<a href="https://example.org/">Lw</a>`;
+  const JOINS: ReadonlyArray<readonly [string, string, string, boolean]> = [
+    [
+      "an image later in a paragraph stays behind",
+      `${CODE}<p>T1w${IMG}</p>`,
+      "<pre><code>C0wT1w</code></pre><p><img /></p>",
+      false,
+    ],
+    [
+      "an image later in a line stays behind",
+      LI(`${CODE}T1w${IMG}`),
+      W("<li><pre><code>C0wT1w</code></pre><img /></li>"),
+      false,
+    ],
+    [
+      "a link later in a paragraph stays behind with its address",
+      `${CODE}<p>T1w${ADDRESS}</p>`,
+      "<pre><code>C0wT1w</code></pre><p><a>Lw</a></p>",
+      true,
+    ],
+    [
+      "a link later in a line stays behind with its address",
+      LI(`${CODE}T1w${ADDRESS}`),
+      W("<li><pre><code>C0wT1w</code></pre><a>Lw</a></li>"),
+      true,
+    ],
+    [
+      "the text after the link stays behind with it",
+      `${CODE}<p>T1w${ADDRESS}T2w</p>`,
+      "<pre><code>C0wT1w</code></pre><p><a>Lw</a>T2w</p>",
+      true,
+    ],
+  ];
+  for (const [name, stored, write, link] of JOINS) {
+    for (const [key, action] of [
+      ["Backspace", backspace],
+      ["Ctrl+Backspace", wordBack],
+      ["lineBack", lineBack],
+    ] as const) {
+      test(`T33.3: ${name}, ${key}`, async () => {
+        await expectEdit({
+          stored,
+          place: at("T1w", 0),
+          action,
+          writeMatches: (written) => {
+            expect(short(written), "write").toBe(write);
+            if (link) {
+              expect(written, "the link's address").toContain(
+                'href="https://example.org/"'
+              );
+            }
+          },
+          caret: "text:C0wT1w@3",
+          source: "T33.3 (P14-2), 16.13",
+        });
+      });
+    }
+  }
 
   /** The write of `stored` at `place` by `key`, as the build gives it. */
   const writeOf = async (stored: string, place: Step, key: Step) =>
