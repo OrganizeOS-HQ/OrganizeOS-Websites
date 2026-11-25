@@ -365,6 +365,7 @@
   "R|quote|img|para|end|1|shiftEnter": "15.10: the range holds what it holds one press earlier",
   "R|quote|img|para|end|1|wordB": "15.10: the range holds what it holds one press earlier",
   "R|quote|img|para|end|1|wordF": "15.10: the range holds what it holds one press earlier",
+  "R|quote|img|none|end|0|wordF": "the head takes an image or a line break outside the range (check 3)",
   "R|quote|img|none|end|1|shiftEnter": "15.10: the range holds what it holds one press earlier",
   "R|quote|img|none|end|1|wordB": "15.10: the range holds what it holds one press earlier",
   "R|quote|img|none|end|1|wordF": "15.10: the range holds what it holds one press earlier",

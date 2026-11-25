@@ -42,6 +42,8 @@ import {
   $itemStartJoin,
   $joinBeforeEndingImage,
   $lineEndIntoBlock,
+  $noReorderingJoin,
+  $nothingChanges,
   $wordBesideRule,
 } from "./rich-text-line-deletes";
 import { compositionStartChar } from "./rich-text-line-history";
@@ -100,6 +102,8 @@ export const LINE_HANDLER_IDS = [
   "deletes.joinBeforeEndingImage", // 451f20f04 LN 3287, D3's second case (15.5, 16.12)
   "deletes.itemStartJoin",
   "deletes.wordBesideRule",
+  "deletes.nothingChanges", // 16.10's no-op path (check 5; Task 14 Step 1c)
+  "deletes.noReorderingJoin", // 16.13's refusal (check 5; T14.7; Task 14 Step 1c)
   "clipboard.writeCopyCut",
   "clipboard.dragStart",
   "history.compositionStartChar", // 451f20f04 LN 3844, registered by registerCompositionStep at the carry
@@ -227,6 +231,8 @@ export const COMMAND_ORDER: ReadonlyArray<CommandOrderRow> = [
     handlers: [
       "field.selectionIntoAdjacentBlocks",
       "removal.nothingHeldKey",
+      "deletes.nothingChanges",
+      "deletes.noReorderingJoin",
       "nodeSelection.headPath",
       "removal.mark",
     ],
@@ -237,6 +243,8 @@ export const COMMAND_ORDER: ReadonlyArray<CommandOrderRow> = [
     handlers: [
       "field.selectionIntoAdjacentBlocks",
       "removal.nothingHeldKey",
+      "deletes.nothingChanges",
+      "deletes.noReorderingJoin",
       "nodeSelection.headPath",
       "removal.mark",
     ],
@@ -256,6 +264,7 @@ export const COMMAND_ORDER: ReadonlyArray<CommandOrderRow> = [
     handlers: [
       "field.selectionIntoAdjacentBlocks",
       "nodeSelection.headPath",
+      "deletes.noReorderingJoin",
       "deletes.edgeForms",
       "removal.mark",
     ],
@@ -285,6 +294,7 @@ export const COMMAND_ORDER: ReadonlyArray<CommandOrderRow> = [
     handlers: [
       "field.selectionIntoAdjacentBlocks",
       "nodeSelection.headPath",
+      "deletes.noReorderingJoin",
       "deletes.edgeForms",
       "removal.mark",
     ],
@@ -295,6 +305,7 @@ export const COMMAND_ORDER: ReadonlyArray<CommandOrderRow> = [
     handlers: [
       "field.selectionIntoAdjacentBlocks",
       "nodeSelection.headPath",
+      "deletes.noReorderingJoin",
       "deletes.edgeForms",
       "removal.mark",
     ],
@@ -541,7 +552,8 @@ export const registerRichTextCommands = (
     "toolbar.divider": () => $divider(),
     "deletes.edgeForms": (payload, command) =>
       $deleteEdgeForms(command, payload as boolean),
-    "deletes.emptyLine": (payload) => $emptyLine(payload as boolean),
+    "deletes.emptyLine": (payload, command) =>
+      $emptyLine(payload as boolean, command),
     "deletes.blockEdge": (payload, command) =>
       $blockEdge(payload as boolean, command),
     "deletes.lineEndIntoBlock": (payload) =>
@@ -552,6 +564,21 @@ export const registerRichTextCommands = (
       $joinBeforeEndingImage(payload as boolean),
     "deletes.itemStartJoin": (payload) => $itemStartJoin(payload as boolean),
     "deletes.wordBesideRule": (payload) => $wordBesideRule(payload as boolean),
+    // the key rows carry the event; the delete commands their direction
+    "deletes.nothingChanges": (payload, command) =>
+      command === KEY_BACKSPACE_COMMAND || command === KEY_DELETE_COMMAND
+        ? $nothingChanges(
+            command === KEY_BACKSPACE_COMMAND,
+            payload as KeyboardEvent | null
+          )
+        : false,
+    "deletes.noReorderingJoin": (payload, command) =>
+      command === KEY_BACKSPACE_COMMAND || command === KEY_DELETE_COMMAND
+        ? $noReorderingJoin(
+            command === KEY_BACKSPACE_COMMAND,
+            payload as KeyboardEvent | null
+          )
+        : $noReorderingJoin(payload as boolean, null),
     // a cut's removal step starts with the field's own move of an end
     // between blocks into the block beside it, after the clipboard is
     // written (T11.2)

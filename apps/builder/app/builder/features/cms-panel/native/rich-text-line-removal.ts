@@ -1002,10 +1002,15 @@ export const $dropEmptied = (node: ElementNode) => {
  * An item whose first line this update joined into the item before it
  * (a removal from that item into this one) joins it whole: the rest of
  * the item follows the joined text, as an item of text and a rule joins
- * at the head.
+ * at the head. The same for a nested list's first item joined into the
+ * item its list follows, and for a root quote whose first line joined the
+ * block before: its rest stands at the root (5.8, from M1b, M2a, M2b).
  */
 export const $joinRestOfItem = (item: ElementNode) => {
-  if ($isListItemNode(item) === false || item.isEmpty()) {
+  if (
+    ($isListItemNode(item) === false && $isQuoteNode(item) === false) ||
+    item.isEmpty()
+  ) {
     return false;
   }
   const previous = $previousChildren(item.getKey());
@@ -1039,23 +1044,68 @@ export const $joinRestOfItem = (item: ElementNode) => {
   if (item.getChildren().some((child) => held.has(child.getKey()) === false)) {
     return false;
   }
-  // the text it started with joined the item before, where the caret is
-  const before = item.getPreviousSibling();
   const selection = $getSelection();
   if (
-    $isListItemNode(before) === false ||
     $isRangeSelection(selection) === false ||
     selection.isCollapsed() === false
   ) {
     return false;
   }
   const at = selection.anchor.getNode();
-  if (before.is(at) === false && before.isParentOf(at) === false) {
-    return false;
+  const holds = (node: LexicalNode | null): node is ElementNode =>
+    $isElementNode(node) && (node.is(at) || node.isParentOf(at));
+  // the text it started with joined the item before, where the caret is
+  const before = item.getPreviousSibling();
+  if ($isListItemNode(item) && $isListItemNode(before)) {
+    if (holds(before) === false) {
+      return false;
+    }
+    before.append(...item.getChildren());
+    item.remove();
+    return true;
   }
-  before.append(...item.getChildren());
-  item.remove();
-  return true;
+  // 5.8 (M1b): a nested list's first item joined the item its list
+  // follows (the item before the one that wraps the list); its rest
+  // follows the joined text in that item
+  const list = item.getParent();
+  const wrapper = list?.getParent() ?? null;
+  const outer = $isListItemNode(wrapper) ? wrapper.getPreviousSibling() : null;
+  if (
+    $isListItemNode(item) &&
+    before === null &&
+    $isListNode(list) &&
+    $isListItemNode(outer) &&
+    holds(outer)
+  ) {
+    outer.append(...item.getChildren());
+    item.remove();
+    if (list.isEmpty()) {
+      list.remove();
+    }
+    return true;
+  }
+  // 5.8 (M2a, M2b): a root quote's first line joined the block before; the
+  // quote's rest stands at the root after that block, as at the head
+  if (
+    $isQuoteNode(item) &&
+    $isRootOrShadowRoot(item.getParent()) &&
+    holds(before) &&
+    before.isInline() === false
+  ) {
+    for (const child of item.getChildren()) {
+      if ($isCmsLineNode(child)) {
+        const paragraph = $createParagraphNode();
+        paragraph.append(...child.getChildren());
+        item.insertBefore(paragraph);
+        child.remove();
+      } else {
+        item.insertBefore(child);
+      }
+    }
+    item.remove();
+    return true;
+  }
+  return false;
 };
 
 /**

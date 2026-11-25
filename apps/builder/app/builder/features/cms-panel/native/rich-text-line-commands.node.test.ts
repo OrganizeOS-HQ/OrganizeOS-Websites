@@ -146,6 +146,8 @@ describe("the one registration of the field's and the line rules' handlers", () 
         handlers: [
           "field.selectionIntoAdjacentBlocks",
           "removal.nothingHeldKey",
+          "deletes.nothingChanges",
+          "deletes.noReorderingJoin",
           "nodeSelection.headPath",
           "removal.mark",
         ],
@@ -156,6 +158,8 @@ describe("the one registration of the field's and the line rules' handlers", () 
         handlers: [
           "field.selectionIntoAdjacentBlocks",
           "removal.nothingHeldKey",
+          "deletes.nothingChanges",
+          "deletes.noReorderingJoin",
           "nodeSelection.headPath",
           "removal.mark",
         ],
@@ -175,6 +179,7 @@ describe("the one registration of the field's and the line rules' handlers", () 
         handlers: [
           "field.selectionIntoAdjacentBlocks",
           "nodeSelection.headPath",
+          "deletes.noReorderingJoin",
           "deletes.edgeForms",
           "removal.mark",
         ],
@@ -204,6 +209,7 @@ describe("the one registration of the field's and the line rules' handlers", () 
         handlers: [
           "field.selectionIntoAdjacentBlocks",
           "nodeSelection.headPath",
+          "deletes.noReorderingJoin",
           "deletes.edgeForms",
           "removal.mark",
         ],
@@ -214,6 +220,7 @@ describe("the one registration of the field's and the line rules' handlers", () 
         handlers: [
           "field.selectionIntoAdjacentBlocks",
           "nodeSelection.headPath",
+          "deletes.noReorderingJoin",
           "deletes.edgeForms",
           "removal.mark",
         ],
