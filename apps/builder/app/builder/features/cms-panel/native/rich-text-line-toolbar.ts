@@ -248,7 +248,9 @@ export const $divider = (): boolean => {
         // stands inside one, Lexical's split takes it up to the root
         for (;;) {
           const parent = node.getParent();
-          if (parent === null || $isRootOrShadowRoot(parent)) break;
+          if (parent === null || $isRootOrShadowRoot(parent)) {
+            break;
+          }
           if (offset === 0) {
             offset = node.getIndexWithinParent();
           } else if (offset >= node.getChildrenSize()) {

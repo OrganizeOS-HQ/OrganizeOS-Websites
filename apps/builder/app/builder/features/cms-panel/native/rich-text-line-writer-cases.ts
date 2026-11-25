@@ -49,10 +49,13 @@ export const oracleTokens = (root: JNode, ends: OPoint[]) => {
   const walk = (node: JNode, path: number[]) => {
     if (typeof node.text === "string") {
       ends.forEach((e, k) => {
-        if (e.type === "text" && samePath(e.path, path))
+        if (e.type === "text" && samePath(e.path, path)) {
           pos[k] = tokens.length + e.offset;
+        }
       });
-      for (const ch of node.text) tokens.push(ch);
+      for (const ch of node.text) {
+        tokens.push(ch);
+      }
       return;
     }
     if (node.children !== undefined) {
@@ -62,8 +65,9 @@ export const oracleTokens = (root: JNode, ends: OPoint[]) => {
             e.type === "element" &&
             samePath(e.path, path) &&
             e.offset === index
-          )
+          ) {
             pos[k] = tokens.length;
+          }
         });
         walk(child, [...path, index]);
       });
@@ -72,8 +76,9 @@ export const oracleTokens = (root: JNode, ends: OPoint[]) => {
           e.type === "element" &&
           samePath(e.path, path) &&
           e.offset === node.children!.length
-        )
+        ) {
           pos[k] = tokens.length;
+        }
       });
       return;
     }
@@ -85,12 +90,19 @@ export const oracleTokens = (root: JNode, ends: OPoint[]) => {
 export const oracleOf = (tokens: string[]) => {
   const out = { text: "", img: 0, hr: 0, br: 0, seq: "" };
   for (const t of tokens) {
-    if (t === "[br]") out.br += 1;
-    else if (t === "[cms-image]" || t === "[cms-figure]") out.img += 1;
-    else if (t === "[horizontalrule]") out.hr += 1;
-    else if (t.length === 1) {
-      if (t !== "\n") out.text += t;
-    } else out.text += `?${t}`;
+    if (t === "[br]") {
+      out.br += 1;
+    } else if (t === "[cms-image]" || t === "[cms-figure]") {
+      out.img += 1;
+    } else if (t === "[horizontalrule]") {
+      out.hr += 1;
+    } else if (t.length === 1) {
+      if (t !== "\n") {
+        out.text += t;
+      }
+    } else {
+      out.text += `?${t}`;
+    }
   }
   out.seq = tokens
     .filter((t) => t !== "\n")
@@ -119,16 +131,21 @@ export const oracleNow = () => {
         anchor?: never;
         focus?: never;
       } | null;
-      if (s === null || s.anchor === undefined) return null;
+      if (s === null || s.anchor === undefined) {
+        return null;
+      }
       return [$pointByPath(s.anchor), $pointByPath(s.focus!)];
     });
-  if (ends === null) return null;
+  if (ends === null) {
+    return null;
+  }
   const { tokens, pos } = oracleTokens(
     (editorOf()!.getEditorState().toJSON() as unknown as { root: JNode }).root,
     ends
   );
-  if (pos[0] === null || pos[1] === null)
+  if (pos[0] === null || pos[1] === null) {
     return { error: "end not found", ends };
+  }
   const lo = Math.min(pos[0], pos[1]);
   const hi = Math.max(pos[0], pos[1]);
   return {
@@ -140,11 +157,15 @@ export const oracleNow = () => {
 };
 /** The data's content in order, as the oracle reads it. */
 export const dataSeq = (lexical: string | undefined) => {
-  if (lexical === undefined || lexical === "") return null;
+  if (lexical === undefined || lexical === "") {
+    return null;
+  }
   const tokens: string[] = [];
   const walk = (n: JNode) => {
     if (typeof n.text === "string") {
-      for (const ch of n.text) tokens.push(ch);
+      for (const ch of n.text) {
+        tokens.push(ch);
+      }
       return;
     }
     if (n.children !== undefined) {
@@ -161,18 +182,26 @@ export const dataSeq = (lexical: string | undefined) => {
   return oracleOf(tokens);
 };
 export const htmlSeq = (html: string | undefined) => {
-  if (html === undefined || html === "") return null;
+  if (html === undefined || html === "") {
+    return null;
+  }
   const doc = new DOMParser().parseFromString(html, "text/html");
   const tokens: string[] = [];
   const walk = (n: Node) => {
     if (n.nodeType === 3) {
-      for (const ch of n.textContent ?? "") tokens.push(ch);
+      for (const ch of n.textContent ?? "") {
+        tokens.push(ch);
+      }
       return;
     }
     const tag = (n as Element).tagName?.toLowerCase();
-    if (tag === "img") tokens.push("[cms-image]");
-    else if (tag === "hr") tokens.push("[horizontalrule]");
-    else if (tag === "br") tokens.push("[br]");
+    if (tag === "img") {
+      tokens.push("[cms-image]");
+    } else if (tag === "hr") {
+      tokens.push("[horizontalrule]");
+    } else if (tag === "br") {
+      tokens.push("[br]");
+    }
     n.childNodes.forEach(walk);
   };
   walk(doc.body);
@@ -180,10 +209,14 @@ export const htmlSeq = (html: string | undefined) => {
 };
 /** The data's wrappers: its nodes with text and leaves named by kind. */
 export const shapeOf = (lexical: string | undefined) => {
-  if (lexical === undefined || lexical === "") return null;
+  if (lexical === undefined || lexical === "") {
+    return null;
+  }
   const walk = (n: JNode): string => {
-    if (typeof n.text === "string") return "t";
-    if (n.children === undefined)
+    if (typeof n.text === "string") {
+      return "t";
+    }
+    if (n.children === undefined) {
       return n.type === "linebreak"
         ? "br"
         : n.type === "horizontalrule"
@@ -191,6 +224,7 @@ export const shapeOf = (lexical: string | undefined) => {
           : n.type === "cms-image"
             ? "img"
             : n.type;
+    }
     return `${n.type}(${n.children.map(walk).join(",")})`;
   };
   try {
@@ -212,8 +246,12 @@ export type End =
 const $nth = (type: string, n: number) => {
   const found: LexicalNode[] = [];
   const walk = (node: LexicalNode) => {
-    if (node.getType() === type) found.push(node);
-    if ($isElementNode(node)) node.getChildren().forEach(walk);
+    if (node.getType() === type) {
+      found.push(node);
+    }
+    if ($isElementNode(node)) {
+      node.getChildren().forEach(walk);
+    }
   };
   walk($getRoot());
   return found[n];
@@ -227,12 +265,16 @@ const $setEnd = (
     const node = $getRoot()
       .getAllTextNodes()
       .find((t) => t.getTextContent() === end.w);
-    if (node === undefined) throw new Error(`no text ${end.w}`);
+    if (node === undefined) {
+      throw new Error(`no text ${end.w}`);
+    }
     point.set(node.getKey(), end.o, "text");
     return;
   }
   const node = $nth(end.ty, end.n);
-  if (node === undefined) throw new Error(`no ${end.ty}#${end.n}`);
+  if (node === undefined) {
+    throw new Error(`no ${end.ty}#${end.n}`);
+  }
   if (end.t === "start") {
     point.set(node.getKey(), 0, "element");
     return;

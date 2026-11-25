@@ -481,7 +481,9 @@ const $headFormClipboard = (
         }
       } else {
         for (const child of code.getChildren()) {
-          if (child.is(node) || child.isParentOf(node)) break;
+          if (child.is(node) || child.isParentOf(node)) {
+            break;
+          }
           chars += child.getTextContentSize();
         }
         chars += point.type === "text" ? point.offset : 0;
