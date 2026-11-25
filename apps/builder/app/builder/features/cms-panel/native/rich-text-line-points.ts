@@ -5,6 +5,7 @@ import { $isParentElementRTL } from "@lexical/selection";
 import { $dfs, $findMatchingParent, mergeRegister } from "@lexical/utils";
 import {
   $addUpdateTag,
+  type BaseSelection,
   $createNodeSelection,
   $createRangeSelectionFromDom,
   $getEditor,
@@ -36,6 +37,7 @@ import {
   isLinedContainer,
   lineSpike,
 } from "./rich-text-line-node";
+import type { EditTracker } from "./rich-text-line-removal";
 
 /** SPIKE: the rule violations seen, for the probe. */
 export const lineRuleViolations: string[] = [];
@@ -299,34 +301,24 @@ export const $pointIntoAdjacentBlock = (point: PointType) => {
 };
 
 /**
- * Whether this update already changed a node: a selection change Lexical
- * dispatches inside an edit keeps the edit's undo step and onChange.
- * SPIKE: reads the editor's dirty sets, which Lexical keeps private.
- */
-const $updateHasEdits = () => {
-  const editor = $getEditor() as unknown as {
-    _dirtyElements: Map<string, boolean>;
-    _dirtyLeaves: Set<string>;
-  };
-  return editor._dirtyElements.size > 0 || editor._dirtyLeaves.size > 0;
-};
-
-/**
  * 15.14: the press's own caret survives the press. A press in progress in
- * an editor, per editor (15.13's flag), and the one way the field focuses
- * an editor: during a press in it the field does not focus it (the press
- * does) and does not run what would place the caret after the focus.
+ * an editor, per editor (15.13's press state): the pointer that pressed,
+ * and the lined containers the caret was in since the press began (where
+ * its end looks for the line the caret left). The one way the field
+ * focuses an editor: during a press in it the field does not focus it (the
+ * press does) and does not run what would place the caret after the focus.
  */
-const pressing = new WeakSet<LexicalEditor>();
+type Press = { pointerId: number; containers: Set<NodeKey> };
+const presses = new WeakMap<LexicalEditor, Press>();
 
-export const isPressing = (editor: LexicalEditor) => pressing.has(editor);
+export const isPressing = (editor: LexicalEditor) => presses.has(editor);
 
 export const focusEditor = (
   editor: LexicalEditor,
   $before?: () => void,
   focusRoot = false
 ) => {
-  if (pressing.has(editor) && lineSpike.focusGuardOff === false) {
+  if (presses.has(editor) && lineSpike.focusGuardOff === false) {
     return;
   }
   if ($before !== undefined) {
@@ -356,20 +348,66 @@ const keptOf = (editor: LexicalEditor) => {
   return kept;
 };
 
-/** Empty lines that hold no point of the selection, by whether a press kept them. */
-const $leftEmptyLines = () => {
-  const kept = keptOf($getEditor());
-  const left: CmsLineNode[] = [];
-  for (const { node } of $dfs()) {
-    if ($isCmsLineNode(node) && node.isAttached() && node.isEmpty()) {
-      if (holdsSelection(node)) {
-        kept.delete(node.getKey());
-      } else {
-        left.push(node);
+/**
+ * The lined containers that hold the points of `selection`: the container
+ * of the line a point is in, or the lined container a point rests on.
+ */
+const $containersOf = (selection: BaseSelection | null): NodeKey[] => {
+  if ($isRangeSelection(selection) === false) {
+    return [];
+  }
+  const containers: NodeKey[] = [];
+  for (const point of [selection.anchor, selection.focus]) {
+    const node = point.getNode();
+    const line = $findMatchingParent(node, $isCmsLineNode);
+    const container = line === null ? node : line.getParent();
+    if (container !== null && isLinedContainer(container)) {
+      containers.push(container.getKey());
+    }
+  }
+  return containers;
+};
+
+/** The lined containers the committed selection's points are in: where the caret was. */
+const $previousContainers = () =>
+  $getEditor()
+    .getEditorState()
+    .read(() => $containersOf($getSelection()));
+
+/** The lines the points of the current selection are in. */
+const $selectionLines = (): NodeKey[] => {
+  const selection = $getSelection();
+  if ($isRangeSelection(selection) === false) {
+    return [];
+  }
+  const lines: NodeKey[] = [];
+  for (const point of [selection.anchor, selection.focus]) {
+    const line = $findMatchingParent(point.getNode(), $isCmsLineNode);
+    if (line !== null) {
+      lines.push(line.getKey());
+    }
+  }
+  return lines;
+};
+
+/** The empty lines that are children of the given containers. */
+const $emptyLinesIn = (containers: Iterable<NodeKey>) => {
+  const lines: CmsLineNode[] = [];
+  for (const key of new Set(containers)) {
+    const container = $getNodeByKey(key);
+    if (
+      $isElementNode(container) === false ||
+      container.isAttached() === false
+    ) {
+      continue;
+    }
+    for (const child of container.getChildren()) {
+      if ($isCmsLineNode(child) && child.isEmpty()) {
+        lines.push(child);
       }
     }
   }
-  return { kept, left };
+  return lines;
 };
 
 /** Harness: empty lines that hold no point of the selection and no press kept. */
@@ -389,15 +427,21 @@ export const unkeptEmptyLines = (editor: LexicalEditor) => {
     );
 };
 
-/** Empty lines that hold no point of the selection go, except kept ones. True when any did. */
-const $removeLeftEmptyLines = (only?: Set<string>) => {
-  const { kept, left } = $leftEmptyLines();
+/**
+ * The sweep (5.8): the empty lines that hold no point of the selection go,
+ * only in the given containers (where the caret was), never a kept one. A
+ * kept line that holds a point again is the caret's line again. True when
+ * any went.
+ */
+export const $removeEmptyLinesIn = (
+  containers: ReadonlyArray<NodeKey>
+): boolean => {
+  const kept = keptOf($getEditor());
   let removed = false;
-  for (const line of left) {
-    if (
-      kept.has(line.getKey()) === false &&
-      (only === undefined || only.has(line.getKey()))
-    ) {
+  for (const line of $emptyLinesIn(containers)) {
+    if (holdsSelection(line)) {
+      kept.delete(line.getKey());
+    } else if (kept.has(line.getKey()) === false) {
       line.remove();
       removed = true;
     }
@@ -405,20 +449,30 @@ const $removeLeftEmptyLines = (only?: Set<string>) => {
   return removed;
 };
 
-/** A press's end: the empty lines its caret left are kept. */
-const $keepLeftEmptyLines = () => {
-  const { kept, left } = $leftEmptyLines();
-  for (const line of left) {
-    kept.add(line.getKey());
+/** A press's end: the empty lines its caret left, in the given containers, are kept. */
+const $keepEmptyLinesIn = (containers: Iterable<NodeKey>) => {
+  const kept = keptOf($getEditor());
+  for (const line of $emptyLinesIn(containers)) {
+    if (holdsSelection(line)) {
+      kept.delete(line.getKey());
+    } else {
+      kept.add(line.getKey());
+    }
   }
 };
 
 /** Kept lines that hold no point of the selection go. True when any did. */
 const $removeKeptLines = () => {
-  const { kept, left } = $leftEmptyLines();
+  const kept = keptOf($getEditor());
   let removed = false;
-  for (const line of left) {
-    if (kept.has(line.getKey())) {
+  for (const key of kept) {
+    const line = $getNodeByKey(key);
+    if (
+      $isCmsLineNode(line) &&
+      line.isAttached() &&
+      line.isEmpty() &&
+      holdsSelection(line) === false
+    ) {
       line.remove();
       removed = true;
     }
@@ -428,11 +482,6 @@ const $removeKeptLines = () => {
 };
 
 /**
- * Before an edit command from outside the field's own keys and clipboard
- * events (a toolbar button), kept lines go in an update of their own: not
- * an edit (no undo step, no onChange).
- */
-/**
  * D: the one way the field runs an update that can change a node while a
  * node selection is current. With a node selected, the page's own range is
  * what the browser types at (the field takes that input); Lexical's commit
@@ -440,7 +489,7 @@ const $removeKeptLines = () => {
  * before the update is put back after it, when the node selection stands
  * and the page holds none. `update` commits at once (discrete).
  */
-export const keepPageRange = (editor: LexicalEditor, update: () => void) => {
+export const keepPageRange = <T>(editor: LexicalEditor, update: () => T): T => {
   const dom = window.getSelection();
   const root = editor.getRootElement();
   const saved =
@@ -453,7 +502,7 @@ export const keepPageRange = (editor: LexicalEditor, update: () => void) => {
   const nodeSelected = () =>
     editor.getEditorState().read(() => $isNodeSelection($getSelection()));
   const before = saved !== null && nodeSelected();
-  update();
+  const result = update();
   if (
     before &&
     saved !== null &&
@@ -466,8 +515,15 @@ export const keepPageRange = (editor: LexicalEditor, update: () => void) => {
   ) {
     dom.addRange(saved);
   }
+  return result;
 };
 
+/**
+ * Kept lines that do not hold the caret go, in an update of their own: not
+ * an edit (no undo step, no onChange). Before an edit command from outside
+ * the field's own keys and clipboard events (the toolbar, the popovers),
+ * and at the commit that ends a composition; never while composing.
+ */
 export const removeKeptLines = (editor: LexicalEditor) => {
   if (keptOf(editor).size === 0 || editor.isComposing()) {
     return;
@@ -710,7 +766,9 @@ export const d7Document = (state: EditorState) => {
   );
 };
 
-export const pointRules = (editor: LexicalEditor) => {
+export const pointRules = (editor: LexicalEditor, tracker?: EditTracker) => {
+  // whether the update in progress is an edit (an edit command's update)
+  const isEdit = () => tracker?.isEdit() === true;
   type PageSelection = {
     anchorNode: Node;
     anchorOffset: number;
@@ -790,21 +848,33 @@ export const pointRules = (editor: LexicalEditor) => {
   // runs when the press's own events are over (after the click, so the
   // pressed node's own click handler has run, else when the press ends
   // some other way), on the selection as it is then
-  let pressId: number | null = null;
+  // (5.8) the sweep looks only where the caret was: the lined containers
+  // that held the previous selection's points
   const $resolvePoint = () => {
-    const edited = $updateHasEdits();
+    const edited = isEdit();
+    const was = $previousContainers();
     const made = $resolveLinedPoints(true);
-    const removed = $removeLeftEmptyLines();
+    const removed = $removeEmptyLinesIn(was);
     if ((made || removed) && edited === false) {
       $addUpdateTag("history-merge");
     }
   };
-  // the press's end makes the line a caret needs; a line the caret left
-  // is kept (15.13 (a))
-  const $resolveAfterPress = () => {
-    const edited = $updateHasEdits();
+  // the press's end makes the line a caret needs, on the selection as it
+  // is when the press's own events are over: a selection change the page
+  // has not reported yet is read back first, so a line the caret left by
+  // the press is kept (15.13 (a)) whichever of the two comes first
+  const $resolveAfterPress = (press: Press) => {
+    const edited = isEdit();
+    for (const key of $previousContainers()) {
+      press.containers.add(key);
+    }
+    // only where an empty line the press could have left stands (ordinary
+    // content's presses are Lexical's own)
+    if ($emptyLinesIn(press.containers).length > 0) {
+      $readBack();
+    }
     const made = $resolveLinedPoints(true);
-    $keepLeftEmptyLines();
+    $keepEmptyLinesIn(press.containers);
     if (made && edited === false) {
       $addUpdateTag("history-merge");
     }
@@ -839,25 +909,44 @@ export const pointRules = (editor: LexicalEditor) => {
     }
   };
   const endPress = () => {
-    if (pressId === null) {
+    const press = presses.get(editor);
+    if (press === undefined) {
       return;
     }
-    pressId = null;
-    pressing.delete(editor);
+    presses.delete(editor);
     if (editor.getRootElement() === null) {
       return;
     }
     keepPageRange(editor, () =>
-      editor.update($resolveAfterPress, { discrete: true })
+      editor.update(() => $resolveAfterPress(press), { discrete: true })
     );
   };
   const onPressStart = (event: PointerEvent) => {
     // a second pointer ends the press in progress
     endPress();
     if (event.button === 0) {
-      pressId = event.pointerId;
-      pressing.add(editor);
+      presses.set(editor, {
+        pointerId: event.pointerId,
+        containers: new Set(
+          editor.getEditorState().read(() => $containersOf($getSelection()))
+        ),
+      });
     }
+  };
+  // 16.18: the press ends at its click, seen at the window in the capture
+  // phase (a listener that stops the click's propagation does not keep the
+  // press open); the held step runs in the next task, once the click's own
+  // handlers (the pressed node's, CLICK_COMMAND) have run
+  const onClickEnd = () => {
+    const press = presses.get(editor);
+    if (press === undefined) {
+      return;
+    }
+    setTimeout(() => {
+      if (presses.get(editor) === press) {
+        endPress();
+      }
+    }, 0);
   };
   // 15.12: the page's selection is read back where the page has moved
   // since Lexical last wrote or read it
@@ -920,29 +1009,30 @@ export const pointRules = (editor: LexicalEditor) => {
     const rangeHeld = editor
       .getEditorState()
       .read(() => $isRangeSelection($getSelection()));
+    const press = presses.get(editor);
     if (
       editor.isComposing() ||
       (keptOf(editor).size === 0 &&
-        pressId === null &&
+        press === undefined &&
         (rangeHeld === false || pageMoved() === false))
     ) {
       return;
     }
+    // 16.18: a key or an edit in the field ends an open press before it is
+    // handled; its held step runs here
+    presses.delete(editor);
     keepPageRange(editor, () =>
       editor.update(
         () => {
+          const was = [...$previousContainers(), ...(press?.containers ?? [])];
           // a page step read back here is the selection change the page has
           // not reported yet: its step runs as at that change (a line the
           // caret left goes) before the key or edit reads the selection
           const readBack = $readBack();
           let changed = $removeKeptLines();
-          if (readBack && pressId === null) {
+          if (readBack || press !== undefined) {
             changed = $resolveLinedPoints(true) || changed;
-            changed = $removeLeftEmptyLines() || changed;
-          }
-          if (pressId !== null) {
-            changed = $resolveLinedPoints(true) || changed;
-            changed = $removeLeftEmptyLines() || changed;
+            changed = $removeEmptyLinesIn(was) || changed;
           }
           if (changed) {
             $addUpdateTag("history-merge");
@@ -955,7 +1045,7 @@ export const pointRules = (editor: LexicalEditor) => {
   // a pointer seen with no button down: the press ended where the page
   // reported no release (outside the window, or no click followed)
   const onPointerMove = (event: PointerEvent) => {
-    if (pressId !== null && (event.buttons & 1) === 0) {
+    if (presses.has(editor) && (event.buttons & 1) === 0) {
       endPress();
     }
   };
@@ -963,9 +1053,15 @@ export const pointRules = (editor: LexicalEditor) => {
   // an empty line the caret left goes: not an edit (no undo step, no
   // onChange: the field's change plugin skips history-merge updates)
   const resolveOnSelectionChange = () => {
-    if (pressId === null) {
+    const press = presses.get(editor);
+    if (press === undefined) {
       $resolvePoint();
       $selectionBackOnPage();
+    } else {
+      // held: the press's end looks where the caret was during it too
+      for (const key of $previousContainers()) {
+        press.containers.add(key);
+      }
     }
     return false;
   };
@@ -999,7 +1095,7 @@ export const pointRules = (editor: LexicalEditor) => {
     }
     // a caret move, not an edit: a caret line made or removed is merged
     // into the history's current step (the lift is true only then)
-    const edited = $updateHasEdits();
+    const edited = isEdit();
     if ($resolveLinedPoints(true) && edited === false) {
       $addUpdateTag("history-merge");
     }
@@ -1207,10 +1303,9 @@ export const pointRules = (editor: LexicalEditor) => {
           }
         }),
         (() => {
-          // the press's own end: the click (bubbling, after the node's own
-          // handler), or a way a press ends with no click
+          // the press's own end: the click (in the capture phase, its held
+          // step in the next task), or a way a press ends with no click
           const ends = [
-            "click",
             "pointercancel",
             "dragend",
             "drop",
@@ -1223,23 +1318,17 @@ export const pointRules = (editor: LexicalEditor) => {
             }
           };
           for (const type of ends) {
-            window.addEventListener(
-              type,
-              endPress,
-              type === "click" ? false : true
-            );
+            window.addEventListener(type, endPress, true);
           }
+          window.addEventListener("click", onClickEnd, true);
           window.addEventListener("pointermove", onPointerMove, true);
           window.addEventListener("blur", onBlur, true);
           return () => {
             endPress();
             for (const type of ends) {
-              window.removeEventListener(
-                type,
-                endPress,
-                type === "click" ? false : true
-              );
+              window.removeEventListener(type, endPress, true);
             }
+            window.removeEventListener("click", onClickEnd, true);
             window.removeEventListener("pointermove", onPointerMove, true);
             window.removeEventListener("blur", onBlur, true);
           };
@@ -1254,6 +1343,17 @@ export const pointRules = (editor: LexicalEditor) => {
           root?.addEventListener("pointerdown", onShiftPress, true);
           root?.addEventListener("mousedown", onShiftMouseDown, true);
         }),
+        // 16.23: kept lines go at the commit that ends a composition
+        (() => {
+          let composing = editor.isComposing();
+          return editor.registerUpdateListener(() => {
+            const was = composing;
+            composing = editor.isComposing();
+            if (was && composing === false) {
+              removeKeptLines(editor);
+            }
+          });
+        })(),
         // 5.4 and F8: a line this commit emptied while it held the caret is
         // noted before any later update resolves the caret
         editor.registerUpdateListener(({ editorState, prevEditorState }) => {
@@ -1275,7 +1375,7 @@ export const pointRules = (editor: LexicalEditor) => {
           if (
             editor.isComposing() ||
             lineSpike.thirdPlaceOff ||
-            pressId !== null
+            presses.has(editor)
           ) {
             return;
           }
@@ -1288,31 +1388,27 @@ export const pointRules = (editor: LexicalEditor) => {
             // goes at once: only a line the selection was in before this
             // commit, never a kept one (a press holds this check off)
             const kept = keptOf(editor);
-            const was = prevEditorState.read(
-              () =>
-                new Set(
-                  $dfs()
-                    .filter(
-                      ({ node }) => $isCmsLineNode(node) && holdsSelection(node)
-                    )
-                    .map(({ node }) => node.getKey())
-                )
-            );
-            const left = editorState.read(() =>
-              $dfs().some(
-                ({ node }) =>
-                  $isCmsLineNode(node) &&
-                  was.has(node.getKey()) &&
-                  node.isEmpty() &&
-                  holdsSelection(node) === false &&
-                  kept.has(node.getKey()) === false
-              )
-            );
-            if (left) {
+            const was = prevEditorState.read($selectionLines);
+            const $left = () =>
+              was
+                .map((key) => $getNodeByKey(key))
+                .filter(
+                  (line): line is CmsLineNode =>
+                    $isCmsLineNode(line) &&
+                    line.isAttached() &&
+                    line.isEmpty() &&
+                    holdsSelection(line) === false &&
+                    kept.has(line.getKey()) === false
+                );
+            if (editorState.read($left).length > 0) {
               keepPageRange(editor, () =>
                 editor.update(
                   () => {
-                    if ($removeLeftEmptyLines(was)) {
+                    const left = $left();
+                    for (const line of left) {
+                      line.remove();
+                    }
+                    if (left.length > 0) {
                       $addUpdateTag("history-merge");
                     }
                   },

@@ -56,6 +56,7 @@ import {
   $enterRangeWithBreak,
   $nothingHeldKey,
   $removalMark,
+  createEditTracker,
 } from "./rich-text-line-removal";
 import { $divider } from "./rich-text-line-toolbar";
 
@@ -352,6 +353,27 @@ export const COMMAND_ORDER: ReadonlyArray<CommandOrderRow> = [
   },
 ];
 
+/**
+ * The edit commands of COMMAND_ORDER: each of their rows marks the update
+ * an edit before its handlers run (the edit tracker, Task 10).
+ */
+export const EDIT_COMMANDS: ReadonlySet<string> = new Set([
+  "CONTROLLED_TEXT_INSERTION_COMMAND",
+  "INSERT_PARAGRAPH_COMMAND",
+  "INSERT_LINE_BREAK_COMMAND",
+  "INSERT_HORIZONTAL_RULE_COMMAND",
+  "PASTE_COMMAND",
+  "DROP_COMMAND",
+  "SELECTION_INSERT_CLIPBOARD_NODES_COMMAND",
+  "CUT_COMMAND",
+  "KEY_BACKSPACE_COMMAND",
+  "KEY_DELETE_COMMAND",
+  "REMOVE_TEXT_COMMAND",
+  "DELETE_CHARACTER_COMMAND",
+  "DELETE_WORD_COMMAND",
+  "DELETE_LINE_COMMAND",
+]);
+
 /** The commands by their type string (a production build's command carries none). */
 const COMMANDS: Record<string, LexicalCommand<unknown>> = {
   SELECTION_CHANGE_COMMAND,
@@ -476,7 +498,8 @@ export const registerRichTextCommands = (
     }
     return handler;
   };
-  const points = pointRules(editor);
+  const tracker = createEditTracker(editor);
+  const points = pointRules(editor, tracker);
   const writeCopyCut = $writeCopyCut(config);
   const line: Record<LineHandlerId, LineHandler> = {
     "points.resolveOnSelectionChange": () =>
@@ -549,9 +572,13 @@ export const registerRichTextCommands = (
   return mergeRegister(
     ...COMMAND_ORDER.map(({ command: type, priority, handlers }) => {
       const command = COMMANDS[type];
+      const isEdit = EDIT_COMMANDS.has(type);
       return editor.registerCommand(
         command,
         (payload) => {
+          if (isEdit) {
+            tracker.markEdit();
+          }
           for (const id of handlers) {
             if (run(id, payload, command)) {
               return true;
@@ -563,6 +590,7 @@ export const registerRichTextCommands = (
       );
     }),
     registerCaretLineMark(editor),
-    points.register()
+    points.register(),
+    tracker.dispose
   );
 };
