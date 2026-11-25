@@ -72,7 +72,9 @@ export const $refuseBlockTypeOnLine = (block: BlockType): boolean => {
   ) {
     return true;
   }
-  // a code block holds no image: Code on a line holding one changes nothing
+  // a code block holds no image: Code on a line that holds only images
+  // changes nothing (D2); a line with text beside an image converts as a
+  // paragraph with one does at the head (M7b), the image left behind
   if (block === "code") {
     const line = $findMatchingParent(
       selection.anchor.getNode(),
@@ -81,7 +83,12 @@ export const $refuseBlockTypeOnLine = (block: BlockType): boolean => {
     if (
       line !== null &&
       $isCmsLineNode(line) &&
-      line.getChildren().some($isDecoratorNode)
+      line.getChildrenSize() > 0 &&
+      line
+        .getChildren()
+        .every(
+          (child) => $isDecoratorNode(child) && child.getType() === "cms-image"
+        )
     ) {
       return true;
     }

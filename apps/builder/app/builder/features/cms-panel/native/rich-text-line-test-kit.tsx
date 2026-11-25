@@ -864,6 +864,21 @@ export const blockType =
       await settle();
     }
   };
+/**
+ * Chooses `name` in the Block type select and nothing else: the keys go
+ * wherever the select's close leaves the focus (T10, T18.8).
+ */
+export const chooseBlockType =
+  (name: string): Step =>
+  async () => {
+    await click(byLabel("Block type"));
+    await click(
+      [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(
+        (option) => option.textContent === name
+      )
+    );
+    await settle();
+  };
 export const button =
   (label: string): Step =>
   () =>
