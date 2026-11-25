@@ -45,7 +45,7 @@ describe("D8: the read-only check and the headless bytes equal the baseline reco
       };
     });
     await expect(
-      JSON.stringify({ base: BASE, entries }, null, 1)
+      JSON.stringify({ base: BASE, entries }, null, 2) + "\n"
     ).toMatchFileSnapshot("./__fixtures__/rich-text-line-baseline.json");
   });
 });

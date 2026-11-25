@@ -131,7 +131,7 @@ describe("section 10: layout equals the baseline recorded at main", () => {
     const values = await measureAll();
     if (recording()) {
       await expect(
-        JSON.stringify({ base: BASE, values }, null, 1)
+        JSON.stringify({ base: BASE, values }, null, 2) + "\n"
       ).toMatchFileSnapshot("./__fixtures__/rich-text-line-layout.json");
       return;
     }

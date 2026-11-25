@@ -16,6 +16,7 @@ import {
   type LexicalEditor,
   type NodeKey,
   type RangeSelection,
+  type TextNode,
 } from "lexical";
 import {
   importRichTextHtml,
@@ -57,6 +58,7 @@ import {
   mount,
   mountExtraField,
   pasteOwn,
+  pasteText,
   quiet,
   range,
   recordEdit,
@@ -68,6 +70,7 @@ import {
   twinOf,
   backspace,
 } from "./rich-text-line-test-kit";
+import { net } from "./rich-text-line-test-kit-branch";
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -82,25 +85,24 @@ const headless = (html: string) => {
     },
   });
   registerRichTextTransforms(editor);
-  editor.update(
-    () => importRichTextHtml(editor, sanitizeRichTextHtml(html)),
-    { discrete: true }
-  );
+  editor.update(() => importRichTextHtml(editor, sanitizeRichTextHtml(html)), {
+    discrete: true,
+  });
   return editor;
 };
 
 const $middleItem = () =>
-  $getRoot().getFirstChildOrThrow<ElementNode>().getChildAtIndex(1) as ElementNode;
+  $getRoot()
+    .getFirstChildOrThrow<ElementNode>()
+    .getChildAtIndex(1) as ElementNode;
 const $named = (point: { key: NodeKey; offset: number }) =>
   `${$getNodeByKey(point.key)!.getType()}@${point.offset}`;
 const holdsLines = (editor: LexicalEditor) =>
-  editor
-    .getEditorState()
-    .read(() =>
-      $middleItem()
-        .getChildren()
-        .some((child) => child.getType() === "cms-line")
-    );
+  editor.getEditorState().read(() =>
+    $middleItem()
+      .getChildren()
+      .some((child) => child.getType() === "cms-line")
+  );
 
 const BASELINE_CASES: Array<{
   name: string;
@@ -411,7 +413,10 @@ describe("the line tests' kit", () => {
         document.removeEventListener("selectionchange", onSelection);
         document.removeEventListener(on, onPointer);
       }
-      expect(seen.indexOf(on), `${order} ${on}: ${seen}`).toBeGreaterThanOrEqual(0);
+      expect(
+        seen.indexOf(on),
+        `${order} ${on}: ${seen}`
+      ).toBeGreaterThanOrEqual(0);
       expect(
         seen.indexOf("selectionchange"),
         `${order} ${on}: ${seen}`
@@ -496,7 +501,9 @@ describe("the line tests' kit", () => {
     await at("Aw")();
     // the insert commits, and a transform takes its image out again
     const editor = editorOf()!;
-    const image = richTextNodes.find((klass) => klass.getType() === "cms-image")!;
+    const image = richTextNodes.find(
+      (klass) => klass.getType() === "cms-image"
+    )!;
     let commits = 0;
     const unregister = [
       editor.registerNodeTransform(image, (node) => {
@@ -519,5 +526,75 @@ describe("the line tests' kit", () => {
     expect(commits).toBeGreaterThan(0);
     expect(lastHtml(onChange)).not.toContain("<img");
     expect(plain(lastHtml(onChange))).toBe("<p>Aw</p>");
+  });
+});
+
+describe("the net (kit-branch)", () => {
+  const $firstText = () =>
+    $getRoot()
+      .getFirstChildOrThrow<ElementNode>()
+      .getFirstChildOrThrow<TextNode>();
+
+  test("the net fails a test whose last onChange is not the editor's export", async () => {
+    const onChange = await mount("<p>Aw</p>");
+    await at("Aw")();
+    await letter();
+    const last = lastHtml(onChange);
+    expect(plain(last)).toBe("<p>Awk</p>");
+    const editor = editorOf()!;
+    await act(async () => {
+      editor.update(() => $firstText().setTextContent("Awkx"), {
+        tag: "history-merge",
+      });
+    });
+    await settle();
+    const failures = net();
+    expect(failures).toHaveLength(1);
+    expect(failures[0]).toContain(JSON.stringify(last));
+  });
+
+  test("the net passes a test with no onChange whose state is the mounted one", async () => {
+    const onChange = await mount("<p>Aw</p>");
+    await at("Aw", 1)();
+    expect(onChange).not.toHaveBeenCalled();
+    expect(net()).toEqual([]);
+  });
+
+  test("the net fails on a composition-start character a composition left", async () => {
+    await mount("<p>Aw</p>");
+    await at("Aw", 1)();
+    const editor = editorOf()!;
+    const target = editable()!;
+    await act(async () => {
+      target.dispatchEvent(
+        new CompositionEvent("compositionstart", { bubbles: true, data: "" })
+      );
+    });
+    await settle();
+    expect(editor.isComposing()).toBe(true);
+    await act(async () => {
+      editor.update(() => $firstText().setTextContent("A\u200Bw"), {
+        tag: "history-merge",
+      });
+    });
+    await settle();
+    await act(async () => {
+      target.dispatchEvent(
+        new CompositionEvent("compositionend", { bubbles: true, data: "" })
+      );
+    });
+    await settle();
+    expect(editor.isComposing()).toBe(false);
+    const failures = net();
+    expect(failures).toHaveLength(1);
+    expect(failures[0]).toContain("composition-start");
+  });
+
+  test("the net does not flag a U+200B an edit brings", async () => {
+    const onChange = await mount("<p>Aw</p>");
+    await at("Aw")();
+    await pasteText("a\u200Bb")();
+    expect(lastHtml(onChange)).toContain("\u200B");
+    expect(net()).toEqual([]);
   });
 });

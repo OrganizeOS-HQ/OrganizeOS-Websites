@@ -139,6 +139,12 @@ jobs:
           - leg: builder core-browser-builder-cms-rich-text-sweeps
             project: core-browser-builder-cms-rich-text-sweeps
             browser: true
+          - leg: builder core-browser-builder-cms-rich-text-lines
+            project: core-browser-builder-cms-rich-text-lines
+            browser: true
+          - leg: builder core-browser-builder-cms-rich-text-grids
+            project: core-browser-builder-cms-rich-text-grids
+            browser: true
           - leg: builder app-browser-builder-shared
             project: app-browser-builder-shared
             browser: true

@@ -30,14 +30,15 @@ const browserProject = (
   group: "core" | "app",
   name: string,
   include: string[],
-  exclude: string[] = []
+  exclude: string[] = [],
+  setupFiles: string[] = []
 ) => ({
   extends: "./vitest.config.ts",
   test: {
     name: `${group}-browser-${name}`,
     include,
     exclude: [nodeTestGlob, ...exclude],
-    setupFiles: ["./vitest.browser-setup.ts"],
+    setupFiles: ["./vitest.browser-setup.ts", ...setupFiles],
     browser: {
       provider: "playwright" as const,
       enabled: true,
@@ -62,7 +63,8 @@ const serverProject = {
 // stays inside its step limit (fork doc section 7): the rich-text field's
 // tests, its generated sweeps, and everything else in the two panels. A file
 // joins a project by its name; scripts/check-every-test-runs.mjs fails when
-// two projects collect one file.
+// two projects collect one file. The line rules' tests run as two more
+// projects, the assertion files and the grids, for the same reason.
 const cmsPanelTests =
   "app/builder/features/{cms-panel,organizeos-panel}/**/*.{test,spec}.{ts,tsx}";
 const richTextTests =
@@ -71,6 +73,16 @@ const richTextSweeps = [
   "app/builder/features/cms-panel/native/rich-text-toolbar-corpus-*.{test,spec}.{ts,tsx}",
   "app/builder/features/cms-panel/native/rich-text-fuzz.{test,spec}.{ts,tsx}",
 ];
+const richTextLineTests =
+  "app/builder/features/cms-panel/native/rich-text-line-*.{test,spec}.{ts,tsx}";
+const richTextLineGrids = [
+  "app/builder/features/cms-panel/native/rich-text-line-grid-*.{test,spec}.{ts,tsx}",
+  "app/builder/features/cms-panel/native/rich-text-line-clicks.{test,spec}.{ts,tsx}",
+  "app/builder/features/cms-panel/native/rich-text-line-mount.{test,spec}.{ts,tsx}",
+  "app/builder/features/cms-panel/native/rich-text-line-layout.{test,spec}.{ts,tsx}",
+];
+const richTextNet =
+  "./app/builder/features/cms-panel/native/rich-text-line-invariant-setup.ts";
 
 const projects = [
   serverProject,
@@ -82,9 +94,30 @@ const projects = [
     "core",
     "builder-cms-rich-text",
     [richTextTests],
-    richTextSweeps
+    [...richTextSweeps, richTextLineTests],
+    [richTextNet]
   ),
-  browserProject("core", "builder-cms-rich-text-sweeps", richTextSweeps),
+  browserProject(
+    "core",
+    "builder-cms-rich-text-sweeps",
+    richTextSweeps,
+    [],
+    [richTextNet]
+  ),
+  browserProject(
+    "core",
+    "builder-cms-rich-text-lines",
+    [richTextLineTests],
+    richTextLineGrids,
+    [richTextNet]
+  ),
+  browserProject(
+    "core",
+    "builder-cms-rich-text-grids",
+    richTextLineGrids,
+    [],
+    [richTextNet]
+  ),
   browserProject(
     "core",
     "builder-features",
