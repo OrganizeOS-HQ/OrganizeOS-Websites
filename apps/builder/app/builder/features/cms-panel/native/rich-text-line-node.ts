@@ -461,6 +461,10 @@ export const $childAtEdge = (isBackward: boolean) => {
     : null;
 };
 
+/**
+ * A rule or a figure; a figure never stands in an item or a quote (Task 8's
+ * test).
+ */
 export const isBlockDecorator = (
   node: LexicalNode | null
 ): node is DecoratorNode<unknown> =>

@@ -552,6 +552,41 @@ export const nodeSelect =
       $setSelection(selection);
     });
 
+/**
+ * A collapsed element point directly before or after a node, set directly:
+ * the first (or last) node of `type` in document order, or with `text`
+ * the first whose text is `text`.
+ */
+export const beside =
+  (
+    type: string,
+    side: "before" | "after",
+    which: { last?: boolean; text?: string } = {}
+  ): Step =>
+  () =>
+    setSelection(editorOf()!, editable()!, () => {
+      const found: LexicalNode[] = [];
+      const walk = (node: LexicalNode) => {
+        if (
+          node.getType() === type &&
+          (which.text === undefined || node.getTextContent() === which.text)
+        ) {
+          found.push(node);
+        }
+        if ($isElementNode(node)) {
+          node.getChildren().forEach(walk);
+        }
+      };
+      walk($getRoot());
+      const target = which.last ? found[found.length - 1] : found[0];
+      expect(target, type).toBeDefined();
+      const parent = target.getParentOrThrow();
+      $setPoint({
+        key: parent.getKey(),
+        offset: target.getIndexWithinParent() + (side === "after" ? 1 : 0),
+      });
+    });
+
 /** A real triple click on the text `word`. */
 export const tripleClick =
   (word: string): Step =>
