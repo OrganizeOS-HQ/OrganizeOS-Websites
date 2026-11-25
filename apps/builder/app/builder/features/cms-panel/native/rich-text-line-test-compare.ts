@@ -34,9 +34,8 @@ const strip = (value: unknown): unknown => {
  * toJSON() of an editor state with every "direction" key and every
  * "cms-line" node whose children are [] left out (D7).
  */
-export const comparableState = (
-  json: SerializedEditorState
-): ComparableState => strip(json);
+export const comparableState = (json: SerializedEditorState): ComparableState =>
+  strip(json);
 
 const sorted = (value: unknown): unknown => {
   if (Array.isArray(value)) {
@@ -52,9 +51,6 @@ const sorted = (value: unknown): unknown => {
   return value;
 };
 
-export const sameState = (
-  a: SerializedEditorState,
-  b: SerializedEditorState
-) =>
+export const sameState = (a: SerializedEditorState, b: SerializedEditorState) =>
   JSON.stringify(sorted(comparableState(a))) ===
   JSON.stringify(sorted(comparableState(b)));

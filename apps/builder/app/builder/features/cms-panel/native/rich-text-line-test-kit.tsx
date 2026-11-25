@@ -159,7 +159,10 @@ export const kitSource = {
  * Mounts `html` (as stored) in the harness's field, through the kit, in
  * place of any field the test mounted before.
  */
-export const mount = (html: string, props: Partial<RichTextFieldProps> = {}) => {
+export const mount = (
+  html: string,
+  props: Partial<RichTextFieldProps> = {}
+) => {
   unmountField();
   for (const field of [...extraFields]) {
     field.unmount();
@@ -708,9 +711,12 @@ export const pasteOwn =
       },
     });
     registerRichTextTransforms(editor);
-    editor.update(() => importRichTextHtml(editor, sanitizeRichTextHtml(html)), {
-      discrete: true,
-    });
+    editor.update(
+      () => importRichTextHtml(editor, sanitizeRichTextHtml(html)),
+      {
+        discrete: true,
+      }
+    );
     let data: Record<string, string> = {};
     editor.update(
       () => {
@@ -815,19 +821,17 @@ export const link =
   };
 
 const imageCount = (editor: LexicalEditor) =>
-  editor
-    .getEditorState()
-    .read(() =>
-      $getRoot()
-        .getChildren()
-        .flatMap(function all(node): LexicalNode[] {
-          return [
-            node,
-            ...($isElementNode(node) ? node.getChildren().flatMap(all) : []),
-          ];
-        })
-        .filter((node) => node.getType() === "cms-image")
-    ).length;
+  editor.getEditorState().read(() =>
+    $getRoot()
+      .getChildren()
+      .flatMap(function all(node): LexicalNode[] {
+        return [
+          node,
+          ...($isElementNode(node) ? node.getChildren().flatMap(all) : []),
+        ];
+      })
+      .filter((node) => node.getType() === "cms-image")
+  ).length;
 
 /**
  * Image with a file chosen: waits for the upload the kit's source started,
@@ -852,9 +856,8 @@ export const imageButton: Step = async () => {
       canvas.toBlob((result) => resolve(result!), "image/png")
     );
     const file = new File([blob], "a.png", { type: "image/png" });
-    const input = fieldContainer()!.querySelector<HTMLInputElement>(
-      'input[type="file"]'
-    )!;
+    const input =
+      fieldContainer()!.querySelector<HTMLInputElement>('input[type="file"]')!;
     await act(async () => {
       byLabel("Image")!.click();
     });
@@ -1186,7 +1189,11 @@ export const $rangeOracle = (selection: RangeSelection): Held => {
     breaks: 0,
     order: isBackward ? "backward" : "forward",
   };
-  for (let index = start[0]; index <= end[0] && index < leaves.length; index += 1) {
+  for (
+    let index = start[0];
+    index <= end[0] && index < leaves.length;
+    index += 1
+  ) {
     const leaf = leaves[index];
     if ($isTextNode(leaf)) {
       const text = leaf.getTextContent();
@@ -1419,7 +1426,8 @@ export const recordEdit = async (
   const calls = onChange.mock.calls.length;
   const write = calls > 0 ? short(lastHtml(onChange)) : null;
   const caret = caretKey(editor);
-  writtenHtml = calls > 0 ? lastHtml(onChange) : sanitizeRichTextHtml(edit.stored);
+  writtenHtml =
+    calls > 0 ? lastHtml(onChange) : sanitizeRichTextHtml(edit.stored);
   const record: EditRecord = {
     write,
     calls,
@@ -1461,8 +1469,15 @@ export const recordEdit = async (
 
 /** Records the edit and asserts every check of an assertion test. */
 export const expectEdit = async (edit: EditCase) => {
-  const { write, calls, caret, typed, fixedPoint, source: _source, ...rest } =
-    edit;
+  const {
+    write,
+    calls,
+    caret,
+    typed,
+    fixedPoint,
+    source: _source,
+    ...rest
+  } = edit;
   const record = await recordEdit(rest, { typeAfter: typed !== undefined });
   expect(record.calls, "calls").toBe(calls ?? (write === null ? 0 : 1));
   expect(record.write, "write").toBe(write);

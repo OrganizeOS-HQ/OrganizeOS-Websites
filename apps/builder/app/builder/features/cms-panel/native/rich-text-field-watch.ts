@@ -1,6 +1,6 @@
 // The field's development checks: a tagged update that changes no node, and
 // the harness invariant every browser test and probe record is held to.
-import { $getRoot, type LexicalEditor } from "lexical";
+import { $getRoot, type EditorState, type LexicalEditor } from "lexical";
 import { d7Document, unkeptEmptyLines } from "./rich-text-line-node";
 
 export type FieldValue = { html: string; text: string } | null;
@@ -11,14 +11,18 @@ type Watched = {
   mounted: string | undefined;
   changes: number;
   last: FieldValue | undefined;
-  /** R1: the composition-start characters (U+200B, Chrome's) the mounted document held. */
-  startChars: number | undefined;
+  /**
+   * R1: the composition-start characters (U+200B, Chrome's) the document
+   * held before the composition under way began; undefined while none is.
+   */
+  startCharsBefore: number | undefined;
+  /** The characters each ended composition left beyond its start's count. */
+  startCharsLeft: number[];
+  unwatch: () => void;
 };
 
-const startChars = (editor: LexicalEditor) =>
-  editor
-    .getEditorState()
-    .read(() => $getRoot().getTextContent().split("\u200b").length - 1);
+const startChars = (state: EditorState) =>
+  state.read(() => $getRoot().getTextContent().split("\u200b").length - 1);
 
 const watched = new Set<Watched>();
 
@@ -87,12 +91,37 @@ export const watchField = (
     mounted: undefined,
     changes: 0,
     last: undefined,
-    startChars: undefined,
+    startCharsBefore: undefined,
+    startCharsLeft: [],
+    unwatch: () => {},
   };
   watched.add(entry);
+  // the composition-start count is taken around a composition, never
+  // against the mount: before its start (the last commit before composing),
+  // and after its end (the commit in which the editor stops composing), so
+  // a character an edit brings, a paste's or a drop's, is never counted
+  let composing = editor.isComposing();
+  if (composing) {
+    entry.startCharsBefore = startChars(editor.getEditorState());
+  }
+  entry.unwatch = editor.registerUpdateListener(
+    ({ editorState, prevEditorState }) => {
+      const now = editor.isComposing();
+      if (composing === false && now) {
+        entry.startCharsBefore = startChars(prevEditorState);
+      } else if (composing && now === false) {
+        const left =
+          startChars(editorState) - (entry.startCharsBefore ?? Infinity);
+        if (left > 0) {
+          entry.startCharsLeft.push(left);
+        }
+        entry.startCharsBefore = undefined;
+      }
+      composing = now;
+    }
+  );
   queueMicrotask(() => {
     entry.mounted = d7Document(editor.getEditorState());
-    entry.startChars = startChars(editor);
   });
   return (value: FieldValue) => {
     entry.changes += 1;
@@ -105,8 +134,6 @@ export const watchField = (
  * editor's HTML export as it stands; one that reported none holds its document
  * as mounted, under D7. Empties the watch when `clear` is set.
  */
-const editorIsIdle = (editor: LexicalEditor) => editor.isComposing() === false;
-
 export const fieldInvariantFailures = (clear: boolean) => {
   const failures: string[] = [];
   for (const entry of watched) {
@@ -118,15 +145,12 @@ export const fieldInvariantFailures = (clear: boolean) => {
         `field invariant: ${left} empty line(s) that hold no caret and no press kept`
       );
     }
-    // R1: no record ends with a composition-start character the mounted
-    // document did not hold
-    if (entry.startChars !== undefined && editorIsIdle(entry.editor)) {
-      const held = startChars(entry.editor);
-      if (held > entry.startChars) {
-        failures.push(
-          `field invariant: ${held - entry.startChars} composition-start character(s) the mounted document did not hold`
-        );
-      }
+    // R1: no composition leaves a composition-start character the document
+    // did not hold before it began
+    for (const left of entry.startCharsLeft) {
+      failures.push(
+        `field invariant: ${left} composition-start character(s) a composition left that the document did not hold before it`
+      );
     }
     if (entry.changes > 0) {
       const now = JSON.stringify(entry.valueOf()?.html ?? null);
@@ -151,6 +175,9 @@ export const fieldInvariantFailures = (clear: boolean) => {
     }
   }
   if (clear) {
+    for (const entry of watched) {
+      entry.unwatch();
+    }
     watched.clear();
   }
   return failures;

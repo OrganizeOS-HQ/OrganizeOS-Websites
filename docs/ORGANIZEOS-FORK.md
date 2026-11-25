@@ -352,13 +352,16 @@ can be merged with minimal conflict.
   nano-staged's `oxfmt --no-error-on-unmatched-pattern`, so a commit that stages
   only files the formatter ignores (this doc, under `docs/**`) passes the hook.
   `.github/workflows/main.yml`: one workflow, a `checks` job and a `tests` job
-  of twelve legs (the packages, the CLI, and one per builder Vitest project;
-  the CMS panels have three: `core-browser-builder-cms`,
-  `core-browser-builder-cms-rich-text` for the rich-text field's tests, and
+  of fourteen legs (the packages, the CLI, and one per builder Vitest project;
+  the CMS panels have five: `core-browser-builder-cms`,
+  `core-browser-builder-cms-rich-text` for the rich-text field's tests,
   `core-browser-builder-cms-rich-text-sweeps` for its three generated sweeps,
-  the two toolbar-over-corpus files and the fuzz file), with
-  no secret, environment or checkout ref, and checkouts that keep no token in
-  the clone (`persist-credentials: false`); only its cli leg builds the blocks
+  the two toolbar-over-corpus files and the fuzz file;
+  `core-browser-builder-cms-rich-text-lines` for the line rules' assertion
+  tests; and `core-browser-builder-cms-rich-text-grids` for their grids, click
+  test, mount sweep and layout test), with no secret, environment or checkout
+  ref, and checkouts that keep no token in the clone
+  (`persist-credentials: false`); only its cli leg builds the blocks
   package. The typecheck covers every package and fixture but two fixtures the
   fork never regenerates: `webstudio-features`, whose generated pages import
   the removed animation package (§2), and `react-router-vercel`, whose html
