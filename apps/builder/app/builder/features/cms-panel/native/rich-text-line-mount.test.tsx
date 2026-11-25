@@ -3,46 +3,8 @@
 import { describe, expect, test, vi } from "vitest";
 import { userEvent } from "@vitest/browser/context";
 import { getRichTextReadOnlyReason } from "./rich-text-html";
-import { sanitizeRichTextHtml } from "./rich-text-sanitize";
 import { click, editable, renderField, settle } from "./rich-text-test-harness";
-
-const PARTS: Array<(i: number) => string> = [
-  (i) => `T${i}w`,
-  () => "<br>",
-  (i) => `<blockquote>Q${i}w</blockquote>`,
-  (i) => `<blockquote><p>Q${i}a</p><p>Q${i}b</p></blockquote>`,
-  (i) => `<h3>H${i}w</h3>`,
-  (i) => `<pre><code>C${i}w</code></pre>`,
-  () => "<hr>",
-  (i) => `<ul><li>N${i}w</li></ul>`,
-];
-const PLACES: Array<(x: string) => string> = [
-  (x) => `<ul><li>Pw</li><li>${x}</li><li>Zw</li></ul>`,
-  (x) => `<ul><li>Aw<ul><li>${x}</li></ul></li></ul>`,
-  (x) => `<blockquote><ul><li>${x}</li></ul></blockquote>`,
-  (x) => `<blockquote>${x}</blockquote>`,
-];
-
-const stateSpaceValues = (maxParts: number): string[] => {
-  const sequences: number[][] = [];
-  const walk = (prefix: number[]) => {
-    if (prefix.length > 0) {
-      sequences.push(prefix);
-    }
-    if (prefix.length === maxParts) {
-      return;
-    }
-    for (let k = 0; k < PARTS.length; k += 1) {
-      walk([...prefix, k]);
-    }
-  };
-  walk([]);
-  return sequences.flatMap((sequence) =>
-    PLACES.map((place) =>
-      sanitizeRichTextHtml(place(sequence.map((k, i) => PARTS[k](i)).join("")))
-    )
-  );
-};
+import { stateSpaceValues } from "./rich-text-line-test-kit";
 
 const editableValues = stateSpaceValues(2).filter(
   (html) => getRichTextReadOnlyReason(html) === undefined
