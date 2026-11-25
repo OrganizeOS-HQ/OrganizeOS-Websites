@@ -633,13 +633,18 @@ export const $writeCopyCut =
     if (user === null) {
       return false;
     }
-    // T11.5: nothing to copy; no preventDefault, no write, no assertion
+    // T11.5: nothing to copy; no write, no assertion, the clipboard as it
+    // was. At a caret the page's own copy writes nothing
     if ($isRangeSelection(user)) {
+      if (user.isCollapsed()) {
+        return true;
+      }
+      // 15.10: over a range that holds nothing once its last point is in
+      // place, the page's own copy would write its range (an empty text or
+      // a new line): no native copy or cut, and the selection stays
       const held = user.clone();
-      if (
-        user.isCollapsed() ||
-        ($lastPointToBlockEnd(held) && held.isCollapsed())
-      ) {
+      if ($lastPointToBlockEnd(held) && held.isCollapsed()) {
+        event.preventDefault();
         return true;
       }
     }

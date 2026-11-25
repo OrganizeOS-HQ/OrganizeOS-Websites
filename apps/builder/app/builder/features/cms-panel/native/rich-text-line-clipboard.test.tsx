@@ -10,6 +10,7 @@ import {
 } from "lexical";
 import {
   $rangeOracle,
+  IMG,
   at,
   caretKey,
   clipboard,
@@ -283,5 +284,47 @@ describe("the one cut handler (T11.1, T11.2, T11.5; T12.3)", () => {
       expect(onChange.mock.calls.length, "no onChange").toBe(0);
       expect(exportRichTextHtml(editorOf()!), "the value").toBe(valueBefore);
     });
+  }
+
+  // 15.10's one-press range (base-1510's `end` anchor): a click on Pw,
+  // {End}, one Shift+ArrowRight; the range holds nothing
+  for (const stored of [
+    "<blockquote><p>Pw</p></blockquote><hr><p>Nw</p>",
+    "<ul><li>Pw</li></ul><hr><p>Nw</p>",
+    "<blockquote><p>Pw</p></blockquote><hr>",
+    `<blockquote><p>Pw${IMG}</p></blockquote><hr><p>Nw</p>`,
+  ]) {
+    for (const key of ["x", "c"]) {
+      test(`16.3, 16.9: Ctrl+${key} over 15.10's one-press range leaves the clipboard as it was: ${stored}`, async () => {
+        await commands.grantClipboard();
+        const onChange = await mount(stored);
+        await at("Pw", 1)();
+        await keys("{End}")();
+        await keys("{Shift>}{ArrowRight}{/Shift}")();
+        expect(caretKey(), "the focus past the block's end").toMatch(
+          /\|element:root@1$/
+        );
+        const caretBefore = caretKey();
+        await navigator.clipboard.writeText("Zz");
+        const valueBefore = exportRichTextHtml(editorOf()!);
+        const errors: string[] = [];
+        vi.spyOn(console, "error").mockImplementation((...args) => {
+          const text = args.map(String).join(" ");
+          if (text.includes("not wrapped in act") === false) {
+            errors.push(text);
+          }
+        });
+        onChange.mockClear();
+        await userEvent.keyboard(`{Control>}${key}{/Control}`);
+        await settle();
+        expect(await navigator.clipboard.readText(), "the clipboard").toBe(
+          "Zz"
+        );
+        expect(errors, "console errors").toEqual([]);
+        expect(onChange.mock.calls.length, "no onChange").toBe(0);
+        expect(exportRichTextHtml(editorOf()!), "the value").toBe(valueBefore);
+        expect(caretKey(), "the selection stays").toBe(caretBefore);
+      });
+    }
   }
 });
