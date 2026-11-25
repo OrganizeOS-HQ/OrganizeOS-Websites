@@ -192,16 +192,21 @@ export const $intoLine = (
 };
 
 /**
- * C10 (D14, P3): two lines of plain text, exactly one paragraph break with
- * text on both sides, pasted at a caret in a line of a list item. Where the
- * break leaves the caret at the start of the block that leads the new
- * item, the second line goes on a line of its own before that block, as
- * the first line stays in the line it was pasted in. The lines go in as
- * Lexical's rich-text paste puts them (a tab node per tab). Any other text
- * (three or more lines, a blank line, a tab-led second line, a trailing
- * new line) is not the field's: false, and the head's paste runs.
+ * C10 (D14, P3; T38.1, T38.2): plain text of several lines pasted or
+ * dropped at a caret in a line of a list item. Where a paragraph break
+ * leaves the caret at the start of the block that leads the new item, the
+ * text after it goes on a line of its own before that block, whatever the
+ * block: the write is the one at a plain item (the ordinary twin), the
+ * item's rest after the last line. The lines go in as Lexical's rich-text
+ * paste puts them (a paragraph break per new line, a tab node per tab). A
+ * text whose only break ends it is not the field's: false, and the head's
+ * paste runs (the caret at the block's start). A drop is not tagged as a
+ * paste, as Lexical's own drop is not.
  */
-export const $pasteTextIntoItemLine = (data: DataTransfer): boolean => {
+export const $pasteTextIntoItemLine = (
+  data: DataTransfer,
+  { drop = false }: { drop?: boolean } = {}
+): boolean => {
   const text = data.getData("text/plain");
   const selection = $getSelection();
   if (
@@ -218,24 +223,24 @@ export const $pasteTextIntoItemLine = (data: DataTransfer): boolean => {
     return false;
   }
   const lines = text.split(/\r?\n/);
-  if (
-    lines.length !== 2 ||
-    lines[0] === "" ||
-    lines[1] === "" ||
-    lines[1].startsWith("\t")
-  ) {
+  if (lines.length < 2 || (lines.length === 2 && lines[1] === "")) {
     return false;
   }
-  // tagged as Lexical's own rich-text paste is
-  $addUpdateTag("paste");
+  if (drop === false) {
+    // tagged as Lexical's own rich-text paste is
+    $addUpdateTag("paste");
+  }
   for (const [index, pasted] of lines.entries()) {
-    if (index === 1) {
+    if (index > 0) {
       const current = $getSelection();
       if ($isRangeSelection(current) === false) {
         return true;
       }
       current.insertParagraph();
-      $lineBeforeLeadingBlock();
+      // a final break with nothing after it leaves the caret where it is
+      if (index < lines.length - 1 || pasted !== "") {
+        $lineBeforeLeadingBlock();
+      }
     }
     for (const part of pasted.split(/(\t)/)) {
       const current = $getSelection();

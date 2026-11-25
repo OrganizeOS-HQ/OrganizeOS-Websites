@@ -3653,7 +3653,10 @@ const PasteRulesPlugin = () => {
             if (typeof payload === "string" || payload.dataTransfer === null) {
               return false;
             }
-            if ($insertPlainTextAtBlockLed(editor, payload.dataTransfer)) {
+            if (
+              $insertPlainTextAtBlockLed(editor, payload.dataTransfer) ||
+              $pasteTextIntoItemLine(payload.dataTransfer, { drop: true })
+            ) {
               payload.preventDefault();
               return true;
             }

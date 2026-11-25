@@ -17,6 +17,7 @@ import {
   recordEdit,
   type Step,
   then,
+  W,
 } from "./rich-text-line-test-kit";
 import { rangeIntoLinedCells } from "./rich-text-line-cells-paste";
 import rangeIntoLinedJson from "./__fixtures__/rich-text-line-base-range-into-lined.json";
@@ -29,6 +30,7 @@ type Row = {
   action: Step;
   write: string;
   caret?: string;
+  fixedPoint?: boolean;
   source: string;
 };
 
@@ -137,34 +139,111 @@ describe("D4 and D14: a paste at a caret in a line", () => {
   ]);
 });
 
-describe("C10 is two lines only: other plain text at P3's caret takes the head's paste", () => {
-  runRows([
-    {
-      name: "three lines",
-      stored: TQ,
-      place: at("T0w"),
-      action: pasteText("L1\nL2\nL3"),
-      write: `<ul><li>Pw</li><li>T0wL1</li><li><blockquote><p>L2</p><p>L3Q1w</p></blockquote></li><li>Nw</li></ul>`,
-      caret: "text:L3Q1w@2",
-      source: "equals <base> (P17-2)",
-    },
-    {
-      name: "a blank line",
-      stored: TQ,
-      place: at("T0w"),
-      action: pasteText("L1\n\nL2"),
-      write: `<ul><li>Pw</li><li>T0wL1</li><li><blockquote><p></p><p>L2Q1w</p></blockquote></li><li>Nw</li></ul>`,
-      caret: "text:L2Q1w@2",
-      source: "equals <base> (P17-2)",
-    },
-    {
-      name: "a trailing new line",
-      stored: TQ,
+// A drop of plain text only: a `beforeinput` of type `insertFromDrop`.
+const dropText =
+  (text: string): Step =>
+  async () => {
+    const data = new DataTransfer();
+    data.setData("text/plain", text);
+    await act(async () => {
+      const target =
+        document.activeElement?.closest<HTMLElement>(
+          '[contenteditable="true"]'
+        ) ?? document.querySelector<HTMLElement>('[contenteditable="true"]')!;
+      target.dispatchEvent(
+        new InputEvent("beforeinput", {
+          bubbles: true,
+          cancelable: true,
+          inputType: "insertFromDrop",
+          dataTransfer: data,
+        })
+      );
+    });
+    await settle();
+  };
+
+describe("C10 by its cause (T38.1, T38.2): plain text split at a line's end before a block follows its ordinary twin", () => {
+  // The ordinary twin: the same text pasted at the end of `LI(T0w)` at
+  // <base>, measured as its items between Pw and Nw, and its caret. The
+  // lined write is the twin's items, the item's rest (its leading block)
+  // after the last line; the caret is the twin's.
+  const TWINS: Array<[string, string, string[], string]> = [
+    ["two lines", "L1\nL2", ["T0wL1", "L2"], "text:L2@2"],
+    ["three lines", "L1\nL2\nL3", ["T0wL1", "L2", "L3"], "text:L3@2"],
+    ["a blank line", "L1\n\nL2", ["T0wL1", "", "L2"], "text:L2@2"],
+    ["CRLF", "L1\r\nL2", ["T0wL1", "L2"], "text:L2@2"],
+    ["tabs inside", "L1\tx\nL2\ty", ["T0wL1\tx", "L2\ty"], "text:y@1"],
+    ["a tab-led second line", "L1\n\tL2", ["T0wL1", "\tL2"], "text:L2@2"],
+  ];
+  // [name, block, the block's word]
+  const BLOCKS: Array<[string, string, string]> = [
+    ["a quote", Q("Q1w"), "Q1w"],
+    ["a heading", "<h3>H1w</h3>", "H1w"],
+    ["a code block", "<pre><code>C1w</code></pre>", "C1w"],
+  ];
+  const lined = (items: string[], rest: string) =>
+    W(
+      items
+        .map(
+          (item, index) =>
+            `<li>${item}${index === items.length - 1 ? rest : ""}</li>`
+        )
+        .join("")
+    );
+  const rows: Row[] = [];
+  for (const [blockName, block, word] of BLOCKS) {
+    for (const [textName, text, items, caret] of TWINS) {
+      if (word === "Q1w" && textName === "two lines") {
+        // P3's cell, pinned in D4 and D14 above
+        continue;
+      }
+      rows.push({
+        name: `${textName} before ${blockName}`,
+        stored: LI(`T0w${block}`),
+        place: at("T0w"),
+        action: pasteText(text),
+        write: lined(items, block),
+        caret,
+        // the twin's own write is no fixed point at <base> either (read
+        // back, a leading tab goes, a tab inside a line becomes a space;
+        // R3's): compared by write, not as a fixed point
+        ...(text.includes("\t") ? { fixedPoint: false } : {}),
+        source: `T38.1; the ordinary twin at <base>: ${W(items.map((item) => `<li>${item}</li>`).join(""))}`,
+      });
+    }
+    rows.push({
+      name: `a trailing new line before ${blockName}: the caret at the block's start`,
+      stored: LI(`T0w${block}`),
       place: at("T0w"),
       action: pasteText("L1\n"),
-      write: `<ul><li>Pw</li><li>T0wL1</li><li>${Q("Q1w")}</li><li>Nw</li></ul>`,
-      caret: "text:Q1w@0",
-      source: "equals <base> (P17-2)",
+      write: lined(["T0wL1", ""], block),
+      caret: `text:${word}@0`,
+      source:
+        "T38.1: as <base> writes it; the ordinary twin at <base>: <ul><li>Pw</li><li>T0wL1</li><li></li><li>Nw</li></ul>",
+    });
+  }
+  rows.push({
+    name: "a two-line drop at P3's caret is routed as the paste",
+    stored: TQ,
+    place: at("T0w"),
+    action: dropText("L1\nL2"),
+    write: lined(["T0wL1", "L2"], Q("Q1w")),
+    caret: "text:L2@2",
+    source: "T38.2 (P17-4): P3's write",
+  });
+  runRows(rows);
+});
+
+describe("P17-3: two plain-text lines at a quote line's end", () => {
+  runRows([
+    {
+      name: "the second line in the quote, before its list",
+      stored: QL,
+      place: at("xq"),
+      action: pasteText("L1\nL2"),
+      write: "<blockquote>xqL1<p>L2</p><ul><li>l1q</li></ul>yq</blockquote>",
+      caret: "text:L2@2",
+      source: "T38.3 (P17-3): the branch's write",
     },
   ]);
 });
@@ -511,9 +590,7 @@ describe("D14's third case: a block paste over a range from outside into a text-
     string,
     { write: string; calls: number; caret: string; typed: string }
   >;
-  // the second cell ("Pw@1 to Q1w@1") waits for its ruling: <base> keeps
-  // the emptied quote, the field drops it (P17-1)
-  const [cell] = rangeIntoLinedCells();
+  const [cell, intoQuote] = rangeIntoLinedCells();
   test(`${cell.id}: equals the fixture cell`, async () => {
     const fixture = base[cell.id];
     expect(fixture, "the fixture cell").toBeDefined();
@@ -526,6 +603,27 @@ describe("D14's third case: a block paste over a range from outside into a text-
       caret: fixture.caret,
       typed: fixture.typed,
       source: "B:base-range-into-lined; D14's third case",
+    });
+  });
+  // T38.4 (P17-1): the fixture cell less the emptied quote <base> keeps
+  // (5.4 "Emptied"; D1)
+  test(`${intoQuote.id}: the fixture cell less the emptied quote`, async () => {
+    const fixture = base[intoQuote.id];
+    expect(fixture, "the fixture cell").toBeDefined();
+    const emptied = "<blockquote></blockquote>";
+    expect(fixture.write, "the fixture keeps the emptied quote").toContain(
+      emptied
+    );
+    await expectEdit({
+      stored: intoQuote.stored,
+      place: intoQuote.place,
+      action: intoQuote.action,
+      write: fixture.write.replace(emptied, ""),
+      calls: fixture.calls,
+      caret: fixture.caret,
+      typed: fixture.typed.replace(emptied, ""),
+      source:
+        "T38.4: B:base-range-into-lined less the emptied quote; D14's third case",
     });
   });
 });
