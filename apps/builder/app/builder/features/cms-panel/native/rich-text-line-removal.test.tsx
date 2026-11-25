@@ -762,11 +762,12 @@ describe("T30.2: a removal that ends at the start of a line led by a line break,
     });
   });
   test("Backspace from H0w@0 in a quote: the caret in the emptied heading, then a letter", async () => {
-    // the write while the heading is empty is P13-6 (not pinned)
+    // the write while the heading is empty: T31.1 (P13-6)
     const record = await recordEdit(
       { stored: QUOTE, place: rangeToLineStart("H0w", 0), action: backspace },
       { typeAfter: true }
     );
+    expect(record.write, "write").toBe("<blockquote><h3></h3>Tw</blockquote>");
     expect(record.calls, "calls").toBe(1);
     expect(record.caret, "caret").toBe("element:heading@0");
     expect(record.typed, "typed").toBe("<blockquote><h3>k</h3>Tw</blockquote>");
