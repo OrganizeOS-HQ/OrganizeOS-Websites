@@ -20,7 +20,7 @@ import {
   linesOff,
 } from "./rich-text-line-node";
 import { $unwrapLines } from "./rich-text-line-normalise";
-import { $liftPointsIntoLines } from "./rich-text-line-points";
+import { $resolveLinedPoints } from "./rich-text-line-points";
 import {
   $hasMark,
   $mark,
@@ -49,7 +49,7 @@ export const $nodeSelectionIntoLine = (replace: boolean, create: boolean) => {
   range.anchor.set(container.getKey(), index, "element");
   range.focus.set(container.getKey(), index, "element");
   $setSelection(range);
-  $liftPointsIntoLines(create);
+  $resolveLinedPoints(create);
   if (replace) {
     for (const node of nodes) {
       node.remove();

@@ -37,7 +37,7 @@ import {
   lineSpike,
   setPoint,
 } from "./rich-text-line-node";
-import { $liftPointsIntoLines } from "./rich-text-line-points";
+import { $resolveLinedPoints } from "./rich-text-line-points";
 import {
   $dropEmptied,
   $dropEmptiedBlockInContainer,
@@ -494,7 +494,7 @@ const $keepContainer = (container: ElementNode) => {
   }
   $normaliseLines(container);
   if (container.isAttached()) {
-    $liftPointsIntoLines(true);
+    $resolveLinedPoints(true);
   }
 };
 

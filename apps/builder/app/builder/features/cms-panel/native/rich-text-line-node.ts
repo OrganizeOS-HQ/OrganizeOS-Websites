@@ -388,8 +388,10 @@ export const holdsSelection = (node: ElementNode) => {
 // ============================================================
 
 /**
- * A lined container: a list item that holds a non-inline child, or a quote
- * that holds a line. A quote of paragraphs and blocks is not lined.
+ * A lined container (5.1): a list item that holds a non-inline child, or a
+ * quote that holds a line. A quote of paragraphs and blocks is not lined.
+ * An item that holds only a nested list is lined too: the resolver moves
+ * its point into the list.
  */
 export const isLinedContainer = (
   node: LexicalNode | null

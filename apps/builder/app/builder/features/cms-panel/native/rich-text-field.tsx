@@ -115,7 +115,8 @@ import {
 import { $intoLine } from "./rich-text-line-paste";
 import {
   $caretOffEmptyLine,
-  $liftPointsIntoLines,
+  $pointIntoAdjacentBlock,
+  $resolveLinedPoints,
   focusEditor,
   isPressing,
   removeKeptLines,
@@ -1146,7 +1147,7 @@ const insertImage = (
       if (caret.isCollapsed() === false) {
         $tagRemoval();
       }
-      $liftPointsIntoLines(true);
+      $resolveLinedPoints(true);
       const selection = $getSelection() as RangeSelection;
       $editInBlockLedItem(selection, () => selection.insertNodes([image]));
       $keepPress();
@@ -3540,46 +3541,6 @@ const $pasteFiguresBesideHeading = (
     after = node;
   }
   return true;
-};
-
-/**
- * Where a point sits on a quote or list item between a block child and
- * another child, it moves into the block: to the start of the block at it,
- * else to the end of the block before it.
- */
-const $pointIntoAdjacentBlock = (point: PointType) => {
-  if (point.type !== "element") {
-    return;
-  }
-  const parent = point.getNode();
-  if ($isQuoteNode(parent) === false && $isListItemNode(parent) === false) {
-    return;
-  }
-  const isBlock = (node: LexicalNode | null): node is ElementNode =>
-    $isElementNode(node) && node.isInline() === false;
-  const at = parent.getChildAtIndex(point.offset);
-  const before =
-    point.offset > 0 ? parent.getChildAtIndex(point.offset - 1) : null;
-  const atEnd = isBlock(at) === false;
-  let block = isBlock(at) ? at : isBlock(before) ? before : undefined;
-  if (block === undefined) {
-    return;
-  }
-  for (;;) {
-    const child: LexicalNode | null = atEnd
-      ? block.getLastChild()
-      : block.getFirstChild();
-    if ($isElementNode(child)) {
-      block = child;
-      continue;
-    }
-    if ($isTextNode(child)) {
-      point.set(child.getKey(), atEnd ? child.getTextContentSize() : 0, "text");
-      return;
-    }
-    point.set(block.getKey(), atEnd ? block.getChildrenSize() : 0, "element");
-    return;
-  }
 };
 
 /**
