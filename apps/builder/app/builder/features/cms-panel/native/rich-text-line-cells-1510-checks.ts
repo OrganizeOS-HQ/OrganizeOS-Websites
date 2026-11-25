@@ -1,14 +1,17 @@
 // The checks of the 15.10 grids (Task 13 Step 1b; T12.4, T12.8, T14.9,
-// T15.3), shared by their files. To the right (`base-1510`): a cell whose
-// focus the head's presses leave on the root directly after the nested block
-// holds what the same range ending at the block's content end holds, so it
-// writes what the same input one press earlier writes (a delete or a cut
-// over what is then a caret removes nothing and adds no undo step; a copy
-// leaves the clipboard as it was, T11.5); a copy's three formats equal the
-// copy one press earlier. The mirror (`base-1510-mirror`): over every range
-// the walk leaves, what the removal takes equals `$rangeOracle` of the
-// range, each key writes what the same key writes after Backspace over the
-// range, and a cut's clipboard is the copy's. Every other cell equals its
+// T15.3), shared by their files. Every cell whose selection is a range
+// checks that what the removal took is what the range held (H) and that
+// its write follows the rule. To the right (`base-1510`): a cell whose
+// focus the head's presses leave on the root directly after the nested
+// block holds what the same range ending at the block's content end holds,
+// so it writes what the same input one press earlier writes (a delete or a
+// cut over what is then a caret removes nothing and adds no undo step; a
+// copy leaves the clipboard as it was, T11.5); a copy's three formats equal
+// the copy one press earlier. Every other range cell, on either side, is
+// the removal, then the key: each key writes what it writes after
+// Backspace over the range, a delete and a cut write Backspace's write, and
+// a cut's clipboard is the copy's. A cell whose write follows no named rule
+// is a P record, not a pin. Every cell then equals its
 // fixture cell or is named by `differenceOf`; the names are a file snapshot.
 import { expect, test } from "vitest";
 import { keys } from "./rich-text-line-test-kit";
@@ -65,9 +68,43 @@ const expectTakesRange = (record: Record1510, cell: Cell1510) => {
   const tail = before.slice(end);
   expect(after.startsWith(head), `kept before the range: ${after}`).toBe(true);
   expect(after.endsWith(tail), `kept after the range: ${after}`).toBe(true);
+  expect(after.length >= head.length + tail.length, after).toBe(true);
   const put = after.slice(head.length, after.length - tail.length);
-  expect(put.replace(/↵/g, ""), "what the action put in").toBe(
-    PUT_1510[cell.action].replace(/↵/g, "")
+  expect(put, "what the action put in").toBe(PUT_1510[cell.action]);
+};
+
+/**
+ * Each key over a range is the removal, then the key at the caret it leaves
+ * (5.4; 16.8, T11.4): a delete of any form and a cut write what Backspace
+ * over the range writes, a cut's clipboard is the copy's, and every other
+ * key writes what it writes after Backspace over the range (the oracle,
+ * run here).
+ */
+const expectKeyOverRange = async (
+  record: Record1510,
+  cell: Cell1510,
+  results: Map<string, Record1510>
+) => {
+  if (REMOVES.has(cell.action)) {
+    if (cell.action !== "bs") {
+      const backspace = results.get(withAction(cell, "bs"));
+      expect(backspace, "Backspace over the range ran first").toBeDefined();
+      expect(record.write, "Backspace's write over the range").toBe(
+        backspace!.write
+      );
+    }
+    return;
+  }
+  if (cell.action === "copy") {
+    const cutCell = results.get(withAction(cell, "cut"));
+    expect(cutCell, "the cut over the range ran first").toBeDefined();
+    expectSameClip(cutCell!, record, "a cut's clipboard is the copy's");
+    return;
+  }
+  const after = await runCell1510(cell, { first: keys("{Backspace}") });
+  expectClean(after);
+  expect(record.write, "the key after Backspace over the range").toBe(
+    after.write
   );
 };
 
@@ -75,26 +112,35 @@ const expectTakesRange = (record: Record1510, cell: Cell1510) => {
  * Registers one test per cell, in the table's order (a cell's earlier
  * press and its other actions run before it), and a last test that matches
  * the names of the cells that differ from the head's against `snapshot`.
+ * Every cell whose selection is a range checks what its removal took and
+ * its write against the rule (15.10's earlier press where 15.10 rules the
+ * cell, else the removal then the key), whatever name its difference from
+ * the head's cell then gets. A cell in `extra` (the mirror's
+ * Shift+Enter and Image) has no fixture cell and is checked by the rule
+ * only.
  */
 export const gridTests1510 = (
   cells: Cell1510[],
   fixture: Fixture1510,
-  snapshot: string
+  snapshot: string,
+  { extra = [] }: { extra?: Cell1510[] } = {}
 ) => {
   const results = new Map<string, Record1510>();
   const named: Record<string, string> = {};
-  for (const cell of cells) {
+  for (const cell of [...cells, ...extra]) {
     test(cell.id, async () => {
-      const mirror = cell.side === "L";
       const record = await runCell1510(cell, {
         depth: undoDepth,
-        oracle: mirror,
+        oracle: true,
       });
       results.set(cell.id, record);
       expectClean(record);
+      const range = isCaret(record.before) === false;
+      if (range) {
+        expectTakesRange(record, cell);
+      }
       const head = fixture[cell.id];
-      expect(head, "the fixture cell").toBeDefined();
-      if (mirror === false && isRuled1510(cell, fixture)) {
+      if (cell.side === "R" && isRuled1510(cell, fixture)) {
         named[cell.id] =
           "15.10: the range holds what it holds one press earlier";
         const earlier = results.get(earlierId(cell));
@@ -126,26 +172,14 @@ export const gridTests1510 = (
         }
         return;
       }
-      if (mirror && isCaret(record.before) === false) {
-        expectTakesRange(record, cell);
-        if (cell.action === "del" || cell.action === "cut") {
-          const backspace = results.get(withAction(cell, "bs"));
-          expect(record.write, "Backspace's write over the range").toBe(
-            backspace!.write
-          );
-        } else if (cell.action === "copy") {
-          const cutCell = results.get(withAction(cell, "cut"));
-          expectSameClip(cutCell!, record, "a cut's clipboard is the copy's");
-        } else if (cell.action !== "bs") {
-          const after = await runCell1510(cell, {
-            first: keys("{Backspace}"),
-          });
-          expectClean(after);
-          expect(record.write, "the key after Backspace over the range").toBe(
-            after.write
-          );
-        }
+      if (range) {
+        await expectKeyOverRange(record, cell, results);
       }
+      if (extra.includes(cell)) {
+        expect(range, "the walk leaves a range").toBe(true);
+        return;
+      }
+      expect(head, "the fixture cell").toBeDefined();
       if (sameAsFixture(record, head) === false) {
         const name = differenceOf(record, head);
         expect(

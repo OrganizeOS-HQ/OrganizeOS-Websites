@@ -36,7 +36,19 @@ Measured at the branch (Task 13's work on 3dbfe6a), at `<base>` (SP/r1-base, 2a9
 - Also, the end at a paragraph's start before an image, a line break or a link, backward (`<p>A0w</p><p>IMGB1w</p>`, `p1@0` to `A0w@1`): branch and `<base>` both `<p>A​a<img />B1w</p>`, the start character left (the net reports it).
 - These are compositions over a backward range (16.19 to 16.21, Task 20's tables). The class sweep leaves the 40 backward composition cells out and says so; they join it when Task 20 lands. Candidate write: the range removed and `a` once, no start character (`<p>A0w<b>Ew</b>a1w</p>` or with `a` outside the bold).
 
+## P13-5: a text paste over T23.1's range (M28s-CB-Right-2 and M28s-HB-Right-2)
+
+- Stored: `<ul><li>Pw</li><li><pre><code>C0w</code></pre><br></li><li>Nw</li></ul>` (CB); `<ul><li>Pw</li><li><h3>H0w</h3><br></li><li>Nw</li></ul>` (HB).
+- Place: `at("C0w", 2)` (HB: `at("H0w", 2)`), Shift+ArrowRight twice: `text:C0w@2|element:listitem@1` (HB: `text:H0w@2|element:listitem@1`).
+- Action: a text paste of `Aq` (the kit's `pasteText("Aq")`).
+- Branch (668cb94 and this fix): CB `<ul><li>Pw</li><li><pre><code>C0Aq</code></pre></li><li>Nw</li></ul>`, HB `<ul><li>Pw</li><li><h3>H0Aq</h3></li><li>Nw</li></ul>`; one onChange.
+- `<base>` (measured 2026-11-25 with the kit, rich-text project): CB `<ul><li>Pw</li><li><pre><code>C0Aq</code></pre><br /></li><li>Nw</li></ul>`, caret `text:C0Aq@4`; HB `<ul><li>Pw</li><li><h3>H0Aq</h3><br /></li><li>Nw</li></ul>`, caret `text:H0Aq@4`; one onChange, undo restores.
+- T23.1 names the letter and Backspace over these ranges (Delete and the cut follow from Backspace); it names no paste. The test pinned the branch's write until the review; the pin is removed.
+- Candidates: (a) the branch's: T23.1's join, then the paste at the caret it leaves (the letter's form); (b) `<base>`'s: the line's break stays.
+
 ## Built without a P record (named here for the commit body)
 
 - 16.10: Delete at a caret at the end of a quote or list ending in an image or a link, before a root-level rule (`R|quote|img|none|end|0|del` and seven more cells of `base-1510`, image and link ends): at 3dbfe6a it handed out the value before (one onChange, value unchanged, D19); `<base>` writes nothing. Now nothing is written, as at `<base>` and as with a text end.
 - 15.10's mirror: a letter or a paste over a range from the root before a rule into the start of a quote's text after it (`L|*|text|quote|start|2|k`, `plain`, `htmlPaste`: 15 cells) took the quote's paragraph out of the quote (the head too); now it is Backspace over the range, then the key, as the mirror's rule asks.
+- 15.10, Image over the range one press past a quote's end before a root-level rule (`<blockquote><p>Pw</p></blockquote><hr><p>Nw</p>`, `Pw@end`, Shift+ArrowRight): at 668cb94 the result of the removal step was ignored and the removal was marked over what is then a caret (the write was the same); now no mark, and the write is Image's one press earlier (Step 2: non-delete commands, false and no mark).
+- 15.10's mirror, Shift+Enter and Image over a range from the root before a rule (`L|*|text|quote|start|2`, 5 shapes each: no onChange at 668cb94) and Image over a range from a quote's end into the paragraph after the rule (`L|quote|*|para|start|1`, 4 cells: the paragraph's content left directly in the quote at 668cb94): now Backspace over the range, then the key, as the mirror's rule asks. Image now starts a range as the editing commands do (`$selectionIntoAdjacentBlocks`).

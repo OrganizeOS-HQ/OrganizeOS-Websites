@@ -12,7 +12,12 @@
 // actions (512 cells). The runner imports only the kit, so it records at
 // `<base>` too.
 import { expect, vi } from "vitest";
-import { $getSelection, $isRangeSelection } from "lexical";
+import {
+  $createRangeSelectionFromDom,
+  $getEditor,
+  $getSelection,
+  $isRangeSelection,
+} from "lexical";
 import { userEvent } from "@vitest/browser/context";
 import {
   at,
@@ -20,6 +25,7 @@ import {
   clipboard,
   copy,
   cut,
+  imageButton,
   keys,
   mount,
   pasteHtml,
@@ -96,9 +102,12 @@ export const ACTIONS_1510 = [
   "copy",
 ] as const;
 export const NAMED_1510 = ["shiftEnter", "wordB", "wordF"] as const;
+/** The keys beside the fixture's set that the mirror's rule covers too. */
+export const KEYS_MIRROR = ["shiftEnter", "image"] as const;
 export type Action =
   | (typeof ACTIONS_1510)[number]
-  | (typeof NAMED_1510)[number];
+  | (typeof NAMED_1510)[number]
+  | (typeof KEYS_MIRROR)[number];
 
 export type Cell1510 = {
   id: string;
@@ -181,6 +190,25 @@ export const cells1510Mirror = (): Cell1510[] => {
   return cells;
 };
 
+/**
+ * Shift+Enter and Image over each range the mirror's walk leaves at the head
+ * (the fixture's letter cell holds a range): not in `base-1510-mirror`, so
+ * they are checked against the mirror's rule only.
+ */
+export const cells1510MirrorKeys = (fixture: Fixture1510): Cell1510[] =>
+  cells1510Mirror()
+    .filter(
+      (cell) =>
+        cell.action === "k" && fixture[cell.id].before.includes("|") === true
+    )
+    .flatMap((cell) =>
+      KEYS_MIRROR.map((action) => ({
+        ...cell,
+        id: withAction(cell, action),
+        action,
+      }))
+    );
+
 /** The block of the shape is a nested one (a quote or a list). */
 export const isNested = (cell: Cell1510) => nestedBlocks.has(cell.shape.block);
 
@@ -257,6 +285,7 @@ const ACTION_STEPS: Record<Action, Step> = {
   shiftEnter: keys("{Shift>}{Enter}{/Shift}"),
   wordB: keys("{Control>}{Backspace}{/Control}"),
   wordF: keys("{Control>}{Delete}{/Control}"),
+  image: imageButton,
 };
 
 export type Record1510 = {
@@ -294,9 +323,22 @@ export type RunOptions = {
   first?: Step;
 };
 
+/**
+ * The range's tokens. The key acts at the place the page's selection is at
+ * (15.12, read back at the key), so where both of the page's ends are in
+ * the field's text the range is read from them; elsewhere a page point
+ * beside an image or a line break names no one place, and the field's
+ * selection is read.
+ */
 const $tokensOfRange = () => {
   const tokens = $documentTokens();
-  const selection = $getSelection();
+  const page = window.getSelection();
+  const inText = (node: Node | null | undefined) =>
+    node?.nodeType === Node.TEXT_NODE && editable()?.contains(node) === true;
+  const selection =
+    (page !== null && inText(page.anchorNode) && inText(page.focusNode)
+      ? $createRangeSelectionFromDom(page, $getEditor())
+      : null) ?? $getSelection();
   if ($isRangeSelection(selection) === false) {
     return { before: tokens.out, start: -1, end: -1 };
   }
@@ -337,9 +379,7 @@ export const runCell1510 = async (
     await options.first?.();
     const before = caretKey();
     const page = pageFocus();
-    const range = options.oracle
-      ? editorOf()!.getEditorState().read($tokensOfRange)
-      : undefined;
+    const range = options.oracle ? editorOf()!.read($tokensOfRange) : undefined;
     const depth = options.depth?.().undo;
     onChange.mockClear();
     const start = performance.now();
@@ -400,6 +440,7 @@ export const PUT_1510: Record<Action, string> = {
   shiftEnter: "↵",
   wordB: "",
   wordF: "",
+  image: "▣",
 };
 
 export type Fixture1510 = Record<

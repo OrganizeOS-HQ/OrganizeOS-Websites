@@ -121,7 +121,11 @@ import {
   isPressing,
   removeKeptLines,
 } from "./rich-text-line-points";
-import { $prepareRemoval, $tagRemoval } from "./rich-text-line-removal";
+import {
+  $prepareRemoval,
+  $removeWhereNoTextStands,
+  $tagRemoval,
+} from "./rich-text-line-removal";
 import {
   $quotedLineContent,
   $refuseBlockTypeOnLine,
@@ -1142,8 +1146,14 @@ const insertImage = (
       $setSelection(caret.clone());
       const placed = $getSelection();
       if ($isRangeSelection(placed) && placed.isCollapsed() === false) {
-        $prepareRemoval(placed, "removal");
-        $tagRemoval();
+        // a range starts as the editing commands start it (their first
+        // handler); one that holds nothing once its ends are in place
+        // (15.10) is the caret left at the block's end: no removal, no mark
+        $selectionIntoAdjacentBlocks();
+        if ($prepareRemoval(placed, "removal") === false) {
+          $tagRemoval();
+          $removeWhereNoTextStands(placed);
+        }
       }
       $resolveLinedPoints(true);
       const selection = $getSelection() as RangeSelection;

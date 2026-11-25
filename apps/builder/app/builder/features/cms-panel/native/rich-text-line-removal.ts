@@ -25,6 +25,7 @@ import {
   DELETE_LINE_COMMAND,
   DELETE_WORD_COMMAND,
   ElementNode,
+  INSERT_LINE_BREAK_COMMAND,
   KEY_BACKSPACE_COMMAND,
   KEY_DELETE_COMMAND,
   type LexicalCommand,
@@ -1258,20 +1259,32 @@ export const $removalMark = (
     return removes;
   }
   $tagRemoval(isBackward);
-  // 15.10's mirror: a letter or a paste over a range that starts on a
-  // container where no text can stand (the root after a block, before a
-  // rule) is the removal, then the key at the caret it leaves, as after
-  // Backspace over the range; Lexical's own insert there takes the block
-  // the range ends in out of its container
   if (
-    (command === CONTROLLED_TEXT_INSERTION_COMMAND ||
-      command === PASTE_COMMAND) &&
+    command === CONTROLLED_TEXT_INSERTION_COMMAND ||
+    command === PASTE_COMMAND ||
+    command === INSERT_LINE_BREAK_COMMAND
+  ) {
+    $removeWhereNoTextStands(selection);
+  }
+  return false;
+};
+
+/**
+ * 15.10's mirror: a letter, a paste, Shift+Enter or Image over a range that
+ * starts on a container where no text can stand (the root after a block,
+ * before a rule; a quote's end) is the removal, then the key at the caret
+ * it leaves, as after Backspace over the range; Lexical's own insert there
+ * takes the block the range ends in out of its container, or writes
+ * nothing. Runs after `$tagRemoval`.
+ */
+export const $removeWhereNoTextStands = (selection: RangeSelection) => {
+  if (
+    selection.isCollapsed() === false &&
     $startsWhereNoTextStands(selection)
   ) {
     selection.removeText();
     $caretIntoBlockAfter(selection);
   }
-  return false;
 };
 
 /** A container where no text can stand: the root, a list, an unlined quote. */

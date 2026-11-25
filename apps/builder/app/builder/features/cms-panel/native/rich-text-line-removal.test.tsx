@@ -59,6 +59,8 @@ import {
   type Step,
 } from "./rich-text-line-test-kit";
 import { undoDepth } from "./rich-text-line-test-kit-branch";
+import { CmsImageNode } from "./rich-text-image-node";
+import { $hasMark, REMOVAL_TAG } from "./rich-text-line-removal";
 import {
   ACTIONS_1511,
   cells1511,
@@ -657,12 +659,13 @@ describe("T23.1: a removal that ends at the start of a line holding only a line 
   const CB = LI(`${PRE("C0w")}<br>`);
   const HB = LI("<h3>H0w</h3><br>");
   const pressPlace = (word: string) => then(at(word, 2), shiftRight(2));
+  // a text paste over these ranges is P13-5 (T23.1 names the letter and
+  // Backspace; Delete and the cut follow from Backspace)
   const entries: Array<[string, Step, (block: string) => string]> = [
     ["a letter", letter, (block) => `${block}k`],
     ["Backspace", backspace, (block) => block],
     ["Delete", del, (block) => block],
     ["a cut", cut, (block) => block],
-    ["a text paste", pasteText("Aq"), (block) => `${block}Aq`],
   ];
   for (const [name, action, text] of entries) {
     test(`M28s-CB-Right-2, ${name}`, async () => {
@@ -997,6 +1000,70 @@ describe("Step 1b: a removal takes what its range holds", () => {
         sameState(before, editorOf()!.getEditorState().toJSON()),
         "the state as it was (D7)"
       ).toBe(true);
+    });
+  }
+
+  test("Image over that range marks no removal and writes what Image writes at the quote's end (15.10; Step 2)", async () => {
+    const marks: boolean[] = [];
+    const imageWatched: Step = async () => {
+      const editor = editorOf()!;
+      const off = editor.registerNodeTransform(CmsImageNode, () => {
+        marks.push($hasMark(REMOVAL_TAG));
+      });
+      try {
+        await imageButton();
+      } finally {
+        off();
+      }
+    };
+    const record = await recordEdit({
+      stored: quoteRule,
+      place: pastQuote,
+      action: imageWatched,
+    });
+    expect(record.caretBefore, "the press passed the quote's end").toBe(
+      "text:Pw@2|element:root@1"
+    );
+    expect(marks.length, "the image was inserted").toBeGreaterThan(0);
+    expect(marks, "no removal mark").not.toContain(true);
+    // the oracle: the same input one press earlier
+    const earlier = await recordEdit({
+      stored: quoteRule,
+      place: at("Pw"),
+      action: imageButton,
+    });
+    expect(record.write).toBe(earlier.write);
+    expect(record.calls).toBe(earlier.calls);
+    expect(record.errors).toEqual([]);
+  });
+});
+
+describe("15.10's mirror: Shift+Enter and Image over a range from the root before a rule are Backspace over the range, then the key", () => {
+  // the review's shape (quote, text, quote): a real click at Nw@0, two
+  // presses of Shift+ArrowLeft; the grid `rich-text-line-grid-1510-mirror`
+  // runs the two keys over every range the walk leaves
+  const stored = `${BQ("Pw")}<hr>${BQ("Nw")}`;
+  const place = then(
+    at("Nw", 0),
+    keys("{Shift>}{ArrowLeft}{ArrowLeft}{/Shift}")
+  );
+  for (const [name, action] of [
+    ["Shift+Enter", shiftEnter],
+    ["Image", imageButton],
+  ] as const) {
+    test(name, async () => {
+      const record = await recordEdit({ stored, place, action });
+      expect(record.caretBefore, "a range onto the root").toBe(
+        "text:Nw@0|element:root@1"
+      );
+      const oracle = await recordEdit({
+        stored,
+        place: then(place, backspace),
+        action,
+      });
+      expect(record.write).not.toBeNull();
+      expect(record.write).toBe(oracle.write);
+      expect(record.errors).toEqual([]);
     });
   }
 });

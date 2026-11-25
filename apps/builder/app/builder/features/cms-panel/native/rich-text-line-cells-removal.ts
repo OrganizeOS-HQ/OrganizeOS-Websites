@@ -100,7 +100,7 @@ export const ENTRY_POINTS: ReadonlyArray<readonly [string, Step, string]> = [
   ["pasteOwn", pasteOwn("<p>Aq</p><p>Bq</p>"), "AqBq"],
   ["drop", drop("<p>Dq</p>"), "Dq"],
   ["Enter", enter, ""],
-  ["Shift+Enter", shiftEnter, ""],
+  ["Shift+Enter", shiftEnter, "↵"],
   ["Image", imageButton, "▣"],
   ["Divider", button("Divider"), "―"],
   ["replaceText", replaceText("k"), "k"],
@@ -232,8 +232,9 @@ export const $documentTokens = () => {
   const walk = (node: LexicalNode) => {
     starts.set(node.getKey(), out.length);
     if ($isTextNode(node)) {
-      // a composition's start character is Task 20's (16.21), not a removal's
-      out += node.getTextContent().replace(/\u200b/g, "");
+      // a composition's start character left in the value is a token too
+      // (16.21: none is left)
+      out += node.getTextContent();
     } else if ($isElementNode(node)) {
       node.getChildren().forEach(walk);
     } else if (node.getType() === "cms-image") {
@@ -256,11 +257,7 @@ export const $tokenPosition = (
 ) => {
   const node = point.getNode();
   if (point.type === "text") {
-    const skipped = node
-      .getTextContent()
-      .slice(0, point.offset)
-      .replace(/\u200b/g, "").length;
-    return tokens.starts.get(node.getKey())! + skipped;
+    return tokens.starts.get(node.getKey())! + point.offset;
   }
   const child = (node as ElementNode).getChildAtIndex(point.offset);
   return child === null
@@ -366,8 +363,7 @@ export const expectRemovalCell = async (cell: RemovalCell) => {
   expect(after.startsWith(head), `kept before the range: ${after}`).toBe(true);
   expect(after.endsWith(tail), `kept after the range: ${after}`).toBe(true);
   expect(after.length >= head.length + tail.length, after).toBe(true);
-  // what stands between is what the action put in, with D3's break where a
-  // line follows a block it joined
+  // what stands between is what the action put in, and nothing else
   const put = after.slice(head.length, after.length - tail.length);
-  expect(put.replace(/↵/g, ""), "what the action put in").toBe(cell.entry[2]);
+  expect(put, "what the action put in").toBe(cell.entry[2]);
 };
