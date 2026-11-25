@@ -83,13 +83,22 @@ describe("the empty caret line", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  test("an empty caret line goes when the caret leaves", async () => {
+  test("an empty caret line goes when the caret leaves: left by an arrow key, at once", async () => {
     const onChange = await mount(LI("T0w<hr>"));
     await itemPoint(1, 2)();
     expect(endsInEmptyLine(1)).toBe(true);
-    // left by a press, the line stays until the next key in the field
-    // (spec 5.8, "a line the caret left by a press is not removed by that
-    // press"); left by a key, it goes at once
+    await keys("{ArrowRight}")();
+    expect(caretKey()).toBe("text:Nw@0");
+    expect(emptyLines(1)).toBe(0);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  test("an empty caret line goes when the caret leaves: left by a real click, at the next key", async () => {
+    const onChange = await mount(LI("T0w<hr>"));
+    await itemPoint(1, 2)();
+    expect(endsInEmptyLine(1)).toBe(true);
+    // spec 5.8 (T26.1): a line the caret left by a press stays until the
+    // field's next key or edit
     await at("Nw")();
     expect(caretKey()).toBe("text:Nw@2");
     expect(emptyLines(1)).toBe(1);

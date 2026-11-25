@@ -856,21 +856,37 @@ describe("5.4 and F8: a line a removal empties while it holds the caret", () => 
     });
   });
 
-  test("P9-2: the caret leaving the emptied line removes it, with no onChange", async () => {
-    const onChange = await mount(stored);
-    await emptiedBesideQuote();
-    const editor = editorOf()!;
-    const emptyLines = () =>
-      editor.getEditorState().read(
+  const emptiedLineCount = () =>
+    editorOf()!
+      .getEditorState()
+      .read(
         () =>
           $items()
             .flatMap((item) => item.getChildren())
             .filter((child) => $isCmsLineNode(child) && child.isEmpty()).length
       );
-    expect(emptyLines(), "the emptied line holds the caret").toBe(1);
+
+  test("P9-2: the caret leaving the emptied line by an arrow key removes it at once, with no onChange", async () => {
+    const onChange = await mount(stored);
+    await emptiedBesideQuote();
+    expect(emptiedLineCount(), "the emptied line holds the caret").toBe(1);
     onChange.mockClear();
+    await keys("{ArrowUp}")();
+    expect(emptiedLineCount(), "no empty line left").toBe(0);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  test("P9-2: the caret leaving the emptied line by a real click keeps it until the next key, with no onChange", async () => {
+    const onChange = await mount(stored);
+    await emptiedBesideQuote();
+    expect(emptiedLineCount(), "the emptied line holds the caret").toBe(1);
+    onChange.mockClear();
+    // spec 5.8 (T26.1): a line the caret left by a press stays until the
+    // field's next key or edit
     await at("Pw")();
-    expect(emptyLines(), "no empty line left").toBe(0);
+    expect(emptiedLineCount(), "kept after the click").toBe(1);
+    await keys("{ArrowLeft}")();
+    expect(emptiedLineCount(), "gone at the next key").toBe(0);
     expect(onChange).not.toHaveBeenCalled();
   });
 

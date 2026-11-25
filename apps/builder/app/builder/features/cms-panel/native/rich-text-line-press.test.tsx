@@ -2,7 +2,7 @@
 // The net ends every test (the setup file).
 import { describe, expect, test } from "vitest";
 import { act } from "react-dom/test-utils";
-import { cdp } from "@vitest/browser/context";
+import { cdp, userEvent } from "@vitest/browser/context";
 import { $dfs } from "@lexical/utils";
 import {
   $getRoot,
@@ -18,9 +18,12 @@ import {
   clipboard,
   copy,
   cut,
+  del,
+  expectEdit,
   forceOrder,
   hold,
   ime,
+  IMG,
   imageButton,
   keys,
   letter,
@@ -807,4 +810,27 @@ describe("the press cannot stick", () => {
       expect(out).toEqual(await afterClick());
     });
   }
+});
+
+// T25.1's ordinary cell: a real click on an image opens its popover and
+// selects nothing; Escape closes it with a caret right after the image, as
+// at the base (measured: p-records-task10b.md)
+describe("an image clicked, then Escape", () => {
+  const clickImageEscape: Step = async () => {
+    await userEvent.click(editable()!.querySelector("img")!);
+    await settle();
+    expect(caretKey(), "the popover's click selects nothing").toBe("none");
+    await keys("{Escape}")();
+  };
+  test("ordinary content: Delete, then a letter, as at the base", async () => {
+    await expectEdit({
+      stored: `<p>Aw ${IMG} Bw</p>`,
+      place: clickImageEscape,
+      action: del,
+      write: "<p>Aw <img />Bw</p>",
+      caret: "text:Bw@0",
+      typed: "<p>Aw <img />kBw</p>",
+      source: "the base, measured (p-records-task10b.md)",
+    });
+  });
 });
