@@ -812,6 +812,46 @@ describe("T30.2: a removal that ends at the start of a line led by a line break,
   }
 });
 
+describe("T32.2: T30.2 applies from the block the range starts in, wherever it stands before the line", () => {
+  const cells: Array<[string, string, string, string, string]> = [
+    [
+      "a heading before the quote",
+      LI("A0w<h3>H0w</h3><blockquote><p>Q0w</p></blockquote><br>B1w"),
+      "H0w",
+      "<li>A0w<h3>H</h3>B1w</li>",
+      "text:H@1",
+    ],
+    [
+      "the quote directly before the line",
+      LI("A0w<blockquote><p>Q0w</p></blockquote><br>B1w"),
+      "Q0w",
+      "<li>A0w<blockquote><p>Q</p></blockquote>B1w</li>",
+      "text:Q@1",
+    ],
+    [
+      "a code block before the quote (the rest does not become code)",
+      LI(
+        "A0w<pre><code>C0w</code></pre><blockquote><p>Q0w</p></blockquote><br>B1w"
+      ),
+      "C0w",
+      "<li>A0w<pre><code>C</code></pre>B1w</li>",
+      "text:C@1",
+    ],
+  ];
+  for (const [name, stored, word, write, caret] of cells) {
+    test(`Backspace from ${word}@1 in ${name}`, async () => {
+      await expectEdit({
+        stored,
+        place: rangeToLineStart(word, 1),
+        action: backspace,
+        write: W(write),
+        caret,
+        source: "T32.2 (twin measured at <base>, P13-6's T31.2 table)",
+      });
+    });
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Step 1b: a removal removes what its range holds (5.4; T10.2, T10.5, T9.2 E)
 

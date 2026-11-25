@@ -773,8 +773,8 @@ export const $lastPointToBlockEnd = (
  * left empty and goes: the last point moves past the break, so the removal
  * takes it with the boundary. Otherwise the break goes here and the last
  * point moves to the block's end, so the rest of the line stays a line
- * after the block (only where the range starts in the block). True when it
- * moved.
+ * after the block the range starts in (T32.2: wherever that block stands).
+ * True when it moved.
  */
 const $lastPointPastLoneBreak = (selection: RangeSelection) => {
   if (selection.isCollapsed()) {
@@ -822,18 +822,37 @@ const $lastPointPastLoneBreak = (selection: RangeSelection) => {
     end.set(line.getKey(), line.getChildrenSize(), "element");
     return true;
   }
-  // the block stays only where the range starts in it: a range from before
-  // the block removes it whole, and the line then stands after no block
-  const first = start.getNode();
-  if (first.is(block) === false && block.isParentOf(first) === false) {
+  // T32.2: the rule applies from the block the range starts in, wherever
+  // it stands before the line; what stands between that block and the line
+  // is in the range whole and goes. A range that starts outside a block (in
+  // a line, or in another container) keeps the break (T32.1)
+  let from: LexicalNode | null = start.getNode();
+  while (from !== null && from.getParent()?.is(line.getParent()) !== true) {
+    from = from.getParent();
+  }
+  if (
+    from === null ||
+    $isElementNode(from) === false ||
+    $isCmsLineNode(from) ||
+    from.isInline() ||
+    from.isBefore(line) === false
+  ) {
     return false;
   }
+  const started = from;
+  for (
+    let between = started.getNextSibling();
+    between !== null && between.is(line) === false;
+    between = started.getNextSibling()
+  ) {
+    between.remove();
+  }
   children[0].remove();
-  const last = block.getLastDescendant();
+  const last = started.getLastDescendant();
   if ($isTextNode(last)) {
     end.set(last.getKey(), last.getTextContentSize(), "text");
   } else if (last === null) {
-    end.set(block.getKey(), 0, "element");
+    end.set(started.getKey(), 0, "element");
   } else {
     end.set(
       last.getParentOrThrow().getKey(),
