@@ -877,3 +877,154 @@ describe("an image clicked, then Escape", () => {
     });
   });
 });
+
+// 15.14: the press's own caret survives the press. With a popover open, a
+// press in text closes it; the close hands no focus to the editor (the
+// press gives it), so the caret is the press's own. Held 150 ms, the close
+// and its focus update land between the pointer going down and the
+// release
+describe("15.14: the press's own caret, a popover open", () => {
+  const BIG_IMG =
+    '<img src="https://cdn.example.org/x.png" alt="" width="40" height="20" />';
+  const LINKED = '<a href="https://example.org/l">Lw</a>';
+  const SHAPES = {
+    ordinary: (node: string) =>
+      `<p>Aw${LINKED}</p>${node.startsWith("<img") ? `<p>${node}</p>` : node}<p>Cw</p>`,
+    lined: (node: string) => `<ul><li>Aw${LINKED}${node}Cw</li></ul>`,
+  };
+  const pointIn = (word: string, offset: number): Point => {
+    const span = [
+      ...editable()!.querySelectorAll<HTMLElement>("[data-lexical-text]"),
+    ].find((element) => element.textContent === word)!;
+    const range = document.createRange();
+    range.setStart(span.firstChild!, offset);
+    range.setEnd(span.firstChild!, offset);
+    const rect = range.getBoundingClientRect();
+    const box = span.getBoundingClientRect();
+    return { x: rect.left, y: box.top + box.height / 2 };
+  };
+  const isNodeSelected = () =>
+    editorOf()!
+      .getEditorState()
+      .read(() => $isNodeSelection($getSelection()));
+  type Opener = "link" | "image";
+  const open = async (opener: Opener) => {
+    if (opener === "link") {
+      // an image node-selected by the arrow, then Link
+      await at("Cw", 0)();
+      for (let press = 0; press < 3 && isNodeSelected() === false; press++) {
+        await keys("{ArrowLeft}")();
+      }
+      expect(caretKey(), "the image node-selected").toBe("node:cms-image");
+      await userEvent.click(
+        document.querySelector<HTMLElement>('[aria-label="Link"]')!
+      );
+      await settle();
+      expect(
+        document.querySelector('[aria-label="URL"]'),
+        "the Link popover"
+      ).not.toBeNull();
+      return;
+    }
+    await userEvent.click(editable()!.querySelector("img")!);
+    await settle();
+    expect(
+      [...document.querySelectorAll("label")].some(
+        (label) => label.textContent === "Alt"
+      ),
+      "the Image popover"
+    ).toBe(true);
+  };
+  /** A press at Aw@1 held `ms` (0: a click), then a letter. */
+  const pressAtAw = async (ms: number) => {
+    const point = pointIn("Aw", 1);
+    await mouse("mousePressed", point);
+    if (ms > 0) {
+      await settle();
+      await wait(ms);
+    }
+    await mouse("mouseReleased", point);
+    await settle();
+    expect(document.activeElement, "the focus after the close").toBe(
+      editable()
+    );
+    await keys("k")();
+  };
+  const runs = async (
+    shape: keyof typeof SHAPES,
+    opener: Opener,
+    ms: number,
+    count: number
+  ) => {
+    const writes: Record<string, number> = {};
+    for (let run = 0; run < count; run += 1) {
+      const onChange = await mount(SHAPES[shape](BIG_IMG));
+      await open(opener);
+      await pressAtAw(ms);
+      const write =
+        onChange.mock.calls.length > 0 ? short(lastHtml(onChange)) : "none";
+      writes[write] = (writes[write] ?? 0) + 1;
+      unmountField();
+    }
+    return writes;
+  };
+  const akw = (shape: keyof typeof SHAPES) =>
+    short(SHAPES[shape](BIG_IMG).replace("Aw<a", "Akw<a"));
+  for (const shape of ["ordinary", "lined"] as const) {
+    test(`${shape}: an image node-selected, the Link popover open, a press in text held 150 ms: the letter at the pressed offset, 20 of 20`, async () => {
+      expect(await runs(shape, "link", 150, 20)).toEqual({ [akw(shape)]: 20 });
+    }, 120_000);
+    test(`${shape}: the Link popover open, a real click in text: the letter at the click, 60 of 60`, async () => {
+      expect(await runs(shape, "link", 0, 60)).toEqual({ [akw(shape)]: 60 });
+    }, 300_000);
+    test(`${shape}: the Image popover open, a press in text held 150 ms: the letter at the pressed offset, 20 of 20`, async () => {
+      expect(await runs(shape, "image", 150, 20)).toEqual({ [akw(shape)]: 20 });
+    }, 120_000);
+    test(`${shape}: the Image popover open, a real click in text: the letter at the click, 60 of 60`, async () => {
+      expect(await runs(shape, "image", 0, 60)).toEqual({ [akw(shape)]: 60 });
+    }, 300_000);
+    // the block-type menu is the design system's modal Select: a press
+    // outside it closes it and does not reach the editor; its close hands
+    // no focus to the editor, so the focus stays on its button, as at the
+    // head. The menu covers the field's first lines: the press is in a
+    // word below it (a press on the menu is a press on the menu)
+    test(`${shape}: the block-type menu open, a real click in text closes it and the letter writes nothing`, async () => {
+      const below = Array.from({ length: 8 }, (_, n) => `X${n}w`);
+      const stored =
+        shape === "ordinary"
+          ? `${SHAPES.ordinary("<hr>")}${below.map((word) => `<p>${word}</p>`).join("")}<p>${"Yw ".repeat(14)}<strong>Zw</strong></p>`
+          : `<ul><li>Aw${LINKED}<hr>Cw</li>${below.map((word) => `<li>${word}</li>`).join("")}<li>${"Yw ".repeat(14)}<strong>Zw</strong></li></ul>`;
+      const onChange = await mount(stored);
+      await at("Cw", 1)();
+      await userEvent.click(
+        document.querySelector<HTMLElement>('[aria-label="Block type"]')!
+      );
+      await settle();
+      expect(document.querySelector('[role="listbox"]')).not.toBeNull();
+      onChange.mockClear();
+      const listbox = document
+        .querySelector('[role="listbox"]')!
+        .getBoundingClientRect();
+      const word = [...below, "Zw"].find((candidate) => {
+        const { x, y } = pointIn(candidate, 1);
+        return (
+          x < listbox.left ||
+          x > listbox.right ||
+          y < listbox.top ||
+          y > listbox.bottom
+        );
+      });
+      expect(word, "a word the menu does not cover").toBeDefined();
+      const point = pointIn(word!, 1);
+      await mouse("mousePressed", point);
+      await mouse("mouseReleased", point);
+      await settle();
+      expect(document.querySelector('[role="listbox"]')).toBeNull();
+      expect(document.activeElement?.getAttribute("aria-label")).toBe(
+        "Block type"
+      );
+      await keys("k")();
+      expect(onChange).not.toHaveBeenCalled();
+    });
+  }
+});

@@ -915,6 +915,28 @@ export const $prepareRemoval = (
 };
 
 /**
+ * 16.11: the removal step's end placement alone, for a command that
+ * removes nothing (Link): every element-point end of a range gets a place
+ * in text, and a last point directly before or after a nested block takes
+ * that block's content edge (15.10). It removes no node (T23.1's break
+ * stays: only a removal takes it). True when the range holds nothing once
+ * its ends are in place.
+ */
+export const $rangeEndsIntoText = (selection: RangeSelection): boolean => {
+  if (
+    selection.isCollapsed() ||
+    (selection.anchor.type !== "element" && selection.focus.type !== "element")
+  ) {
+    return false;
+  }
+  if ($lastPointToBlockEnd(selection) && selection.isCollapsed()) {
+    return true;
+  }
+  $endsIntoText(selection, false);
+  return selection.isCollapsed();
+};
+
+/**
  * Marks a removal: the removal mark, the lines that hold the caret, D3's
  * break-after for a collapsed delete and for a range from a line into a
  * block, and the blocks the range starts and ends in. It moves no point

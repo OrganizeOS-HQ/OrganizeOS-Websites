@@ -124,6 +124,7 @@ import {
 } from "./rich-text-line-points";
 import {
   $prepareRemoval,
+  $rangeEndsIntoText,
   $removeWhereNoTextStands,
   $tagRemoval,
 } from "./rich-text-line-removal";
@@ -1097,8 +1098,9 @@ type ImageUpload = {
 };
 
 /**
- * Inserts the image where the caret was when Image was chosen, or in a new
- * paragraph at the end when that place is gone or is a code block.
+ * Inserts the image where the caret was when Image was chosen; after the
+ * code block a caret in one was in; or in a new paragraph at the end when
+ * that place is gone (or is a range with an end in a code block).
  */
 const insertImage = (
   editor: LexicalEditor,
@@ -1163,6 +1165,19 @@ const insertImage = (
     }
     const paragraph = $createParagraphNode();
     paragraph.append(image);
+    // T13.1: a caret in a code block (a code block holds no image) puts
+    // the image directly after that block, in the block's own container: a
+    // paragraph at the root and in a quote, a line in a list item
+    const code =
+      caret !== null && isAttached && caret.isCollapsed()
+        ? $findMatchingParent(caret.anchor.getNode(), $isCodeNode)
+        : null;
+    if (code !== null) {
+      code.insertAfter(paragraph);
+      $keepPress();
+      return;
+    }
+    // the end of the content: the place Image was chosen at is gone
     $getRoot().append(paragraph);
     $keepPress();
   });
@@ -1342,6 +1357,78 @@ const $unwrapQuotedBlocks = () => {
 };
 
 /** One `role="toolbar"` row, on upstream's `MarkdownToolbar` pattern. */
+/**
+ * T10: when the Block type select closes, the keys go back to the editor
+ * at its caret, through the one focus function (the select's own close
+ * focuses its button after the change, so the editor takes the focus when
+ * the button gets it). A close that came from a press inside the editor
+ * hands no focus (15.14).
+ */
+const BlockTypeSelect = ({
+  block,
+  disabled,
+}: {
+  block: BlockType;
+  disabled: boolean;
+}) => {
+  const [editor] = useLexicalComposerContext();
+  const [open, setOpen] = useState(false);
+  // how the select last closed, until its button takes the focus back
+  const close = useRef<"press" | "other" | undefined>(undefined);
+  const pressedInEditor = useRef(false);
+  useEffect(() => {
+    if (open === false) {
+      return;
+    }
+    pressedInEditor.current = false;
+    // the select is modal: a press outside its list reaches no element, so
+    // the editor is found by the press's place
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      const box = editor.getRootElement()?.getBoundingClientRect();
+      pressedInEditor.current =
+        (target instanceof Element &&
+          target.closest("[data-radix-popper-content-wrapper]") !== null) ===
+          false &&
+        box !== undefined &&
+        event.clientX >= box.left &&
+        event.clientX <= box.right &&
+        event.clientY >= box.top &&
+        event.clientY <= box.bottom;
+    };
+    window.addEventListener("pointerdown", onPointerDown, true);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown, true);
+    };
+  }, [editor, open]);
+  return (
+    <Select
+      aria-label="Block type"
+      options={blockTypes}
+      value={block}
+      getLabel={(block: BlockType) => blockLabels[block]}
+      disabled={disabled}
+      open={open}
+      onOpenChange={(next) => {
+        close.current = next
+          ? undefined
+          : pressedInEditor.current
+            ? "press"
+            : "other";
+        setOpen(next);
+      }}
+      onChange={(block) => setBlockType(editor, block)}
+      onFocus={() => {
+        const how = close.current;
+        close.current = undefined;
+        if (how === "other") {
+          focusEditor(editor);
+        }
+      }}
+    />
+  );
+};
+
 const Toolbar = ({
   id,
   disabled,
@@ -1443,14 +1530,7 @@ const Toolbar = ({
         }
       }}
     >
-      <Select
-        aria-label="Block type"
-        options={blockTypes}
-        value={state.block}
-        getLabel={(block: BlockType) => blockLabels[block]}
-        disabled={disabled}
-        onChange={(block) => setBlockType(editor, block)}
-      />
+      <BlockTypeSelect block={state.block} disabled={disabled} />
       <ToolbarButton
         label="Bold"
         active={state.bold && inCode === false}
@@ -2281,6 +2361,12 @@ const ImageEditingPlugin = () => {
           const selection = $getSelection();
           if ($isRangeSelection(selection) === false) {
             return false;
+          }
+          // 16.11: the range's element-point ends take their place in text
+          // first (the removal step's placement), as the toggle reads only
+          // text ends; a range that then holds nothing links nothing
+          if ($rangeEndsIntoText(selection)) {
+            return true;
           }
           // the images the selection reaches, found before the toggle
           // moves the selection's offsets past a link it inserts

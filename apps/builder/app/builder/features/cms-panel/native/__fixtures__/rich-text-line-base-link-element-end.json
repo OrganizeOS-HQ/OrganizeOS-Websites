@@ -1,0 +1,134 @@
+{
+  "link|BLend|next|fwd|linkBtn": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>T1w<a>Lw</a><blockquote><p><a>Q</a>2w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Q@1|element:listitem@3",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>T1w<a>Lw</a><blockquote><p>k2w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "link|BLend|next|bwd|linkBtn": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>T1w<a>Lw</a><blockquote><p><a>Q</a>2w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@3|text:Q@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>T1w<a>Lw</a><blockquote><p>k2w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "link|BLend|other|fwd|linkBtn": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>T1w<a>Lw</a><blockquote><p><a>Q2w</a></p></blockquote></li><li><a>N</a>w</li></ul>",
+    "calls": 1,
+    "caret": "text:N@1|element:listitem@3",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>T1w<a>Lw</a><blockquote><p>kw</p></blockquote></li></ul>"
+  },
+  "link|BLend|other|bwd|linkBtn": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>T1w<a>Lw</a><blockquote><p><a>Q2w</a></p></blockquote></li><li><a>N</a>w</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@3|text:N@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>T1w<a>Lw</a><blockquote><p>kw</p></blockquote></li></ul>"
+  },
+  "link|BLtrail|other|fwd|linkBtn": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@1|element:listitem@3",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>T1w<a>Lw</a>kw</li></ul>",
+    "failed": "TypeError: Cannot read properties of undefined (reading 'getParent')"
+  },
+  "link|BLtrail|other|bwd|linkBtn": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@3|text:Nw@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>T1w<a>Lw</a>kw</li></ul>",
+    "failed": "TypeError: Cannot read properties of undefined (reading 'getParent')"
+  },
+  "link|LLend|next|fwd|linkBtn": {
+    "write": "<ul><li>Pw</li><li>T1w<a>Lw</a><blockquote><p><a>Q</a>2w</p></blockquote>T3w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Q@1|element:listitem@2",
+    "typed": "<ul><li>Pw</li><li>T1w<a>Lw</a><blockquote><p>k2w</p></blockquote>T3w</li><li>Nw</li></ul>"
+  },
+  "link|LLend|next|bwd|linkBtn": {
+    "write": "<ul><li>Pw</li><li>T1w<a>Lw</a><blockquote><p><a>Q</a>2w</p></blockquote>T3w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@2|text:Q@1",
+    "typed": "<ul><li>Pw</li><li>T1w<a>Lw</a><blockquote><p>k2w</p></blockquote>T3w</li><li>Nw</li></ul>"
+  },
+  "link|LLend|other|fwd|linkBtn": {
+    "write": "<ul><li>Pw</li><li>T1w<a>Lw</a><blockquote><p><a>Q2w</a></p></blockquote><a>T3w</a></li><li><a>N</a>w</li></ul>",
+    "calls": 1,
+    "caret": "text:N@1|element:listitem@2",
+    "typed": "<ul><li>Pw</li><li>T1w<a>Lw</a><blockquote><p>kw</p></blockquote></li></ul>"
+  },
+  "link|LLend|other|bwd|linkBtn": {
+    "write": "<ul><li>Pw</li><li>T1w<a>Lw</a><blockquote><p><a>Q2w</a></p></blockquote><a>T3w</a></li><li><a>N</a>w</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@2|text:N@1",
+    "typed": "<ul><li>Pw</li><li>T1w<a>Lw</a><blockquote><p>kw</p></blockquote></li></ul>"
+  },
+  "link|ULend|next|fwd|linkBtn": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@1|element:listitem@2",
+    "typed": "<ul><li>Pw</li><li>T1w<a>Lw</a>kw</li></ul>",
+    "failed": "TypeError: Cannot read properties of undefined (reading 'getParent')"
+  },
+  "link|ULend|next|bwd|linkBtn": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2|text:Nw@1",
+    "typed": "<ul><li>Pw</li><li>T1w<a>Lw</a>kw</li></ul>",
+    "failed": "TypeError: Cannot read properties of undefined (reading 'getParent')"
+  },
+  "link|ULend|other|fwd|linkBtn": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@1|element:listitem@2",
+    "typed": "<ul><li>Pw</li><li>T1w<a>Lw</a>kw</li></ul>",
+    "failed": "TypeError: Cannot read properties of undefined (reading 'getParent')"
+  },
+  "link|ULend|other|bwd|linkBtn": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2|text:Nw@1",
+    "typed": "<ul><li>Pw</li><li>T1w<a>Lw</a>kw</li></ul>",
+    "failed": "TypeError: Cannot read properties of undefined (reading 'getParent')"
+  },
+  "link|RPend|next|fwd|linkBtn": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Q2w@1|element:paragraph@2",
+    "typed": "<p>A0w</p><p>T1w<a>Lw</a>k2w</p>",
+    "failed": "TypeError: Cannot read properties of undefined (reading 'getParent')"
+  },
+  "link|RPend|next|bwd|linkBtn": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:paragraph@2|text:Q2w@1",
+    "typed": "<p>A0w</p><p>T1w<a>Lw</a>k2w</p>",
+    "failed": "TypeError: Cannot read properties of undefined (reading 'getParent')"
+  },
+  "link|RHend|next|fwd|linkBtn": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:B2w@1|element:heading@2",
+    "typed": "<p>A0w</p><h3>T1w<a>Lw</a>k2w</h3>",
+    "failed": "TypeError: Cannot read properties of undefined (reading 'getParent')"
+  },
+  "link|RHend|next|bwd|linkBtn": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:heading@2|text:B2w@1",
+    "typed": "<p>A0w</p><h3>T1w<a>Lw</a>k2w</h3>",
+    "failed": "TypeError: Cannot read properties of undefined (reading 'getParent')"
+  },
+  "link|RQend|next|fwd|linkBtn": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:B2w@1|element:paragraph@2",
+    "typed": "<p>A0w</p><blockquote><p>T1w<a>Lw</a>k2w</p></blockquote>",
+    "failed": "TypeError: Cannot read properties of undefined (reading 'getParent')"
+  },
+  "link|RQend|next|bwd|linkBtn": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:paragraph@2|text:B2w@1",
+    "typed": "<p>A0w</p><blockquote><p>T1w<a>Lw</a>k2w</p></blockquote>",
+    "failed": "TypeError: Cannot read properties of undefined (reading 'getParent')"
+  }
+}
