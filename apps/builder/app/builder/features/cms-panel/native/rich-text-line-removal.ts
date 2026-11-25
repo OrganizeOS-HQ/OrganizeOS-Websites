@@ -219,7 +219,10 @@ const $joinsInlineContent = (block: ElementNode) => {
  * that direction runs from beside the element, as at the edge of the same
  * text unwrapped.
  */
-export const $caretBesideInlineEdge = (isBackward: boolean, character: boolean) => {
+export const $caretBesideInlineEdge = (
+  isBackward: boolean,
+  character: boolean
+) => {
   const selection = $getSelection();
   if (
     $isRangeSelection(selection) === false ||
@@ -1100,10 +1103,7 @@ export const $nothingHeldKey = (event: KeyboardEvent | null): boolean => {
     return false;
   }
   const moved = selection.clone();
-  if (
-    $lastPointToBlockEnd(moved) === false ||
-    moved.isCollapsed() === false
-  ) {
+  if ($lastPointToBlockEnd(moved) === false || moved.isCollapsed() === false) {
     return false;
   }
   event?.preventDefault();

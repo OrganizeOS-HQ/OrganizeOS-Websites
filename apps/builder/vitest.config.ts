@@ -33,9 +33,7 @@ const grantClipboard: BrowserCommand<[]> = async (context) => {
     return;
   }
   const { page } = context as unknown as { page: Page };
-  await page
-    .context()
-    .grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
 };
 
 const browserProject = (

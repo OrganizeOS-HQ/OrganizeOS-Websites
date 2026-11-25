@@ -77,9 +77,7 @@ export const $emptyLine = (isBackward: boolean): boolean => {
   ) {
     return false;
   }
-  const beside = isBackward
-    ? line.getPreviousSibling()
-    : line.getNextSibling();
+  const beside = isBackward ? line.getPreviousSibling() : line.getNextSibling();
   if (isBlockDecorator(beside)) {
     beside.remove();
     return true;
@@ -308,8 +306,7 @@ export const $itemStartJoin = (isBackward: boolean): boolean => {
   }
   const lastChild = previous.getLastChild();
   const rule =
-    $isQuoteNode(lastChild) &&
-    isBlockDecorator(lastChild.getLastChild())
+    $isQuoteNode(lastChild) && isBlockDecorator(lastChild.getLastChild())
       ? lastChild.getLastChild()
       : lastChild;
   if (isBlockDecorator(rule) === false) {

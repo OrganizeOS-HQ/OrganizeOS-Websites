@@ -212,10 +212,7 @@ export const $divider = (): boolean => {
         $isRangeSelection(range) && range.isCollapsed()
           ? range.anchor.getNode()
           : null;
-      while (
-        child !== null &&
-        isLinedContainer(child.getParent()) === false
-      ) {
+      while (child !== null && isLinedContainer(child.getParent()) === false) {
         child = child.getParent();
       }
       const item = child?.getParent() ?? null;
@@ -262,11 +259,7 @@ export const $divider = (): boolean => {
           node = parent;
         }
         const parent = node.getParent();
-        if (
-          parent !== null &&
-          $isRootOrShadowRoot(parent) &&
-          offset === 0
-        ) {
+        if (parent !== null && $isRootOrShadowRoot(parent) && offset === 0) {
           node.insertBefore(rule);
         } else if (
           parent !== null &&

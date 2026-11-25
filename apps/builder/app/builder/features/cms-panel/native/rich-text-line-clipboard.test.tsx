@@ -98,15 +98,17 @@ const expectExactCut = (before: Parts) => {
   expect(held["text/html"] ?? "", "text/html written").not.toBe("");
 };
 
-const shiftRightUntil = (focus: string): Step => async () => {
-  for (let press = 0; press < 14; press += 1) {
-    if (caretKey().endsWith(`|${focus}`)) {
-      return;
+const shiftRightUntil =
+  (focus: string): Step =>
+  async () => {
+    for (let press = 0; press < 14; press += 1) {
+      if (caretKey().endsWith(`|${focus}`)) {
+        return;
+      }
+      await keys("{Shift>}{ArrowRight}{/Shift}")();
     }
-    await keys("{Shift>}{ArrowRight}{/Shift}")();
-  }
-  expect(caretKey(), "the walk's focus").toMatch(new RegExp(`\\|${focus}$`));
-};
+    expect(caretKey(), "the walk's focus").toMatch(new RegExp(`\\|${focus}$`));
+  };
 
 describe("the one cut handler (T11.1, T11.2, T11.5; T12.3)", () => {
   const cells: Array<{

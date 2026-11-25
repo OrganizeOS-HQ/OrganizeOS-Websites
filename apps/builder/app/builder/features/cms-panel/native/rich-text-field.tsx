@@ -2323,60 +2323,59 @@ const ImageEditingPlugin = () => {
         imageArrow: (payload, _editor, command) => {
           const event = payload as KeyboardEvent;
           const isBackward = command === KEY_ARROW_LEFT_COMMAND;
-            if (event.altKey || event.ctrlKey || event.metaKey) {
-              return false;
-            }
-            const selection = $getSelection();
-            if ($isNodeSelection(selection)) {
-              const image = $selectedImage(selection);
-              if (image === undefined || event.shiftKey) {
-                return false;
-              }
-              event.preventDefault();
-              $caretBeside(image, isBackward);
-              lastArrow.current = undefined;
-              return true;
-            }
-            if ($isRangeSelection(selection) === false || event.shiftKey) {
-              return false;
-            }
-            // a range with a plain arrow collapses toward the arrow
-            if (selection.isCollapsed() === false) {
-              event.preventDefault();
-              const [start, end] = selection.isBackward()
-                ? [selection.focus, selection.anchor]
-                : [selection.anchor, selection.focus];
-              const to = isBackward ? start : end;
-              const point = { key: to.key, offset: to.offset, type: to.type };
-              selection.anchor.set(point.key, point.offset, point.type);
-              selection.focus.set(point.key, point.offset, point.type);
-              lastArrow.current = undefined;
-              return true;
-            }
-            // a line break beside the caret: the caret steps just past it,
-            // so the next arrow reaches what starts the next line
-            const beside = $getAdjacentNode(selection.focus, isBackward);
-            if ($isLineBreakNode(beside)) {
-              event.preventDefault();
-              const parent = beside.getParentOrThrow().getKey();
-              const offset =
-                beside.getIndexWithinParent() + (isBackward ? 0 : 1);
-              selection.anchor.set(parent, offset, "element");
-              selection.focus.set(parent, offset, "element");
-              lastArrow.current = undefined;
-              return true;
-            }
-            const image = $imageBeside(selection, isBackward);
-            if (image === undefined) {
+          if (event.altKey || event.ctrlKey || event.metaKey) {
+            return false;
+          }
+          const selection = $getSelection();
+          if ($isNodeSelection(selection)) {
+            const image = $selectedImage(selection);
+            if (image === undefined || event.shiftKey) {
               return false;
             }
             event.preventDefault();
-            const next = $createNodeSelection();
-            next.add(image.getKey());
-            $setSelection(next);
-            lastArrow.current = isBackward ? "back" : "forward";
+            $caretBeside(image, isBackward);
+            lastArrow.current = undefined;
             return true;
-          },
+          }
+          if ($isRangeSelection(selection) === false || event.shiftKey) {
+            return false;
+          }
+          // a range with a plain arrow collapses toward the arrow
+          if (selection.isCollapsed() === false) {
+            event.preventDefault();
+            const [start, end] = selection.isBackward()
+              ? [selection.focus, selection.anchor]
+              : [selection.anchor, selection.focus];
+            const to = isBackward ? start : end;
+            const point = { key: to.key, offset: to.offset, type: to.type };
+            selection.anchor.set(point.key, point.offset, point.type);
+            selection.focus.set(point.key, point.offset, point.type);
+            lastArrow.current = undefined;
+            return true;
+          }
+          // a line break beside the caret: the caret steps just past it,
+          // so the next arrow reaches what starts the next line
+          const beside = $getAdjacentNode(selection.focus, isBackward);
+          if ($isLineBreakNode(beside)) {
+            event.preventDefault();
+            const parent = beside.getParentOrThrow().getKey();
+            const offset = beside.getIndexWithinParent() + (isBackward ? 0 : 1);
+            selection.anchor.set(parent, offset, "element");
+            selection.focus.set(parent, offset, "element");
+            lastArrow.current = undefined;
+            return true;
+          }
+          const image = $imageBeside(selection, isBackward);
+          if (image === undefined) {
+            return false;
+          }
+          event.preventDefault();
+          const next = $createNodeSelection();
+          next.add(image.getKey());
+          $setSelection(next);
+          lastArrow.current = isBackward ? "back" : "forward";
+          return true;
+        },
         // typing with an image selected first puts a caret beside it: on
         // the side the arrow was moving toward (after it when no arrow
         // selected it)

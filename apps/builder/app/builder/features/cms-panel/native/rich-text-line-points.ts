@@ -885,12 +885,7 @@ export const pointRules = (editor: LexicalEditor) => {
     isLeftKey: boolean
   ): boolean => {
     const isBackward = $arrowMovesBackward(isLeftKey);
-    if (
-      event.shiftKey ||
-      event.altKey ||
-      event.ctrlKey ||
-      event.metaKey
-    ) {
+    if (event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) {
       return false;
     }
     const selection = $getSelection();
@@ -982,9 +977,7 @@ export const pointRules = (editor: LexicalEditor) => {
         at.type === "element" &&
         atNode.is(line) &&
         at.offset === line.getChildrenSize();
-      const first = $isElementNode(block)
-        ? block.getFirstDescendant()
-        : null;
+      const first = $isElementNode(block) ? block.getFirstDescendant() : null;
       if (
         atEnd &&
         $isElementNode(block) &&
@@ -1001,10 +994,7 @@ export const pointRules = (editor: LexicalEditor) => {
     const focus = selection.focus;
     const node = focus.getNode();
     let child: LexicalNode | null = node;
-    while (
-      child !== null &&
-      isLinedContainer(child.getParent()) === false
-    ) {
+    while (child !== null && isLinedContainer(child.getParent()) === false) {
       child = child.getParent();
     }
     if (
@@ -1147,7 +1137,10 @@ export const pointRules = (editor: LexicalEditor) => {
           // a commit that wrote the selection
           const next = editorState.read(() => $getSelection());
           const prev = prevEditorState.read(() => $getSelection());
-          if (next === prev || (next !== null && prev !== null && next.is(prev))) {
+          if (
+            next === prev ||
+            (next !== null && prev !== null && next.is(prev))
+          ) {
             return;
           }
           pageSelection = pageSnapshot();
@@ -1221,7 +1214,11 @@ export const pointRules = (editor: LexicalEditor) => {
           }
           // held while a composition runs: it adds no update between the
           // composition's own; the commit that ends it is checked
-          if (editor.isComposing() || lineSpike.thirdPlaceOff || pressId !== null) {
+          if (
+            editor.isComposing() ||
+            lineSpike.thirdPlaceOff ||
+            pressId !== null
+          ) {
             return;
           }
           const broken = editorState.read($pointRuleBroken);
