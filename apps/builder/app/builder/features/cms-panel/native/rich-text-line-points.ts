@@ -334,13 +334,12 @@ export const $pointIntoAdjacentBlock = (point: PointType) => {
 
 /**
  * 15.14: the press's own caret survives the press. A press in progress in
- * an editor, per editor (15.13's press state): the pointer that pressed,
- * and the lined containers the caret was in since the press began (where
+ * an editor, per editor (15.13's press state): the lined containers the caret was in since the press began (where
  * its end looks for the line the caret left). The one way the field
  * focuses an editor: during a press in it the field does not focus it (the
  * press does) and does not run what would place the caret after the focus.
  */
-type Press = { pointerId: number; containers: Set<NodeKey> };
+type Press = { containers: Set<NodeKey> };
 const presses = new WeakMap<LexicalEditor, Press>();
 
 export const isPressing = (editor: LexicalEditor) => presses.has(editor);
@@ -958,7 +957,6 @@ export const pointRules = (editor: LexicalEditor, tracker?: EditTracker) => {
     endPress();
     if (event.button === 0) {
       presses.set(editor, {
-        pointerId: event.pointerId,
         containers: new Set(
           editor.getEditorState().read(() => $containersOf($getSelection()))
         ),
@@ -1042,11 +1040,17 @@ export const pointRules = (editor: LexicalEditor, tracker?: EditTracker) => {
       .getEditorState()
       .read(() => $isRangeSelection($getSelection()));
     const press = presses.get(editor);
+    if (editor.isComposing()) {
+      // 16.18: an edit of a composition ends an open press too; the
+      // composition's own updates are not disturbed (its start ran the
+      // held step, onCompositionStart)
+      presses.delete(editor);
+      return;
+    }
     if (
-      editor.isComposing() ||
-      (keptOf(editor).size === 0 &&
-        press === undefined &&
-        (rangeHeld === false || pageMoved() === false))
+      keptOf(editor).size === 0 &&
+      press === undefined &&
+      (rangeHeld === false || pageMoved() === false)
     ) {
       return;
     }
@@ -1066,6 +1070,29 @@ export const pointRules = (editor: LexicalEditor, tracker?: EditTracker) => {
             changed = $resolveLinedPoints(true) || changed;
             changed = $removeEmptyLinesIn(was) || changed;
           }
+          if (changed) {
+            $addUpdateTag("history-merge");
+          }
+        },
+        { discrete: true }
+      )
+    );
+  };
+  // 16.18: a composition is an edit: its start ends an open press, and the
+  // held step runs before the editor composes (kept lines stay: they go at
+  // the commit that ends the composition, 16.23)
+  const onCompositionStart = () => {
+    const press = presses.get(editor);
+    if (press === undefined || editor.isComposing()) {
+      return;
+    }
+    presses.delete(editor);
+    keepPageRange(editor, () =>
+      editor.update(
+        () => {
+          const was = [...$previousContainers(), ...press.containers];
+          let changed = $resolveLinedPoints(true);
+          changed = $removeEmptyLinesIn(was) || changed;
           if (changed) {
             $addUpdateTag("history-merge");
           }
@@ -1329,6 +1356,12 @@ export const pointRules = (editor: LexicalEditor, tracker?: EditTracker) => {
         editor.registerRootListener((root, previous) => {
           previous?.removeEventListener("pointerdown", onPressStart, true);
           root?.addEventListener("pointerdown", onPressStart, true);
+          previous?.removeEventListener(
+            "compositionstart",
+            onCompositionStart,
+            true
+          );
+          root?.addEventListener("compositionstart", onCompositionStart, true);
           for (const type of beforeKeyOrEditEvents) {
             previous?.removeEventListener(type, beforeKeyOrEdit, true);
             root?.addEventListener(type, beforeKeyOrEdit, true);

@@ -8,6 +8,7 @@ import {
   $getRoot,
   $getSelection,
   $isNodeSelection,
+  $isRangeSelection,
   type ElementNode,
 } from "lexical";
 import {
@@ -40,7 +41,12 @@ import {
   settle,
   unmountField,
 } from "./rich-text-test-harness";
-import { $isCmsLineNode, holdsSelection } from "./rich-text-line-node";
+import {
+  $isCmsLineNode,
+  holdsSelection,
+  isLinedContainer,
+} from "./rich-text-line-node";
+import { isPressing } from "./rich-text-line-points";
 
 type Point = { x: number; y: number };
 const send = (method: string, params: object) =>
@@ -292,18 +298,23 @@ const altOpen = () =>
     (label) => label.textContent === "Alt"
   );
 /** The same press and key with no caret line in the field. */
+/**
+ * The oracle: the same real press (held as long) at the same target in the
+ * same value with no caret line, then the same key. Where the press leaves
+ * a caret, it is the caret the press with the line left.
+ */
 const mirrorWithoutLine = async (
   html: string,
   target: Target,
-  textPoint: [string, number] | null,
+  ms: number,
+  caret: string | null,
   key: string
 ) => {
   const onChange = await mount(html);
-  if (textPoint !== null) {
-    await at(textPoint[0], 0)();
-    await placeIn(textPoint[0], textPoint[1]);
-  } else {
-    await hold(mirrorTarget(target).element, 50, mirrorTarget(target).point)();
+  const { element, point } = mirrorTarget(target);
+  await hold(element, ms, point)();
+  if (caret !== null) {
+    expect(caretKey(), "the oracle's press leaves the same caret").toBe(caret);
   }
   if (target === "image") {
     await keys("{Escape}")();
@@ -361,14 +372,14 @@ describe("15.13 mirror: the caret in an empty caret line, a press below it", () 
           const write = written(onChange);
           unmountField();
           if (key === "k") {
-            const textPoint: [string, number] | null =
+            const caret =
               target === "link"
-                ? ["Lw", 1]
+                ? "text:Lw@1"
                 : target === "text"
-                  ? ["Abcdefghw", underOffset!]
+                  ? `text:Abcdefghw@${underOffset}`
                   : null;
             expect(write).toBe(
-              await mirrorWithoutLine(html, target, textPoint, key)
+              await mirrorWithoutLine(html, target, ms, caret, key)
             );
           }
         });
@@ -717,6 +728,38 @@ describe("16.18: the press's end", () => {
     } finally {
       container.removeEventListener("click", stop);
     }
+  });
+});
+
+describe("16.18: a composition ends an open press", () => {
+  test("a press that no click ends, then a composition", async () => {
+    const run = async (place: () => Promise<void>) => {
+      const onChange = await mount(LI("<hr>T1w"));
+      await place();
+      await ime("a")();
+      const editor = editorOf()!;
+      const out = {
+        write: written(onChange),
+        caret: caretKey(),
+        pressing: isPressing(editor),
+        onContainer: editor.getEditorState().read(() => {
+          const selection = $getSelection();
+          return (
+            $isRangeSelection(selection) &&
+            [selection.anchor, selection.focus].some((point) =>
+              isLinedContainer(point.getNode())
+            )
+          );
+        }),
+      };
+      unmountField();
+      return out;
+    };
+    const pressed = await run(pressWithNoClick);
+    expect(pressed.pressing, "the press is over").toBe(false);
+    expect(pressed.onContainer, "no point on a lined container").toBe(false);
+    expect(pressed.write).not.toBe("none");
+    expect(pressed).toEqual(await run(pointAfterClick));
   });
 });
 
