@@ -13,8 +13,6 @@ import {
   $isTextNode,
   CAN_REDO_COMMAND,
   CAN_UNDO_COMMAND,
-  COMMAND_PRIORITY_CRITICAL,
-  CONTROLLED_TEXT_INSERTION_COMMAND,
   type EditorState,
   type LexicalEditor,
   TextNode,
@@ -39,6 +37,32 @@ const compositionStarts = new WeakMap<
     ended: boolean;
   }
 >();
+
+/**
+ * Per editor, the composition's start until its first commit: "" from the
+ * page's compositionstart, then the composition-start character its
+ * controlled text insertion carried, if any.
+ */
+const compositionStarting = new WeakMap<LexicalEditor, string | null>();
+
+/**
+ * R1: the composition-start character Lexical inserts at a composition's
+ * start reaches the field as a controlled text insertion; that character
+ * is the one kept (the table's `history.compositionStartChar`).
+ */
+export const compositionStartChar = (
+  editor: LexicalEditor,
+  payload: unknown
+): boolean => {
+  if (
+    compositionStarting.get(editor) === "" &&
+    editor.isComposing() &&
+    (payload === "\u200b" || payload === "\u00a0")
+  ) {
+    compositionStarting.set(editor, payload);
+  }
+  return false;
+};
 
 /** Per editor, the text the page's last composition ended with. */
 const compositionEndText = new WeakMap<LexicalEditor, string>();
@@ -81,7 +105,6 @@ export const registerCompositionStep = (editor: LexicalEditor) => {
   // the caret: that place is kept, and at the composition's end the
   // character is removed in the same update when it is still there. Never
   // a strip: no other character is touched
-  let starting: string | null = null;
   let startPlace: { key: string; offset: number; char: string } | null = null;
   let removedAtEnd = false;
   // on the window, in the capture phase: before Lexical's own listener on
@@ -97,9 +120,12 @@ export const registerCompositionStep = (editor: LexicalEditor) => {
     }
     // until the next commit: the start's own (Lexical's listener runs
     // after a microtask checkpoint, so a microtask would end it too soon)
-    starting = "";
+    compositionStarting.set(editor, "");
   };
   return mergeRegister(
+    () => {
+      compositionStarting.delete(editor);
+    },
     editor.registerRootListener((root, previous) => {
       previous?.removeEventListener("compositionend", onEnd, true);
       root?.addEventListener("compositionend", onEnd, true);
@@ -114,20 +140,6 @@ export const registerCompositionStep = (editor: LexicalEditor) => {
         true
       );
     }),
-    editor.registerCommand(
-      CONTROLLED_TEXT_INSERTION_COMMAND,
-      (payload) => {
-        if (
-          starting === "" &&
-          editor.isComposing() &&
-          (payload === "\u200b" || payload === "\u00a0")
-        ) {
-          starting = payload;
-        }
-        return false;
-      },
-      COMMAND_PRIORITY_CRITICAL
-    ),
     // the composition's end dirties the text node the page's caret is
     // in, which need not be the composed one
     editor.registerNodeTransform(TextNode, () => {
@@ -169,13 +181,14 @@ export const registerCompositionStep = (editor: LexicalEditor) => {
       ({ editorState, prevEditorState, tags, dirtyElements, dirtyLeaves }) => {
         // R1: the place of the start character, read at the commit that
         // inserted it; gone once the composition is over
+        const starting = compositionStarting.get(editor) ?? null;
         if (
           editor.isComposing() &&
           typeof starting === "string" &&
           starting !== ""
         ) {
           const char = starting;
-          starting = null;
+          compositionStarting.set(editor, null);
           startPlace = editorState.read(() => {
             const selection = $getSelection();
             if (
@@ -198,7 +211,7 @@ export const registerCompositionStep = (editor: LexicalEditor) => {
         // a start that inserted no character is over at its commit (a
         // commit before it, made while not composing, leaves it)
         if (editor.isComposing()) {
-          starting = null;
+          compositionStarting.set(editor, null);
         }
         const history = cmsHistory.get(editor);
         if (history === undefined) {

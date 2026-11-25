@@ -1,12 +1,11 @@
-// The removal mark and its tags, "emptied", the join that carries an item's rest, and the insert, paste and remove handlers.
-import { $insertDataTransferForRichText } from "@lexical/clipboard";
+// The removal mark and its tags, "emptied", the join that carries an item's rest, and the handlers of the removal mark, 15.10's key and Enter over a range.
 import { $isListItemNode, $isListNode } from "@lexical/list";
 import {
   $createHeadingNode,
   $isHeadingNode,
   $isQuoteNode,
 } from "@lexical/rich-text";
-import { $findMatchingParent, mergeRegister } from "@lexical/utils";
+import { $findMatchingParent } from "@lexical/utils";
 import {
   $createLineBreakNode,
   $createParagraphNode,
@@ -17,30 +16,22 @@ import {
   $getSelection,
   $isDecoratorNode,
   $isElementNode,
-  $isNodeSelection,
   $isRangeSelection,
   $isRootOrShadowRoot,
   $isTextNode,
   $setSelection,
-  COMMAND_PRIORITY_CRITICAL,
-  CONTROLLED_TEXT_INSERTION_COMMAND,
-  CUT_COMMAND,
   DELETE_CHARACTER_COMMAND,
   DELETE_LINE_COMMAND,
   DELETE_WORD_COMMAND,
   ElementNode,
-  INSERT_LINE_BREAK_COMMAND,
-  INSERT_PARAGRAPH_COMMAND,
   KEY_BACKSPACE_COMMAND,
   KEY_DELETE_COMMAND,
   type LexicalCommand,
   type LexicalEditor,
   type LexicalNode,
-  PASTE_COMMAND,
   type PointType,
   type RangeSelection,
   REMOVE_TEXT_COMMAND,
-  SELECTION_INSERT_CLIPBOARD_NODES_COMMAND,
   TextNode,
 } from "lexical";
 import {
@@ -57,10 +48,6 @@ import {
   isLinedContainer,
   lineSpike,
 } from "./rich-text-line-node";
-import {
-  $headPathOverNodeSelection,
-  $nodeSelectionIntoLine,
-} from "./rich-text-line-node-selection";
 import { $inlineEdgeOf } from "./rich-text-line-points";
 
 /**
@@ -232,7 +219,7 @@ const $joinsInlineContent = (block: ElementNode) => {
  * that direction runs from beside the element, as at the edge of the same
  * text unwrapped.
  */
-const $caretBesideInlineEdge = (isBackward: boolean, character: boolean) => {
+export const $caretBesideInlineEdge = (isBackward: boolean, character: boolean) => {
   const selection = $getSelection();
   if (
     $isRangeSelection(selection) === false ||
@@ -468,7 +455,7 @@ const $nothingBefore = (node: LexicalNode) => {
  * none to take, as in text, and Lexical's own form runs). Decided here, so Lexical's
  * extension by the page's selection does not run.
  */
-const $backwardFormIsBackspace = () => {
+export const $backwardFormIsBackspace = () => {
   const selection = $getSelection();
   if (
     $isRangeSelection(selection) === false ||
@@ -506,7 +493,7 @@ const $backwardFormIsBackspace = () => {
  * there (D3), as at the same block holding text: the line and the block
  * join, and nothing of the block goes.
  */
-const $wordFormAtLineEdgeBesideBlock = (isBackward: boolean) => {
+export const $wordFormAtLineEdgeBesideBlock = (isBackward: boolean) => {
   const selection = $getSelection();
   if (
     $isRangeSelection(selection) === false ||
@@ -534,7 +521,7 @@ const $wordFormAtLineEdgeBesideBlock = (isBackward: boolean) => {
 };
 
 /** A caret at the content's start, just before a first child that is not text. */
-const $lineFormAtContentStart = () => {
+export const $lineFormAtContentStart = () => {
   const selection = $getSelection();
   if (
     $isRangeSelection(selection) === false ||
@@ -577,7 +564,7 @@ const $nothingAfter = (node: LexicalNode) => {
  * after is D5's. Decided here, so Lexical's extension by the page's
  * selection does not run.
  */
-const $lineFormHasNothing = () => {
+export const $lineFormHasNothing = () => {
   const selection = $getSelection();
   if (
     $isRangeSelection(selection) === false ||
@@ -889,27 +876,19 @@ export const $dropEmptiedBlockInContainer = (block: ElementNode) => {
   $dropEmptied(block);
 };
 
-const insertCommands: LexicalCommand<never>[] = [
-  INSERT_PARAGRAPH_COMMAND,
-  INSERT_LINE_BREAK_COMMAND,
-  CONTROLLED_TEXT_INSERTION_COMMAND,
-] as LexicalCommand<never>[];
-
-/** A paste or drop at a point with no line beside it goes the head's way. */
-const pasteCommands: LexicalCommand<never>[] = [
-  PASTE_COMMAND,
-  SELECTION_INSERT_CLIPBOARD_NODES_COMMAND,
-] as LexicalCommand<never>[];
-
-const removeCommands: LexicalCommand<never>[] = [
+/** The delete commands: the removal mark takes their direction. */
+const deleteCommands: LexicalCommand<unknown>[] = [
   DELETE_CHARACTER_COMMAND,
   DELETE_WORD_COMMAND,
   DELETE_LINE_COMMAND,
+] as LexicalCommand<unknown>[];
+
+/** The other commands the removal mark is on whatever the selection. */
+const removeCommands: LexicalCommand<unknown>[] = [
   REMOVE_TEXT_COMMAND,
-  CUT_COMMAND,
   KEY_BACKSPACE_COMMAND,
   KEY_DELETE_COMMAND,
-] as LexicalCommand<never>[];
+] as LexicalCommand<unknown>[];
 
 /**
  * The text/plain of a copy or a cut (D6, F7): the head's for the same
@@ -1083,201 +1062,71 @@ export const $nodesInRange = (selection: RangeSelection, collect = true) => {
   return { nodes, start, end };
 };
 
-/** The insert and paste handlers, the 15.10 handler and the remove handlers, in that order. */
-export const registerEditMarks = (editor: LexicalEditor) =>
-  mergeRegister(
-    ...insertCommands.map((command) =>
-      editor.registerCommand(
-        command,
-        (payload: unknown) => {
-          if ($hasMark(HEAD_PATH_TAG)) {
-            return false;
-          }
-          // a drop carries a data transfer: it is a paste
-          const isDrop =
-            command === CONTROLLED_TEXT_INSERTION_COMMAND &&
-            typeof payload !== "string";
-          const selection = $getSelection();
-          if (
-            $isRangeSelection(selection) &&
-            selection.isCollapsed() === false
-          ) {
-            $tagRemoval();
-          }
-          // typed or composed text lands directly after a selected node,
-          // which stays (D15)
-          if (
-            command === CONTROLLED_TEXT_INSERTION_COMMAND &&
-            isDrop === false
-          ) {
-            $nodeSelectionIntoLine(false, true);
-          }
-          return false;
-        },
-        COMMAND_PRIORITY_CRITICAL
-      )
-    ),
-    ...pasteCommands.map((command) =>
-      editor.registerCommand(
-        command,
-        (payload: unknown) => {
-          if ($hasMark(HEAD_PATH_TAG)) {
-            return false;
-          }
-          const selection = $getSelection();
-          if (
-            $isRangeSelection(selection) &&
-            selection.isCollapsed() === false
-          ) {
-            $tagRemoval();
-          }
-          const data =
-            command === PASTE_COMMAND && payload instanceof ClipboardEvent
-              ? payload.clipboardData
-              : null;
-          const isRich =
-            data !== null &&
-            (data.getData("text/html") !== "" ||
-              data.getData("application/x-lexical-editor") !== "");
-          // 14.8 (D15): in a lined container that starts with a block,
-          // where the head's own path does not end, Lexical's order for a
-          // node selection, with the point after the last selected node
-          // resolved by D18 first: the paste runs at that caret, as a paste
-          // there does (D14), then the selected nodes go. A container that
-          // starts with a line keeps the head's write
-          if (isRich && $isNodeSelection(selection)) {
-            const nodes = selection.getNodes();
-            const container = nodes.at(-1)?.getParent() ?? null;
-            if (
-              isLinedContainer(container) &&
-              $isCmsLineNode(container.getFirstChild()) === false
-            ) {
-              $nodeSelectionIntoLine(false, true);
-              const caret = $getSelection();
-              if ($isRangeSelection(caret)) {
-                (payload as ClipboardEvent).preventDefault();
-                $mark(PASTE_OVER_NODE_MARK);
-                $insertDataTransferForRichText(data, caret, $getEditor());
-                for (const node of nodes) {
-                  if (node.isAttached()) {
-                    node.remove();
-                  }
-                }
-                return true;
-              }
-            }
-          }
-          if (isRich && $headPathOverNodeSelection()) {
-            return false;
-          }
-          // plain text replaces the node; a clipboard of files only leaves it
-          if (
-            command === PASTE_COMMAND &&
-            data !== null &&
-            data.getData("text/plain") !== ""
-          ) {
-            $nodeSelectionIntoLine(true, false);
-          }
-          return false;
-        },
-        COMMAND_PRIORITY_CRITICAL
-      )
-    ),
-    // 15.10: Backspace or Delete over a range that holds nothing once its
-    // last point is in place removes nothing, and the page's own delete
-    // after the key does not run at the caret that is left
-    ...[KEY_BACKSPACE_COMMAND, KEY_DELETE_COMMAND].map((command) =>
-      editor.registerCommand(
-        command,
-        (event: KeyboardEvent | null) => {
-          const selection = $getSelection();
-          if ($isRangeSelection(selection) === false) {
-            return false;
-          }
-          const moved = selection.clone();
-          if (
-            $lastPointToBlockEnd(moved) === false ||
-            moved.isCollapsed() === false
-          ) {
-            return false;
-          }
-          event?.preventDefault();
-          $setSelection(moved);
-          return true;
-        },
-        COMMAND_PRIORITY_CRITICAL
-      )
-    ),
-    ...removeCommands.map((command) =>
-      editor.registerCommand(
-        command,
-        (payload: unknown) => {
-          if (
-            $hasMark(HEAD_PATH_TAG) ||
-            (command !== CUT_COMMAND && $headPathOverNodeSelection())
-          ) {
-            return false;
-          }
-          if (
-            command === DELETE_CHARACTER_COMMAND ||
-            command === DELETE_WORD_COMMAND ||
-            command === DELETE_LINE_COMMAND
-          ) {
-            if (
-              $caretBesideInlineEdge(
-                payload as boolean,
-                command === DELETE_CHARACTER_COMMAND
-              )
-            ) {
-              return true;
-            }
-          }
-          if (
-            command === DELETE_WORD_COMMAND &&
-            $wordFormAtLineEdgeBesideBlock(payload as boolean)
-          ) {
-            $getEditor().dispatchCommand(
-              DELETE_CHARACTER_COMMAND,
-              payload as boolean
-            );
-            return true;
-          }
-          if (
-            command === DELETE_LINE_COMMAND &&
-            payload === false &&
-            $lineFormHasNothing()
-          ) {
-            return true;
-          }
-          // the line form backward at the content's start, before a first
-          // child that is not text, has nothing to remove (as in text)
-          if (
-            command === DELETE_LINE_COMMAND &&
-            payload === true &&
-            $lineFormAtContentStart()
-          ) {
-            return true;
-          }
-          if (
-            (command === DELETE_LINE_COMMAND ||
-              command === DELETE_WORD_COMMAND) &&
-            payload === true &&
-            $backwardFormIsBackspace()
-          ) {
-            $getEditor().dispatchCommand(DELETE_CHARACTER_COMMAND, true);
-            return true;
-          }
-          const nothingHeld = $tagRemoval(
-            command === DELETE_CHARACTER_COMMAND ||
-              command === DELETE_WORD_COMMAND ||
-              command === DELETE_LINE_COMMAND
-              ? (payload as boolean)
-              : undefined
-          );
-          // a range that holds nothing (15.10) removes nothing
-          return nothingHeld;
-        },
-        COMMAND_PRIORITY_CRITICAL
-      )
-    )
-  );
+/**
+ * The removal mark, one handler on every command it is on (Task 7's
+ * table): nothing under the head path; on the delete and remove commands
+ * the mark whatever the selection, with its answer (a range that holds
+ * nothing once its ends are in place removes nothing, 15.10); on the
+ * others the mark for a range only, and the command runs on.
+ */
+export const $removalMark = (
+  command: LexicalCommand<unknown>,
+  payload: unknown
+): boolean => {
+  if ($hasMark(HEAD_PATH_TAG)) {
+    return false;
+  }
+  if (deleteCommands.includes(command)) {
+    return $tagRemoval(payload as boolean);
+  }
+  if (removeCommands.includes(command)) {
+    return $tagRemoval(undefined);
+  }
+  const selection = $getSelection();
+  if ($isRangeSelection(selection) && selection.isCollapsed() === false) {
+    $tagRemoval();
+  }
+  return false;
+};
+
+/**
+ * 15.10: Backspace or Delete over a range that holds nothing once its
+ * last point is in place removes nothing, and the page's own delete after
+ * the key does not run at the caret that is left.
+ */
+export const $nothingHeldKey = (event: KeyboardEvent | null): boolean => {
+  const selection = $getSelection();
+  if ($isRangeSelection(selection) === false) {
+    return false;
+  }
+  const moved = selection.clone();
+  if (
+    $lastPointToBlockEnd(moved) === false ||
+    moved.isCollapsed() === false
+  ) {
+    return false;
+  }
+  event?.preventDefault();
+  $setSelection(moved);
+  return true;
+};
+
+/**
+ * E1: Enter or Shift+Enter over a range from a line into a block is the
+ * removal (with D3's break, decided before the edit by the removal's
+ * mark), then the key at its caret.
+ */
+export const $enterRangeWithBreak = (): boolean => {
+  const selection = $getSelection();
+  if ($isRangeSelection(selection) && selection.isCollapsed() === false) {
+    const start = selection.isBackward() ? selection.focus : selection.anchor;
+    const line = $findMatchingParent(start.getNode(), $isCmsLineNode);
+    if (
+      $isCmsLineNode(line) &&
+      $hasMark(`${BREAK_AFTER_TAG}${line.getKey()}`)
+    ) {
+      $removeRangeWithBreak(selection);
+    }
+  }
+  return false;
+};

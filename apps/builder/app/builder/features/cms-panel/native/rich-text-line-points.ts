@@ -15,21 +15,13 @@ import {
   $isRangeSelection,
   $isTextNode,
   $setSelection,
-  CLICK_COMMAND,
-  COMMAND_PRIORITY_CRITICAL,
-  COMMAND_PRIORITY_LOW,
-  COMMAND_PRIORITY_NORMAL,
   type EditorState,
   ElementNode,
-  KEY_ARROW_LEFT_COMMAND,
-  KEY_ARROW_RIGHT_COMMAND,
-  KEY_DOWN_COMMAND,
   type LexicalEditor,
   type LexicalNode,
   type NodeKey,
   type PointType,
   type RangeSelection,
-  SELECTION_CHANGE_COMMAND,
 } from "lexical";
 import {
   $atContentEdge,
@@ -627,7 +619,7 @@ export const d7Document = (state: EditorState) => {
   );
 };
 
-export const registerPointCommands = (editor: LexicalEditor) => {
+export const pointRules = (editor: LexicalEditor) => {
   type PageSelection = {
     anchorNode: Node;
     anchorOffset: number;
@@ -876,449 +868,429 @@ export const registerPointCommands = (editor: LexicalEditor) => {
       endPress();
     }
   };
-  return mergeRegister(
-    // a caret that arrives with no line beside it gets an empty line, and
-    // an empty line the caret left goes: not an edit (no undo step, no
-    // onChange: the field's change plugin skips history-merge updates)
-    editor.registerCommand(
-      SELECTION_CHANGE_COMMAND,
-      () => {
-        if (pressId === null) {
-          $resolvePoint();
-          $selectionBackOnPage();
-        }
-        return false;
-      },
-      COMMAND_PRIORITY_CRITICAL
-    ),
-    // an arrow off a node-selected rule in a lined container steps beside
-    // it and resolves the point there (5.3)
-    ...(
-      [
-        [KEY_ARROW_LEFT_COMMAND, true],
-        [KEY_ARROW_RIGHT_COMMAND, false],
-      ] as const
-    ).map(([command, isLeftKey]) =>
-      editor.registerCommand(
-        command,
-        (event: KeyboardEvent) => {
-          const isBackward = $arrowMovesBackward(isLeftKey);
-          if (
-            event.shiftKey ||
-            event.altKey ||
-            event.ctrlKey ||
-            event.metaKey
-          ) {
-            return false;
-          }
-          const selection = $getSelection();
-          if ($isNodeSelection(selection) === false) {
-            return false;
-          }
-          const node = selection.getNodes().at(isBackward ? 0 : -1);
-          if (
-            node === undefined ||
-            isBlockDecorator(node) === false ||
-            isLinedContainer(node.getParent()) === false
-          ) {
-            return false;
-          }
-          event.preventDefault();
-          if (isBackward) {
-            node.selectPrevious();
-          } else {
-            node.selectNext();
-          }
-          // a caret move, not an edit: a caret line made or removed is merged
-          // into the history's current step (the lift is true only then)
-          const edited = $updateHasEdits();
-          if ($liftPointsIntoLines(true) && edited === false) {
-            $addUpdateTag("history-merge");
-          }
-          return true;
-        },
-        COMMAND_PRIORITY_LOW
-      )
-    ),
-    // an arrow from a block's edge into a line that starts (going right) or
-    // ends (going left) with a line break steps past the break: the point
-    // before or after it is the block's edge at the head (V10)
-    ...(
-      [
-        [KEY_ARROW_LEFT_COMMAND, true],
-        [KEY_ARROW_RIGHT_COMMAND, false],
-      ] as const
-    ).map(([command, isLeftKey]) =>
-      editor.registerCommand(
-        command,
-        (event: KeyboardEvent) => {
-          const isBackward = $arrowMovesBackward(isLeftKey, event.shiftKey);
-          if (event.altKey || event.ctrlKey || event.metaKey) {
-            return false;
-          }
-          const selection = $getSelection();
-          if ($isRangeSelection(selection) === false) {
-            return false;
-          }
-          // 14.3: with Shift held, from a block's edge toward a rule
-          // directly beside it the focus takes the caret's step and passes
-          // the rule, to where D18 resolves the container point on its far
-          // side; the rule is inside the selection
-          if (event.shiftKey && $focusPastRule(selection, isBackward)) {
-            event.preventDefault();
-            return true;
-          }
-          // B: from the edge of a block's text toward a rule directly beside
-          // the block, the arrow node-selects the rule
-          if (event.shiftKey === false && selection.isCollapsed()) {
-            const edge = $childAtEdge(isBackward);
-            const rule =
-              edge === null
-                ? null
-                : isBackward
-                  ? edge.child.getPreviousSibling()
-                  : edge.child.getNextSibling();
-            if (isBlockDecorator(rule)) {
-              event.preventDefault();
-              const nodes = $createNodeSelection();
-              nodes.add(rule.getKey());
-              $setSelection(nodes);
-              return true;
+  // a caret that arrives with no line beside it gets an empty line, and
+  // an empty line the caret left goes: not an edit (no undo step, no
+  // onChange: the field's change plugin skips history-merge updates)
+  const resolveOnSelectionChange = () => {
+    if (pressId === null) {
+      $resolvePoint();
+      $selectionBackOnPage();
+    }
+    return false;
+  };
+  // an arrow off a node-selected rule in a lined container steps beside
+  // it and resolves the point there (5.3)
+  const arrowOffSelectedNode = (
+    event: KeyboardEvent,
+    isLeftKey: boolean
+  ): boolean => {
+    const isBackward = $arrowMovesBackward(isLeftKey);
+    if (
+      event.shiftKey ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.metaKey
+    ) {
+      return false;
+    }
+    const selection = $getSelection();
+    if ($isNodeSelection(selection) === false) {
+      return false;
+    }
+    const node = selection.getNodes().at(isBackward ? 0 : -1);
+    if (
+      node === undefined ||
+      isBlockDecorator(node) === false ||
+      isLinedContainer(node.getParent()) === false
+    ) {
+      return false;
+    }
+    event.preventDefault();
+    if (isBackward) {
+      node.selectPrevious();
+    } else {
+      node.selectNext();
+    }
+    // a caret move, not an edit: a caret line made or removed is merged
+    // into the history's current step (the lift is true only then)
+    const edited = $updateHasEdits();
+    if ($liftPointsIntoLines(true) && edited === false) {
+      $addUpdateTag("history-merge");
+    }
+    return true;
+  };
+  // an arrow from a block's edge into a line that starts (going right) or
+  // ends (going left) with a line break steps past the break: the point
+  // before or after it is the block's edge at the head (V10)
+  const arrowPastLineBreak = (
+    event: KeyboardEvent,
+    isLeftKey: boolean
+  ): boolean => {
+    const isBackward = $arrowMovesBackward(isLeftKey, event.shiftKey);
+    if (event.altKey || event.ctrlKey || event.metaKey) {
+      return false;
+    }
+    const selection = $getSelection();
+    if ($isRangeSelection(selection) === false) {
+      return false;
+    }
+    // 14.3: with Shift held, from a block's edge toward a rule
+    // directly beside it the focus takes the caret's step and passes
+    // the rule, to where D18 resolves the container point on its far
+    // side; the rule is inside the selection
+    if (event.shiftKey && $focusPastRule(selection, isBackward)) {
+      event.preventDefault();
+      return true;
+    }
+    // B: from the edge of a block's text toward a rule directly beside
+    // the block, the arrow node-selects the rule
+    if (event.shiftKey === false && selection.isCollapsed()) {
+      const edge = $childAtEdge(isBackward);
+      const rule =
+        edge === null
+          ? null
+          : isBackward
+            ? edge.child.getPreviousSibling()
+            : edge.child.getNextSibling();
+      if (isBlockDecorator(rule)) {
+        event.preventDefault();
+        const nodes = $createNodeSelection();
+        nodes.add(rule.getKey());
+        $setSelection(nodes);
+        return true;
+      }
+    }
+    // going right from the end of a line that ends in a break, with a
+    // block directly after the line: the block's start is the same
+    // place, so the next stop is one character into the block, as at
+    // the head
+    if (
+      event.shiftKey === false &&
+      isBackward === false &&
+      selection.isCollapsed()
+    ) {
+      const at = selection.anchor;
+      const atNode = at.getNode();
+      const line = $isCmsLineNode(atNode)
+        ? atNode
+        : $findMatchingParent(atNode, $isCmsLineNode);
+      const last = $isCmsLineNode(line) ? line.getLastChild() : null;
+      const block = line?.getNextSibling() ?? null;
+      const atEnd =
+        $isCmsLineNode(line) &&
+        isLineBreak(last) &&
+        at.type === "element" &&
+        atNode.is(line) &&
+        at.offset === line.getChildrenSize();
+      const first = $isElementNode(block)
+        ? block.getFirstDescendant()
+        : null;
+      if (
+        atEnd &&
+        $isElementNode(block) &&
+        $isCmsLineNode(block) === false &&
+        block.isInline() === false &&
+        $isTextNode(first) &&
+        first.getTextContentSize() > 0
+      ) {
+        event.preventDefault();
+        first.select(1, 1);
+        return true;
+      }
+    }
+    const focus = selection.focus;
+    const node = focus.getNode();
+    let child: LexicalNode | null = node;
+    while (
+      child !== null &&
+      isLinedContainer(child.getParent()) === false
+    ) {
+      child = child.getParent();
+    }
+    if (
+      child === null ||
+      $isCmsLineNode(child) ||
+      $isElementNode(child) === false
+    ) {
+      return false;
+    }
+    if ($atContentEdge(focus, child, isBackward) === false) {
+      return false;
+    }
+    const line = isBackward
+      ? child.getPreviousSibling()
+      : child.getNextSibling();
+    if ($isCmsLineNode(line) === false) {
+      return false;
+    }
+    const brk = isBackward ? line.getLastChild() : line.getFirstChild();
+    if (isLineBreak(brk) === false) {
+      return false;
+    }
+    event.preventDefault();
+    // with Shift going right the focus stops before the break, where
+    // the head's does (the container's point beside the block)
+    // going right the walk stops before the break after a quote and
+    // past it after a heading or code block, as the head's does
+    const offset = isBackward
+      ? line.getChildrenSize() - 1
+      : $isQuoteNode(child) || event.shiftKey
+        ? 0
+        : 1;
+    focus.set(line.getKey(), offset, "element");
+    if (event.shiftKey === false) {
+      selection.anchor.set(line.getKey(), offset, "element");
+    }
+    return true;
+  };
+  const rememberPageSelection = () => {
+    pageSelection = pageSnapshot();
+    return false;
+  };
+  const readBackOnKey = () => {
+    $readBack();
+    return false;
+  };
+  // L: a click on text after a node was selected gives a real caret, as
+  // Lexical already does for a touch; with Shift held too, a caret at the
+  // click, never the page's range (14.2)
+  const clickAfterNodeSelection = (event: MouseEvent) => {
+    const selection = $getSelection();
+    if (selection !== null && $isNodeSelection(selection) === false) {
+      return false;
+    }
+    const target = event.target;
+    if (
+      target instanceof Element &&
+      target.closest("hr, img, figure") !== null
+    ) {
+      return false;
+    }
+    const dom = window.getSelection();
+    const root = editor.getRootElement();
+    if (dom !== null && event.shiftKey) {
+      const clicked = caretAtPoint(event.clientX, event.clientY);
+      if (clicked !== null && root?.contains(clicked.node) === true) {
+        dom.collapse(clicked.node, clicked.offset);
+      }
+    }
+    const at = dom?.anchorNode ?? null;
+    if (dom === null || at === null || root?.contains(at) !== true) {
+      return false;
+    }
+    const range = $createRangeSelectionFromDom(dom, editor);
+    if (range !== null) {
+      $setSelection(range);
+    }
+    return false;
+  };
+  return {
+    handlers: {
+      resolveOnSelectionChange,
+      arrowOffSelectedNode,
+      arrowPastLineBreak,
+      rememberPageSelection,
+      readBack: readBackOnKey,
+      clickAfterNodeSelection,
+    },
+    // the rules' registrations that are not commands, in their carried order
+    register: () =>
+      mergeRegister(
+        // the caret's line: while a point stands after the last line break of a
+        // line that has something after it, the line's element is marked, so
+        // the break Lexical adds is drawn and the caret stands on the line the
+        // next letter lands on. The mark is on the page only, never in the
+        // editor's state
+        editor.registerUpdateListener(({ editorState }) => {
+          const marked = new Set<string>();
+          editorState.read(() => {
+            const selection = $getSelection();
+            if ($isRangeSelection(selection) === false) {
+              return;
             }
-          }
-          // going right from the end of a line that ends in a break, with a
-          // block directly after the line: the block's start is the same
-          // place, so the next stop is one character into the block, as at
-          // the head
-          if (
-            event.shiftKey === false &&
-            isBackward === false &&
-            selection.isCollapsed()
-          ) {
-            const at = selection.anchor;
-            const atNode = at.getNode();
-            const line = $isCmsLineNode(atNode)
-              ? atNode
-              : $findMatchingParent(atNode, $isCmsLineNode);
-            const last = $isCmsLineNode(line) ? line.getLastChild() : null;
-            const block = line?.getNextSibling() ?? null;
-            const atEnd =
-              $isCmsLineNode(line) &&
-              isLineBreak(last) &&
-              at.type === "element" &&
-              atNode.is(line) &&
-              at.offset === line.getChildrenSize();
-            const first = $isElementNode(block)
-              ? block.getFirstDescendant()
-              : null;
-            if (
-              atEnd &&
-              $isElementNode(block) &&
-              $isCmsLineNode(block) === false &&
-              block.isInline() === false &&
-              $isTextNode(first) &&
-              first.getTextContentSize() > 0
-            ) {
-              event.preventDefault();
-              first.select(1, 1);
-              return true;
+            for (const point of [selection.anchor, selection.focus]) {
+              const line = point.getNode();
+              if (
+                $isCmsLineNode(line) &&
+                point.type === "element" &&
+                point.offset === line.getChildrenSize() &&
+                isLineBreak(line.getLastChild()) &&
+                line.getNextSibling() !== null
+              ) {
+                marked.add(line.getKey());
+              }
             }
+          });
+          const root = editor.getRootElement();
+          if (root === null) {
+            return;
           }
-          const focus = selection.focus;
-          const node = focus.getNode();
-          let child: LexicalNode | null = node;
-          while (
-            child !== null &&
-            isLinedContainer(child.getParent()) === false
-          ) {
-            child = child.getParent();
+          for (const element of Array.from(
+            root.querySelectorAll("[data-cms-caret]")
+          )) {
+            element.removeAttribute("data-cms-caret");
           }
-          if (
-            child === null ||
-            $isCmsLineNode(child) ||
-            $isElementNode(child) === false
-          ) {
-            return false;
+          for (const key of marked) {
+            editor.getElementByKey(key)?.setAttribute("data-cms-caret", "");
           }
-          if ($atContentEdge(focus, child, isBackward) === false) {
-            return false;
+        }),
+        // 15.12: a key starts from where the page's caret is when the page has
+        // moved it since Lexical last wrote or read the selection. A step the
+        // page took itself (a caret move inside text) reaches Lexical only when
+        // the page's selectionchange is read back, and Lexical's keydown update
+        // keeps its last selection; a key that comes before that read would act
+        // at the place the page has left (an Enter splitting there, a delete
+        // deciding from there). Where the page has not moved, Lexical's own
+        // selection stands as it is (a point the page cannot draw apart, a
+        // pending format)
+        editor.registerUpdateListener(({ editorState, prevEditorState }) => {
+          // a commit that wrote the selection
+          const next = editorState.read(() => $getSelection());
+          const prev = prevEditorState.read(() => $getSelection());
+          if (next === prev || (next !== null && prev !== null && next.is(prev))) {
+            return;
           }
-          const line = isBackward
-            ? child.getPreviousSibling()
-            : child.getNextSibling();
-          if ($isCmsLineNode(line) === false) {
-            return false;
+          pageSelection = pageSnapshot();
+        }),
+        editor.registerRootListener((root, previous) => {
+          previous?.removeEventListener("pointerdown", onPressStart, true);
+          root?.addEventListener("pointerdown", onPressStart, true);
+          for (const type of beforeKeyOrEditEvents) {
+            previous?.removeEventListener(type, beforeKeyOrEdit, true);
+            root?.addEventListener(type, beforeKeyOrEdit, true);
           }
-          const brk = isBackward ? line.getLastChild() : line.getFirstChild();
-          if (isLineBreak(brk) === false) {
-            return false;
+        }),
+        (() => {
+          // the press's own end: the click (bubbling, after the node's own
+          // handler), or a way a press ends with no click
+          const ends = [
+            "click",
+            "pointercancel",
+            "dragend",
+            "drop",
+            "contextmenu",
+          ] as const;
+          // the window losing focus (an element's blur is not the press's end)
+          const onBlur = (event: FocusEvent) => {
+            if (event.target === window) {
+              endPress();
+            }
+          };
+          for (const type of ends) {
+            window.addEventListener(
+              type,
+              endPress,
+              type === "click" ? false : true
+            );
           }
-          event.preventDefault();
-          // with Shift going right the focus stops before the break, where
-          // the head's does (the container's point beside the block)
-          // going right the walk stops before the break after a quote and
-          // past it after a heading or code block, as the head's does
-          const offset = isBackward
-            ? line.getChildrenSize() - 1
-            : $isQuoteNode(child) || event.shiftKey
-              ? 0
-              : 1;
-          focus.set(line.getKey(), offset, "element");
-          if (event.shiftKey === false) {
-            selection.anchor.set(line.getKey(), offset, "element");
+          window.addEventListener("pointermove", onPointerMove, true);
+          window.addEventListener("blur", onBlur, true);
+          return () => {
+            endPress();
+            for (const type of ends) {
+              window.removeEventListener(
+                type,
+                endPress,
+                type === "click" ? false : true
+              );
+            }
+            window.removeEventListener("pointermove", onPointerMove, true);
+            window.removeEventListener("blur", onBlur, true);
+          };
+        })(),
+        // 15.7: Shift and a press on text while a node is selected: the field
+        // takes the pressed point when the pointer goes down, so the page's
+        // extension from its own anchor never becomes the selection, whichever
+        // of the page's selectionchange and the click comes first
+        editor.registerRootListener((root, previous) => {
+          previous?.removeEventListener("pointerdown", onShiftPress, true);
+          previous?.removeEventListener("mousedown", onShiftMouseDown, true);
+          root?.addEventListener("pointerdown", onShiftPress, true);
+          root?.addEventListener("mousedown", onShiftMouseDown, true);
+        }),
+        // the third place of 5.3: after every commit, a point that rests on a
+        // lined container resolves at once, in an update of its own that makes
+        // no undo step and fires no onChange; the rule then holds (5.3, 5.5)
+        editor.registerUpdateListener(({ editorState, prevEditorState }) => {
+          const report = (message: string) => {
+            console.error(message);
+            lineRuleViolations.push(message);
+          };
+          if (editorState.read($lineHoldsBlock)) {
+            report("cms-line rule: a line holds a block");
           }
-          return true;
-        },
-        COMMAND_PRIORITY_NORMAL
-      )
-    ),
-    // the caret's line: while a point stands after the last line break of a
-    // line that has something after it, the line's element is marked, so
-    // the break Lexical adds is drawn and the caret stands on the line the
-    // next letter lands on. The mark is on the page only, never in the
-    // editor's state
-    editor.registerUpdateListener(({ editorState }) => {
-      const marked = new Set<string>();
-      editorState.read(() => {
-        const selection = $getSelection();
-        if ($isRangeSelection(selection) === false) {
-          return;
-        }
-        for (const point of [selection.anchor, selection.focus]) {
-          const line = point.getNode();
-          if (
-            $isCmsLineNode(line) &&
-            point.type === "element" &&
-            point.offset === line.getChildrenSize() &&
-            isLineBreak(line.getLastChild()) &&
-            line.getNextSibling() !== null
-          ) {
-            marked.add(line.getKey());
+          // held while a composition runs: it adds no update between the
+          // composition's own; the commit that ends it is checked
+          if (editor.isComposing() || lineSpike.thirdPlaceOff || pressId !== null) {
+            return;
           }
-        }
-      });
-      const root = editor.getRootElement();
-      if (root === null) {
-        return;
-      }
-      for (const element of Array.from(
-        root.querySelectorAll("[data-cms-caret]")
-      )) {
-        element.removeAttribute("data-cms-caret");
-      }
-      for (const key of marked) {
-        editor.getElementByKey(key)?.setAttribute("data-cms-caret", "");
-      }
-    }),
-    // 15.12: a key starts from where the page's caret is when the page has
-    // moved it since Lexical last wrote or read the selection. A step the
-    // page took itself (a caret move inside text) reaches Lexical only when
-    // the page's selectionchange is read back, and Lexical's keydown update
-    // keeps its last selection; a key that comes before that read would act
-    // at the place the page has left (an Enter splitting there, a delete
-    // deciding from there). Where the page has not moved, Lexical's own
-    // selection stands as it is (a point the page cannot draw apart, a
-    // pending format)
-    editor.registerUpdateListener(({ editorState, prevEditorState }) => {
-      // a commit that wrote the selection
-      const next = editorState.read(() => $getSelection());
-      const prev = prevEditorState.read(() => $getSelection());
-      if (next === prev || (next !== null && prev !== null && next.is(prev))) {
-        return;
-      }
-      pageSelection = pageSnapshot();
-    }),
-    editor.registerCommand(
-      SELECTION_CHANGE_COMMAND,
-      () => {
-        pageSelection = pageSnapshot();
-        return false;
-      },
-      COMMAND_PRIORITY_CRITICAL
-    ),
-    editor.registerCommand(
-      KEY_DOWN_COMMAND,
-      () => {
-        $readBack();
-        return false;
-      },
-      COMMAND_PRIORITY_CRITICAL
-    ),
-    editor.registerRootListener((root, previous) => {
-      previous?.removeEventListener("pointerdown", onPressStart, true);
-      root?.addEventListener("pointerdown", onPressStart, true);
-      for (const type of beforeKeyOrEditEvents) {
-        previous?.removeEventListener(type, beforeKeyOrEdit, true);
-        root?.addEventListener(type, beforeKeyOrEdit, true);
-      }
-    }),
-    (() => {
-      // the press's own end: the click (bubbling, after the node's own
-      // handler), or a way a press ends with no click
-      const ends = [
-        "click",
-        "pointercancel",
-        "dragend",
-        "drop",
-        "contextmenu",
-      ] as const;
-      // the window losing focus (an element's blur is not the press's end)
-      const onBlur = (event: FocusEvent) => {
-        if (event.target === window) {
-          endPress();
-        }
-      };
-      for (const type of ends) {
-        window.addEventListener(
-          type,
-          endPress,
-          type === "click" ? false : true
-        );
-      }
-      window.addEventListener("pointermove", onPointerMove, true);
-      window.addEventListener("blur", onBlur, true);
-      return () => {
-        endPress();
-        for (const type of ends) {
-          window.removeEventListener(
-            type,
-            endPress,
-            type === "click" ? false : true
-          );
-        }
-        window.removeEventListener("pointermove", onPointerMove, true);
-        window.removeEventListener("blur", onBlur, true);
-      };
-    })(),
-    // 15.7: Shift and a press on text while a node is selected: the field
-    // takes the pressed point when the pointer goes down, so the page's
-    // extension from its own anchor never becomes the selection, whichever
-    // of the page's selectionchange and the click comes first
-    editor.registerRootListener((root, previous) => {
-      previous?.removeEventListener("pointerdown", onShiftPress, true);
-      previous?.removeEventListener("mousedown", onShiftMouseDown, true);
-      root?.addEventListener("pointerdown", onShiftPress, true);
-      root?.addEventListener("mousedown", onShiftMouseDown, true);
-    }),
-    // L: a click on text after a node was selected gives a real caret, as
-    // Lexical already does for a touch; with Shift held too, a caret at the
-    // click, never the page's range (14.2)
-    editor.registerCommand(
-      CLICK_COMMAND,
-      (event: MouseEvent) => {
-        const selection = $getSelection();
-        if (selection !== null && $isNodeSelection(selection) === false) {
-          return false;
-        }
-        const target = event.target;
-        if (
-          target instanceof Element &&
-          target.closest("hr, img, figure") !== null
-        ) {
-          return false;
-        }
-        const dom = window.getSelection();
-        const root = editor.getRootElement();
-        if (dom !== null && event.shiftKey) {
-          const clicked = caretAtPoint(event.clientX, event.clientY);
-          if (clicked !== null && root?.contains(clicked.node) === true) {
-            dom.collapse(clicked.node, clicked.offset);
-          }
-        }
-        const at = dom?.anchorNode ?? null;
-        if (dom === null || at === null || root?.contains(at) !== true) {
-          return false;
-        }
-        const range = $createRangeSelectionFromDom(dom, editor);
-        if (range !== null) {
-          $setSelection(range);
-        }
-        return false;
-      },
-      COMMAND_PRIORITY_LOW
-    ),
-    // the third place of 5.3: after every commit, a point that rests on a
-    // lined container resolves at once, in an update of its own that makes
-    // no undo step and fires no onChange; the rule then holds (5.3, 5.5)
-    editor.registerUpdateListener(({ editorState, prevEditorState }) => {
-      const report = (message: string) => {
-        console.error(message);
-        lineRuleViolations.push(message);
-      };
-      if (editorState.read($lineHoldsBlock)) {
-        report("cms-line rule: a line holds a block");
-      }
-      // held while a composition runs: it adds no update between the
-      // composition's own; the commit that ends it is checked
-      if (editor.isComposing() || lineSpike.thirdPlaceOff || pressId !== null) {
-        return;
-      }
-      const broken = editorState.read($pointRuleBroken);
-      if (broken === null) {
-        checkFailed = false;
-        // a line the caret left by a key or by code, where no selection
-        // change of the page followed (the field moved the caret in the
-        // key's own update), goes at once
-        // goes at once: only a line the selection was in before this
-        // commit, never a kept one (a press holds this check off)
-        const kept = keptOf(editor);
-        const was = prevEditorState.read(
-          () =>
-            new Set(
-              $dfs()
-                .filter(
-                  ({ node }) => $isCmsLineNode(node) && holdsSelection(node)
+          const broken = editorState.read($pointRuleBroken);
+          if (broken === null) {
+            checkFailed = false;
+            // a line the caret left by a key or by code, where no selection
+            // change of the page followed (the field moved the caret in the
+            // key's own update), goes at once
+            // goes at once: only a line the selection was in before this
+            // commit, never a kept one (a press holds this check off)
+            const kept = keptOf(editor);
+            const was = prevEditorState.read(
+              () =>
+                new Set(
+                  $dfs()
+                    .filter(
+                      ({ node }) => $isCmsLineNode(node) && holdsSelection(node)
+                    )
+                    .map(({ node }) => node.getKey())
                 )
-                .map(({ node }) => node.getKey())
-            )
-        );
-        const left = editorState.read(() =>
-          $dfs().some(
-            ({ node }) =>
-              $isCmsLineNode(node) &&
-              was.has(node.getKey()) &&
-              node.isEmpty() &&
-              holdsSelection(node) === false &&
-              kept.has(node.getKey()) === false
-          )
-        );
-        if (left) {
+            );
+            const left = editorState.read(() =>
+              $dfs().some(
+                ({ node }) =>
+                  $isCmsLineNode(node) &&
+                  was.has(node.getKey()) &&
+                  node.isEmpty() &&
+                  holdsSelection(node) === false &&
+                  kept.has(node.getKey()) === false
+              )
+            );
+            if (left) {
+              keepPageRange(editor, () =>
+                editor.update(
+                  () => {
+                    if ($removeLeftEmptyLines(was)) {
+                      $addUpdateTag("history-merge");
+                    }
+                  },
+                  { discrete: true }
+                )
+              );
+            }
+            return;
+          }
+          // a check that could not resolve the point has reported it already
+          if (checkFailed) {
+            checkFailed = false;
+            return;
+          }
           keepPageRange(editor, () =>
             editor.update(
               () => {
-                if ($removeLeftEmptyLines(was)) {
+                // a point moved and nothing else changed is no edit (no onChange, no
+                // step) and carries no tag; a caret line made or removed is merged
+                // into the history's current step and fires no onChange
+                if ($liftPointsIntoLines(true)) {
                   $addUpdateTag("history-merge");
+                }
+                const still = $pointRuleBroken();
+                if (still !== null) {
+                  checkFailed = true;
+                  report(`cms-line point rule: a point on ${still}`);
                 }
               },
               { discrete: true }
             )
           );
-        }
-        return;
-      }
-      // a check that could not resolve the point has reported it already
-      if (checkFailed) {
-        checkFailed = false;
-        return;
-      }
-      keepPageRange(editor, () =>
-        editor.update(
-          () => {
-            // a point moved and nothing else changed is no edit (no onChange, no
-            // step) and carries no tag; a caret line made or removed is merged
-            // into the history's current step and fires no onChange
-            if ($liftPointsIntoLines(true)) {
-              $addUpdateTag("history-merge");
-            }
-            const still = $pointRuleBroken();
-            if (still !== null) {
-              checkFailed = true;
-              report(`cms-line point rule: a point on ${still}`);
-            }
-          },
-          { discrete: true }
-        )
-      );
-    })
-  );
+        })
+      ),
+  };
 };

@@ -26,20 +26,10 @@ import {
   $isParagraphNode,
   $isRootNode,
   $isLineBreakNode,
-  COMMAND_PRIORITY_CRITICAL,
-  DELETE_CHARACTER_COMMAND,
-  DELETE_LINE_COMMAND,
-  DELETE_WORD_COMMAND,
   INSERT_LINE_BREAK_COMMAND,
   INSERT_PARAGRAPH_COMMAND,
-  KEY_BACKSPACE_COMMAND,
-  KEY_DELETE_COMMAND,
-  REMOVE_TEXT_COMMAND,
-  type LexicalCommand,
-  DROP_COMMAND,
   KEY_ARROW_DOWN_COMMAND,
   KEY_ARROW_LEFT_COMMAND,
-  KEY_ARROW_RIGHT_COMMAND,
   KEY_ARROW_UP_COMMAND,
   KEY_DOWN_COMMAND,
   type BaseSelection,
@@ -47,8 +37,6 @@ import {
   COMMAND_PRIORITY_LOW,
   COMMAND_PRIORITY_NORMAL,
   CONTROLLED_TEXT_INSERTION_COMMAND,
-  COPY_COMMAND,
-  CUT_COMMAND,
   FORMAT_TEXT_COMMAND,
   ParagraphNode,
   PASTE_COMMAND,
@@ -109,12 +97,11 @@ import { ListPlugin } from "@lexical/react/LexicalListPlugin";
 import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
 import { HorizontalRulePlugin } from "@lexical/react/LexicalHorizontalRulePlugin";
+import { LEXICAL_CLIPBOARD_TYPE } from "./rich-text-line-clipboard";
 import {
-  LEXICAL_CLIPBOARD_TYPE,
-  registerCopyCutWriter,
-  registerDragStart,
-} from "./rich-text-line-clipboard";
-import { registerLineCommands } from "./rich-text-line-commands";
+  provideFieldHandlers,
+  registerRichTextCommands,
+} from "./rich-text-line-commands";
 import {
   CmsHistoryPlugin,
   registerCompositionStep,
@@ -918,7 +905,7 @@ const $liftBlocksOutOfTextBlock = (block: ElementNode) => {
 };
 
 /** The node rules the read-only check runs too (`registerRichTextTransforms`). */
-const TransformsPlugin = () => {
+const TransformsPlugin = ({ namespace }: { namespace: string }) => {
   const [editor] = useLexicalComposerContext();
   useEffect(
     () =>
@@ -931,11 +918,18 @@ const TransformsPlugin = () => {
         editor.registerNodeTransform(HeadingNode, $liftBlocksOutOfTextBlock),
         // a list item's lift runs first in the item's one transform
         registerLineTransforms(editor, $liftBlocksAfterNestedList),
-        registerLineCommands(editor),
+        // every handler that shares a command and a priority with a line
+        // handler, in one stated order; the field's plugins above provide
+        // theirs
+        registerRichTextCommands(editor, {
+          namespace,
+          theme: editorTheme,
+          nodes: editorNodes,
+        }),
         registerTypingAfterSelectedNode(editor),
         registerCompositionStep(editor)
       ),
-    [editor]
+    [editor, namespace]
   );
   return null;
 };
@@ -2320,18 +2314,15 @@ const ImageEditingPlugin = () => {
         },
         COMMAND_PRIORITY_NORMAL
       ),
-      // an arrow onto an image selects it (an inline image beside the
-      // caret, or a figure beside the block's edge); the next arrow moves
-      // past it as a text caret
-      ...(
-        [
-          [KEY_ARROW_LEFT_COMMAND, true],
-          [KEY_ARROW_RIGHT_COMMAND, false],
-        ] as const
-      ).map(([command, isBackward]) =>
-        editor.registerCommand(
-          command,
-          (event: KeyboardEvent) => {
+      // the field's handlers of commands the line rules share, run in
+      // COMMAND_ORDER's order by the one registration
+      provideFieldHandlers(editor, {
+        // an arrow onto an image selects it (an inline image beside the
+        // caret, or a figure beside the block's edge); the next arrow moves
+        // past it as a text caret
+        imageArrow: (payload, _editor, command) => {
+          const event = payload as KeyboardEvent;
+          const isBackward = command === KEY_ARROW_LEFT_COMMAND;
             if (event.altKey || event.ctrlKey || event.metaKey) {
               return false;
             }
@@ -2386,15 +2377,11 @@ const ImageEditingPlugin = () => {
             lastArrow.current = isBackward ? "back" : "forward";
             return true;
           },
-          COMMAND_PRIORITY_LOW
-        )
-      ),
-      // typing with an image selected first puts a caret beside it: on
-      // the side the arrow was moving toward (after it when no arrow
-      // selected it)
-      editor.registerCommand(
-        KEY_DOWN_COMMAND,
-        (event) => {
+        // typing with an image selected first puts a caret beside it: on
+        // the side the arrow was moving toward (after it when no arrow
+        // selected it)
+        caretBesideImageOnKey: (payload) => {
+          const event = payload as KeyboardEvent;
           if (
             isTextInputKey(event) === false ||
             event.ctrlKey ||
@@ -2406,8 +2393,90 @@ const ImageEditingPlugin = () => {
           $caretBesideSelectedImage(lastArrow);
           return false;
         },
-        COMMAND_PRIORITY_CRITICAL
-      ),
+        // text input with no key of its own (an IME, dictation, an emoji
+        // picker), a paste or a drop with an image selected works as
+        // typing does: from a caret beside it
+        caretBesideSelectedImage: () => {
+          $caretBesideSelectedImage(lastArrow);
+          return false;
+        },
+        // Backspace at an element caret right after a line break takes the
+        // line break (the browser reads that caret as one before it)
+        deleteAfterLineBreak: (isBackward) => {
+          const selection = $getSelection();
+          if (
+            isBackward === false ||
+            $isRangeSelection(selection) === false ||
+            selection.isCollapsed() === false ||
+            $isAfterLineBreak(selection.anchor) === false
+          ) {
+            return false;
+          }
+          const parent = selection.anchor.getNode() as ElementNode;
+          const offset = selection.anchor.offset - 1;
+          parent.getChildAtIndex(offset)?.remove();
+          selection.anchor.set(parent.getKey(), offset, "element");
+          selection.focus.set(parent.getKey(), offset, "element");
+          return true;
+        },
+        // a selection Home or End extended keeps its anchor while it is
+        // extended further: the browser reads an anchor right after a line
+        // break as one before it
+        pinAnchorOnExtend: (payload) => {
+          const event = payload as KeyboardEvent;
+          if (event.key === "Shift") {
+            return false;
+          }
+          const isExtending =
+            event.shiftKey && /^(Arrow|Home$|End$|Page)/.test(event.key);
+          if (isExtending === false) {
+            pinnedAnchor.current = undefined;
+            return false;
+          }
+          const selection = $getSelection();
+          if (
+            pinnedAnchor.current === undefined &&
+            $isRangeSelection(selection) &&
+            $isAfterLineBreak(selection.anchor)
+          ) {
+            const { anchor } = selection;
+            pinnedAnchor.current = {
+              key: anchor.key,
+              offset: anchor.offset,
+              type: anchor.type,
+            };
+          }
+          return false;
+        },
+        pinImageAnchor: () => {
+          const pinned = pinnedAnchor.current;
+          if (pinned === undefined) {
+            return false;
+          }
+          const selection = $getSelection();
+          if (
+            $isRangeSelection(selection) === false ||
+            $getNodeByKey(pinned.key) === null
+          ) {
+            pinnedAnchor.current = undefined;
+            return false;
+          }
+          const { anchor } = selection;
+          if (
+            anchor.key !== pinned.key ||
+            anchor.offset !== pinned.offset ||
+            anchor.type !== pinned.type
+          ) {
+            anchor.set(pinned.key, pinned.offset, pinned.type);
+          }
+          return false;
+        },
+        // a copy or cut marks its selection, for the code block's export
+        markCopy: () => {
+          markRichTextCopy($getSelection());
+          return false;
+        },
+      }),
       // text input with no key of its own (an IME, dictation, an emoji
       // picker) does the same, before the browser inserts it
       editor.registerRootListener((rootElement, previous) => {
@@ -2416,26 +2485,6 @@ const ImageEditingPlugin = () => {
           rootElement?.addEventListener(type, beforeTextInput, true);
         }
       }),
-      editor.registerCommand(
-        CONTROLLED_TEXT_INSERTION_COMMAND,
-        () => {
-          $caretBesideSelectedImage(lastArrow);
-          return false;
-        },
-        COMMAND_PRIORITY_CRITICAL
-      ),
-      // a paste or drop with an image selected works as typing does: from
-      // a caret beside it
-      ...[PASTE_COMMAND, DROP_COMMAND].map((command) =>
-        editor.registerCommand(
-          command as LexicalCommand<unknown>,
-          () => {
-            $caretBesideSelectedImage(lastArrow);
-            return false;
-          },
-          COMMAND_PRIORITY_CRITICAL
-        )
-      ),
       // Up and Down from a selected figure go to the end of the block
       // before it, or the start of the block after it
       ...(
@@ -2533,88 +2582,6 @@ const ImageEditingPlugin = () => {
         },
         COMMAND_PRIORITY_NORMAL
       ),
-      // Backspace at an element caret right after a line break takes the
-      // line break (the browser reads that caret as one before it)
-      editor.registerCommand(
-        DELETE_CHARACTER_COMMAND,
-        (isBackward) => {
-          const selection = $getSelection();
-          if (
-            isBackward === false ||
-            $isRangeSelection(selection) === false ||
-            selection.isCollapsed() === false ||
-            $isAfterLineBreak(selection.anchor) === false
-          ) {
-            return false;
-          }
-          const parent = selection.anchor.getNode() as ElementNode;
-          const offset = selection.anchor.offset - 1;
-          parent.getChildAtIndex(offset)?.remove();
-          selection.anchor.set(parent.getKey(), offset, "element");
-          selection.focus.set(parent.getKey(), offset, "element");
-          return true;
-        },
-        COMMAND_PRIORITY_NORMAL
-      ),
-      // a selection Home or End extended keeps its anchor while it is
-      // extended further: the browser reads an anchor right after a line
-      // break as one before it
-      editor.registerCommand(
-        KEY_DOWN_COMMAND,
-        (event) => {
-          if (event.key === "Shift") {
-            return false;
-          }
-          const isExtending =
-            event.shiftKey && /^(Arrow|Home$|End$|Page)/.test(event.key);
-          if (isExtending === false) {
-            pinnedAnchor.current = undefined;
-            return false;
-          }
-          const selection = $getSelection();
-          if (
-            pinnedAnchor.current === undefined &&
-            $isRangeSelection(selection) &&
-            $isAfterLineBreak(selection.anchor)
-          ) {
-            const { anchor } = selection;
-            pinnedAnchor.current = {
-              key: anchor.key,
-              offset: anchor.offset,
-              type: anchor.type,
-            };
-          }
-          return false;
-        },
-        COMMAND_PRIORITY_CRITICAL
-      ),
-      editor.registerCommand(
-        SELECTION_CHANGE_COMMAND,
-        () => {
-          const pinned = pinnedAnchor.current;
-          if (pinned === undefined) {
-            return false;
-          }
-          const selection = $getSelection();
-          if (
-            $isRangeSelection(selection) === false ||
-            $getNodeByKey(pinned.key) === null
-          ) {
-            pinnedAnchor.current = undefined;
-            return false;
-          }
-          const { anchor } = selection;
-          if (
-            anchor.key !== pinned.key ||
-            anchor.offset !== pinned.offset ||
-            anchor.type !== pinned.type
-          ) {
-            anchor.set(pinned.key, pinned.offset, pinned.type);
-          }
-          return false;
-        },
-        COMMAND_PRIORITY_CRITICAL
-      ),
       // an edit ends the extension
       editor.registerUpdateListener(({ dirtyElements, dirtyLeaves }) => {
         if (dirtyLeaves.size > 0 || dirtyElements.size > 0) {
@@ -2628,25 +2595,7 @@ const ImageEditingPlugin = () => {
         rootElement?.addEventListener("focusout", unpinOnFocusOut);
         previous?.removeEventListener("mousedown", unpinOnTripleClick);
         rootElement?.addEventListener("mousedown", unpinOnTripleClick);
-      }),
-      // a copy or cut marks its selection, for the code block's export
-      editor.registerCommand(
-        COPY_COMMAND,
-        () => {
-          markRichTextCopy($getSelection());
-          return false;
-        },
-        COMMAND_PRIORITY_CRITICAL
-      ),
-      editor.registerCommand(
-        CUT_COMMAND,
-        () => {
-          markRichTextCopy($getSelection());
-          return false;
-        },
-        COMMAND_PRIORITY_CRITICAL
-      ),
-      registerCopyCutWriter(editor)
+      })
     );
   }, [editor]);
   return null;
@@ -2710,7 +2659,6 @@ const LinkRulePlugin = () => {
           },
           COMMAND_PRIORITY_LOW
         ),
-        registerDragStart(editor),
         editor.registerCommand(
           PASTE_COMMAND,
           (event) => {
@@ -3699,35 +3647,17 @@ const $selectionIntoAdjacentBlocks = () => {
   return false;
 };
 
-/** The commands that edit at the selection. */
-const editingCommands: LexicalCommand<never>[] = [
-  INSERT_PARAGRAPH_COMMAND,
-  INSERT_LINE_BREAK_COMMAND,
-  CONTROLLED_TEXT_INSERTION_COMMAND,
-  PASTE_COMMAND,
-  CUT_COMMAND,
-  KEY_BACKSPACE_COMMAND,
-  KEY_DELETE_COMMAND,
-  DELETE_CHARACTER_COMMAND,
-  DELETE_WORD_COMMAND,
-  DELETE_LINE_COMMAND,
-  REMOVE_TEXT_COMMAND,
-] as LexicalCommand<never>[];
-
 const PasteRulesPlugin = () => {
   const [editor] = useLexicalComposerContext();
   useEffect(
     () =>
       mergeRegister(
         // an edit at an element point between a quote's or item's blocks
-        // starts from a text point in the block beside it
-        ...editingCommands.map((command) =>
-          editor.registerCommand(
-            command,
-            $selectionIntoAdjacentBlocks,
-            COMMAND_PRIORITY_CRITICAL
-          )
-        ),
+        // starts from a text point in the block beside it (COMMAND_ORDER
+        // runs it on the editing commands, and a cut's removal step)
+        provideFieldHandlers(editor, {
+          selectionIntoAdjacentBlocks: $selectionIntoAdjacentBlocks,
+        }),
         // Enter and Shift+Enter in a block-led item or quote split it and
         // break the line, as in any other item
         editor.registerCommand(
@@ -3967,7 +3897,7 @@ export const RichTextField = ({
         <PasteRulesPlugin />
         <ImageEditingPlugin />
         <HorizontalRulePlugin />
-        <TransformsPlugin />
+        <TransformsPlugin namespace={namespace} />
         <OnChangePlugin
           ignoreSelectionChange
           ignoreHistoryMergeTagChange
