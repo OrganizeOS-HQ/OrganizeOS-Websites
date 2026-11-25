@@ -1,7 +1,7 @@
 // The field's development checks: a tagged update that changes no node, and
 // the harness invariant every browser test and probe record is held to.
 import { $getRoot, type EditorState, type LexicalEditor } from "lexical";
-import { d7Document, unkeptEmptyLines } from "./rich-text-line-node";
+import { d7Document, unkeptEmptyLines } from "./rich-text-line-points";
 
 export type FieldValue = { html: string; text: string } | null;
 

@@ -61,7 +61,8 @@ import {
   CmsImageNode,
   importStoredImages,
 } from "./rich-text-image-node";
-import { CmsLineNode, registerLineTransforms } from "./rich-text-line-node";
+import { CmsLineNode } from "./rich-text-line-node";
+import { registerLineTransforms } from "./rich-text-line-normalise";
 
 /**
  * One node for each tag of the platform's allowlist, and the code block's

@@ -37,7 +37,8 @@ import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext
 import { useLexicalEditable } from "@lexical/react/useLexicalEditable";
 import { useLexicalNodeSelection } from "@lexical/react/useLexicalNodeSelection";
 import { mergeRegister } from "@lexical/utils";
-import { focusEditor, lineSpike, removeKeptLines } from "./rich-text-line-node";
+import { lineSpike } from "./rich-text-line-node";
+import { focusEditor, removeKeptLines } from "./rich-text-line-points";
 import {
   Button,
   css,

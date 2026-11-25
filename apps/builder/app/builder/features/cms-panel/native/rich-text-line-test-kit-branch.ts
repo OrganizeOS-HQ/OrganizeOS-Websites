@@ -13,6 +13,8 @@ import {
   type RangeSelection,
 } from "lexical";
 import { fieldInvariantFailures } from "./rich-text-field-watch";
+import { historyStateOf } from "./rich-text-line-history";
+import { editorOf } from "./rich-text-test-harness";
 
 type Restore = () => void;
 const installed = new Set<Restore>();
@@ -126,6 +128,12 @@ export const forcedFailure = (kind: keyof typeof install) => {
   };
   installed.add(restore);
   return restore;
+};
+
+/** The lengths of the undo and redo stacks of the mounted editor's history. */
+export const undoDepth = (): { undo: number; redo: number } => {
+  const state = historyStateOf(editorOf()!);
+  return { undo: state.undoStack.length, redo: state.redoStack.length };
 };
 
 /** The harness invariant's failures for the test that just ran. */
