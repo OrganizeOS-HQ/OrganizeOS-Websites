@@ -6,12 +6,12 @@ Builds: `<base>` = `2a96a45`, `<proto>` = `451f20f04`, branch = Task 19's worktr
 
 The cell where the kit's `link()` driver lost the focus (Task 5, M46): stored `LI(<blockquote><p>Q0w</p></blockquote><br><hr>)`, placed by `then(at("Pw"), clickItemCorner(1))` (caret `element:listitem@3`), Link opened by its button, the address typed, then a real Apply.
 
-| Build | Apply by | Write | Focus after | Letter after |
-|---|---|---|---|---|
-| `<base>` | Enter | `<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><br /><a><hr /></a></li><li>Nw</li></ul>` c1 | `BODY` | writes nothing |
-| `<base>` | click on Apply | the same | `BODY` | writes nothing |
-| branch | Enter | none (P14) | the editable | reaches the editor |
-| branch | click on Apply | none (P14) | the editable | reaches the editor |
+| Build    | Apply by       | Write                                                                                               | Focus after  | Letter after       |
+| -------- | -------------- | --------------------------------------------------------------------------------------------------- | ------------ | ------------------ |
+| `<base>` | Enter          | `<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><br /><a><hr /></a></li><li>Nw</li></ul>` c1 | `BODY`       | writes nothing     |
+| `<base>` | click on Apply | the same                                                                                            | `BODY`       | writes nothing     |
+| branch   | Enter          | none (P14)                                                                                          | the editable | reaches the editor |
+| branch   | click on Apply | none (P14)                                                                                          | the editable | reaches the editor |
 
 Controls, same at both builds: a range in `<p>Aw Bw</p>`, and `range("T0w", 1, "Nw", 1)` in `LI(T0w<hr>)`: the editable has the focus after Enter and after Apply.
 
