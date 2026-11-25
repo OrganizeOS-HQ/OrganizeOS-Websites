@@ -333,7 +333,7 @@ export const isInlineContent = (node: LexicalNode) =>
   $isCmsLineNode(node) === false &&
   ($isElementNode(node) || $isDecoratorNode(node) ? node.isInline() : true);
 
-export const isLineContainer = (
+export const isListItemOrQuote = (
   node: LexicalNode | null
 ): node is ElementNode => $isListItemNode(node) || $isQuoteNode(node);
 

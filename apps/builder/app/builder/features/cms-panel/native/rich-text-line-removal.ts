@@ -44,7 +44,7 @@ import {
   holdsSelection,
   isBlockDecorator,
   isLineBreak,
-  isLineContainer,
+  isListItemOrQuote,
   isLinedContainer,
   lineSpike,
 } from "./rich-text-line-node";
@@ -873,7 +873,10 @@ export const $joinRestOfItem = (item: ElementNode) => {
  * detached goes, as an item or quote does (K12).
  */
 export const $dropEmptiedBlockInContainer = (block: ElementNode) => {
-  if (lineSpike.on === false || isLineContainer(block.getParent()) === false) {
+  if (
+    lineSpike.on === false ||
+    isListItemOrQuote(block.getParent()) === false
+  ) {
     return;
   }
   $dropEmptied(block);
@@ -1081,6 +1084,13 @@ export const $removalMark = (
   }
   if (deleteCommands.includes(command)) {
     return $tagRemoval(payload as boolean);
+  }
+  // the two key commands pass their direction, as the delete commands do
+  if (command === KEY_BACKSPACE_COMMAND) {
+    return $tagRemoval(true);
+  }
+  if (command === KEY_DELETE_COMMAND) {
+    return $tagRemoval(false);
   }
   if (removeCommands.includes(command)) {
     return $tagRemoval(undefined);

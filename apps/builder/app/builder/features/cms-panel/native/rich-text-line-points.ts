@@ -1086,44 +1086,6 @@ export const pointRules = (editor: LexicalEditor) => {
     // the rules' registrations that are not commands, in their carried order
     register: () =>
       mergeRegister(
-        // the caret's line: while a point stands after the last line break of a
-        // line that has something after it, the line's element is marked, so
-        // the break Lexical adds is drawn and the caret stands on the line the
-        // next letter lands on. The mark is on the page only, never in the
-        // editor's state
-        editor.registerUpdateListener(({ editorState }) => {
-          const marked = new Set<string>();
-          editorState.read(() => {
-            const selection = $getSelection();
-            if ($isRangeSelection(selection) === false) {
-              return;
-            }
-            for (const point of [selection.anchor, selection.focus]) {
-              const line = point.getNode();
-              if (
-                $isCmsLineNode(line) &&
-                point.type === "element" &&
-                point.offset === line.getChildrenSize() &&
-                isLineBreak(line.getLastChild()) &&
-                line.getNextSibling() !== null
-              ) {
-                marked.add(line.getKey());
-              }
-            }
-          });
-          const root = editor.getRootElement();
-          if (root === null) {
-            return;
-          }
-          for (const element of Array.from(
-            root.querySelectorAll("[data-cms-caret]")
-          )) {
-            element.removeAttribute("data-cms-caret");
-          }
-          for (const key of marked) {
-            editor.getElementByKey(key)?.setAttribute("data-cms-caret", "");
-          }
-        }),
         // 15.12: a key starts from where the page's caret is when the page has
         // moved it since Lexical last wrote or read the selection. A step the
         // page took itself (a caret move inside text) reaches Lexical only when
@@ -1289,5 +1251,56 @@ export const pointRules = (editor: LexicalEditor) => {
           );
         })
       ),
+  };
+};
+
+/**
+ * The caret-line mark (section 4): while a point of the selection stands
+ * after the last line break of a line that has a block directly after it,
+ * the line's element carries `data-cms-caret`, so the break the reconciler
+ * adds there is drawn and the caret stands on the row the next letter lands
+ * on. The mark is on the page only: setting or clearing it runs no editor
+ * update, adds no history step and fires no onChange.
+ */
+export const registerCaretLineMark = (editor: LexicalEditor) => {
+  let marked = new Set<string>();
+  const unregister = editor.registerUpdateListener(({ editorState }) => {
+    const next = new Set<string>();
+    editorState.read(() => {
+      const selection = $getSelection();
+      if ($isRangeSelection(selection) === false) {
+        return;
+      }
+      for (const point of [selection.anchor, selection.focus]) {
+        const line = point.getNode();
+        const after = $isCmsLineNode(line) ? line.getNextSibling() : null;
+        if (
+          $isCmsLineNode(line) &&
+          point.type === "element" &&
+          point.offset === line.getChildrenSize() &&
+          isLineBreak(line.getLastChild()) &&
+          after !== null &&
+          isInlineContent(after) === false
+        ) {
+          next.add(line.getKey());
+        }
+      }
+    });
+    for (const key of marked) {
+      if (next.has(key) === false) {
+        editor.getElementByKey(key)?.removeAttribute("data-cms-caret");
+      }
+    }
+    for (const key of next) {
+      editor.getElementByKey(key)?.setAttribute("data-cms-caret", "");
+    }
+    marked = next;
+  });
+  return () => {
+    unregister();
+    for (const key of marked) {
+      editor.getElementByKey(key)?.removeAttribute("data-cms-caret");
+    }
+    marked = new Set();
   };
 };

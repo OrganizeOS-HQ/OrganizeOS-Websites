@@ -38,7 +38,7 @@ import {
   $isCmsLineNode,
   CmsLineNode,
   isLineBreak,
-  isLineContainer,
+  isListItemOrQuote,
   isLinedContainer,
   lineSpike,
   PLACE_ATTRIBUTE,
@@ -194,7 +194,7 @@ export const $mapLineEdges = (selection: BaseSelection): BaseSelection => {
     const line = $isCmsLineNode(node)
       ? node
       : $findMatchingParent(node, $isCmsLineNode);
-    if (line === null || isLineContainer(line.getParent()) === false) {
+    if (line === null || isListItemOrQuote(line.getParent()) === false) {
       continue;
     }
     const first = line.getFirstDescendant();
