@@ -4754,15 +4754,20 @@ a PR and a deploy, never a switch (spec section 7):
 
 - **New publishes:** `orgEmbedsMayShip()` back to `false`, editing its pin.
   From the next deploy the panel hides the three components and the two
-  templates again, the Custom code box goes, the canvas shows embeds as a
-  paused notice, the banner lists them again, and publishing drops them and
+  templates again, the Custom code box goes, the canvas shows "HTML Embed is
+  off. Its code is kept, but it isn't published." (and the Markdown Embed
+  equivalent) in their place, the banner lists them again, and publishing drops them and
   clears the custom code (the saved code is kept). A tab loaded before the
   change gets "Reload to publish.", and the workflow fails a dispatch whose
   `embeds` input differs from its CLI. The guard level can stay 2 (§5). It does
   not undo what is live: a site already published keeps its embeds and custom
   code until it publishes again or its targets are unpublished.
-- **One org:** after that, the owner's republish runbook ("Existing projects",
-  below, without `embeds`), or unpublishing the org's targets.
+- **One org:** first, unpublish the org's live targets: Unpublish on each row
+  of the Publish dialog, or the platform's support action. That takes the
+  address down at once and needs no switch change and no republish. To keep
+  the site up without its code instead, turn the switch off (above), then run
+  the owner's republish runbook ("Existing projects", below, without
+  `embeds`), which rebuilds each target's build with that commit's rules.
 - **Every org:** the platform raises its `ORG_SCRIPT_GUARD_LEVEL`, with a
   migration in the same PR, since `website_target_live` carries the literal.
   Every site that carries org code then shows the coming-soon page until it
@@ -4771,6 +4776,24 @@ a PR and a deploy, never a switch (spec section 7):
 After PR C the platform's PR B cannot be reverted on its own: its TypeScript
 gate would refuse a level-2 build with org code while its SQL still called it
 live.
+
+**Owner steps before PR C merges** (spec section 10). The owner confirms each
+before merging; this doc does not record them as done:
+
+- builder settings: `ORGANIZEOS_EXPIRE_LEGACY_SESSION=true` and
+  `PUBLISHER_HOST=organizeos.io`;
+- Vercel Authentication on the `organizeos-sites` project, with
+  `WEBSTUDIO_SITES_PROTECTION_BYPASS` set;
+- the Public Suffix List submission for `organizeos.io` started.
+
+The spec's third step, running the embed counts again, was done on 2026-11-25
+("Nothing is deleted", below).
+
+**The deploy window.** The publish workflow builds its CLI from `main`, so
+from PR C's merge until the builder's production deploy finishes, every
+publish fails closed at "Read the org script switch": the workflow's CLI says
+embeds are on and the running builder sends no `embeds` input. Nothing
+deploys. After the builder's deploy, publish again.
 
 Embed scripts run on a published site, so this decides how an
 org's own click handlers meet the share-code carriers (§9, "Share codes"): the
@@ -4981,7 +5004,7 @@ build fails. The workflow reads it (§5, and "Reporting to OrganizeOS" below).
   `$ws$executeScripts`, `clientOnly` or `executeScriptOnCanvas` on).
   `CanvasMarkdownEmbed` renders the Markdown with upstream's
   `renderMarkdownHtml` and puts it in through the insertion path (upstream's
-  own filter keeps iframes). With the switch off, both would show a paused
+  own filter keeps iframes). With the switch off, both would show an "is off"
   notice instead, where the embed is (its `ref` and `data-ws-*` props,
   `display: block` and padding, since the preset's `display: contents` would
   give it no box), since publishing would drop the embed. The settings panel
@@ -5069,8 +5092,9 @@ build fails. The workflow reads it (§5, and "Reporting to OrganizeOS" below).
   (`readLiteralValue`). The Redirects list shows an address that may not run
   as text, and its form, its import and the redirect operations refuse one.
 - **Publish dialog.** A banner after the plan-features banner and the MDX banner
-  (below), headed "Paused, not published", lists each HTML Embed that will be
-  dropped (with embeds on, only one with nothing to render; with the switch
+  (below), headed "Not published", lists each HTML Embed that will be
+  dropped (with embeds on, only one with no code or blank code, as "Empty HTML
+  Embed on {page}"; with the switch
   off, every one that is not a template icon, each Markdown Embed and each
   JSON-LD), each element publishing drops for
   a tag the builder does not offer ("Element with an unsupported tag on
@@ -5230,8 +5254,9 @@ build fails. The workflow reads it (§5, and "Reporting to OrganizeOS" below).
   `generateCss` skips a selection whose instance is gone. A dropped embed
   leaves nothing behind: HTML Embed's preset is `display: contents`, so an
   unstyled one has no box of its own. The hook logs one line in the publish
-  workflow's output, for support ("Not published, org script stays off: left
-  out …", then what it left out, counted, the unsafe
+  workflow's output, for support ("Not published: left
+  out …", then what it left out, counted, with embeds on an HTML Embed it
+  drops named "HTML Embed with no code", the unsafe
   addresses, `srcdoc` and event handler attributes of the instances that stay,
   the XML elements on HTML pages and the redirects included). It counts what
   a page publishes, as the Publish dialog lists it: an instance on no page or
@@ -5575,14 +5600,52 @@ the tests.
 builder edits) keep what the org saved. Published deployments are frozen: a
 deployment keeps what it was built with until the org publishes again, so a
 change to what publishing ships or leaves out reaches a live site only when it
-is republished. The owner can do that without the org: run "Publish site"
-(`publish-site.yml`, `workflow_dispatch`) with `build_id` set to the org's
-`webstudio_published_build_id` and its `organization_id`, and `embeds=true`
-while the CLI at the dispatch ref ships embeds (it does; without it the run
-fails on the embeds check), or no `embeds` once the switch is off again. The
-CLI syncs the same build, builds it with this commit's rules, deploys and
-repoints. The callback accepts a repeat build id and checks only that the
-build belongs to the org's project.
+is republished. The owner can do that without the org, one run per build:
+
+1. **Read what is live, per target.** Each publish target (the built-in
+   address and each Website-use custom domain) keeps its own build and
+   deployment, so read the targets, not only the ledger's
+   `webstudio_published_build_id`. Read-only, in the SQL editor (columns from
+   the platform's migration `20261122100000_website_publish_targets.sql`):
+
+   ```sql
+   select coalesce(d.domain, 'builtin') as target_key, t.build_id,
+          t.published_at, t.unpublished_at, t.published_org_script,
+          t.published_guard_level
+   from public.website_publish_targets t
+   left join public.organization_domains d on d.id = t.domain_id
+   where t.organization_id = '<organization_id>'
+   order by target_key;
+   ```
+
+   A target is live only while `unpublished_at` is null (and the platform's
+   gate accepts its flags). `target_key` is the key the workflow takes:
+   `builtin`, or the custom domain as the org's addresses list it
+   (`websites2_site_addresses`, which the Publish dialog reads, answers the
+   same keys).
+2. **Check for a publish in flight** (below), then run "Publish site"
+   (`publish-site.yml`, `workflow_dispatch`) once for each `build_id`, with
+   `organization_id`, `build_id` and `targets` set to the keys of the live
+   targets on that build, as the "Read the targets" step validates it: a JSON
+   array of 1 to 20 distinct strings, each `builtin` or a lower-case host with
+   no scheme, port or path, for example `["builtin","example.org"]`. Pass
+   `embeds=true` while the CLI at the dispatch ref ships embeds (it does;
+   without it the run fails on the embeds check), and no `embeds` once the
+   switch is off again. Without `targets` the platform falls back to the build
+   row's `deployment.domains`, which holds the bare subdomain and maps to no
+   target, so the build is recorded at no address and every address keeps
+   serving the old deployment while the run goes green. Wait for each run to
+   finish before the next: the runs share the org's concurrency group.
+3. **What a green run proves:** the build was rebuilt with this commit's
+   rules, deployed, and the callback answered 2xx. It does not prove an
+   address moved. The callback step logs `live_targets=<count>` (and
+   `launchable=<value>`): the count must equal the number of keys sent. Then
+   run the query in step 1 again: each target sent shows the new
+   `published_at`, its `build_id` and the `published_org_script` the run
+   reported; and load each address.
+
+The callback accepts a repeat build id and checks only that the build
+belongs to the org's project.
 
 - **Check for a publish in flight first.** The workflow's `concurrency` group is
   `publish-<organization_id>` with `cancel-in-progress: true`, so a dispatch
