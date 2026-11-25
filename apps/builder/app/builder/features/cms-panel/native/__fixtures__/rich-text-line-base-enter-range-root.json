@@ -1,0 +1,146 @@
+{
+  "bR->root0 Enter": {
+    "write": "<p>A0w</p><p></p><hr /><p>B2w</p>",
+    "calls": 1,
+    "caret": "element:paragraph@0",
+    "typed": "<p>A0w</p><p>k</p><hr /><p>B2w</p>"
+  },
+  "bR->root0 Shift+Enter": {
+    "write": "<p>A0w</p><p><br /></p><hr /><p>B2w</p>",
+    "calls": 1,
+    "caret": "element:paragraph@1",
+    "typed": "<p>A0w</p><p><br />k</p><hr /><p>B2w</p>"
+  },
+  "bR->rootEnd Enter": {
+    "write": "<p>A0w</p><p></p><hr /><p>B2w</p>",
+    "calls": 1,
+    "caret": "element:paragraph@0",
+    "typed": "<p>A0w</p><p>k</p><hr /><p>B2w</p>"
+  },
+  "bR->rootEnd Shift+Enter": {
+    "write": "<p>A0w</p><p><br /></p><hr /><p>B2w</p>",
+    "calls": 1,
+    "caret": "element:paragraph@1",
+    "typed": "<p>A0w</p><p><br />k</p><hr /><p>B2w</p>"
+  },
+  "bR->aR Enter": {
+    "write": "<p>A0w</p><p></p><hr /><p>B2w</p>",
+    "calls": 1,
+    "caret": "element:paragraph@0",
+    "typed": "<p>A0w</p><p>k</p><hr /><p>B2w</p>"
+  },
+  "bR->aR Shift+Enter": {
+    "write": "<p>A0w</p><p><br /></p><hr /><p>B2w</p>",
+    "calls": 1,
+    "caret": "element:paragraph@1",
+    "typed": "<p>A0w</p><p><br />k</p><hr /><p>B2w</p>"
+  },
+  "bR->a1 Enter": {
+    "write": "<p>A0w</p><p></p><hr /><p>B2w</p>",
+    "calls": 1,
+    "caret": "element:paragraph@0",
+    "typed": "<p>A0w</p><p>k</p><hr /><p>B2w</p>"
+  },
+  "bR->a1 Shift+Enter": {
+    "write": "<p>A0w</p><p><br /></p><hr /><p>B2w</p>",
+    "calls": 1,
+    "caret": "element:paragraph@1",
+    "typed": "<p>A0w</p><p><br />k</p><hr /><p>B2w</p>"
+  },
+  "bR->b1 Enter": {
+    "write": "<p>A0w</p><p></p><hr /><p>B2w</p>",
+    "calls": 1,
+    "caret": "element:paragraph@0",
+    "typed": "<p>A0w</p><p>k</p><hr /><p>B2w</p>"
+  },
+  "bR->b1 Shift+Enter": {
+    "write": "<p>A0w</p><p><br /></p><hr /><p>B2w</p>",
+    "calls": 1,
+    "caret": "element:paragraph@1",
+    "typed": "<p>A0w</p><p><br />k</p><hr /><p>B2w</p>"
+  },
+  "bR->b3 Enter": {
+    "write": "<p>A0w</p><p></p><hr /><p>B2w</p>",
+    "calls": 1,
+    "caret": "element:paragraph@0",
+    "typed": "<p>A0w</p><p>k</p><hr /><p>B2w</p>"
+  },
+  "bR->b3 Shift+Enter": {
+    "write": "<p>A0w</p><p><br /></p><hr /><p>B2w</p>",
+    "calls": 1,
+    "caret": "element:paragraph@1",
+    "typed": "<p>A0w</p><p><br />k</p><hr /><p>B2w</p>"
+  },
+  "aR->root0 Enter": {
+    "write": "<p>A0w</p><hr /><p></p><p>B2w</p>",
+    "calls": 1,
+    "caret": "element:paragraph@0",
+    "typed": "<p>A0w</p><hr /><p>k</p><p>B2w</p>"
+  },
+  "aR->root0 Shift+Enter": {
+    "write": "<p>A0w</p><hr /><p><br /></p><p>B2w</p>",
+    "calls": 1,
+    "caret": "element:paragraph@1",
+    "typed": "<p>A0w</p><hr /><p><br />k</p><p>B2w</p>"
+  },
+  "aR->rootEnd Enter": {
+    "write": "<p>A0w</p><hr /><p></p><p>B2w</p>",
+    "calls": 1,
+    "caret": "element:paragraph@0",
+    "typed": "<p>A0w</p><hr /><p>k</p><p>B2w</p>"
+  },
+  "aR->rootEnd Shift+Enter": {
+    "write": "<p>A0w</p><hr /><p><br /></p><p>B2w</p>",
+    "calls": 1,
+    "caret": "element:paragraph@1",
+    "typed": "<p>A0w</p><hr /><p><br />k</p><p>B2w</p>"
+  },
+  "aR->bR Enter": {
+    "write": "<p>A0w</p><hr /><p></p><p>B2w</p>",
+    "calls": 1,
+    "caret": "element:paragraph@0",
+    "typed": "<p>A0w</p><hr /><p>k</p><p>B2w</p>"
+  },
+  "aR->bR Shift+Enter": {
+    "write": "<p>A0w</p><hr /><p><br /></p><p>B2w</p>",
+    "calls": 1,
+    "caret": "element:paragraph@1",
+    "typed": "<p>A0w</p><hr /><p><br />k</p><p>B2w</p>"
+  },
+  "aR->a1 Enter": {
+    "write": "<p>A0w</p><hr /><p></p><p>B2w</p>",
+    "calls": 1,
+    "caret": "element:paragraph@0",
+    "typed": "<p>A0w</p><hr /><p>k</p><p>B2w</p>"
+  },
+  "aR->a1 Shift+Enter": {
+    "write": "<p>A0w</p><hr /><p><br /></p><p>B2w</p>",
+    "calls": 1,
+    "caret": "element:paragraph@1",
+    "typed": "<p>A0w</p><hr /><p><br />k</p><p>B2w</p>"
+  },
+  "aR->b1 Enter": {
+    "write": "<p>A0w</p><hr /><p></p><p>B2w</p>",
+    "calls": 1,
+    "caret": "element:paragraph@0",
+    "typed": "<p>A0w</p><hr /><p>k</p><p>B2w</p>"
+  },
+  "aR->b1 Shift+Enter": {
+    "write": "<p>A0w</p><hr /><p><br /></p><p>B2w</p>",
+    "calls": 1,
+    "caret": "element:paragraph@1",
+    "typed": "<p>A0w</p><hr /><p><br />k</p><p>B2w</p>"
+  },
+  "aR->b3 Enter": {
+    "write": "<p>A0w</p><hr /><p></p><p>B2w</p>",
+    "calls": 1,
+    "caret": "element:paragraph@0",
+    "typed": "<p>A0w</p><hr /><p>k</p><p>B2w</p>"
+  },
+  "aR->b3 Shift+Enter": {
+    "write": "<p>A0w</p><hr /><p><br /></p><p>B2w</p>",
+    "calls": 1,
+    "caret": "element:paragraph@1",
+    "typed": "<p>A0w</p><hr /><p><br />k</p><p>B2w</p>"
+  }
+}
