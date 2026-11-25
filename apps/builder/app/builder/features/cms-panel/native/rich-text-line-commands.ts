@@ -74,6 +74,7 @@ export type FieldHandlerId = (typeof FIELD_HANDLER_IDS)[number];
 
 export const LINE_HANDLER_IDS = [
   "points.resolveOnSelectionChange",
+  "points.arrowToRule", // 451f20f04 LN 2483-2510 (split out of the step past a line break, T12.12): `$focusPastRule` and the group B step
   "points.arrowPastLineBreak",
   "points.arrowOffSelectedNode",
   "points.rememberPageSelection", // 451f20f04 LN 2634: pageSelection = pageSnapshot()
@@ -329,12 +330,12 @@ export const COMMAND_ORDER: ReadonlyArray<CommandOrderRow> = [
   {
     command: "KEY_ARROW_LEFT_COMMAND",
     priority: "NORMAL",
-    handlers: ["points.arrowPastLineBreak"],
+    handlers: ["points.arrowToRule", "points.arrowPastLineBreak"],
   },
   {
     command: "KEY_ARROW_RIGHT_COMMAND",
     priority: "NORMAL",
-    handlers: ["points.arrowPastLineBreak"],
+    handlers: ["points.arrowToRule", "points.arrowPastLineBreak"],
   },
   {
     command: "KEY_ARROW_LEFT_COMMAND",
@@ -504,6 +505,11 @@ export const registerRichTextCommands = (
   const line: Record<LineHandlerId, LineHandler> = {
     "points.resolveOnSelectionChange": () =>
       points.handlers.resolveOnSelectionChange(),
+    "points.arrowToRule": (payload, command) =>
+      points.handlers.arrowToRule(
+        payload as KeyboardEvent,
+        command === KEY_ARROW_LEFT_COMMAND
+      ),
     "points.arrowPastLineBreak": (payload, command) =>
       points.handlers.arrowPastLineBreak(
         payload as KeyboardEvent,

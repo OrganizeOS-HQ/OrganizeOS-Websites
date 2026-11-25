@@ -1,0 +1,994 @@
+// The page's selection and Lexical's, both directions (15.12, T10.7): the
+// read-back of the page's step, the key cells with no wait, the forced
+// event orders; 15.11's decorator end (T10.7b): the field puts Lexical's
+// range back on the page, and the page-range keeper.
+import { describe, expect, test, vi } from "vitest";
+import { act } from "react-dom/test-utils";
+import { cdp, userEvent } from "@vitest/browser/context";
+import {
+  $createRangeSelection,
+  $createRangeSelectionFromDom,
+  $getRoot,
+  $getSelection,
+  $isElementNode,
+  $isNodeSelection,
+  $isRangeSelection,
+  $isTextNode,
+  $setSelection,
+  COMMAND_PRIORITY_CRITICAL,
+  KEY_DOWN_COMMAND,
+  type BaseSelection,
+  type LexicalNode,
+  type PointType,
+} from "lexical";
+import {
+  at,
+  caretKey,
+  cutByKey,
+  expectEdit,
+  forceOrder,
+  IMG,
+  nodeSelect,
+  keys,
+  letter,
+  LI,
+  mount,
+  noWait,
+  recordEdit,
+  short,
+  type Step,
+  then,
+  waited,
+} from "./rich-text-line-test-kit";
+import { editable, editorOf, lastHtml, settle } from "./rich-text-test-harness";
+import { exportRichTextHtml } from "./rich-text-html";
+import { decoratorEndCells } from "./rich-text-line-cells-decorator-end";
+import decoratorEndFixture from "./__fixtures__/rich-text-line-base-decorator-end.json";
+
+const BQ = (text: string) => `<blockquote><p>${text}</p></blockquote>`;
+
+const all = (): LexicalNode[] => {
+  const out: LexicalNode[] = [];
+  const walk = (node: LexicalNode) => {
+    out.push(node);
+    if ($isElementNode(node)) {
+      node.getChildren().forEach(walk);
+    }
+  };
+  walk($getRoot());
+  return out;
+};
+
+/** A real click on `word`, then the caret set at `offset` in it. */
+const placeIn = async (word: string, offset: number) => {
+  const span = [
+    ...editable()!.querySelectorAll<HTMLElement>("[data-lexical-text]"),
+  ].find((element) => element.textContent === word)!;
+  await userEvent.click(span);
+  await settle();
+  await act(async () => {
+    editorOf()!.update(() => {
+      const text = all().find(
+        (node) => $isTextNode(node) && node.getTextContent() === word
+      );
+      if ($isTextNode(text)) {
+        text.select(offset, offset);
+      }
+    });
+  });
+  await settle();
+};
+
+const pointName = (point: PointType) => {
+  const node = point.getNode();
+  if (point.type === "text") {
+    return `"${node.getTextContent()}"@${point.offset}`;
+  }
+  const child = $isElementNode(node)
+    ? node.getChildAtIndex(point.offset)
+    : null;
+  const name =
+    child === null
+      ? "-"
+      : $isTextNode(child)
+        ? child.getTextContent()
+        : child.getType();
+  return `${node.getType()}@${point.offset}[${name}]`;
+};
+const selectionName = (selection: BaseSelection | null) =>
+  $isRangeSelection(selection)
+    ? `${pointName(selection.anchor)}->${pointName(selection.focus)} format=${selection.format}`
+    : String(selection);
+const walkSel = () =>
+  editorOf()!
+    .getEditorState()
+    .read(() => {
+      const selection = $getSelection();
+      if ($isNodeSelection(selection)) {
+        return `node:${selection
+          .getNodes()
+          .map((node) => node.getType())
+          .join(",")}`;
+      }
+      if ($isRangeSelection(selection)) {
+        return selection.isCollapsed()
+          ? pointName(selection.anchor)
+          : `${pointName(selection.anchor)}->${pointName(selection.focus)}`;
+      }
+      return String(selection);
+    });
+
+const written = (onChange: ReturnType<typeof vi.fn>) =>
+  onChange.mock.calls.length > 0 ? short(lastHtml(onChange)) : "none";
+
+const modify = (alter: string, direction: string, granularity: string) =>
+  (
+    window.getSelection() as unknown as {
+      modify: (a: string, b: string, c: string) => void;
+    }
+  ).modify(alter, direction, granularity);
+
+// ---------------------------------------------------------------------------
+// 15.12: the read-back never writes the page's selection
+
+/** Every call that sets the page's selection, counted until `restore`. */
+const pageWrites = () => {
+  const calls: string[] = [];
+  const proto = Selection.prototype as unknown as Record<
+    string,
+    (...args: unknown[]) => unknown
+  >;
+  const original: Record<string, (...args: unknown[]) => unknown> = {};
+  for (const name of [
+    "setBaseAndExtent",
+    "addRange",
+    "removeAllRanges",
+    "collapse",
+    "extend",
+    "removeRange",
+  ]) {
+    original[name] = proto[name];
+    proto[name] = function (this: Selection, ...args: unknown[]) {
+      calls.push(name);
+      return original[name].apply(this, args);
+    };
+  }
+  return {
+    calls,
+    restore: () => {
+      for (const name of Object.keys(original)) {
+        proto[name] = original[name];
+      }
+    },
+  };
+};
+const pageEnds = () => {
+  const page = window.getSelection()!;
+  return [page.anchorNode, page.anchorOffset, page.focusNode, page.focusOffset];
+};
+
+describe("15.12: the read-back", () => {
+  test.each([
+    [
+      "at an element point",
+      LI("<h3>H0w</h3><br>"),
+      "H0w",
+      3,
+      ["move", "forward", "line"],
+    ],
+    [
+      "at a link's start",
+      '<p>Aw <a href="https://example.org/l">Lw</a></p>',
+      "Aw ",
+      3,
+      ["move", "forward", "character"],
+    ],
+    [
+      "at a focus on a container",
+      LI(BQ("Q0w") + "<hr>T2w"),
+      "Q0w",
+      3,
+      ["extend", "forward", "line"],
+    ],
+  ] as const)(
+    "the read-back sets no page selection: %s",
+    async (_name, stored, word, offset, [alter, direction, granularity]) => {
+      await mount(stored);
+      await placeIn(word, offset);
+      const before = walkSel();
+      modify(alter, direction, granularity);
+      const ends = pageEnds();
+      const writes = pageWrites();
+      try {
+        await act(async () => {
+          editable()!.dispatchEvent(
+            new KeyboardEvent("keydown", {
+              key: "Shift",
+              code: "ShiftLeft",
+              shiftKey: true,
+              bubbles: true,
+              cancelable: true,
+            })
+          );
+        });
+      } finally {
+        writes.restore();
+      }
+      expect(walkSel()).not.toBe(before);
+      expect(writes.calls).toEqual([]);
+      expect(pageEnds()).toEqual(ends);
+      await settle();
+    }
+  );
+
+  /** A Down walk with a wait or none, then a letter: the write. */
+  const downWalk = async (
+    stored: string,
+    word: string,
+    offset: number,
+    presses: number,
+    wait: boolean
+  ) => {
+    const onChange = await mount(stored);
+    await placeIn(word, offset);
+    const steps = Array.from({ length: presses }, () => keys("{ArrowDown}"));
+    await (wait ? waited : noWait)(...steps, letter)();
+    return written(onChange);
+  };
+
+  test("a goal-column walk: Down from a long line, fast and with a wait, lands in the same place", async () => {
+    const stored =
+      "<p>Along line of words</p><p><br></p><p>Sw</p><p>Blong line of words</p>";
+    const slow = await downWalk(stored, "Along line of words", 19, 4, true);
+    // the column kept: the walk ends at the long line's end
+    expect(slow).toBe(
+      "<p>Along line of words</p><p><br /></p><p>Sw</p><p>Blong line of wordsk</p>"
+    );
+    for (let run = 0; run < 10; run += 1) {
+      expect(await downWalk(stored, "Along line of words", 19, 4, false)).toBe(
+        slow
+      );
+    }
+  }, 120_000);
+
+  // ACCEPTED (R2's list): the field sets the caret line's element point, and
+  // Lexical writes it to the page; the next Down lands at the line's start
+  test("ACCEPTED: a vertical walk that passes an empty caret line loses its column", async () => {
+    const stored =
+      "<ul><li>Along line of words<hr><hr>Blong line of words</li></ul>";
+    const slow = await downWalk(stored, "Along line of words", 19, 2, true);
+    expect(slow).toBe(
+      "<ul><li>Along line of words<hr /><hr />kBlong line of words</li></ul>"
+    );
+    expect(await downWalk(stored, "Along line of words", 19, 2, false)).toBe(
+      slow
+    );
+  }, 30_000);
+
+  test("the Shift+ArrowRight walk of QRL ends in bounded time", async () => {
+    const onChange = await mount(LI(BQ("Q0w") + "<hr><ul><li>L2w</li></ul>"));
+    await placeIn("Pw", 2);
+    const started = performance.now();
+    await userEvent.keyboard("{Shift>}{ArrowRight}{/Shift}".repeat(11) + "k");
+    await settle();
+    expect(performance.now() - started).toBeLessThan(10_000);
+    expect(written(onChange)).toBe("<ul><li>Pwkw</li></ul>");
+  }, 30_000);
+});
+
+// ---------------------------------------------------------------------------
+// 15.12's key cells (KEY_CELLS at 451f20f04): the page's step, then a key
+// handled from its keydown, with no wait and with a wait, in both event
+// orders
+
+type KeyCell = readonly [
+  string,
+  string,
+  string,
+  number,
+  string,
+  string,
+  string,
+];
+const KEY_CELLS: KeyCell[] = [
+  [
+    "ord Abcw Right Backspace",
+    "<p>Abcw</p>",
+    "Abcw",
+    1,
+    "{ArrowRight}",
+    "{Backspace}",
+    "<p>Acw</p>",
+  ],
+  [
+    "ord Abcw Right Delete",
+    "<p>Abcw</p>",
+    "Abcw",
+    1,
+    "{ArrowRight}",
+    "{Delete}",
+    "<p>Abw</p>",
+  ],
+  [
+    "ord Abcw Right Enter",
+    "<p>Abcw</p>",
+    "Abcw",
+    1,
+    "{ArrowRight}",
+    "{Enter}",
+    "<p>Ab</p><p>cw</p>",
+  ],
+  [
+    "lined HB Right Delete",
+    LI("<h3>Bw</h3><br>"),
+    "Bw",
+    1,
+    "{ArrowRight}",
+    "{Delete}",
+    "<ul><li>Pw</li><li><h3>Bw</h3></li><li>Nw</li></ul>",
+  ],
+  [
+    "lined HB Right Enter",
+    LI("<h3>Bw</h3><br>"),
+    "Bw",
+    1,
+    "{ArrowRight}",
+    "{Enter}",
+    "<ul><li>Pw</li><li><h3>Bw</h3><br /><br /></li><li>Nw</li></ul>",
+  ],
+  [
+    "ord heading Right Enter",
+    "<h3>Bw</h3><p>Cw</p>",
+    "Bw",
+    1,
+    "{ArrowRight}",
+    "{Enter}",
+    "<h3>Bw</h3><p></p><p>Cw</p>",
+  ],
+  [
+    "ord two lines Down Backspace",
+    "<p>A0w</p><p>B1w</p>",
+    "A0w",
+    3,
+    "{ArrowDown}",
+    "{Backspace}",
+    "<p>A0w</p><p>B1</p>",
+  ],
+  [
+    "ord two lines Up Backspace",
+    "<p>A0w</p><p>B1w</p>",
+    "B1w",
+    3,
+    "{ArrowUp}",
+    "{Backspace}",
+    "<p>A0</p><p>B1w</p>",
+  ],
+  [
+    "lined two lines Down Backspace",
+    LI("T0w<br>T1w"),
+    "T0w",
+    3,
+    "{ArrowDown}",
+    "{Backspace}",
+    "<ul><li>Pw</li><li>T0w<br />T1</li><li>Nw</li></ul>",
+  ],
+  [
+    "lined two lines Up Backspace",
+    LI("T0w<br>T1w"),
+    "T1w",
+    3,
+    "{ArrowUp}",
+    "{Backspace}",
+    "<ul><li>Pw</li><li>T0<br />T1w</li><li>Nw</li></ul>",
+  ],
+];
+
+const ORDERS = ["selectionchange-first", "key-first"] as const;
+
+describe("15.12's key cells", () => {
+  const run = async (
+    [, stored, word, offset, step, key]: KeyCell,
+    order: (typeof ORDERS)[number],
+    pace: typeof noWait | typeof waited
+  ) => {
+    const onChange = await mount(stored);
+    await placeIn(word, offset);
+    await pace(keys(step), forceOrder(order, keys(key)))();
+    return written(onChange);
+  };
+  test.each(KEY_CELLS)(
+    "15.12's key cells equal their wait write, 20 of 20: %s",
+    async (...cell) => {
+      for (const order of ORDERS) {
+        expect(await run(cell, order, waited), order).toBe(cell[6]);
+        const differ: string[] = [];
+        for (let time = 0; time < 20; time += 1) {
+          const write = await run(cell, order, noWait);
+          if (write !== cell[6]) {
+            differ.push(write);
+          }
+        }
+        expect(differ, order).toEqual([]);
+      }
+    },
+    120_000
+  );
+
+  const twenty = async (stored: string, place: Step, step: Step) => {
+    const slow = await (async () => {
+      const onChange = await mount(stored);
+      await place();
+      await waited(step)();
+      return written(onChange);
+    })();
+    const differ: string[] = [];
+    for (let time = 0; time < 20; time += 1) {
+      const onChange = await mount(stored);
+      await place();
+      await noWait(step)();
+      const write = written(onChange);
+      if (write !== slow) {
+        differ.push(write);
+      }
+    }
+    return { slow, differ };
+  };
+
+  test("a walk right past a rule then Backspace with no wait equals the wait write", async () => {
+    const { slow, differ } = await twenty(
+      LI(BQ("Q0w") + "<hr>T2w"),
+      at("Q0w"),
+      then(keys("{ArrowRight}"), keys("{ArrowRight}"), keys("{Backspace}"))
+    );
+    expect(slow).not.toBe("none");
+    expect(differ).toEqual([]);
+  }, 120_000);
+
+  test("End, ArrowLeft, then a letter beside an image: 20 runs equal", async () => {
+    const { slow, differ } = await twenty(
+      `<p>A0w${IMG}</p>`,
+      at("A0w", 1),
+      then(keys("{End}"), keys("{ArrowLeft}"), letter)
+    );
+    expect(slow).not.toBe("none");
+    expect(differ).toEqual([]);
+  }, 120_000);
+});
+
+// ---------------------------------------------------------------------------
+// 15.12: where the page has not moved, the step does nothing. Each write
+// equals the same key with the read-back not reached (the write <base>
+// gives at that caret; measured at <proto> and <base>, T12.9)
+
+/** What the key sees at its keydown: Lexical's selection and the page's. */
+const watchStep = () => {
+  const editor = editorOf()!;
+  const seen: { before: string; atKey: string; page: string }[] = [];
+  const unregister = editor.registerCommand(
+    KEY_DOWN_COMMAND,
+    () => {
+      const dom = window.getSelection();
+      const page =
+        dom === null ? null : $createRangeSelectionFromDom(dom, editor);
+      seen.push({
+        before: editor
+          .getEditorState()
+          .read(() => selectionName($getSelection())),
+        atKey: selectionName($getSelection()),
+        page:
+          page === null
+            ? "null"
+            : `${pointName(page.anchor)}->${pointName(page.focus)} format=${page.format}`,
+      });
+      return false;
+    },
+    COMMAND_PRIORITY_CRITICAL
+  );
+  return { seen, unregister };
+};
+
+const LINK = '<a href="https://example.org/l">Lw</a>';
+// measured equal at <base>, <proto> and the branch; the link's Enter and
+// Backspace differ at <base> (P11-2, P11-3: not pinned until ruled)
+const NOT_MOVED_WRITES: Record<string, string> = {
+  "pending format":
+    "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>T2wx<b><strong>y</strong></b></li><li>Nw</li></ul>",
+  "field focus":
+    "<ul><li>Pw</li><li><blockquote><p>Q0wkNw</p></blockquote></li></ul>",
+};
+
+describe("15.12: the page has not moved, the step does nothing", () => {
+  test.each(["Enter", "Backspace"])(
+    "a text point at a link's start, %s",
+    async (key) => {
+      const onChange = await mount(LI(`<h3>${LINK}X0w</h3>T1w`));
+      await at("X0w", 1)();
+      await act(async () => {
+        editorOf()!.update(() => {
+          const heading = all()
+            .find((node) => node.getType() === "link")!
+            .getParentOrThrow();
+          const range = $createRangeSelection();
+          range.anchor.set(heading.getKey(), 0, "element");
+          range.focus.set(heading.getKey(), 0, "element");
+          $setSelection(range);
+        });
+      });
+      await settle();
+      const { seen, unregister } = watchStep();
+      await keys(`{${key}}`)();
+      unregister();
+      expect(seen[0].atKey).toBe("heading@0[link]->heading@0[link] format=0");
+      expect(seen[0].page).toBe('"Lw"@0->"Lw"@0 format=0');
+      expect(seen[0].atKey).toBe(seen[0].before);
+      expect(written(onChange)).not.toBe("none");
+    }
+  );
+
+  test("a pending format", async () => {
+    const onChange = await mount(LI("T0w" + BQ("Q1w") + "T2w"));
+    await at("T2w")();
+    await keys("x")();
+    await keys("{Control>}b{/Control}")();
+    const { seen, unregister } = watchStep();
+    await keys("y")();
+    unregister();
+    expect(seen[0].atKey).toMatch(/ format=1$/);
+    expect(seen[0].atKey).toBe(seen[0].before);
+    expect(seen[0].page).toMatch(/ format=0$/);
+    expect(written(onChange)).toBe(NOT_MOVED_WRITES["pending format"]);
+  });
+
+  test("a focus the field set", async () => {
+    const onChange = await mount(LI(BQ("Q0w") + "<hr>T2w"));
+    await at("Nw", 0)();
+    const focusIsQuote = () =>
+      editorOf()!
+        .getEditorState()
+        .read(() => {
+          const selection = $getSelection();
+          return (
+            $isRangeSelection(selection) &&
+            selection.focus.type === "element" &&
+            selection.focus.getNode().getType() === "quote"
+          );
+        });
+    for (let press = 0; press < 10 && focusIsQuote() === false; press += 1) {
+      await keys("{Shift>}{ArrowLeft}{/Shift}")();
+    }
+    const { seen, unregister } = watchStep();
+    await keys("k")();
+    unregister();
+    expect(seen[0].atKey).toBe('"Nw"@0->quote@1[-] format=0');
+    expect(seen[0].atKey).toBe(seen[0].before);
+    expect(seen[0].page).toBe('"Nw"@0->"Q0w"@3 format=0');
+    expect(written(onChange)).toBe(NOT_MOVED_WRITES["field focus"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// the two event orders forced: the same write in either order
+
+describe("the two event orders forced", () => {
+  const STEPS: ReadonlyArray<readonly [string, Step, Step]> = [
+    [
+      "an arrow, then Enter",
+      at("Abcw", 1),
+      then(keys("{ArrowRight}"), keys("{Enter}")),
+    ],
+    ["Backspace", at("Abcw", 2), keys("{Backspace}")],
+    ["Delete", at("Abcw", 2), keys("{Delete}")],
+    ["Enter", at("Abcw", 2), keys("{Enter}")],
+    [
+      "a keyboard cut",
+      then(at("Abcw", 1), keys("{Shift>}{ArrowRight}{/Shift}")),
+      cutByKey,
+    ],
+    [
+      "a keyboard copy",
+      then(at("Abcw", 1), keys("{Shift>}{ArrowRight}{/Shift}")),
+      keys("{Control>}c{/Control}"),
+    ],
+    ["a keyboard paste", at("Abcw", 2), keys("{Control>}v{/Control}")],
+  ];
+  test.each(STEPS)("%s", async (_name, place, step) => {
+    const results: string[] = [];
+    for (const order of ORDERS) {
+      const onChange = await mount("<p>Abcw</p>");
+      await place();
+      await forceOrder(order, step)();
+      results.push(`${written(onChange)} ${caretKey()}`);
+    }
+    expect(results[0]).toBe(results[1]);
+  });
+
+  test("<p>Abcw</p>, the caret after A, ArrowRight, Enter: <p>Ab</p><p>cw</p> in both orders", async () => {
+    for (const order of ORDERS) {
+      const onChange = await mount("<p>Abcw</p>");
+      await at("Abcw", 1)();
+      await keys("{ArrowRight}")();
+      await forceOrder(order, keys("{Enter}"))();
+      expect(written(onChange), order).toBe("<p>Ab</p><p>cw</p>");
+    }
+  });
+});
+
+describe("a page range that appears where Lexical last left none is not read back", () => {
+  test("a letter typed beside a node-selected image lands beside the image, 20 runs", async () => {
+    const writes = new Set<string>();
+    for (let time = 0; time < 20; time += 1) {
+      const onChange = await mount(`<p>Aw${IMG}Bw</p>`);
+      await nodeSelect("cms-image")();
+      expect(caretKey()).toBe("node:cms-image");
+      await letter();
+      writes.add(written(onChange));
+    }
+    expect([...writes]).toHaveLength(1);
+    expect([...writes][0]).toMatch(/<img \/>k|k<img \/>/);
+  }, 120_000);
+});
+
+// ---------------------------------------------------------------------------
+// T10.7b: 15.11's decorator end. With Lexical holding a range and the
+// page an end of it inside a decorator's DOM, the field puts Lexical's
+// range back on the page, so the page types over the range
+
+const DECORATOR_FIXTURE = decoratorEndFixture as Record<
+  string,
+  { write: string | null; calls: number; caret: string; typed: string }
+>;
+
+// the nine cells that differ from <base>: at <base> the letter writes
+// nothing, and the paste (`<img />TAq`) and the composition land on the
+// wrong side of the range
+const DECORATOR_WRITES: Record<string, string> = {
+  // `<img />k1w`
+  letter: "k1w",
+  // `<img />Aq1w`
+  paste: "Aq1w",
+  // `<img />ab1w`: derived; measured at <proto> (equal) and <base>
+  // (`<img />Tab`), T12.9
+  ime: "ab1w",
+};
+
+describe("T10.7b: Shift+Home or Shift+End to an image's side", () => {
+  test.each(decoratorEndCells.filter((cell) => cell.control === false))(
+    "$id: the image stays and the range is replaced",
+    async (cell) => {
+      const name = cell.id.split("-").at(-1)!;
+      const expected = cell.stored.replace("T1w", DECORATOR_WRITES[name]);
+      expect(short(expected)).not.toBe(short(cell.stored));
+      if (name === "ime") {
+        // a composition hands out more than one value (P11-1)
+        const record = await recordEdit(cell);
+        expect(record.write).toBe(short(expected));
+        expect(record.undoRestores).toBe(true);
+        expect(record.errors).toEqual([]);
+      } else {
+        await expectEdit({ ...cell, write: short(expected) });
+      }
+      expect(short(expected)).not.toBe(DECORATOR_FIXTURE[cell.id].write);
+    }
+  );
+
+  test.each(decoratorEndCells.filter((cell) => cell.control))(
+    "control: $id equals the head's",
+    async (cell) => {
+      const { write, calls, caret, typed } = await recordEdit(cell, {
+        short: true,
+      });
+      expect({ write, calls, caret, typed }).toEqual(
+        DECORATOR_FIXTURE[cell.id]
+      );
+    }
+  );
+
+  test.each([`<p>T1w${IMG}</p>`, LI(`T1w${IMG}`)])(
+    "16.10: Shift+End from a text's end before a trailing image hands out no unchanged value: %s",
+    async (stored) => {
+      const onChange = await mount(stored);
+      await at("T1w")();
+      const before = exportRichTextHtml(editorOf()!);
+      await keys("{Shift>}{End}{/Shift}")();
+      await letter();
+      const values = onChange.mock.calls.map(
+        (call) => (call[0] as { html: string }).html
+      );
+      expect(values).not.toContain(before);
+      values.forEach((value, index) => {
+        expect(value).not.toBe(index === 0 ? before : values[index - 1]);
+      });
+    }
+  );
+
+  test("the next Shift+arrow continues from the same place", async () => {
+    await mount(`<p>${IMG}T1w</p>`);
+    await at("T1w", 1)();
+    await keys("{Shift>}{Home}{/Shift}")();
+    await letter();
+    await keys("{Shift>}{ArrowLeft}{/Shift}")();
+    expect(window.getSelection()!.toString()).toBe("k");
+  });
+
+  test("it does not loop: at most two updates after the put-back", async () => {
+    await mount(`<p>${IMG}T1w</p>`);
+    await at("T1w", 1)();
+    let updates = 0;
+    const off = editorOf()!.registerUpdateListener(() => {
+      updates += 1;
+    });
+    await keys("{Shift>}{Home}{/Shift}")();
+    await settle();
+    off();
+    expect(updates).toBeLessThanOrEqual(2);
+  });
+});
+
+// a real drag from text that ends on an image: on release the field puts
+// Lexical's selection back on the page, and a letter types over it
+const send = (method: string, params: Record<string, unknown>) =>
+  (
+    cdp() as unknown as {
+      send: (m: string, p: Record<string, unknown>) => Promise<unknown>;
+    }
+  ).send(method, params);
+const mouse = (
+  type: "mousePressed" | "mouseReleased" | "mouseMoved",
+  x: number,
+  y: number,
+  buttons = type === "mousePressed" ? 1 : 0
+) =>
+  send("Input.dispatchMouseEvent", {
+    type,
+    x,
+    y,
+    button: type === "mouseMoved" ? (buttons ? "left" : "none") : "left",
+    buttons,
+    clickCount: type === "mouseMoved" ? 0 : 1,
+  });
+const pointIn = (word: string, offset: number) => {
+  const span = [
+    ...editable()!.querySelectorAll<HTMLElement>("[data-lexical-text]"),
+  ].find((element) => element.textContent === word)!;
+  const range = document.createRange();
+  range.setStart(span.firstChild!, offset);
+  range.setEnd(span.firstChild!, offset);
+  const rect = range.getBoundingClientRect();
+  const box = span.getBoundingClientRect();
+  return { x: rect.left, y: box.top + box.height / 2 };
+};
+
+const IMG40 =
+  '<img src="https://cdn.example.org/x.png" alt="" width="40" height="20" />';
+const DRAG_IMAGE: ReadonlyArray<
+  readonly [string, string, string, number, string]
+> = [
+  [
+    "a paragraph, from A0w@1 rightward",
+    `<p>A0w${IMG40}B1w</p>`,
+    "A0w",
+    1,
+    "<p>Ak<img />B1w</p>",
+  ],
+  [
+    "a paragraph, from B1w@2 leftward",
+    `<p>A0w${IMG40}B1w</p>`,
+    "B1w",
+    2,
+    "<p>A0w<img />kw</p>",
+  ],
+  [
+    "a paragraph led by the image, from B1w@2 leftward",
+    `<p>A0w</p><p>${IMG40}B1w</p>`,
+    "B1w",
+    2,
+    "<p>A0w</p><p><img />kw</p>",
+  ],
+  [
+    "a lined item, from A0w@1 rightward",
+    LI(`A0w${IMG40}B1w`),
+    "A0w",
+    1,
+    "<ul><li>Pw</li><li>Ak<img />B1w</li><li>Nw</li></ul>",
+  ],
+  [
+    "a lined item, from B1w@2 leftward",
+    LI(`A0w${IMG40}B1w`),
+    "B1w",
+    2,
+    "<ul><li>Pw</li><li>A0w<img />kw</li><li>Nw</li></ul>",
+  ],
+  [
+    "a lined item led by the image, from B1w@2 leftward",
+    LI(`${IMG40}B1w`),
+    "B1w",
+    2,
+    "<ul><li>Pw</li><li><img />kw</li><li>Nw</li></ul>",
+  ],
+];
+
+describe("a drag that ends on an image, then a letter", () => {
+  test.each(DRAG_IMAGE)(
+    "a drag that ends on an image, then a letter replaces what the range holds: %s",
+    async (_name, stored, word, offset, write) => {
+      const onChange = await mount(stored);
+      const from = pointIn(word, offset);
+      const box = editable()!.querySelector("img")!.getBoundingClientRect();
+      const to = { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+      await mouse("mousePressed", from.x, from.y);
+      await settle();
+      for (let step = 1; step <= 6; step += 1) {
+        await mouse(
+          "mouseMoved",
+          from.x + ((to.x - from.x) * step) / 6,
+          from.y + ((to.y - from.y) * step) / 6,
+          1
+        );
+        await new Promise((resolve) => setTimeout(resolve, 16));
+      }
+      await settle();
+      await mouse("mouseReleased", to.x, to.y);
+      await settle();
+      await letter();
+      expect(written(onChange)).toBe(write);
+    }
+  );
+});
+
+// ---------------------------------------------------------------------------
+// the page-range keeper (T10.7b): an update of the field that changes a node
+// while a node selection is current keeps the page's range; a letter typed
+// next equals the letter with that node selected and no such update
+
+const nodeSelectedNow = () =>
+  editorOf()!
+    .getEditorState()
+    .read(() => $isNodeSelection($getSelection()));
+const arrowUntilSelected = async (key: string) => {
+  for (let press = 0; press < 4 && nodeSelectedNow() === false; press += 1) {
+    await keys(key)();
+  }
+  expect(nodeSelectedNow()).toBe(true);
+};
+const emptyLines = () =>
+  editorOf()!
+    .getEditorState()
+    .read(
+      () =>
+        all().filter(
+          (node) =>
+            node.getType() === "cms-line" &&
+            $isElementNode(node) &&
+            node.isEmpty()
+        ).length
+    );
+/** An empty caret line at the middle item's point `index`, set directly. */
+const caretLineAt = async (index: number, item = 1) => {
+  await userEvent.click(editable()!.querySelector("[data-lexical-text]")!);
+  await settle();
+  await act(async () => {
+    editorOf()!.update(() => {
+      const target = all().filter((node) => node.getType() === "listitem")[
+        item
+      ];
+      const range = $createRangeSelection();
+      range.anchor.set(target.getKey(), index, "element");
+      range.focus.set(target.getKey(), index, "element");
+      $setSelection(range);
+    });
+  });
+  await settle();
+  expect(walkSel()).toBe("cms-line@0[-]");
+};
+const selectedRule = () =>
+  editorOf()!
+    .getEditorState()
+    .read(() => {
+      const selection = $getSelection();
+      if ($isNodeSelection(selection) === false) {
+        return -1;
+      }
+      const element = editorOf()!.getElementByKey(
+        selection.getNodes()[0].getKey()
+      );
+      return [...editable()!.querySelectorAll("hr")].indexOf(
+        element as HTMLHRElement
+      );
+    });
+const centre = (element: Element) => {
+  const box = element.getBoundingClientRect();
+  return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+};
+
+type KeeperCell = {
+  name: string;
+  stored: string;
+  /** The rule node-selected through the site's update. */
+  bySite: Step;
+  /** The same rule node-selected from text, with no such update. */
+  fromText: Step;
+};
+
+const KEEPER_CELLS: KeeperCell[] = [
+  // the after-commit removal of the line the selection left: an arrow from
+  // an empty caret line selects the rule
+  {
+    name: "the after-commit removal: a caret line before a leading rule, ArrowRight",
+    stored: LI("<hr>T1w"),
+    bySite: then(() => caretLineAt(0), keys("{ArrowRight}")),
+    fromText: then(at("T1w", 0), () => arrowUntilSelected("{ArrowLeft}")),
+  },
+  {
+    name: "the after-commit removal: a caret line between two rules, ArrowLeft",
+    stored: LI("<hr><hr>T2w"),
+    bySite: then(() => caretLineAt(1), keys("{ArrowLeft}")),
+    fromText: then(at("Pw", 2), () => arrowUntilSelected("{ArrowRight}")),
+  },
+  {
+    name: "the after-commit removal: a caret line between two rules, ArrowRight",
+    stored: LI("<hr><hr>T2w"),
+    bySite: then(() => caretLineAt(1), keys("{ArrowRight}")),
+    fromText: then(at("T2w", 0), () => arrowUntilSelected("{ArrowLeft}")),
+  },
+  // the kept-line removal and the press's end: a press on a rule with a
+  // caret line kept beside it, or in another item
+  {
+    name: "the kept-line removal and the press's end: the kept line directly after the rule",
+    stored: LI("<hr><hr>T2w"),
+    bySite: then(
+      () => caretLineAt(1),
+      async () => {
+        const rule = editable()!.querySelectorAll("hr")[0];
+        await realPress(centre(rule));
+        expect(emptyLines()).toBe(1);
+      }
+    ),
+    fromText: then(at("Pw", 2), () => arrowUntilSelected("{ArrowRight}")),
+  },
+  {
+    name: "the kept-line removal and the press's end: the kept line in another item",
+    stored: "<ul><li>Pw</li><li><hr>T1w</li><li><hr>T2w</li><li>Nw</li></ul>",
+    bySite: then(
+      () => caretLineAt(0),
+      async () => {
+        const rule = editable()!.querySelectorAll("hr")[1];
+        await realPress(centre(rule));
+        expect(emptyLines()).toBe(1);
+      }
+    ),
+    fromText: then(at("T2w", 0), () => arrowUntilSelected("{ArrowLeft}")),
+  },
+];
+
+/** A real press and release at a point, 50 ms apart. */
+const realPress = async ({ x, y }: { x: number; y: number }) => {
+  await mouse("mousePressed", x, y);
+  await settle();
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  await mouse("mouseReleased", x, y);
+  await settle();
+};
+
+describe("the page-range keeper", () => {
+  for (const cell of KEEPER_CELLS) {
+    for (const next of ["a letter", "Backspace"] as const) {
+      test(`a letter typed after each site equals the letter with that node selected and no such update: ${cell.name}, ${next}`, async () => {
+        const run = async (place: Step) => {
+          const onChange = await mount(cell.stored);
+          await place();
+          const rule = selectedRule();
+          expect(rule).not.toBe(-1);
+          await keys(next === "a letter" ? "k" : "{Backspace}")();
+          return {
+            write: written(onChange),
+            selection: walkSel(),
+            lines: emptyLines(),
+            rule,
+          };
+        };
+        const fromText = await run(cell.fromText);
+        expect(await run(cell.bySite)).toEqual(fromText);
+      });
+    }
+  }
+});
