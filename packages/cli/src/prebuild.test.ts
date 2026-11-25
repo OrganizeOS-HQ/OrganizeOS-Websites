@@ -5848,7 +5848,7 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
           template: ["react-router", "react-router-vercel"],
         });
         expect(info).toHaveBeenCalledWith(
-          `Org script is paused until OrganizeOS sites move to their own domain: left out ${count}.`
+          `Not published, org script stays off: left out ${count}.`
         );
       },
       slowPrebuildTestTimeout
@@ -5889,7 +5889,7 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
           template: ["react-router", "react-router-vercel"],
         });
         expect(info).toHaveBeenCalledWith(
-          "Org script is paused until OrganizeOS sites move to their own domain: left out 1 unsafe action."
+          "Not published, org script stays off: left out 1 unsafe action."
         );
       },
       slowPrebuildTestTimeout
@@ -6824,7 +6824,7 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
       });
       expect(html).not.toContain("<script");
       expect(info).toHaveBeenCalledWith(
-        "Org script is paused until OrganizeOS sites move to their own domain: left out 1 unsafe action, 2 variables with a conflicting id and 1 expression."
+        "Not published, org script stays off: left out 1 unsafe action, 2 variables with a conflicting id and 1 expression."
       );
     });
 
@@ -6892,7 +6892,7 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
         elementTypesOf(compiled).filter(({ kind }) => kind !== "import")
       ).toEqual([]);
       expect(info).toHaveBeenCalledWith(
-        "Org script is paused until OrganizeOS sites move to their own domain: left out 2 unknown components."
+        "Not published, org script stays off: left out 2 unknown components."
       );
     });
 
@@ -6947,7 +6947,7 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
       expect(page).not.toContain("SignupForm");
       expect(page).toMatch(/<Box\b/);
       expect(info).toHaveBeenCalledWith(
-        "Org script is paused until OrganizeOS sites move to their own domain: left out 1 unknown component."
+        "Not published, org script stays off: left out 1 unknown component."
       );
     });
 
@@ -7208,7 +7208,7 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
         delete (globalThis as { capture?: unknown }).capture;
       }
       expect(info).toHaveBeenCalledWith(
-        "Org script is paused until OrganizeOS sites move to their own domain: left out 1 variable with a conflicting id."
+        "Not published, org script stays off: left out 1 variable with a conflicting id."
       );
     });
 
@@ -7291,7 +7291,7 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
       expect(page).toContain("named");
       expect(page).not.toMatch(/\sref=/);
       expect(info).toHaveBeenCalledWith(
-        "Org script is paused until OrganizeOS sites move to their own domain: left out 2 element references."
+        "Not published, org script stays off: left out 2 element references."
       );
     });
 
@@ -7472,7 +7472,7 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
         delete (globalThis as { capture?: unknown }).capture;
       }
       expect(info).toHaveBeenCalledWith(
-        "Org script is paused until OrganizeOS sites move to their own domain: left out 3 variables with a conflicting id."
+        "Not published, org script stays off: left out 3 variables with a conflicting id."
       );
     });
 
@@ -7556,7 +7556,7 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
       expect(page).not.toMatch(/lang=/);
       expect(compiled).not.toMatch(/formData/);
       expect(info).toHaveBeenCalledWith(
-        "Org script is paused until OrganizeOS sites move to their own domain: left out 1 variable with a conflicting id."
+        "Not published, org script stays off: left out 1 variable with a conflicting id."
       );
     });
 
@@ -7628,7 +7628,7 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
       expect(html).toContain('alt="A label"');
       expect(html).not.toContain("title=");
       expect(info).toHaveBeenCalledWith(
-        "Org script is paused until OrganizeOS sites move to their own domain: left out 1 variable with a conflicting id and 1 expression."
+        "Not published, org script stays off: left out 1 variable with a conflicting id and 1 expression."
       );
     });
 
@@ -7740,7 +7740,7 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
       expect(html).toContain('title="first"');
       expect(html).toContain('title="second"');
       expect(info).toHaveBeenCalledWith(
-        "Org script is paused until OrganizeOS sites move to their own domain: left out 1 variable with a conflicting id."
+        "Not published, org script stays off: left out 1 variable with a conflicting id."
       );
     });
 
@@ -7866,7 +7866,7 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
       expect(page).not.toMatch(/\.map\(\(\[_key, v\]/);
       expect(page).not.toMatch(/\.map\(\(\[_key, \(/);
       expect(info).toHaveBeenCalledWith(
-        "Org script is paused until OrganizeOS sites move to their own domain: left out 2 unsafe actions and 1 variable with a conflicting id."
+        "Not published, org script stays off: left out 2 unsafe actions and 1 variable with a conflicting id."
       );
     });
 
@@ -7933,7 +7933,7 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
       expect(html).not.toContain("<script");
       expect(html).toContain("marker_text_1</div>");
       expect(info).toHaveBeenCalledWith(
-        "Org script is paused until OrganizeOS sites move to their own domain: left out 1 variable with a conflicting id."
+        "Not published, org script stays off: left out 1 variable with a conflicting id."
       );
     });
 
@@ -8077,7 +8077,7 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
         /let \[harmless, set\$harmless\] = useVariableState<any>\("idle"\)/
       );
       expect(info).toHaveBeenCalledWith(
-        "Org script is paused until OrganizeOS sites move to their own domain: left out 2 duplicate entries and 1 element reference."
+        "Not published, org script stays off: left out 2 duplicate entries and 1 element reference."
       );
     });
 
@@ -9960,7 +9960,7 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
 
         // its result action alone, which reads members of what it gets
         expect(info).toHaveBeenCalledWith(
-          "Org script is paused until OrganizeOS sites move to their own domain: left out 1 unsafe action."
+          "Not published, org script stays off: left out 1 unsafe action."
         );
         expect(await undeclaredIn(page)).toEqual([]);
         expect(await undeclaredIn(server)).toEqual([]);
@@ -10098,7 +10098,7 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
           expect(server).not.toContain("marker_email");
           expect(info).toHaveBeenCalledWith(
             // the form's two emails, and its result action
-            "Org script is paused until OrganizeOS sites move to their own domain: left out 1 unsafe action and 2 Resources."
+            "Not published, org script stays off: left out 1 unsafe action and 2 Resources."
           );
           expect(await undeclaredIn(page)).toEqual([]);
           expect(await undeclaredIn(server)).toEqual([]);
@@ -10125,7 +10125,7 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
           const loaded = await generated();
           expect(loaded.resources).not.toContain("marker_email");
           expect(info).toHaveBeenCalledWith(
-            "Org script is paused until OrganizeOS sites move to their own domain: left out 1 Resource."
+            "Not published, org script stays off: left out 1 Resource."
           );
           expect(await undeclaredIn(loaded.resources)).toEqual([]);
         }
@@ -10849,7 +10849,7 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
       await generated();
 
       expect(info).toHaveBeenCalledWith(
-        "Org script is paused until OrganizeOS sites move to their own domain: left out 1 HTML Embed and the site's custom code."
+        "Not published, org script stays off: left out 1 HTML Embed and the site's custom code."
       );
     });
 
@@ -10885,7 +10885,7 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
       // the rest of the settings still reach the page
       expect(page).toContain('export const siteName = "Settings Site";');
       expect(info).toHaveBeenCalledWith(
-        "Org script is paused until OrganizeOS sites move to their own domain: left out the site's custom code."
+        "Not published, org script stays off: left out the site's custom code."
       );
     });
 

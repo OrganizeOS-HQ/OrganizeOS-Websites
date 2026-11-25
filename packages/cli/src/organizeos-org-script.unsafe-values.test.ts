@@ -676,7 +676,7 @@ describe("dropOrgScript leaves unsafe values out", () => {
     // the variable with an empty id, and the parameter, which no page
     // declares
     expect(log).toHaveBeenCalledWith(
-      "Org script is paused until OrganizeOS sites move to their own domain: left out 24 unsafe actions and 2 variables with a conflicting id."
+      "Not published, org script stays off: left out 24 unsafe actions and 2 variables with a conflicting id."
     );
   });
 
@@ -754,7 +754,7 @@ describe("dropOrgScript leaves unsafe values out", () => {
       "kept-form:onStateChange",
     ]);
     expect(log).toHaveBeenCalledWith(
-      "Org script is paused until OrganizeOS sites move to their own domain: left out 9 unsafe actions."
+      "Not published, org script stays off: left out 9 unsafe actions."
     );
     expect(() =>
       assertBuildCodeValid(result.build, migratePages(result.build.pages))
@@ -810,7 +810,7 @@ describe("dropOrgScript leaves unsafe values out", () => {
     expect(result.build.dataSources.map(([id]) => id)).toEqual(["g"]);
     expect(propIds(result)).toEqual(["holder:onClick"]);
     expect(log).toHaveBeenCalledWith(
-      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 HTML Embed."
+      "Not published, org script stays off: left out 1 HTML Embed."
     );
     expect(() =>
       assertBuildCodeValid(result.build, migratePages(result.build.pages))
@@ -848,7 +848,7 @@ describe("dropOrgScript leaves unsafe values out", () => {
 
     expect(propIds(result)).toEqual([]);
     expect(log).toHaveBeenCalledWith(
-      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 unsafe action."
+      "Not published, org script stays off: left out 1 unsafe action."
     );
   });
 
@@ -893,7 +893,7 @@ describe("dropOrgScript leaves unsafe values out", () => {
 
     expect(instanceIds(result)).toEqual(["root", "template-root"]);
     expect(log).toHaveBeenCalledWith(
-      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 HTML Embed."
+      "Not published, org script stays off: left out 1 HTML Embed."
     );
   });
 
@@ -953,7 +953,7 @@ describe("dropOrgScript leaves unsafe values out", () => {
       "global",
     ]);
     expect(log).toHaveBeenCalledWith(
-      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 element with a reserved id."
+      "Not published, org script stays off: left out 1 element with a reserved id."
     );
   });
 
@@ -1046,7 +1046,7 @@ describe("dropOrgScript leaves unsafe values out", () => {
     // a parameter prop that names one goes with it
     expect(propIds(result)).toEqual(["box:onDoubleClick"]);
     expect(log).toHaveBeenCalledWith(
-      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 unsafe action and 8 variables with a conflicting id."
+      "Not published, org script stays off: left out 1 unsafe action and 8 variables with a conflicting id."
     );
   });
 
@@ -1083,7 +1083,7 @@ describe("dropOrgScript leaves unsafe values out", () => {
       expect(result.build.dataSources, id).toEqual([]);
       expect(propIds(result), id).toEqual([]);
       expect(log, id).toHaveBeenCalledWith(
-        "Org script is paused until OrganizeOS sites move to their own domain: left out 1 variable with a conflicting id."
+        "Not published, org script stays off: left out 1 variable with a conflicting id."
       );
     }
   });
@@ -1182,7 +1182,7 @@ describe("dropOrgScript leaves unsafe values out", () => {
       "other:data",
     ]);
     expect(log).toHaveBeenCalledWith(
-      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 unsafe action and 3 variables with a conflicting id."
+      "Not published, org script stays off: left out 1 unsafe action and 3 variables with a conflicting id."
     );
   });
 
@@ -1341,7 +1341,7 @@ describe("dropOrgScript leaves unsafe values out", () => {
       ['"https://example.org/last"']
     );
     expect(log).toHaveBeenCalledWith(
-      "Org script is paused until OrganizeOS sites move to their own domain: left out 7 duplicate entries and 1 XML element on an HTML page."
+      "Not published, org script stays off: left out 7 duplicate entries and 1 XML element on an HTML page."
     );
   });
 
@@ -1381,10 +1381,10 @@ describe("dropOrgScript leaves unsafe values out", () => {
       return log.mock.calls[0]?.[0];
     };
     expect(counted([""])).toBe(
-      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 variable with a conflicting id."
+      "Not published, org script stays off: left out 1 variable with a conflicting id."
     );
     expect(counted(["unknown"])).toBe(
-      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 unknown component."
+      "Not published, org script stays off: left out 1 unknown component."
     );
   });
 
@@ -1428,7 +1428,7 @@ describe("dropOrgScript leaves unsafe values out", () => {
 
     expect(propIds(result)).toEqual(["plain:ref", "plain:data-ref"]);
     expect(log).toHaveBeenCalledWith(
-      "Org script is paused until OrganizeOS sites move to their own domain: left out 2 element references."
+      "Not published, org script stays off: left out 2 element references."
     );
     expect(dropOrgScript(bundle, { mayRun: true })).toBe(bundle);
   });
@@ -1506,7 +1506,7 @@ describe("dropOrgScript leaves unsafe values out", () => {
     expect(result.build.dataSources).toEqual([]);
     expect(propIds(result)).toEqual(["list:data", "other:data"]);
     expect(log).toHaveBeenCalledWith(
-      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 Collection item or key that is not a parameter and 3 variables with a conflicting id."
+      "Not published, org script stays off: left out 1 Collection item or key that is not a parameter and 3 variables with a conflicting id."
     );
   });
 
@@ -1541,7 +1541,7 @@ describe("dropOrgScript leaves unsafe values out", () => {
     ]);
     expect(result.build.dataSources).toEqual([]);
     expect(log).toHaveBeenCalledWith(
-      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 unknown component and 1 variable with a conflicting id."
+      "Not published, org script stays off: left out 1 unknown component and 1 variable with a conflicting id."
     );
   });
 
@@ -1562,7 +1562,7 @@ describe("dropOrgScript leaves unsafe values out", () => {
 
     expect(propIds(result)).toEqual(["list:data"]);
     expect(log).toHaveBeenCalledWith(
-      "Org script is paused until OrganizeOS sites move to their own domain: left out 2 unsafe actions."
+      "Not published, org script stays off: left out 2 unsafe actions."
     );
   });
 
@@ -1630,7 +1630,7 @@ describe("dropOrgScript leaves unsafe values out", () => {
     );
     expect(propIds(result)).toEqual([]);
     expect(log).toHaveBeenCalledWith(
-      "Org script is paused until OrganizeOS sites move to their own domain: left out 4 unknown components."
+      "Not published, org script stays off: left out 4 unknown components."
     );
     // the components the framework imports decide
     expect(
@@ -1694,7 +1694,7 @@ describe("dropOrgScript leaves unsafe values out", () => {
     expect(propIds(result)).toEqual(["url:tag", "url:href", "url:onmouseover"]);
     expect(result.build.dataSources).toEqual([]);
     expect(log).toHaveBeenCalledWith(
-      "Org script is paused until OrganizeOS sites move to their own domain: left out 3 XML elements on an HTML page."
+      "Not published, org script stays off: left out 3 XML elements on an HTML page."
     );
   });
 
@@ -1787,7 +1787,7 @@ describe("dropOrgScript leaves unsafe values out", () => {
         status: "301",
       });
       expect(log).toHaveBeenCalledWith(
-        "Org script is paused until OrganizeOS sites move to their own domain: left out 3 redirects to an unsafe address."
+        "Not published, org script stays off: left out 3 redirects to an unsafe address."
       );
     });
 
@@ -1850,7 +1850,7 @@ describe("dropOrgScript leaves unsafe values out", () => {
       { old: "/c", new: "mailto:a@example.org" },
     ]);
     expect(log).toHaveBeenCalledWith(
-      "Org script is paused until OrganizeOS sites move to their own domain: left out 2 redirects to an unsafe address."
+      "Not published, org script stays off: left out 2 redirects to an unsafe address."
     );
   });
 
@@ -1890,7 +1890,7 @@ describe("dropOrgScript leaves unsafe values out", () => {
     expect(propIds(result)).toEqual([]);
     expect(log).toHaveBeenCalledTimes(1);
     expect(log).toHaveBeenCalledWith(
-      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 HTML Embed."
+      "Not published, org script stays off: left out 1 HTML Embed."
     );
   });
 
@@ -1919,7 +1919,7 @@ describe("dropOrgScript leaves unsafe values out", () => {
 
     expect(log).toHaveBeenCalledTimes(1);
     expect(log).toHaveBeenCalledWith(
-      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 XML element on an HTML page, 2 unsafe addresses, 1 srcdoc attribute, 1 event handler attribute and 1 redirect to an unsafe address."
+      "Not published, org script stays off: left out 1 XML element on an HTML page, 2 unsafe addresses, 1 srcdoc attribute, 1 event handler attribute and 1 redirect to an unsafe address."
     );
   });
 
@@ -2129,7 +2129,7 @@ describe("dropOrgScript leaves expressions out", () => {
       "node:tag",
     ]);
     expect(log).toHaveBeenCalledWith(
-      "Org script is paused until OrganizeOS sites move to their own domain: left out 5 expressions."
+      "Not published, org script stays off: left out 5 expressions."
     );
   });
 
@@ -2202,7 +2202,7 @@ describe("dropOrgScript leaves expressions out", () => {
       ).pageTemplates[0]
     ).toMatchObject({ title: '""', meta: { description: '"x"' } });
     expect(log).toHaveBeenCalledWith(
-      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 expression and 1 Resource."
+      "Not published, org script stays off: left out 1 expression and 1 Resource."
     );
   });
 
@@ -2272,7 +2272,7 @@ describe("dropOrgScript leaves expressions out", () => {
     expect(result.build.resources).toEqual([]);
     expect(result.build.pages.pages[0].meta.description).toBeUndefined();
     expect(log).toHaveBeenCalledWith(
-      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 HTML Embed, 1 variable with a conflicting id, 3 expressions and 2 Resources."
+      "Not published, org script stays off: left out 1 HTML Embed, 1 variable with a conflicting id, 3 expressions and 2 Resources."
     );
   });
 
@@ -2292,7 +2292,7 @@ describe("dropOrgScript leaves expressions out", () => {
 
     expect(propIds(result)).toEqual(["inner:title"]);
     expect(log).toHaveBeenCalledWith(
-      "Org script is paused until OrganizeOS sites move to their own domain: left out 2 expressions."
+      "Not published, org script stays off: left out 2 expressions."
     );
   });
 
@@ -2333,7 +2333,7 @@ describe("dropOrgScript leaves expressions out", () => {
       { type: "id", value: "box" },
     ]);
     expect(log).toHaveBeenCalledWith(
-      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 expression."
+      "Not published, org script stays off: left out 1 expression."
     );
   });
 
@@ -2391,7 +2391,7 @@ describe("dropOrgScript leaves expressions out", () => {
       { id: "about", title: '"about"', meta: {} },
     ]);
     expect(log).toHaveBeenCalledWith(
-      "Org script is paused until OrganizeOS sites move to their own domain: left out 7 expressions and 1 redirect to an unsafe address."
+      "Not published, org script stays off: left out 7 expressions and 1 redirect to an unsafe address."
     );
   });
 
@@ -2432,7 +2432,7 @@ describe("dropOrgScript leaves expressions out", () => {
     // what read the Resource goes too
     expect(propIds(result)).toEqual(["list:item"]);
     expect(log).toHaveBeenCalledWith(
-      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 expression and 1 Resource."
+      "Not published, org script stays off: left out 1 expression and 1 Resource."
     );
   });
 
@@ -2454,7 +2454,7 @@ describe("dropOrgScript leaves expressions out", () => {
     expect(result.build.resources).toEqual([]);
     expect(result.build.dataSources).toEqual([]);
     expect(log).toHaveBeenCalledWith(
-      "Org script is paused until OrganizeOS sites move to their own domain: left out 2 Resources."
+      "Not published, org script stays off: left out 2 Resources."
     );
   });
 
@@ -2500,7 +2500,7 @@ describe("dropOrgScript leaves expressions out", () => {
 
     expect(propIds(result)).toEqual([]);
     expect(log).toHaveBeenCalledWith(
-      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 HTML Embed."
+      "Not published, org script stays off: left out 1 HTML Embed."
     );
   });
 
@@ -2546,7 +2546,7 @@ describe("dropOrgScript leaves expressions out", () => {
     const { log } = logOf(bundle);
 
     expect(log).toHaveBeenCalledWith(
-      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 HTML Embed."
+      "Not published, org script stays off: left out 1 HTML Embed."
     );
   });
 
@@ -2578,7 +2578,7 @@ describe("dropOrgScript leaves expressions out", () => {
     expect(propIds(result)).toEqual(["list:data"]);
     // the shared rule for a data source's name lists it first
     expect(log).toHaveBeenCalledWith(
-      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 variable with a conflicting id and 1 expression."
+      "Not published, org script stays off: left out 1 variable with a conflicting id and 1 expression."
     );
   });
 
@@ -2605,7 +2605,7 @@ describe("dropOrgScript leaves expressions out", () => {
     expect(result.build.dataSources).toEqual([]);
     expect(propIds(result)).toEqual([]);
     expect(log).toHaveBeenCalledWith(
-      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 expression and 1 data source."
+      "Not published, org script stays off: left out 1 expression and 1 data source."
     );
   });
 
@@ -2666,7 +2666,7 @@ describe("dropOrgScript leaves expressions out", () => {
     expect(result.build.dataSources).toEqual([]);
     expect(propIds(result)).toEqual([]);
     expect(log).toHaveBeenCalledWith(
-      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 XML element on an HTML page and 1 Resource."
+      "Not published, org script stays off: left out 1 XML element on an HTML page and 1 Resource."
     );
   });
 
@@ -2704,7 +2704,7 @@ describe("dropOrgScript leaves expressions out", () => {
     expect(result.build.dataSources.map(([id]) => id)).toEqual(["state"]);
     expect(propIds(result)).toEqual([]);
     expect(log).toHaveBeenCalledWith(
-      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 unsafe action, 1 variable with a conflicting id and 1 expression."
+      "Not published, org script stays off: left out 1 unsafe action, 1 variable with a conflicting id and 1 expression."
     );
   });
 
@@ -2725,7 +2725,7 @@ describe("dropOrgScript leaves expressions out", () => {
     // what read the data source goes too
     expect(propIds(result)).toEqual([]);
     expect(log).toHaveBeenCalledWith(
-      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 expression and 2 Resources."
+      "Not published, org script stays off: left out 1 expression and 2 Resources."
     );
   });
 
@@ -2745,7 +2745,7 @@ describe("dropOrgScript leaves expressions out", () => {
     expect(result.build.dataSources.map(([id]) => id)).toEqual(["state"]);
     expect(propIds(result)).toEqual([]);
     expect(log).toHaveBeenCalledWith(
-      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 unsafe action and 1 Resource."
+      "Not published, org script stays off: left out 1 unsafe action and 1 Resource."
     );
   });
 
@@ -2768,7 +2768,7 @@ describe("dropOrgScript leaves expressions out", () => {
 
     expect(propIds(result)).toEqual([]);
     expect(log).toHaveBeenCalledWith(
-      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 duplicate entry and 1 expression."
+      "Not published, org script stays off: left out 1 duplicate entry and 1 expression."
     );
   });
 
@@ -2796,7 +2796,7 @@ describe("dropOrgScript leaves expressions out", () => {
     expect(result.build.resources).toEqual([]);
     expect(propIds(result)).toEqual([]);
     expect(log).toHaveBeenCalledWith(
-      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 Resource."
+      "Not published, org script stays off: left out 1 Resource."
     );
   });
 
@@ -2953,7 +2953,7 @@ describe("dropOrgScript reads a stored form as the component it publishes as", (
       expect(log).not.toHaveBeenCalled();
     } else {
       expect(log).toHaveBeenCalledWith(
-        "Org script is paused until OrganizeOS sites move to their own domain: left out 1 unsafe action."
+        "Not published, org script stays off: left out 1 unsafe action."
       );
     }
     expect(bundle).toEqual(copy);
@@ -2997,7 +2997,7 @@ test("dropOrgScript keeps a Resource Form's own form data and browser info", () 
   ]);
   expect(propIds(result)).toEqual(["form:formData", "form:browserInfo"]);
   expect(log).toHaveBeenCalledWith(
-    "Org script is paused until OrganizeOS sites move to their own domain: left out 1 variable with a conflicting id."
+    "Not published, org script stays off: left out 1 variable with a conflicting id."
   );
 });
 
@@ -3045,7 +3045,7 @@ test("dropOrgScript leaves out the form data of a Resource Form only an XML page
   expect(result.build.dataSources).toEqual([]);
   expect(propIds(result)).toEqual([]);
   expect(log).toHaveBeenCalledWith(
-    "Org script is paused until OrganizeOS sites move to their own domain: left out 1 variable with a conflicting id."
+    "Not published, org script stays off: left out 1 variable with a conflicting id."
   );
 });
 
@@ -3091,7 +3091,7 @@ test("dropOrgScript leaves out a Content Block's own document uncounted, and cou
   expect(named.result.build.dataSources).toEqual([]);
   expect(propIds(named.result)).toEqual([]);
   expect(named.log).toHaveBeenCalledWith(
-    "Org script is paused until OrganizeOS sites move to their own domain: left out 1 variable with a conflicting id."
+    "Not published, org script stays off: left out 1 variable with a conflicting id."
   );
 });
 
@@ -3127,7 +3127,7 @@ test("dropOrgScript keeps a Content Block's body, and leaves out a variable name
   expect(instanceIds(result)).toEqual(["root", "block", "body", "text"]);
   expect(result.build.dataSources).toEqual([]);
   expect(log).toHaveBeenCalledWith(
-    "Org script is paused until OrganizeOS sites move to their own domain: left out 1 variable with a conflicting id."
+    "Not published, org script stays off: left out 1 variable with a conflicting id."
   );
 });
 

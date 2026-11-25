@@ -4724,7 +4724,10 @@ disagree, and a missing or mistyped value could fail open.
   `ORGANIZEOS_GUARD_LEVEL` to 2, and which the spec orders after the
   platform's PR B (a gate that accepts a level-2 build with org code, and the
   host rule that keeps such a build off every host under `organizeos.org`) is
-  live in production. Beside the pins and the guard-level test, every test
+  live in production. It is: on 2026-11-25 read-only queries against
+  production showed the gate migration `20270114100000` applied, and the live
+  gate answering true for a build with org code at guard level 2 and false at
+  level 1. Beside the pins and the guard-level test, every test
   sets the switch, and one case in each area reads its real value:
   "with the embed switch at its default" in
   `canvas/organizeos-org-script.test.tsx` (the canvas's own embeds, the panel
@@ -4790,7 +4793,10 @@ included. Counted read-only on 2026-11-20 over each org project's dev build
 embed or an HTML Embed with a `script` tag, an inline handler or an iframe:
 `hq` held 182 HTML Embeds, all inline SVG (three with a `<style>` block),
 `laborparty` 6 and `wisconsinlaborparty` 8 (CSS `<style>` blocks and SVG),
-`palaborparty` none. Each of those embeds that is not a template icon counts
+`palaborparty` none. Re-run on 2026-11-25, the counts were unchanged: three
+org projects hold HTML Embeds (182, 6 and 8), all inline SVG or CSS, and none
+holds a `script` tag, an inline handler, an iframe, a bound embed, custom
+code, a Markdown Embed or JSON-LD. Each of those embeds that is not a template icon counts
 as org code, so a build of `hq` that carries one cannot be promoted to the
 marketing apex.
 
@@ -5224,7 +5230,8 @@ build fails. The workflow reads it (§5, and "Reporting to OrganizeOS" below).
   `generateCss` skips a selection whose instance is gone. A dropped embed
   leaves nothing behind: HTML Embed's preset is `display: contents`, so an
   unstyled one has no box of its own. The hook logs one line in the publish
-  workflow's output, for support (what it left out, counted, the unsafe
+  workflow's output, for support ("Not published, org script stays off: left
+  out …", then what it left out, counted, the unsafe
   addresses, `srcdoc` and event handler attributes of the instances that stay,
   the XML elements on HTML pages and the redirects included). It counts what
   a page publishes, as the Publish dialog lists it: an instance on no page or

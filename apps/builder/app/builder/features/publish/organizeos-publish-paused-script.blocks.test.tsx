@@ -299,7 +299,7 @@ describe("every OrganizeOS block, as insertOrganizeosBlock inserts it", () => {
     const log = vi.fn();
     dropOrgScript(toBundle(), { mayRun: false, log });
     expect(log).toHaveBeenCalledWith(
-      `Org script is paused until OrganizeOS sites move to their own domain: left out ${blockInstanceIds.length} raw HTML properties.`
+      `Not published, org script stays off: left out ${blockInstanceIds.length} raw HTML properties.`
     );
   });
 });
