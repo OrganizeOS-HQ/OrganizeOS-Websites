@@ -54,8 +54,6 @@ export const lineSpike = {
   compositionStartCharKept: false,
   /** Tests: the cut's removal is found not to take what its clipboard holds. */
   cutTakesCheckFails: false,
-  /** Probes: the point rule's third place (after every commit) does not run. */
-  thirdPlaceOff: false,
   /** Probes: a key does not take over a caret the page moved (15.12 off). */
   resyncOff: false,
   /** Tests (15.14): the focus guard off, to show the popovers' fix alone. */

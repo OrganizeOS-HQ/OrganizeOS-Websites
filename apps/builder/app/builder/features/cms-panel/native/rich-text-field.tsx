@@ -130,11 +130,7 @@ import {
   $unwrapQuoteLinesForParagraph,
   type BlockType,
 } from "./rich-text-line-toolbar";
-import {
-  registerTagCheck,
-  watchField,
-  type FieldValue,
-} from "./rich-text-field-watch";
+import { watchField, type FieldValue } from "./rich-text-field-watch";
 import { INSERT_HORIZONTAL_RULE_COMMAND } from "@lexical/react/LexicalHorizontalRuleNode";
 import {
   Button,
@@ -2611,7 +2607,7 @@ const fieldValueOf = (editor: LexicalEditor): FieldValue => {
     : { html, text };
 };
 
-/** Development only: the field's tag check and harness watch. */
+/** Development only: the field's harness watch, dropped at unmount. */
 const WatchPlugin = ({
   watched,
 }: {
@@ -2622,11 +2618,11 @@ const WatchPlugin = ({
     if (import.meta.env.DEV === false) {
       return;
     }
-    watched.current = watchField(editor, () => fieldValueOf(editor));
-    const off = registerTagCheck(editor);
+    const watch = watchField(editor, () => fieldValueOf(editor));
+    watched.current = watch.changed;
     return () => {
-      off();
       watched.current = undefined;
+      watch.unwatch();
     };
   }, [editor, watched]);
   return null;

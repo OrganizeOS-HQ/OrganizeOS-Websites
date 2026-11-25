@@ -39,12 +39,6 @@ import {
 } from "./rich-text-line-node";
 import type { EditTracker } from "./rich-text-line-removal";
 
-/** SPIKE: the rule violations seen, for the probe. */
-export const lineRuleViolations: string[] = [];
-
-/** The last check after a commit left a point on a lined container. */
-let checkFailed = false;
-
 /**
  * 5.4, F8 and P9-2: lines a removal emptied while they held the caret, per
  * editor. Such a line is not emptied: it keeps the caret (D18 step 1) until
@@ -521,8 +515,9 @@ const $removeKeptLines = () => {
  * and the page holds none. `update` commits at once (discrete).
  */
 export const keepPageRange = <T>(editor: LexicalEditor, update: () => T): T => {
-  const dom = window.getSelection();
-  const root = editor.getRootElement();
+  // an editor with no page (a headless one) has no range to keep
+  const dom = typeof window === "undefined" ? null : window.getSelection();
+  const root = dom === null ? null : editor.getRootElement();
   const saved =
     dom !== null &&
     dom.rangeCount > 0 &&
@@ -1471,92 +1466,115 @@ export const pointRules = (editor: LexicalEditor, tracker?: EditTracker) => {
         }),
         () => {
           emptiedLines.delete(editor);
-        },
-        // the third place of 5.3: after every commit, a point that rests on a
-        // lined container resolves at once, in an update of its own that makes
-        // no undo step and fires no onChange; the rule then holds (5.3, 5.5)
-        editor.registerUpdateListener(({ editorState, prevEditorState }) => {
-          const report = (message: string) => {
-            console.error(message);
-            lineRuleViolations.push(message);
-          };
-          if (editorState.read($lineHoldsBlock)) {
-            report("cms-line rule: a line holds a block");
-          }
-          // held while a composition runs: it adds no update between the
-          // composition's own; the commit that ends it is checked
-          if (
-            editor.isComposing() ||
-            lineSpike.thirdPlaceOff ||
-            presses.has(editor)
-          ) {
-            return;
-          }
-          const broken = editorState.read($pointRuleBroken);
-          if (broken === null) {
-            checkFailed = false;
-            // a line the caret left by a key or by code, where no selection
-            // change of the page followed (the field moved the caret in the
-            // key's own update), goes at once
-            // goes at once: only a line the selection was in before this
-            // commit, never a kept one (a press holds this check off)
-            const kept = keptOf(editor);
-            const was = prevEditorState.read($selectionLines);
-            const $left = () =>
-              was
-                .map((key) => $getNodeByKey(key))
-                .filter(
-                  (line): line is CmsLineNode =>
-                    $isCmsLineNode(line) &&
-                    line.isAttached() &&
-                    line.isEmpty() &&
-                    holdsSelection(line) === false &&
-                    kept.has(line.getKey()) === false
-                );
-            if (editorState.read($left).length > 0) {
-              keepPageRange(editor, () =>
-                editor.update(
-                  () => {
-                    const left = $left();
-                    for (const line of left) {
-                      line.remove();
-                    }
-                    if (left.length > 0) {
-                      $addUpdateTag("history-merge");
-                    }
-                  },
-                  { discrete: true }
-                )
-              );
-            }
-            return;
-          }
-          // a check that could not resolve the point has reported it already
-          if (checkFailed) {
-            checkFailed = false;
-            return;
-          }
-          keepPageRange(editor, () =>
-            editor.update(
-              () => {
-                // a point moved and nothing else changed is no edit (no onChange, no
-                // step) and carries no tag; a caret line made or removed is merged
-                // into the history's current step and fires no onChange
-                if ($resolveLinedPoints(true)) {
-                  $addUpdateTag("history-merge");
-                }
-                const still = $pointRuleBroken();
-                if (still !== null) {
-                  checkFailed = true;
-                  report(`cms-line point rule: a point on ${still}`);
-                }
-              },
-              { discrete: true }
-            )
-          );
-        })
+        }
       ),
   };
+};
+
+/**
+ * The third place of 5.3: after every commit, a point that rests on a lined
+ * container resolves at once, in an update of its own that makes no undo
+ * step and fires no onChange; the rule then holds (5.3, 5.5). Its state is
+ * this editor's: whether its own update is committing, so that commit is not
+ * checked again. A point still on a lined container after the resolving
+ * update is reported once and not retried. In development the whole tree is
+ * also asserted to hold no line with a block in it.
+ */
+export const registerPointCheck = (
+  editor: LexicalEditor,
+  resolve: (create: boolean) => boolean = $resolveLinedPoints
+): (() => void) => {
+  let ownUpdate = false;
+  const pointCheckListener = ({
+    editorState,
+    prevEditorState,
+  }: {
+    editorState: EditorState;
+    prevEditorState: EditorState;
+  }) => {
+    if (
+      process.env.NODE_ENV !== "production" &&
+      editorState.read($lineHoldsBlock)
+    ) {
+      console.error("cms-line rule: a line holds a block");
+    }
+    // the commit of the check's own update is not checked again
+    if (ownUpdate) {
+      return;
+    }
+    // held while a composition runs: it adds no update between the
+    // composition's own; the commit that ends it is checked
+    if (editor.isComposing() || presses.has(editor)) {
+      return;
+    }
+    const broken = editorState.read($pointRuleBroken);
+    if (broken === null) {
+      // a line the caret left by a key or by code, where no selection
+      // change of the page followed (the field moved the caret in the
+      // key's own update), goes at once: only a line the selection was in
+      // before this commit, never a kept one (a press holds this check off)
+      const kept = keptOf(editor);
+      const was = prevEditorState.read($selectionLines);
+      const $left = () =>
+        was
+          .map((key) => $getNodeByKey(key))
+          .filter(
+            (line): line is CmsLineNode =>
+              $isCmsLineNode(line) &&
+              line.isAttached() &&
+              line.isEmpty() &&
+              holdsSelection(line) === false &&
+              kept.has(line.getKey()) === false
+          );
+      if (editorState.read($left).length > 0) {
+        keepPageRange(editor, () =>
+          editor.update(
+            () => {
+              const left = $left();
+              for (const line of left) {
+                line.remove();
+              }
+              if (left.length > 0) {
+                $addUpdateTag("history-merge");
+              }
+            },
+            { discrete: true }
+          )
+        );
+      }
+      return;
+    }
+    ownUpdate = true;
+    // an update that changes nothing commits nothing and runs no onUpdate;
+    // the check's update runs in this commit's queue, so it has ended by the
+    // next microtask whichever way it ends
+    queueMicrotask(() => {
+      ownUpdate = false;
+    });
+    keepPageRange(editor, () =>
+      editor.update(
+        () => {
+          // a point moved and nothing else changed is no edit (no onChange,
+          // no step) and carries no tag; a caret line made or removed is
+          // merged into the history's current step and fires no onChange
+          if (resolve(true)) {
+            $addUpdateTag("history-merge");
+          }
+          const still = $pointRuleBroken();
+          if (still !== null) {
+            console.error(`cms-line point rule: a point on ${still}`);
+          }
+        },
+        {
+          discrete: true,
+          onUpdate: () => {
+            ownUpdate = false;
+          },
+        }
+      )
+    );
+  };
+  return editor.registerUpdateListener(pointCheckListener);
 };
 
 /**

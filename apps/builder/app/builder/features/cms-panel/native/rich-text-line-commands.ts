@@ -50,7 +50,11 @@ import {
   $nodeSelectionPaste,
   $typeIntoLine,
 } from "./rich-text-line-node-selection";
-import { pointRules, registerCaretLineMark } from "./rich-text-line-points";
+import {
+  pointRules,
+  registerCaretLineMark,
+  registerPointCheck,
+} from "./rich-text-line-points";
 import {
   $enterInHeading,
   $enterRangeWithBreak,
@@ -479,7 +483,7 @@ type LineHandler = (
 /**
  * One listener per (command, priority) row of COMMAND_ORDER, and the
  * non-command registrations of the line rules' points, once each in their
- * carried order. The config reaches clipboard.writeCopyCut, which is
+ * carried order, the point check last. The config reaches clipboard.writeCopyCut, which is
  * $writeCopyCut(config).
  */
 export const registerRichTextCommands = (
@@ -597,6 +601,7 @@ export const registerRichTextCommands = (
     }),
     registerCaretLineMark(editor),
     points.register(),
+    registerPointCheck(editor),
     tracker.dispose
   );
 };
