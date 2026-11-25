@@ -253,12 +253,12 @@ describe("the one registration of the field's and the line rules' handlers", () 
       {
         command: "KEY_ARROW_LEFT_COMMAND",
         priority: "NORMAL",
-        handlers: ["points.arrowPastLineBreak"],
+        handlers: ["points.arrowToRule", "points.arrowPastLineBreak"],
       },
       {
         command: "KEY_ARROW_RIGHT_COMMAND",
         priority: "NORMAL",
-        handlers: ["points.arrowPastLineBreak"],
+        handlers: ["points.arrowToRule", "points.arrowPastLineBreak"],
       },
       {
         command: "KEY_ARROW_LEFT_COMMAND",

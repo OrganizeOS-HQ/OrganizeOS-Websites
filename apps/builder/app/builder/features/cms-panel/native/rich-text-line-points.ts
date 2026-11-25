@@ -628,20 +628,23 @@ export const $inlineEdgeOf = (point: PointType, atStart: boolean) => {
  * The focus at a block's edge in a lined container, with a rule directly
  * beside the block in the direction of the key, moves past the rule: the
  * container point on the rule's far side, resolved by D18. True when it moved.
+ * The same from an empty caret line (15.3), and, with `fromText`, from a
+ * line's text edge (16.15). With `move` false, only whether it would move.
  */
-const $focusPastRule = (selection: RangeSelection, isBackward: boolean) => {
+const $focusPastRule = (
+  selection: RangeSelection,
+  isBackward: boolean,
+  fromText = false,
+  move = true
+) => {
   const focus = selection.focus;
   const node = focus.getNode();
   let child: LexicalNode | null = node;
   while (child !== null && isLinedContainer(child.getParent()) === false) {
     child = child.getParent();
   }
-  // a block, or an empty caret line (15.3), at whose edge the focus stands
-  if (
-    child === null ||
-    $isElementNode(child) === false ||
-    ($isCmsLineNode(child) && child.isEmpty() === false)
-  ) {
+  // a block or a line at whose edge the focus stands
+  if (child === null || $isElementNode(child) === false) {
     return false;
   }
   if ($atContentEdge(focus, child, isBackward) === false) {
@@ -650,6 +653,12 @@ const $focusPastRule = (selection: RangeSelection, isBackward: boolean) => {
   const rule = isBackward ? child.getPreviousSibling() : child.getNextSibling();
   if (isBlockDecorator(rule) === false) {
     return false;
+  }
+  if ($isCmsLineNode(child) && child.isEmpty() === fromText) {
+    return false;
+  }
+  if (move === false) {
+    return true;
   }
   const container = child.getParentOrThrow();
   const index = rule.getIndexWithinParent();
@@ -1160,13 +1169,9 @@ export const pointRules = (editor: LexicalEditor, tracker?: EditTracker) => {
     }
     return true;
   };
-  // an arrow from a block's edge into a line that starts (going right) or
-  // ends (going left) with a line break steps past the break: the point
-  // before or after it is the block's edge at the head (V10)
-  const arrowPastLineBreak = (
-    event: KeyboardEvent,
-    isLeftKey: boolean
-  ): boolean => {
+  // group B: an arrow from a block's text edge toward a rule directly
+  // beside the block, and its Shift form (14.3, 16.15)
+  const arrowToRule = (event: KeyboardEvent, isLeftKey: boolean): boolean => {
     const isBackward = $arrowMovesBackward(isLeftKey, event.shiftKey);
     if (event.altKey || event.ctrlKey || event.metaKey) {
       return false;
@@ -1175,13 +1180,35 @@ export const pointRules = (editor: LexicalEditor, tracker?: EditTracker) => {
     if ($isRangeSelection(selection) === false) {
       return false;
     }
-    // 14.3: with Shift held, from a block's edge toward a rule
-    // directly beside it the focus takes the caret's step and passes
-    // the rule, to where D18 resolves the container point on its far
-    // side; the rule is inside the selection
+    // 14.3: with Shift held, from a block's edge (or a line's text edge,
+    // 16.15) toward a rule directly beside it the focus takes the caret's
+    // step and passes the rule, to where D18 resolves the container point
+    // on its far side; the rule is inside the selection
     if (event.shiftKey && $focusPastRule(selection, isBackward)) {
       event.preventDefault();
       return true;
+    }
+    // 16.15: from a line's text edge toward a rule directly beside the
+    // line, the page takes its own step; where the key leaves the focus
+    // where it was once the page's step has been read back (right-to-left
+    // text), the field takes the step past the rule
+    if (event.shiftKey && $focusPastRule(selection, isBackward, true, false)) {
+      const { key, offset, type } = selection.focus;
+      setTimeout(() => {
+        setTimeout(() => {
+          editor.update(() => {
+            const range = $getSelection();
+            if (
+              $isRangeSelection(range) &&
+              range.focus.key === key &&
+              range.focus.offset === offset &&
+              range.focus.type === type
+            ) {
+              $focusPastRule(range, isBackward, true);
+            }
+          });
+        }, 0);
+      }, 0);
     }
     // B: from the edge of a block's text toward a rule directly beside
     // the block, the arrow node-selects the rule
@@ -1200,6 +1227,23 @@ export const pointRules = (editor: LexicalEditor, tracker?: EditTracker) => {
         $setSelection(nodes);
         return true;
       }
+    }
+    return false;
+  };
+  // an arrow from a block's edge into a line that starts (going right) or
+  // ends (going left) with a line break steps past the break: the point
+  // before or after it is the block's edge at the head (V10)
+  const arrowPastLineBreak = (
+    event: KeyboardEvent,
+    isLeftKey: boolean
+  ): boolean => {
+    const isBackward = $arrowMovesBackward(isLeftKey, event.shiftKey);
+    if (event.altKey || event.ctrlKey || event.metaKey) {
+      return false;
+    }
+    const selection = $getSelection();
+    if ($isRangeSelection(selection) === false) {
+      return false;
     }
     // going right from the end of a line that ends in a break, with a
     // block directly after the line: the block's start is the same
@@ -1324,6 +1368,7 @@ export const pointRules = (editor: LexicalEditor, tracker?: EditTracker) => {
     handlers: {
       resolveOnSelectionChange,
       arrowOffSelectedNode,
+      arrowToRule,
       arrowPastLineBreak,
       rememberPageSelection,
       readBack: readBackOnKey,

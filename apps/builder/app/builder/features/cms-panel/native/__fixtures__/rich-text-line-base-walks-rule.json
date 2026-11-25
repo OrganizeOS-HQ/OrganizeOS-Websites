@@ -1,0 +1,794 @@
+{
+  "QR-Right-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0wk</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "QR-Right-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li><blockquote><p>Q0w</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "QR-Right-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />k</li><li>Nw</li></ul>"
+  },
+  "QR-Right-4": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0wk</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "QR-Right-5": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li><blockquote><p>Q0w</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "QR-Right-6": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />k</li><li>Nw</li></ul>"
+  },
+  "QR-Left-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />k</li><li>Nw</li></ul>"
+  },
+  "QR-Left-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li><blockquote><p>Q0w</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "QR-Left-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:quote@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0wk</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "QR-Left-4": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Q0w@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0kw</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "QR-Left-5": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Q0w@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Qk0w</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "QRT-Right-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0wk</p></blockquote><hr />T2w</li><li>Nw</li></ul>"
+  },
+  "QRT-Right-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li><blockquote><p>Q0w</p></blockquote><hr />T2w</li><li>Nw</li></ul>"
+  },
+  "QRT-Right-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T2w@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />kT2w</li><li>Nw</li></ul>"
+  },
+  "QRT-Right-4": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T2w@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />Tk2w</li><li>Nw</li></ul>"
+  },
+  "QRT-Right-5": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T2w@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />T2kw</li><li>Nw</li></ul>"
+  },
+  "QRT-Right-6": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T2w@3",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />T2wk</li><li>Nw</li></ul>"
+  },
+  "QRT-Left-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li><blockquote><p>Q0w</p></blockquote><hr />T2w</li><li>Nw</li></ul>"
+  },
+  "QRT-Left-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:quote@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0wk</p></blockquote><hr />T2w</li><li>Nw</li></ul>"
+  },
+  "QRT-Left-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Q0w@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0kw</p></blockquote><hr />T2w</li><li>Nw</li></ul>"
+  },
+  "QRT-Left-4": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Q0w@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Qk0w</p></blockquote><hr />T2w</li><li>Nw</li></ul>"
+  },
+  "QRT-Left-5": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Q0w@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>kQ0w</p></blockquote><hr />T2w</li><li>Nw</li></ul>"
+  },
+  "TQRT-Right-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1wk</p></blockquote><hr />T3w</li><li>Nw</li></ul>"
+  },
+  "TQRT-Right-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li>T0w<blockquote><p>Q1w</p></blockquote><hr />T3w</li><li>Nw</li></ul>"
+  },
+  "TQRT-Right-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T3w@0",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote><hr />kT3w</li><li>Nw</li></ul>"
+  },
+  "TQRT-Right-4": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T3w@1",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote><hr />Tk3w</li><li>Nw</li></ul>"
+  },
+  "TQRT-Right-5": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T3w@2",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote><hr />T3kw</li><li>Nw</li></ul>"
+  },
+  "TQRT-Right-6": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T3w@3",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote><hr />T3wk</li><li>Nw</li></ul>"
+  },
+  "TQRT-Left-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li>T0w<blockquote><p>Q1w</p></blockquote><hr />T3w</li><li>Nw</li></ul>"
+  },
+  "TQRT-Left-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:quote@1",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1wk</p></blockquote><hr />T3w</li><li>Nw</li></ul>"
+  },
+  "TQRT-Left-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Q1w@2",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1kw</p></blockquote><hr />T3w</li><li>Nw</li></ul>"
+  },
+  "TQRT-Left-4": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Q1w@1",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Qk1w</p></blockquote><hr />T3w</li><li>Nw</li></ul>"
+  },
+  "TQRT-Left-5": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Q1w@0",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>kQ1w</p></blockquote><hr />T3w</li><li>Nw</li></ul>"
+  },
+  "BQR-Right-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li><br /><blockquote><p>Q1wk</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "BQR-Right-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li><br /><blockquote><p>Q1w</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "BQR-Right-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@3",
+    "typed": "<ul><li>Pw</li><li><br /><blockquote><p>Q1w</p></blockquote><hr />k</li><li>Nw</li></ul>"
+  },
+  "BQR-Right-4": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li><br /><blockquote><p>Q1wk</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "BQR-Right-5": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li><br /><blockquote><p>Q1w</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "BQR-Right-6": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@3",
+    "typed": "<ul><li>Pw</li><li><br /><blockquote><p>Q1w</p></blockquote><hr />k</li><li>Nw</li></ul>"
+  },
+  "BQR-Left-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@3",
+    "typed": "<ul><li>Pw</li><li><br /><blockquote><p>Q1w</p></blockquote><hr />k</li><li>Nw</li></ul>"
+  },
+  "BQR-Left-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li><br /><blockquote><p>Q1w</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "BQR-Left-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:quote@1",
+    "typed": "<ul><li>Pw</li><li><br /><blockquote><p>Q1wk</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "BQR-Left-4": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Q1w@2",
+    "typed": "<ul><li>Pw</li><li><br /><blockquote><p>Q1kw</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "BQR-Left-5": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Q1w@1",
+    "typed": "<ul><li>Pw</li><li><br /><blockquote><p>Qk1w</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "QQR-Right-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><blockquote><p>Q1wk</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "QQR-Right-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li><blockquote><p>Q0w</p></blockquote><blockquote><p>Q1w</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "QQR-Right-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@3",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><blockquote><p>Q1w</p></blockquote><hr />k</li><li>Nw</li></ul>"
+  },
+  "QQR-Right-4": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><blockquote><p>Q1wk</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "QQR-Right-5": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li><blockquote><p>Q0w</p></blockquote><blockquote><p>Q1w</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "QQR-Right-6": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@3",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><blockquote><p>Q1w</p></blockquote><hr />k</li><li>Nw</li></ul>"
+  },
+  "QQR-Left-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@3",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><blockquote><p>Q1w</p></blockquote><hr />k</li><li>Nw</li></ul>"
+  },
+  "QQR-Left-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li><blockquote><p>Q0w</p></blockquote><blockquote><p>Q1w</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "QQR-Left-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:quote@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><blockquote><p>Q1wk</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "QQR-Left-4": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Q1w@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><blockquote><p>Q1kw</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "QQR-Left-5": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Q1w@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><blockquote><p>Qk1w</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "QRB-Right-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0wk</p></blockquote><hr /><br /></li><li>Nw</li></ul>"
+  },
+  "QRB-Right-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li><blockquote><p>Q0w</p></blockquote><hr /><br /></li><li>Nw</li></ul>"
+  },
+  "QRB-Right-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />k<br /></li><li>Nw</li></ul>"
+  },
+  "QRB-Right-4": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@3",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr /><br />k</li><li>Nw</li></ul>"
+  },
+  "QRB-Right-5": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr /><br /></li><li>kNw</li></ul>"
+  },
+  "QRB-Right-6": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Nw@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr /><br /></li><li>Nkw</li></ul>"
+  },
+  "QRB-Left-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@3",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr /><br />k</li><li>Nw</li></ul>"
+  },
+  "QRB-Left-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />k<br /></li><li>Nw</li></ul>"
+  },
+  "QRB-Left-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li><blockquote><p>Q0w</p></blockquote><hr /><br /></li><li>Nw</li></ul>"
+  },
+  "QRB-Left-4": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:quote@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0wk</p></blockquote><hr /><br /></li><li>Nw</li></ul>"
+  },
+  "QRB-Left-5": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Q0w@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0kw</p></blockquote><hr /><br /></li><li>Nw</li></ul>"
+  },
+  "QRL-Right-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0wk</p></blockquote><hr /><ul><li>L2w</li></ul></li><li>Nw</li></ul>"
+  },
+  "QRL-Right-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li><blockquote><p>Q0w</p></blockquote><hr /><ul><li>L2w</li></ul></li><li>Nw</li></ul>"
+  },
+  "QRL-Right-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />k<ul><li>L2w</li></ul></li><li>Nw</li></ul>"
+  },
+  "QRL-Right-4": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0wk</p></blockquote><hr /><ul><li>L2w</li></ul></li><li>Nw</li></ul>"
+  },
+  "QRL-Right-5": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li><blockquote><p>Q0w</p></blockquote><hr /><ul><li>L2w</li></ul></li><li>Nw</li></ul>"
+  },
+  "QRL-Right-6": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />k<ul><li>L2w</li></ul></li><li>Nw</li></ul>"
+  },
+  "QRL-Left-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />k<ul><li>L2w</li></ul></li><li>Nw</li></ul>"
+  },
+  "QRL-Left-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li><blockquote><p>Q0w</p></blockquote><hr /><ul><li>L2w</li></ul></li><li>Nw</li></ul>"
+  },
+  "QRL-Left-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:quote@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0wk</p></blockquote><hr /><ul><li>L2w</li></ul></li><li>Nw</li></ul>"
+  },
+  "QRL-Left-4": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Q0w@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0kw</p></blockquote><hr /><ul><li>L2w</li></ul></li><li>Nw</li></ul>"
+  },
+  "QRL-Left-5": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Q0w@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Qk0w</p></blockquote><hr /><ul><li>L2w</li></ul></li><li>Nw</li></ul>"
+  },
+  "QRQ-Right-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0wk</p></blockquote><hr /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "QRQ-Right-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li><blockquote><p>Q0w</p></blockquote><hr /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "QRQ-Right-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:quote@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr /><blockquote><p>kQ2w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "QRQ-Right-4": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Q2w@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr /><blockquote><p>Qk2w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "QRQ-Right-5": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Q2w@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr /><blockquote><p>Q2kw</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "QRQ-Right-6": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Q2w@3",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr /><blockquote><p>Q2wk</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "QRQ-Left-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Q2w@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr /><blockquote><p>kQ2w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "QRQ-Left-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0wk</p></blockquote><hr /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "QRQ-Left-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Q0w@3",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0wk</p></blockquote><hr /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "QRQ-Left-4": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Q0w@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0kw</p></blockquote><hr /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "QRQ-Left-5": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Q0w@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Qk0w</p></blockquote><hr /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "QRR-Right-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0wk</p></blockquote><hr /><hr /></li><li>Nw</li></ul>"
+  },
+  "QRR-Right-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li><blockquote><p>Q0w</p></blockquote><hr /><hr /></li><li>Nw</li></ul>"
+  },
+  "QRR-Right-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />k<hr /></li><li>Nw</li></ul>"
+  },
+  "QRR-Right-4": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li><blockquote><p>Q0w</p></blockquote><hr /><hr /></li><li>Nw</li></ul>"
+  },
+  "QRR-Right-5": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@3",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr /><hr />k</li><li>Nw</li></ul>"
+  },
+  "QRR-Right-6": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />k<hr /></li><li>Nw</li></ul>"
+  },
+  "QRR-Left-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@3",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr /><hr />k</li><li>Nw</li></ul>"
+  },
+  "QRR-Left-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li><blockquote><p>Q0w</p></blockquote><hr /><hr /></li><li>Nw</li></ul>"
+  },
+  "QRR-Left-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />k<hr /></li><li>Nw</li></ul>"
+  },
+  "QRR-Left-4": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li><blockquote><p>Q0w</p></blockquote><hr /><hr /></li><li>Nw</li></ul>"
+  },
+  "QRR-Left-5": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:quote@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0wk</p></blockquote><hr /><hr /></li><li>Nw</li></ul>"
+  },
+  "RQR-Right-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1wk</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "RQR-Right-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li><hr /><blockquote><p>Q1w</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "RQR-Right-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@3",
+    "typed": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><hr />k</li><li>Nw</li></ul>"
+  },
+  "RQR-Right-4": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1wk</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "RQR-Right-5": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li><hr /><blockquote><p>Q1w</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "RQR-Right-6": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@3",
+    "typed": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><hr />k</li><li>Nw</li></ul>"
+  },
+  "RQR-Left-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@3",
+    "typed": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><hr />k</li><li>Nw</li></ul>"
+  },
+  "RQR-Left-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li><hr /><blockquote><p>Q1w</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "RQR-Left-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:quote@1",
+    "typed": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1wk</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "RQR-Left-4": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Q1w@2",
+    "typed": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1kw</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "RQR-Left-5": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Q1w@1",
+    "typed": "<ul><li>Pw</li><li><hr /><blockquote><p>Qk1w</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "TQR-Right-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1wk</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "TQR-Right-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li>T0w<blockquote><p>Q1w</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "TQR-Right-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@3",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote><hr />k</li><li>Nw</li></ul>"
+  },
+  "TQR-Right-4": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1wk</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "TQR-Right-5": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li>T0w<blockquote><p>Q1w</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "TQR-Right-6": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@3",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote><hr />k</li><li>Nw</li></ul>"
+  },
+  "TQR-Left-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@3",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote><hr />k</li><li>Nw</li></ul>"
+  },
+  "TQR-Left-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li>T0w<blockquote><p>Q1w</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "TQR-Left-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:quote@1",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1wk</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "TQR-Left-4": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Q1w@2",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1kw</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "TQR-Left-5": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Q1w@1",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Qk1w</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "QRTQ-Right-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0wk</p></blockquote><hr />T2w<blockquote><p>Q3w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "QRTQ-Right-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li><blockquote><p>Q0w</p></blockquote><hr />T2w<blockquote><p>Q3w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "QRTQ-Right-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T2w@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />kT2w<blockquote><p>Q3w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "QRTQ-Right-4": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T2w@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />Tk2w<blockquote><p>Q3w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "QRTQ-Right-5": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T2w@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />T2kw<blockquote><p>Q3w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "QRTQ-Right-6": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T2w@3",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />T2wk<blockquote><p>Q3w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "QRTQ-Left-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li><blockquote><p>Q0w</p></blockquote><hr />T2w<blockquote><p>Q3w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "QRTQ-Left-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:quote@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0wk</p></blockquote><hr />T2w<blockquote><p>Q3w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "QRTQ-Left-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Q0w@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0kw</p></blockquote><hr />T2w<blockquote><p>Q3w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "QRTQ-Left-4": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Q0w@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Qk0w</p></blockquote><hr />T2w<blockquote><p>Q3w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "QRTQ-Left-5": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Q0w@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>kQ0w</p></blockquote><hr />T2w<blockquote><p>Q3w</p></blockquote></li><li>Nw</li></ul>"
+  }
+}

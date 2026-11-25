@@ -1,0 +1,92 @@
+{
+  "P-IT-Home-letter": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T1w@1|element:paragraph@1",
+    "typed": ""
+  },
+  "P-IT-Home-ime": {
+    "write": "<p><img />Tab</p>",
+    "calls": 1,
+    "caret": "text:Tab@3",
+    "typed": "<p><img />Tabk</p>"
+  },
+  "P-IT-Home-paste": {
+    "write": "<p><img />TAq</p>",
+    "calls": 1,
+    "caret": "text:TAq@3",
+    "typed": "<p><img />TAqk</p>"
+  },
+  "LI-IT-Home-letter": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T1w@1|element:listitem@1",
+    "typed": ""
+  },
+  "LI-IT-Home-ime": {
+    "write": "<ul><li>Pw</li><li><img />Tab</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Tab@3",
+    "typed": "<ul><li>Pw</li><li><img />Tabk</li><li>Nw</li></ul>"
+  },
+  "LI-IT-Home-paste": {
+    "write": "<ul><li>Pw</li><li><img />TAq</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:TAq@3",
+    "typed": "<ul><li>Pw</li><li><img />TAqk</li><li>Nw</li></ul>"
+  },
+  "LIQ-IT-Home-letter": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T1w@1|element:listitem@2",
+    "typed": ""
+  },
+  "LIQ-IT-Home-ime": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><img />Tab</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Tab@3",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><img />Tabk</li><li>Nw</li></ul>"
+  },
+  "LIQ-IT-Home-paste": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><img />TAq</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:TAq@3",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><img />TAqk</li><li>Nw</li></ul>"
+  },
+  "P-TI-End-letter": {
+    "write": "<p>Tk</p>",
+    "calls": 1,
+    "caret": "text:Tk@2",
+    "typed": "<p>Tkk</p>"
+  },
+  "P-TI-End-ime": {
+    "write": "<p>Tab</p>",
+    "calls": 3,
+    "caret": "text:Tab@3",
+    "typed": "<p>Tabk</p>"
+  },
+  "P-TI-End-paste": {
+    "write": "<p>TAq</p>",
+    "calls": 1,
+    "caret": "text:TAq@3",
+    "typed": "<p>TAqk</p>"
+  },
+  "LI-TI-End-letter": {
+    "write": "<ul><li>Pw</li><li>Tk</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Tk@2",
+    "typed": "<ul><li>Pw</li><li>Tkk</li><li>Nw</li></ul>"
+  },
+  "LI-TI-End-ime": {
+    "write": "<ul><li>Pw</li><li>Tab</li><li>Nw</li></ul>",
+    "calls": 3,
+    "caret": "text:Tab@3",
+    "typed": "<ul><li>Pw</li><li>Tabk</li><li>Nw</li></ul>"
+  },
+  "LI-TI-End-paste": {
+    "write": "<ul><li>Pw</li><li>TAq</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:TAq@3",
+    "typed": "<ul><li>Pw</li><li>TAqk</li><li>Nw</li></ul>"
+  }
+}
