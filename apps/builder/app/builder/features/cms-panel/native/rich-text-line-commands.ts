@@ -70,7 +70,6 @@ export const FIELD_HANDLER_IDS = [
   "pinImageAnchor", // 451f20f04 RF 2697 (ImageEditingPlugin), SELECTION_CHANGE (reads the plugin's pinnedAnchor ref)
   "selectionIntoAdjacentBlocks", // 451f20f04 RF 4359 (PasteRulesPlugin, `$selectionIntoAdjacentBlocks`), the editing commands
   "caretBesideSelectedImage", // 451f20f04 RF 2525 and 2536 (ImageEditingPlugin; reads the plugin's lastArrow)
-  "markCopy", // 451f20f04 RF 2739 and 2747, until Task 18 Step 5
   "deleteAfterLineBreak", // 451f20f04 RF 2644
   "imageArrow", // 451f20f04 RF 2438
   "caretBesideImageOnKey", // 451f20f04 RF 2501 (ImageEditingPlugin), KEY_DOWN: typing with an image selected puts a caret beside it; reads lastArrow
@@ -204,16 +203,6 @@ export const COMMAND_ORDER: ReadonlyArray<CommandOrderRow> = [
     command: "SELECTION_INSERT_CLIPBOARD_NODES_COMMAND",
     priority: "CRITICAL",
     handlers: ["removal.mark", "nodeSelection.paste"],
-  },
-  {
-    command: "COPY_COMMAND",
-    priority: "CRITICAL",
-    handlers: ["field.markCopy"],
-  },
-  {
-    command: "CUT_COMMAND",
-    priority: "CRITICAL",
-    handlers: ["field.markCopy"],
   },
   {
     command: "COPY_COMMAND",
@@ -486,6 +475,15 @@ export type ScratchConfig = {
   nodes: ReadonlyArray<Klass<LexicalNode>>;
 };
 
+const scratchConfigs = new WeakMap<LexicalEditor, ScratchConfig>();
+
+/**
+ * The namespace the field created for this editor and passed in (the one
+ * its own copied nodes carry), while its commands are registered.
+ */
+export const fieldNamespaceOf = (editor: LexicalEditor): string | undefined =>
+  scratchConfigs.get(editor)?.namespace;
+
 type LineHandler = (
   payload: unknown,
   command: LexicalCommand<unknown>
@@ -494,8 +492,10 @@ type LineHandler = (
 /**
  * One listener per (command, priority) row of COMMAND_ORDER, and the
  * non-command registrations of the line rules' points, once each in their
- * carried order, the point check last. The config reaches clipboard.writeCopyCut, which is
- * $writeCopyCut(config).
+ * carried order, the point check last. The config reaches the one writer
+ * through clipboard.writeCopyCut ($writeCopyCut(config)) and
+ * clipboard.dragStart ($dragStart(config)), and the field's own paste reads
+ * its namespace (fieldNamespaceOf).
  */
 export const registerRichTextCommands = (
   editor: LexicalEditor,
@@ -517,6 +517,8 @@ export const registerRichTextCommands = (
   const tracker = createEditTracker(editor);
   const points = pointRules(editor, tracker);
   const writeCopyCut = $writeCopyCut(config);
+  const dragStart = $dragStart(config);
+  scratchConfigs.set(editor, config);
   const line: Record<LineHandlerId, LineHandler> = {
     "points.resolveOnSelectionChange": () =>
       points.handlers.resolveOnSelectionChange(),
@@ -590,7 +592,7 @@ export const registerRichTextCommands = (
           field("selectionIntoAdjacentBlocks")(payload, editor, command);
         }
       ),
-    "clipboard.dragStart": (payload) => $dragStart(payload as DragEvent),
+    "clipboard.dragStart": (payload) => dragStart(payload as DragEvent),
     "history.compositionStartChar": (payload) =>
       compositionStartChar(editor, payload),
   };
@@ -629,6 +631,11 @@ export const registerRichTextCommands = (
     registerCaretLineMark(editor),
     points.register(),
     registerPointCheck(editor),
-    tracker.dispose
+    tracker.dispose,
+    () => {
+      if (scratchConfigs.get(editor) === config) {
+        scratchConfigs.delete(editor);
+      }
+    }
   );
 };

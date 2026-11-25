@@ -7,6 +7,7 @@
 import {
   $copyNode,
   $createParagraphNode,
+  $getEditor,
   $getRoot,
   $getSelection,
   $isDecoratorNode,
@@ -138,20 +139,30 @@ const exportBlock = (
 };
 
 /**
- * The selection a copy or cut is writing, while it writes: a code block it
- * reaches partway writes only its selected text. Cleared once the copy is done.
+ * The selection a copy or cut is writing, per editor, while it writes: a
+ * code block it reaches partway writes only its selected text. Cleared once
+ * the copy is done.
  */
-let copying: BaseSelection | null = null;
+const copying = new WeakMap<LexicalEditor, BaseSelection>();
 
-export const markRichTextCopy = (selection: BaseSelection | null) => {
-  copying = selection;
+export const markRichTextCopy = (
+  selection: BaseSelection | null,
+  editor: LexicalEditor = $getEditor()
+) => {
+  if (selection === null) {
+    copying.delete(editor);
+    return;
+  }
+  copying.set(editor, selection);
   queueMicrotask(() => {
-    copying = null;
+    if (copying.get(editor) === selection) {
+      copying.delete(editor);
+    }
   });
 };
 
-const selectedText = (node: LexicalNode) => {
-  const selection = copying;
+const selectedText = (editor: LexicalEditor, node: LexicalNode) => {
+  const selection = copying.get(editor) ?? null;
   if (
     $isRangeSelection(selection) === false ||
     selection.isCollapsed() ||
@@ -188,10 +199,10 @@ const selectedText = (node: LexicalNode) => {
 
 /** A code block writes `<pre><code>`, its line breaks as "\n". */
 const exportCode = (
-  _editor: LexicalEditor,
+  editor: LexicalEditor,
   node: LexicalNode
 ): DOMExportOutput => {
-  const text = selectedText(node);
+  const text = selectedText(editor, node);
   return {
     element: document.createElement("pre"),
     after: () => {
@@ -1306,7 +1317,7 @@ const fixLinkEdgeSpaces = (html: string) => {
 /** The editor's HTML, under its current state. */
 export const exportRichTextHtml = (editor: LexicalEditor) => {
   // a save writes every code block whole, whatever a copy left marked
-  copying = null;
+  copying.delete(editor);
   return fixLinkEdgeSpaces(
     editor.getEditorState().read(() => $generateHtmlFromNodes(editor, null))
   );
