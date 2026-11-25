@@ -814,33 +814,18 @@ export const link =
     await settle();
   };
 
-const imageCount = (editor: LexicalEditor) =>
-  editor
-    .getEditorState()
-    .read(() =>
-      $getRoot()
-        .getChildren()
-        .flatMap(function all(node): LexicalNode[] {
-          return [
-            node,
-            ...($isElementNode(node) ? node.getChildren().flatMap(all) : []),
-          ];
-        })
-        .filter((node) => node.getType() === "cms-image")
-    ).length;
-
 /**
  * Image with a file chosen: waits for the upload the kit's source started,
- * then for the commit that adds the image, bounded at 2,000 ms. An insert
- * that writes nothing returns at the bound without failing.
+ * then for the field's next committed update after it resolved, bounded at
+ * 2,000 ms. An insert that writes nothing returns without failing.
  */
 export const imageButton: Step = async () => {
   const editor = editorOf()!;
-  const images = imageCount(editor);
-  let added = false;
+  let resolved = false;
+  let committed = false;
   const unregister = editor.registerUpdateListener(() => {
-    if (imageCount(editor) > images) {
-      added = true;
+    if (resolved) {
+      committed = true;
     }
   });
   const started = uploads.length;
@@ -870,12 +855,22 @@ export const imageButton: Step = async () => {
     }
     const upload = uploads[started];
     if (upload !== undefined) {
+      // the field's insert runs several steps after the upload resolves,
+      // so this flag is set before its commit
+      void upload.then(
+        () => {
+          resolved = true;
+        },
+        () => {
+          resolved = true;
+        }
+      );
       await Promise.race([
         upload.catch(() => undefined),
         wait(Math.max(0, deadline - performance.now())),
       ]);
     }
-    while (added === false && performance.now() < deadline) {
+    while (committed === false && performance.now() < deadline) {
       await act(async () => {
         await wait(5);
       });
@@ -907,6 +902,7 @@ type Swapped = {
   before: SerializedEditorState;
   caretBefore: string;
   htmlBefore: string;
+  valueBefore: string;
 };
 let swapped: Swapped | undefined;
 
@@ -926,6 +922,7 @@ export const secondField =
       before: extra.editor.getEditorState().toJSON(),
       caretBefore: caretKey(extra.editor),
       htmlBefore: short(exportRichTextHtml(extra.editor)),
+      valueBefore: exportRichTextHtml(extra.editor),
     };
     extra.onChange.mockClear();
     await pasteClip();
@@ -1219,20 +1216,30 @@ const EDGES = {
 };
 
 /**
- * The shape with the word `Ew` in place of its edge child (the last one of
- * that kind): an image, a line break, or a link (T10.3).
+ * The shape with the word `Ew` in place of its edge child: an image, a line
+ * break, or a link (T10.3). `occurrence` is the child's 0-based index among
+ * the matches of that kind in document order; it is required when the shape
+ * holds more than one.
  */
 export const twinOf = (
   stored: string,
-  edge: "img" | "br" | "a-outside" | "a-inside"
+  edge: "img" | "br" | "a-outside" | "a-inside",
+  occurrence?: number
 ) => {
   const matches = [...stored.matchAll(EDGES[edge])];
-  const last = matches[matches.length - 1];
-  expect(last, `${edge} in ${stored}`).toBeDefined();
+  if (occurrence === undefined && matches.length > 1) {
+    throw new Error(
+      `twinOf: ${matches.length} matches of ${edge} in ${stored}; name the occurrence`
+    );
+  }
+  const match = matches[occurrence ?? 0];
+  if (match === undefined) {
+    throw new Error(`twinOf: no ${edge} at ${occurrence ?? 0} in ${stored}`);
+  }
   return (
-    stored.slice(0, last.index) +
+    stored.slice(0, match.index) +
     "Ew" +
-    stored.slice(last.index! + last[0].length)
+    stored.slice(match.index! + match[0].length)
   );
 };
 
@@ -1401,7 +1408,8 @@ export const recordEdit = async (
   let editor = editorOf()!;
   let before = editor.getEditorState().toJSON();
   let caretBefore = caretKey(editor);
-  let htmlBefore = short(exportRichTextHtml(editor));
+  let valueBefore = exportRichTextHtml(editor);
+  let htmlBefore = short(valueBefore);
   const errors: string[] = [];
   vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
     const text = args.map(String).join(" ");
@@ -1413,13 +1421,15 @@ export const recordEdit = async (
   swapped = undefined;
   const times = [await timed(edit.action)];
   if (swapped !== undefined) {
-    ({ onChange, editor, before, caretBefore, htmlBefore } = swapped);
+    ({ onChange, editor, before, caretBefore, htmlBefore, valueBefore } =
+      swapped);
     swapped = undefined;
   }
   const calls = onChange.mock.calls.length;
   const write = calls > 0 ? short(lastHtml(onChange)) : null;
   const caret = caretKey(editor);
-  writtenHtml = calls > 0 ? lastHtml(onChange) : sanitizeRichTextHtml(edit.stored);
+  // with nothing written, the value as it stood after `place`
+  writtenHtml = calls > 0 ? lastHtml(onChange) : valueBefore;
   const record: EditRecord = {
     write,
     calls,

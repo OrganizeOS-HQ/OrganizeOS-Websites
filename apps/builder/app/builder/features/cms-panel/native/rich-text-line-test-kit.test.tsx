@@ -31,7 +31,6 @@ import {
   plain,
   renderField,
   settle,
-  unmountField,
 } from "./rich-text-test-harness";
 import {
   $baselinePoint,
@@ -343,6 +342,17 @@ describe("the line tests' kit", () => {
     ).toBe("<blockquote><p>Q0wEw</p></blockquote>");
   });
 
+  test("twinOf names the edge child by its occurrence", () => {
+    const stored = LI("T0w<br><blockquote><p>Q2w</p></blockquote>T3w<br>");
+    expect(twinOf(stored, "br", 0)).toBe(
+      LI("T0wEw<blockquote><p>Q2w</p></blockquote>T3w<br>")
+    );
+    expect(twinOf(stored, "br", 1)).toBe(
+      LI("T0w<br><blockquote><p>Q2w</p></blockquote>T3wEw")
+    );
+    expect(() => twinOf(stored, "br")).toThrow(stored);
+  });
+
   test("quiet waits past 30 ms", async () => {
     await mount("<p>Aw</p>");
     await at("Aw")();
@@ -479,19 +489,35 @@ describe("the line tests' kit", () => {
 
   test("imageButton returns when the insert writes nothing", async () => {
     setUpload(async () => {
-      setTimeout(unmountField, 0);
       await wait(40);
       return { url: "https://cdn.example.org/x.png", path: "org/x.png" };
     });
     const onChange = await mount("<p>Aw</p>");
     await at("Aw")();
+    // the insert commits, and a transform takes its image out again
+    const editor = editorOf()!;
+    const image = richTextNodes.find((klass) => klass.getType() === "cms-image")!;
+    let commits = 0;
+    const unregister = [
+      editor.registerNodeTransform(image, (node) => {
+        node.remove();
+      }),
+      editor.registerUpdateListener(({ dirtyElements }) => {
+        if (dirtyElements.size > 0) {
+          commits += 1;
+        }
+      }),
+    ];
     onChange.mockClear();
-    const settleTime = performance.now();
-    await settle();
-    const oneSettle = performance.now() - settleTime;
     const start = performance.now();
-    await imageButton();
-    expect(performance.now() - start).toBeLessThan(2000 + oneSettle + 100);
-    expect(onChange).not.toHaveBeenCalled();
+    try {
+      await imageButton();
+    } finally {
+      unregister.forEach((remove) => remove());
+    }
+    expect(performance.now() - start).toBeLessThan(1000);
+    expect(commits).toBeGreaterThan(0);
+    expect(lastHtml(onChange)).not.toContain("<img");
+    expect(plain(lastHtml(onChange))).toBe("<p>Aw</p>");
   });
 });
