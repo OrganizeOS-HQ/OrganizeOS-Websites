@@ -55,7 +55,19 @@ describe("the point check after a commit", () => {
         throw error;
       },
     });
-    const resolve = vi.fn(() => false);
+    const $item = () =>
+      $dfs()
+        .map(({ node }) => node)
+        .find($isListItemNode)!;
+    // a resolver that changes the tree but leaves the point where it is, so
+    // its update commits and the check sees its own commit; it stops
+    // changing after three calls, which bounds a check that would retry
+    const resolve = vi.fn((): boolean => {
+      if (resolve.mock.calls.length <= 3) {
+        $item().markDirty();
+      }
+      return false;
+    });
     const off = registerPointCheck(editor, resolve);
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const tags: string[][] = [];
@@ -90,9 +102,7 @@ describe("the point check after a commit", () => {
     };
     editor.setEditorState(
       editor.parseEditorState(JSON.stringify(json), () => {
-        const item = $dfs()
-          .map(({ node }) => node)
-          .find($isListItemNode)!;
+        const item = $item();
         const selection = $createRangeSelection();
         selection.anchor.set(item.getKey(), 2, "element");
         selection.focus.set(item.getKey(), 2, "element");
@@ -109,7 +119,8 @@ describe("the point check after a commit", () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(resolve).toHaveBeenCalledTimes(1);
-    expect(tags.length).toBeGreaterThan(0);
+    // the state set, then the check's own update: no line made, no tag
+    expect(tags).toEqual([[], []]);
     offTags();
     off();
     error.mockRestore();

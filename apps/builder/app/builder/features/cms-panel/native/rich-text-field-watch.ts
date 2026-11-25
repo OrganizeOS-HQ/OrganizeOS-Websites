@@ -23,7 +23,7 @@ type Watched = {
 };
 
 const startChars = (state: EditorState) =>
-  state.read(() => $getRoot().getTextContent().split("​").length - 1);
+  state.read(() => $getRoot().getTextContent().split("\u200b").length - 1);
 
 /** The fields mounted now; each leaves the set at its unmount. */
 const watched = new Set<Watched>();
@@ -155,8 +155,8 @@ export const watchField = (
 /**
  * The harness invariant's failures: those kept from fields that have
  * unmounted, then those of the fields mounted now. When `clear` is set,
- * every failure is reported once: the kept ones are emptied and the fields
- * mounted now are no longer watched.
+ * every failure is reported once: the kept ones are emptied, and each field
+ * mounted now is watched on from the state it holds now.
  */
 export const fieldInvariantFailures = (clear: boolean) => {
   const failures = [...kept];
@@ -165,10 +165,14 @@ export const fieldInvariantFailures = (clear: boolean) => {
   }
   if (clear) {
     kept.length = 0;
+    // a field mounted now stays watched from the state it holds now, so a
+    // failure already reported is not reported again and a later one is
     for (const entry of watched) {
-      entry.unregister();
+      entry.changes = 0;
+      entry.last = undefined;
+      entry.mounted = d7Document(entry.editor.getEditorState());
+      entry.startCharsLeft = [];
     }
-    watched.clear();
   }
   return failures;
 };

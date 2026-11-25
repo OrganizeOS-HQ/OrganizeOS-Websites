@@ -187,10 +187,44 @@ describe("undo into a state whose point rests on a lined container", () => {
     expect(undoDepth().undo).toBe(steps + 1);
     await settle();
     checkOn();
+    // each commit from the undo on: its tags, its anchor, and how many
+    // selectionchange events the page had delivered before it (counted in
+    // the capture phase, before Lexical's own document listener)
+    let selectionChanges = 0;
+    const countSelectionChange = () => {
+      selectionChanges += 1;
+    };
+    window.addEventListener("selectionchange", countSelectionChange, true);
+    const commits: Array<{ tags: string[]; anchor: string; seen: number }> = [];
+    const off = editor.registerUpdateListener(({ tags, editorState }) => {
+      commits.push({
+        tags: [...tags].sort(),
+        anchor: anchorOf({ getEditorState: () => editorState } as never),
+        seen: selectionChanges,
+      });
+    });
     await keys("{Control>}z{/Control}")();
+    off();
+    window.removeEventListener("selectionchange", countSelectionChange, true);
     expect(short(lastHtml(onChange))).toBe(
       short("<ul><li>Pwx</li><li>T0w<hr /></li><li>Nw</li></ul>")
     );
+    // the undo commits the restored point on the item; the very next commit
+    // is the check's own (5.3's third place): it only moves the point, to
+    // the line's end, before the page delivers any selectionchange after
+    // the undo, so the selection-change place has not run
+    // the last commit tagged "historic" is the undo's own (setEditorState
+    // first commits the update pending when it runs, with the same tag)
+    const undone = commits
+      .map(({ tags }) => tags.includes("historic"))
+      .lastIndexOf(true);
+    expect(undone).toBeGreaterThanOrEqual(0);
+    expect(commits[undone].anchor).toBe("listitem");
+    expect(commits[undone + 1]).toEqual({
+      tags: [],
+      anchor: "in cms-line",
+      seen: commits[undone].seen,
+    });
     const calls = onChange.mock.calls.length;
     const after = undoDepth().undo;
     await letter();
