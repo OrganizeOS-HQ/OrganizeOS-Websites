@@ -296,7 +296,9 @@ describe("section 4: the reconciler's added line break and the caret-line mark",
       unfocused + row + margin,
       "the item with the caret line"
     );
+    // left by a press, the line stays until the next key (5.8)
     await at("Nw")();
+    await keys("{ArrowLeft}")();
     await ready();
     near(
       middleItem().getBoundingClientRect().height,

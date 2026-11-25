@@ -27,6 +27,7 @@ import {
   KEY_BACKSPACE_COMMAND,
   KEY_DELETE_COMMAND,
   type LexicalCommand,
+  type EditorState,
   type LexicalEditor,
   type LexicalNode,
   type PointType,
@@ -134,6 +135,60 @@ export const lineMarkCount = (editor: LexicalEditor) =>
 
 export const $hasMark = (name: string) =>
   lineMarks.get($getEditor())?.has(name) === true;
+
+/**
+ * The per-editor edit tracker: whether the update in progress is an edit.
+ * `markEdit` is called by the removal mark and by every edit command's row
+ * of COMMAND_ORDER; `isEdit()` is true from the first `markEdit` of an
+ * update until that update commits. A selection change Lexical dispatches
+ * inside an edit then keeps the edit's undo step and onChange, and one
+ * Lexical dispatches from the commit after it (an update of its own) is no
+ * edit. The update is known by the committed state it started from: a
+ * commit changes it, and the update listener clears the mark; an update
+ * that commits nothing is over when its task's microtasks run.
+ */
+export type EditTracker = {
+  markEdit(): void;
+  isEdit(): boolean;
+  dispose(): void;
+};
+
+const editTrackers = new WeakMap<LexicalEditor, EditTracker>();
+
+export const createEditTracker = (editor: LexicalEditor): EditTracker => {
+  let from: EditorState | null = null;
+  const unregister = editor.registerUpdateListener(() => {
+    from = null;
+  });
+  const tracker: EditTracker = {
+    markEdit: () => {
+      const state = editor.getEditorState();
+      if (from === state) {
+        return;
+      }
+      from = state;
+      queueMicrotask(() => {
+        if (from === state) {
+          from = null;
+        }
+      });
+    },
+    isEdit: () => from !== null && from === editor.getEditorState(),
+    dispose: () => {
+      unregister();
+      from = null;
+      if (editTrackers.get(editor) === tracker) {
+        editTrackers.delete(editor);
+      }
+    },
+  };
+  editTrackers.set(editor, tracker);
+  return tracker;
+};
+
+/** The tracker of the editor whose update is running, if it has one. */
+export const editTrackerOf = (editor: LexicalEditor) =>
+  editTrackers.get(editor);
 
 /**
  * This update removes content (a range, a node selection, a delete, a
@@ -1078,6 +1133,7 @@ export const $removalMark = (
   command: LexicalCommand<unknown>,
   payload: unknown
 ): boolean => {
+  editTrackers.get($getEditor())?.markEdit();
   if ($hasMark(HEAD_PATH_TAG)) {
     return false;
   }
