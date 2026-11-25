@@ -553,6 +553,29 @@ describe(
       expect(run.status).toBe(0);
       expect(run.output).toBe("value=false\n");
     });
+
+    // OrganizeOS fork: the built CLI ships embeds (spec 2026-11-20, PR C)
+    test("with the built CLI, a build with org code passes with the embeds input true and fails without it", () => {
+      expect(builtEmbeds()).toBe(true);
+      const given = readEmbeds("true");
+      expect(given.output).toBe("value=true\n");
+      const passes = runSwitch({ facts: '{"orgScript":true}', embeds: "true" });
+      expect(passes.stderr).toBe("");
+      expect(passes.status).toBe(0);
+      expect(passes.output).toBe("value=true\n");
+
+      // a dispatch without the input reads false, which this CLI refuses
+      const absent = readEmbeds("");
+      expect(absent.output).toBe("value=false\n");
+      for (const facts of ['{"orgScript":true}', '{"orgScript":false}']) {
+        const fails = runSwitch({ facts, embeds: "false" });
+        expect(fails.status, facts).toBe(1);
+        expect(fails.stdout, facts).toContain(
+          "::error::The embeds input (false) differs from this CLI's orgEmbedsMayShip(). Nothing was deployed."
+        );
+        expect(fails.output, facts).toBe("");
+      }
+    });
   }
 );
 
@@ -605,19 +628,19 @@ describe("the publish workflow's guard level", () => {
     }
   });
 
-  test("the step's command prints 1 from the built package, and fails without the export", () => {
+  test("the step's command prints 2 from the built package, and fails without the export", () => {
     const node = spawnSync(
       "node",
       ["--input-type=module", "-e", probeOf(guardScript) ?? ""],
       { cwd: cliDir, encoding: "utf8" }
     );
     expect(node.stderr).toBe("");
-    expect(node.stdout).toBe("1");
+    expect(node.stdout).toBe("2");
 
     const run = runStep(guardScript);
     expect(run.stderr).toBe("");
     expect(run.status).toBe(0);
-    expect(run.output).toBe("value=1\n");
+    expect(run.output).toBe("value=2\n");
 
     // a CLI built before the constant cannot report a level
     const missing = runStep(

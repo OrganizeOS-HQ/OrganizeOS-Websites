@@ -5,19 +5,30 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { TooltipProvider } from "@webstudio-is/design-system";
 import { $projectSettings } from "~/shared/sync/data-stores";
 import { executeRuntimeMutation } from "~/shared/instance-utils/data";
+import { orgEmbedsMayShip } from "@organizeos/site-components/org-script";
 import { SectionGeneral } from "./section-general";
 
 // OrganizeOS fork: orgScriptMayRun is a constant false, and the Custom code box
 // follows orgEmbedsMayShip() (docs/ORGANIZEOS-FORK.md section 10); the case for
-// after the flip turns embeds on here
-const orgScript = vi.hoisted(() => ({ mayRun: false, embeds: false }));
-vi.mock("@organizeos/site-components/org-script", async (importOriginal) => ({
-  ...(await importOriginal<
-    typeof import("@organizeos/site-components/org-script")
-  >()),
-  orgScriptMayRun: () => orgScript.mayRun,
-  orgEmbedsMayShip: () => orgScript.embeds,
+// after the flip turns embeds on here, and one reads the real switch
+// (realEmbeds)
+const orgScript = vi.hoisted(() => ({
+  mayRun: false,
+  embeds: false,
+  realEmbeds: false,
 }));
+vi.mock("@organizeos/site-components/org-script", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@organizeos/site-components/org-script")
+    >();
+  return {
+    ...actual,
+    orgScriptMayRun: () => orgScript.mayRun,
+    orgEmbedsMayShip: () =>
+      orgScript.realEmbeds ? actual.orgEmbedsMayShip() : orgScript.embeds,
+  };
+});
 
 vi.mock("~/shared/instance-utils/data", { spy: true });
 
@@ -52,6 +63,7 @@ const getLabels = (host: HTMLElement) =>
 beforeEach(() => {
   orgScript.mayRun = false;
   orgScript.embeds = false;
+  orgScript.realEmbeds = false;
   vi.mocked(executeRuntimeMutation)
     .mockReset()
     .mockImplementation(() => undefined);
@@ -87,6 +99,17 @@ describe("SectionGeneral, Custom code", () => {
     expect(editor?.getAttribute("contenteditable")).toBe("true");
     expect(host.textContent).not.toContain("<head>");
     expect(host.textContent).not.toContain("published site");
+  });
+
+  // the switch at its real default (spec 2026-11-20, PR C)
+  test("with the embed switch at its default it is the label and an editable editor", () => {
+    orgScript.realEmbeds = true;
+    expect(orgEmbedsMayShip()).toBe(true);
+    const host = renderSection("<script>1</script>");
+    expect(getLabels(host)).toContain("Custom code");
+    const editor = getEditors(host).at(-1);
+    expect(editor?.textContent).toBe("<script>1</script>");
+    expect(editor?.getAttribute("contenteditable")).toBe("true");
   });
 
   test("org script alone shows no box", () => {

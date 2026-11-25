@@ -1027,9 +1027,10 @@ export const prebuild = async (options: {
       }
     );
   }
-  // OrganizeOS fork: org script is paused, so the build that every step below
-  // reads has none: no HTML Embed, no custom code, no component the framework
-  // does not import (organizeos-org-script.ts).
+  // OrganizeOS fork: every step below reads the build without what an org may
+  // not publish (organizeos-org-script.ts): raw markup, unsafe values, no
+  // component the framework does not import, and so on. HTML Embeds, Markdown
+  // Embeds, JSON-LD and the custom code stay exactly when orgEmbedsMayShip().
   const frameworkComponents = frameworkComponentsOf(options.template);
   const siteData = dropOrgScript(parsedSiteData.data, {
     // OrganizeOS fork: the embed switch, passed explicitly so a test's mock of it reaches the drop (organizeos-org-script.ts)

@@ -1,25 +1,22 @@
 /**
- * OrganizeOS fork: publishing leaves an org's own script out until its sites
- * move to their own domain (docs/ORGANIZEOS-FORK.md section 10,
- * orgScriptMayRun() in @organizeos/site-components/org-script).
- *
- * Platform session cookies are scoped to `.organizeos.org` and readable by
- * script, and a published Website is served from `{sub}.organizeos.org`, so
- * script an org writes there could read a visitor's session. This runs before
- * prebuild reads the project bundle, so every later step (props, pages,
- * resources, CSS) sees a build without it, on every page and in every
- * framework. It drops:
+ * OrganizeOS fork: publishing leaves an org's own script out, as a standing
+ * rule (orgScriptMayRun() in @organizeos/site-components/org-script, which
+ * stays false), but for the five embed kinds orgEmbedsMayShip() governs:
+ * HTML Embed, Content Embed, Markdown Embed, JSON-LD and the site's custom
+ * code (docs/ORGANIZEOS-FORK.md section 10). This runs before prebuild reads
+ * the project bundle, so every later step (props, pages, resources, CSS) sees
+ * a build without what it drops, on every page and in every framework. It
+ * drops:
  *
  * - every entry of the build's pages, page templates, instances, props, data
  *   sources and Resources whose id a later entry holds too, or that is stored
  *   under another id than its own, so the rules below read what publishes
  *   (and they read a Form stored under an earlier name as the Resource Form
  *   or Webhook Form it publishes as);
- * - every HTML Embed, unless its code is a static string identical to one of
- *   the SVG icons upstream's own templates insert;
- * - every Markdown Embed (its renderer keeps `javascript:` links);
- * - every JSON-LD element, which writes its code into a script element as raw
- *   HTML (owner decision D13: it stays unavailable while this is paused);
+ * - while embeds may not ship, every HTML Embed, unless its code is a static
+ *   string identical to one of the SVG icons upstream's own templates insert,
+ *   every Markdown Embed and every JSON-LD element; once they may, only an
+ *   HTML Embed with nothing to render;
  * - every element whose tag is not one the builder offers: `script` ships a
  *   <script>, and a tag that is JSX syntax is written into the page module as
  *   code. The tag counts wherever it is held, on a component that makes an
@@ -49,17 +46,16 @@
  *   is published, one that names a data source the module does not declare
  *   where it is written, a Resource the build does not hold, and a data
  *   source named like a module's own name or a global it reads;
- * - the site's custom code, from the project's settings and from the pages'
- *   meta alike (prebuild reads the settings first).
+ * - while embeds may not ship, the site's custom code, from the project's
+ *   settings and from the pages' meta alike (prebuild reads the settings
+ *   first).
  *
  * And it refuses a build that would materialize MDX (refuseMdxWhilePaused,
  * owner decision D7): prebuild turns a Content Block's MDX into instances
  * after this has run, so none of the above would reach them.
  *
- * Nothing is deleted from the build the org edits: the embeds and the code stay
- * saved and show as paused in the builder, and the next publish ships them
- * once the switch is on. The runtime packages and route templates are
- * untouched.
+ * Nothing is deleted from the build the org edits: what is dropped stays
+ * saved. The runtime packages and route templates are untouched.
  */
 import type { PublishedProjectBundle } from "@webstudio-is/protocol";
 import {
@@ -222,13 +218,24 @@ const plural = (count: number, one: string, many: string) =>
   `${count} ${count === 1 ? one : many}`;
 
 /** The line the publish workflow logs, for support. Nothing left out, no line. */
-export const describeDroppedOrgScript = (dropped: DroppedOrgScript) => {
+export const describeDroppedOrgScript = (
+  dropped: DroppedOrgScript,
+  // with embeds on, the only HTML Embed publishing drops is one with nothing
+  // to render
+  { embedsMayShip = false }: { embedsMayShip?: boolean } = {}
+) => {
   const parts = [
     dropped.duplicateEntries > 0
       ? plural(dropped.duplicateEntries, "duplicate entry", "duplicate entries")
       : undefined,
     dropped.htmlEmbeds > 0
-      ? plural(dropped.htmlEmbeds, "HTML Embed", "HTML Embeds")
+      ? embedsMayShip
+        ? plural(
+            dropped.htmlEmbeds,
+            "HTML Embed with no code",
+            "HTML Embeds with no code"
+          )
+        : plural(dropped.htmlEmbeds, "HTML Embed", "HTML Embeds")
       : undefined,
     dropped.markdownEmbeds > 0
       ? plural(dropped.markdownEmbeds, "Markdown Embed", "Markdown Embeds")
@@ -336,7 +343,7 @@ export const describeDroppedOrgScript = (dropped: DroppedOrgScript) => {
     parts.length === 1
       ? parts[0]
       : `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`;
-  return `Org script is paused until OrganizeOS sites move to their own domain: left out ${list}.`;
+  return `Not published: left out ${list}.`;
 };
 
 const withoutCode = <Meta extends { code?: string }>(meta: Meta) => {
@@ -533,7 +540,7 @@ const classify = (
   // D13: JSON-LD writes its code into a <script> with
   // dangerouslySetInnerHTML, the third component in the runtime packages
   // that does (organizeos-org-script.test.ts, "raw HTML in the runtime
-  // packages"), and it stays unavailable while org script is paused.
+  // packages"), and it ships exactly when orgEmbedsMayShip().
   if (instance.component === "JsonLd") {
     return "jsonLd";
   }
@@ -1270,7 +1277,7 @@ const dropOrgScriptOnce = <Bundle extends PublishedProjectBundle>(
 
   return {
     result,
-    message: describeDroppedOrgScript(dropped),
+    message: describeDroppedOrgScript(dropped, { embedsMayShip }),
     losingCode,
   };
 };

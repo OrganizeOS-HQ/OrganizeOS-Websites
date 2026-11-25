@@ -2739,7 +2739,7 @@ describe.each(renderers)(
       // the control: the seeded props reach the occurrence's instances
       expect(dom.querySelector('a[href="https://ok.example/"]')).not.toBeNull();
       expect(dom.querySelector('a[href^="javascript:"]')).toBeNull();
-      expect(dom.textContent).toContain("HTML Embed is paused");
+      expect(dom.textContent).toContain("HTML Embed is off");
       expect(dom.querySelector("#pwn")).toBeNull();
       expect(evilScripts().length).toBe(0);
       expect(dom.querySelector('[data-ws-id="mdx-box"]')?.tagName).toBe("DIV");
@@ -2791,7 +2791,7 @@ describe.each(renderers)("the %s runs no HTML Embed code", (renderer) => {
         expect(dom.querySelector("p")?.textContent).toBe("kept");
         expect(dom.querySelector("p")?.id).toBe("user-content-kept");
       } else {
-        expect(dom.textContent).toContain("HTML Embed is paused");
+        expect(dom.textContent).toContain("HTML Embed is off");
       }
     }
   );

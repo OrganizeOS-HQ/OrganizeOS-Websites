@@ -14,11 +14,12 @@
  * canvas" from the HTML Embed's settings. That is a standing rule, whatever
  * either switch says.
  *
- * While orgEmbedsMayShip() is off, publishing leaves the embeds out, so the
- * canvas also shows them as paused, HTML Embed, Markdown Embed and JSON-LD
- * leave the Components panel and the command palette, and the Content Embed
- * and Markdown Embed templates are left out. Nothing is deleted: the embeds
- * stay in the build. Publish leaves them out
+ * orgEmbedsMayShip() is on, so the embeds publish and the panel lists them.
+ * Were it off again, publishing would leave the embeds out, so the canvas
+ * would show a notice in their place, HTML Embed, Markdown Embed and JSON-LD
+ * would leave the Components panel and the command palette, and the Content
+ * Embed and Markdown Embed templates would be left out. Nothing is deleted:
+ * the embeds stay in the build
  * (packages/cli/src/organizeos-org-script.ts).
  */
 import {
@@ -45,7 +46,6 @@ import {
   orgScriptMayRun,
   templateIconCodes,
 } from "@organizeos/site-components/org-script";
-import { platformName } from "~/shared/branding";
 import { UntrustedMarkup } from "~/shared/organizeos-untrusted-markup";
 // OrganizeOS fork: upstream's own asset URL resolution, by its source path:
 // the package's exports map does not export it, and a runtime package stays
@@ -80,9 +80,11 @@ const renderPublishedOnly = ({
   <Notice {...rest} ref={ref as Ref<HTMLDivElement>} text={publishedOnlyText} />
 );
 
-const htmlEmbedPausedText = `HTML Embed is paused. Its code is kept, but it isn't published and doesn't run here: scripts on your site could read the ${platformName} sign-in of people who visit.`;
+const htmlEmbedPausedText =
+  "HTML Embed is off. Its code is kept, but it isn't published.";
 
-const markdownEmbedPausedText = `Markdown Embed is paused. Its content is kept, but it isn't published and isn't shown here: a link in it could run script that reads the ${platformName} sign-in of people who visit.`;
+const markdownEmbedPausedText =
+  "Markdown Embed is off. Its content is kept, but it isn't published.";
 
 const isTemplateIcon = (code: unknown): code is string =>
   typeof code === "string" && templateIconCodes.has(code);
@@ -94,7 +96,7 @@ const isTemplateIcon = (code: unknown): code is string =>
  *
  * - A template icon (a string byte-identical to one) renders through
  *   upstream's component, with scripts off.
- * - While embeds may not ship, anything else shows the paused notice.
+ * - While embeds may not ship, anything else shows the "is off" notice.
  * - Otherwise: missing or blank code shows upstream's placeholder; anything
  *   else is `String(code)` with asset URLs resolved as upstream resolves them
  *   (before sanitizing), put in through the insertion path, and when nothing
@@ -166,7 +168,7 @@ CanvasHtmlEmbed.displayName = "CanvasHtmlEmbed";
 
 /**
  * The canvas's Markdown Embed, in every mode. While embeds may not ship it
- * shows the paused notice; otherwise it renders the Markdown with upstream's
+ * shows the "is off" notice; otherwise it renders the Markdown with upstream's
  * renderer and puts the HTML in through the insertion path, since upstream's
  * own filter (`sanitize-html`, which keeps iframes) is not the canvas's
  * boundary.
