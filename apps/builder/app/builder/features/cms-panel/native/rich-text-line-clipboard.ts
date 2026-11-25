@@ -51,6 +51,7 @@ import {
   $endsIntoText,
   $lastPointToBlockEnd,
   $nodesInRange,
+  $prepareRemoval,
   $tagRemoval,
 } from "./rich-text-line-removal";
 
@@ -748,6 +749,7 @@ export const $writeCopyCut =
       }
       const before = $contentAtEnds(user);
       $removalStart();
+      $prepareRemoval(user, "removal");
       $tagRemoval();
       const live = $getSelection();
       if ($isRangeSelection(live)) {
