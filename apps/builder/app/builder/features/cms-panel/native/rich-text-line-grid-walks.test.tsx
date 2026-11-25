@@ -1,24 +1,18 @@
-// T9.2 D: the nine-shape walk grid against `base-walks-nine`, its
-// right-to-left copy (a snapshot of its own), and every stop of both walk
-// grids and of `base-walks-rule` with the letter typed with no wait and with
-// a wait (15.12).
+// T9.2 D: the nine-shape walk grid against `base-walks-nine` and its
+// right-to-left copy (a snapshot of its own).
 import { describe, expect, test } from "vitest";
 import {
   keys,
   letter,
   mount,
-  noWait,
   recordEdit,
   short,
   waited,
 } from "./rich-text-line-test-kit";
 import { lastHtml } from "./rich-text-test-harness";
+import { walkOf, type WalkCell } from "./rich-text-line-cells-walks-rule";
 import {
-  walkOf,
-  walksRuleCells,
-  type WalkCell,
-} from "./rich-text-line-cells-walks-rule";
-import {
+  NINE_NAMED,
   walksNineCells,
   walksNineRtlCells,
 } from "./rich-text-line-cells-walks-nine";
@@ -28,77 +22,6 @@ const NINE_FIXTURE = walksNineFixture as Record<
   string,
   { write: string | null; calls: number; caret: string; typed: string }
 >;
-
-// the 18 cells of T9.2 D that differ from the head: [class, the letter typed
-// at the stop, from the carry's run]
-const NINE_NAMED: Record<string, readonly [string, string]> = {
-  "BR-Left-2": ["D15", "<ul><li>Pw</li><li><br /><hr />k</li><li>Nw</li></ul>"],
-  "BR-Right-3": [
-    "D15",
-    "<ul><li>Pw</li><li><br /><hr />k</li><li>Nw</li></ul>",
-  ],
-  "BR-Right-5": ["K8", "<ul><li>Pw</li><li><br /><hr /></li><li>kNw</li></ul>"],
-  "QBR-Down-2": [
-    "a line's start",
-    "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>k<br /><hr /></li><li>Nw</li></ul>",
-  ],
-  "QBR-Up-1": [
-    "a line's start",
-    "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>k<br /><hr /></li><li>Nw</li></ul>",
-  ],
-  "QBR-Left-2": [
-    "D15",
-    "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><br /><hr />k</li><li>Nw</li></ul>",
-  ],
-  "QBR-Left-4": [
-    "a line's start",
-    "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>k<br /><hr /></li><li>Nw</li></ul>",
-  ],
-  "QBR-Right-5": [
-    "a line's start",
-    "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>k<br /><hr /></li><li>Nw</li></ul>",
-  ],
-  "HB-Down-2": [
-    "a line's start",
-    "<ul><li>Pw</li><li><h3>H0w</h3>k<br /></li><li>Nw</li></ul>",
-  ],
-  "HB-Up-2": [
-    "a line's start",
-    "<ul><li>Pw</li><li><h3>H0w</h3>k<br /></li><li>Nw</li></ul>",
-  ],
-  "HB-Left-2": [
-    "a line's start",
-    "<ul><li>Pw</li><li><h3>H0w</h3>k<br /></li><li>Nw</li></ul>",
-  ],
-  "CB-Down-2": [
-    "a line's start",
-    "<ul><li>Pw</li><li><pre><code>C0w</code></pre>k<br /></li><li>Nw</li></ul>",
-  ],
-  "CB-Up-2": [
-    "a line's start",
-    "<ul><li>Pw</li><li><pre><code>C0w</code></pre>k<br /></li><li>Nw</li></ul>",
-  ],
-  "CB-Left-2": [
-    "a line's start",
-    "<ul><li>Pw</li><li><pre><code>C0w</code></pre>k<br /></li><li>Nw</li></ul>",
-  ],
-  "QB-Down-2": [
-    "a line's start",
-    "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>k<br /></li><li>Nw</li></ul>",
-  ],
-  "QB-Up-2": [
-    "a line's start",
-    "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>k<br /></li><li>Nw</li></ul>",
-  ],
-  "QB-Left-2": [
-    "a line's start",
-    "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>k<br /></li><li>Nw</li></ul>",
-  ],
-  "QB-Right-5": [
-    "a line's start",
-    "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>k<br /></li><li>Nw</li></ul>",
-  ],
-};
 
 const record = async (cell: WalkCell) => {
   const { write, calls, caret, typed, errors, slowest } = await recordEdit(
@@ -155,34 +78,20 @@ describe("the nine-shape walk grid, right to left", () => {
   }, 300_000);
 });
 
-describe("every stop with no wait equals the stop with a wait", () => {
-  const typedBy = async (
-    cell: WalkCell,
-    run: typeof noWait | typeof waited
-  ) => {
+// the no-wait cells (rich-text-line-grid-walks-nowait.test.tsx) compare
+// with the pinned values: a sample shows that a cell's pinned letter is the
+// letter typed with a wait (settle and 150 ms after each key)
+test("a cell's pinned letter is its letter with a wait: every twelfth cell", async () => {
+  const differ: string[] = [];
+  for (const cell of walksNineCells.filter((_, index) => index % 12 === 0)) {
     const onChange = await mount(cell.stored);
     await cell.start();
     const presses = Array.from({ length: cell.presses }, () => keys(cell.key));
-    await run(...presses, letter)();
-    return short(lastHtml(onChange));
-  };
-  test.each([
-    ["the nine-shape grid", walksNineCells],
-    ["the nine-shape grid, right to left", walksNineRtlCells],
-    ["base-walks-rule", walksRuleCells.filter((cell) => cell.presses <= 5)],
-  ] as const)(
-    "%s",
-    async (_name, cells) => {
-      const differ: string[] = [];
-      for (const cell of cells) {
-        const fast = await typedBy(cell, noWait);
-        const slow = await typedBy(cell, waited);
-        if (fast !== slow) {
-          differ.push(`${cell.id}: ${fast} | ${slow}`);
-        }
-      }
-      expect(differ).toEqual([]);
-    },
-    600_000
-  );
-});
+    await waited(...presses, letter)();
+    const pinned = NINE_NAMED[cell.id]?.[1] ?? NINE_FIXTURE[cell.id].typed;
+    if (short(lastHtml(onChange)) !== pinned) {
+      differ.push(cell.id);
+    }
+  }
+  expect(differ).toEqual([]);
+}, 120_000);
