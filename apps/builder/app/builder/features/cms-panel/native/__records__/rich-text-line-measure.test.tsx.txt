@@ -1,0 +1,662 @@
+// Scratch: Task 5's measure file. Never committed.
+//
+// Chunk mode. Each row writes its record to ./r1-m/<id>.json as it ends
+// (commands.writeFile, not a snapshot, so a killed run keeps it); a row whose
+// file exists is skipped, so a killed run resumes where it stopped. A run
+// that freezes the page (a head defect: no timer fires, so the 20 s
+// watchdog below cannot) is killed from outside by the runner,
+// t5-measure-run.py, when no record has been written for 100 s; the runner
+// then lists the first row without a file in ./r1-hangs.json, which records
+// it as `hang`, and runs again. A row that fails (a throw, or the 20 s
+// watchdog) is recorded as `failed`, and the rest of that run writes
+// nothing; the runner runs again from the next row. The test "merge", run last on its own
+// (`-t '^merge$'`), reads every ./r1-m file, fails on any missing row, and
+// writes the one combined output: the M records (M56 and M57 included) to
+// ./r1-measurements.head.json and the P records to ./r1-records.proto.json.
+// At <base> the P file is the P rows' base results (r1-p-at-base.json); at
+// the carry the M file is r1-measurements.proto-all.json. To record again at
+// a new <base>: empty ./r1-m and ./r1-hangs.json, then run the runner.
+//
+// Each record with a write carries `fixedPoint`: the full written value
+// (the field's export right after the action) mounted again in the field
+// exports the same value (plain() on both sides). `fixedPointOut` is that
+// export when it differs, `readOnly` the field's read-only reason for the
+// written value. A record whose undo does not restore also carries
+// `afterUndo` and `caretAfterUndo`, from a second run of the row.
+import { expect, test } from "vitest";
+import { commands } from "@vitest/browser/context";
+import { act } from "react-dom/test-utils";
+import { INDENT_CONTENT_COMMAND, OUTDENT_CONTENT_COMMAND } from "lexical";
+import {
+  exportRichTextHtml,
+  getRichTextReadOnlyReason,
+} from "./rich-text-html";
+import { sanitizeRichTextHtml } from "./rich-text-sanitize";
+import { editable, editorOf, plain, settle } from "./rich-text-test-harness";
+import {
+  GRID_COMMANDS,
+  IMG,
+  LI,
+  at,
+  blockType,
+  button,
+  caretKey,
+  clickItemCorner,
+  clipboard,
+  containerPoint,
+  copy,
+  cut,
+  del,
+  drop,
+  enter,
+  ime,
+  imeCancel,
+  imageButton,
+  imageNode,
+  itemEnd,
+  itemPoint,
+  keys,
+  letter,
+  lineBack,
+  link,
+  mount,
+  newlineInput,
+  nodeAfter,
+  nodeSelect,
+  pasteClip,
+  pasteHtml,
+  pasteOwn,
+  pasteText,
+  range,
+  rangeToLineStart,
+  recordEdit,
+  sameUpdate,
+  secondField,
+  selectAll,
+  shiftEnter,
+  short,
+  then,
+  tripleClick,
+  wordBack,
+  backspace,
+  type Step,
+} from "./rich-text-line-test-kit";
+
+const done = new Set(
+  Object.keys(import.meta.glob("./r1-m/*.json")).map((p) =>
+    p.replace("./r1-m/", "").replace(".json", "")
+  )
+);
+const hangList: string[] = Object.values(
+  import.meta.glob("./r1-hangs.json", { eager: true, import: "default" })
+).flat() as string[];
+const WATCHDOG = 20000;
+const fileOf = (id: string) => id.replace(/[^A-Za-z0-9@._-]/g, "_");
+
+type Row = {
+  id: string;
+  stored: string;
+  place?: Step;
+  action: Step;
+  clip?: boolean;
+};
+const rows: Row[] = [];
+const row = (
+  id: string,
+  stored: string,
+  place: Step | undefined,
+  action: Step,
+  clip = false
+) => rows.push({ id, stored, place, action, clip });
+
+const cmd = (label: string) => GRID_COMMANDS.find(([name]) => name === label)![1];
+const key = (k: string) => keys(k);
+const times = (n: number, k: string): Step => then(...Array(n).fill(keys(k)));
+const shiftRight = keys("{Shift>}{ArrowRight}{/Shift}");
+const BQ = (q: string) => `<blockquote><p>${q}</p></blockquote>`;
+const PRE = (c: string) => `<pre><code>${c}</code></pre>`;
+const dispatch =
+  (command: typeof INDENT_CONTENT_COMMAND): Step =>
+  async () => {
+    const editor = editorOf()!;
+    await act(async () => {
+      editor.dispatchCommand(command, undefined);
+    });
+    await settle();
+  };
+const L = (x: string) => LI(x);
+
+// M1
+row("M1a", "<ul><li>Aw<ul><li>T0w<hr></li><li>Nw</li></ul></li></ul>", at("T0w", 0), backspace);
+row("M1b", "<ul><li>Aw<ul><li>T0w<hr></li><li>Nw</li></ul></li></ul>", at("T0w", 0), wordBack);
+row("M1c", "<ul><li>T0w<hr></li><li>Nw</li></ul>", at("T0w", 0), backspace);
+// M2
+row("M2a", "<p>Pw</p><blockquote>X1w<hr></blockquote>", at("X1w", 0), backspace);
+row("M2b", "<p>Pw</p><blockquote>X1w<p>X2w</p></blockquote>", at("X1w", 0), backspace);
+// M3c
+row("M3c", L(BQ("Q0w") + IMG), itemPoint(1, 1), letter);
+// M4, M5
+row("M4a", L("T0w" + BQ("Q1w")), at("T0w", 2), pasteHtml("<p>Aq</p>"));
+row("M4b", L("<hr>T1w"), at("T1w", 2), pasteHtml("<p>Aq</p>"));
+row("M5a", L("T0w" + BQ("Q1w")), at("T0w", 2), pasteHtml("<pre><code>Aq</code></pre>"));
+row("M5b", L("<hr>T1w"), at("T1w", 2), pasteHtml("<pre><code>Aq</code></pre>"));
+// M6
+row("M6a", L("T0w<h3>H1w</h3>"), then(range("H1w", 0, "H1w", 3), backspace), button("Divider"));
+row("M6b", L("T0w" + BQ("Q1w")), then(range("Q1w", 0, "Q1w", 3), backspace), button("Divider"));
+// M7
+row("M7a", L("T0w" + IMG + "X1w<hr>"), at("T0w", 1), blockType("Code"));
+row("M7b", "<p>T0w" + IMG + "X1w</p>", at("T0w", 1), blockType("Code"));
+// M8
+row("M8a", "<ul><li>Aw</li><li>Bw</li></ul>", at("Aw", 0), enter);
+row("M8b", "<ul><li>Aw</li><li>Bw</li></ul>", at("Bw", 0), enter);
+row("M8c", "<ol><li>Aw</li><li>Bw</li></ol>", at("Bw", 0), enter);
+row("M8d", "<blockquote><ul><li>X1w</li><li>X2w</li></ul></blockquote>", at("X1w", 0), enter);
+row("M8e", "<ul><li>Zw<ul><li>Aw</li><li>Bw</li></ul></li></ul>", at("Aw", 0), enter);
+row("M8f", "<ul><li>Pw</li><li><blockquote>Q0w</blockquote>T1w</li><li>Nw</li></ul>", at("Nw", 0), enter);
+row("M8g", "<ul><li>Aw</li><li>Bw</li></ul>", tripleClick("Aw"), enter);
+// M9..M13
+row("M9", L("T0w<hr>T2w"), at("T2w", 0), wordBack);
+row("M10a", L("<br><hr>T2w"), at("T2w", 0), backspace);
+row("M10b", L("T0w<hr>T2w"), at("T0w"), del);
+row("M11a", L("T0w<hr>"), at("Nw", 0), backspace);
+row("M11b", L("T0w" + BQ("Q1w") + "<hr>"), at("Nw", 0), backspace);
+row("M11c", "<ol><li>Pw</li><li>T0w<hr></li><li>Nw</li></ol>", at("Nw", 0), backspace);
+row("M11d", L("T0w<hr>"), range("Pw", 1, "T0w", 2), backspace);
+row("M11e", L("T0w<hr>"), at("Nw", 0), wordBack);
+row("M11f", L("T0w<hr>"), at("Nw", 0), lineBack);
+row("M12a", "<ul><li>Aw<ul><li>Pw</li><li><hr>T1w</li><li>Nw</li></ul></li><li>Zw</li></ul>", at("T1w", 0), backspace);
+row("M12b", "<ul><li>Aw<ul><li>Pw</li><li>T0w<hr>T2w</li><li>Nw</li></ul></li><li>Zw</li></ul>", at("T2w", 0), backspace);
+row("M12c", "<ul><li>Aw<ul><li>Pw</li><li>Nw</li></ul></li></ul>", at("Nw", 0), backspace);
+row("M13a", L("T0w<hr>"), range("T0w", 0, "T0w", 3), enter);
+row("M13b", L("T0w" + BQ("Q1w") + "<hr>"), range("T0w", 0, "Q1w", 3), enter);
+// M14
+const XHY = "<ul><li>xq<hr>yq</li></ul>";
+const M14 = [
+  "<hr>",
+  "<hr><p>Aq</p>",
+  "<blockquote><p>Aq</p></blockquote>",
+  "<ul><li>Aq</li><li>Bq</li></ul>",
+  "<p>Aq</p><p>Bq</p>",
+  "<h2>Aq</h2>",
+  "<pre><code>Aq</code></pre>",
+];
+M14.forEach((html, i) =>
+  row(`M14${"abcdefg"[i]}`, XHY, nodeAfter("xq"), pasteHtml(html))
+);
+row("M14h", XHY, nodeAfter("xq"), pasteOwn("<p>Aq</p><p>Bq</p>"));
+row("M14i", XHY, nodeAfter("xq"), pasteOwn("<b>Aq</b>"));
+row("M14j", "<ul><li>Pw</li><li>xq<hr>yq</li><li>Nw</li></ul>", nodeAfter("xq"), pasteHtml("<p>Aq</p><p>Bq</p>"));
+row("M14k", "<p>xq</p><hr><p>yq</p>", nodeAfter("xq"), pasteHtml("<hr>"));
+row("M14l", XHY, nodeAfter("xq"), enter);
+// M15
+const XQY = `<ul><li>xq${BQ("qq")}yq</li><li>nq</li></ul>`;
+const UL2 = "<ul><li>Aq</li><li>Bq</li></ul>";
+row("M15a", XQY, at("xq", 1), pasteHtml(UL2));
+row("M15b", XQY, at("xq"), pasteHtml(UL2));
+row("M15c", XQY, at("yq"), pasteHtml(UL2));
+row("M15d", XHY, at("xq"), pasteHtml(UL2));
+row("M15e", `<ul><li>xxq${BQ("qq")}yyq</li><li>nq</li></ul><p>sepq</p>`, at("xxq", 1), pasteHtml("<p>Aq</p>"));
+row("M15f", XQY, at("yq", 0), pasteHtml("<p>Aq</p>"));
+const NEST = "<ul><li>a1q<ul><li>xqyq</li></ul></li></ul>";
+row("M15g", NEST, at("xqyq", 2), pasteHtml("<p>Aq</p><p>Bq</p>"));
+row("M15h", "<ul><li>a1q<ul><li>n1q</li><li>n2q</li></ul></li><li>t1q</li></ul>", at("n1q"), pasteHtml("<p>Aq</p><p>Bq</p>"));
+row("M15i", NEST, at("xqyq", 2), pasteHtml("<ul><li>Aq</li></ul><p>Bq</p>"));
+row("M15j", "<ul><li>Zw<ul><li>xqyq</li></ul></li></ul>", at("xqyq", 2), pasteHtml("<p>Aq</p><p>Bq</p>"));
+row("M15k", XQY, at("yq", 0), pasteHtml("<pre><code>Aq</code></pre>"));
+row("M16", XHY, nodeAfter("xq"), then(cut, pasteClip));
+// M17
+row("M17a", L("T0w<hr>"), range("Pw", 1, "T0w", 2), letter);
+row("M17b", L("T0w<hr>"), range("Pw", 1, "T0w", 2), imageButton);
+row("M17c", L(BQ("Q0w") + "T1w<hr>"), range("Pw", 0, "T1w", 1), keys("a"));
+// M18
+const M18 = `<p>Pw</p><blockquote>X0w<ul><li>X1w</li></ul>X2w</blockquote><p>Nw</p>`;
+row("M18a", M18, range("Pw", 1, "X0w", 2), blockType("Quote"));
+row("M18b", M18, then(at("Pw"), selectAll), blockType("Quote"));
+// M19
+row("M19a", `<ul><li>Aw</li><li>${BQ("bbq")}</li></ul><p>sq</p>`, range("Aw", 2, "bbq", 3), then(copy, at("sq"), pasteClip));
+row("M19b", L(BQ("Q0w") + IMG), itemEnd(1), blockType("Code"));
+// M20
+const M20A = `<ul><li>${BQ("Q0w")}<br></li></ul>`;
+const M20B = `<ul><li>${BQ("Q0w")}<br></li><li>Iw</li></ul>`;
+const SF = "<ul><li>Pw</li><li>Iw</li><li>Nw</li></ul>";
+row("M20a", M20A, then(at("Q0w"), shiftRight), then(copy, secondField(SF, "Iw", 1)), true);
+row("M20b", M20B, then(at("Q0w"), shiftRight), then(copy, at("Iw", 1), pasteClip), true);
+// M21
+row("M21a", L(BQ("Q0w") + IMG), imageNode(), backspace);
+row("M21b", L(BQ("Q0w") + IMG), imageNode(), cut);
+row("M22", L("T0w<hr>"), itemPoint(1, 2), button("Bulleted list"));
+row("M23", L("T0w" + BQ("Q1w") + "T2w"), at("T0w"), enter);
+row("M24", L(PRE("C0w") + "T1w"), at("C0w", 0), enter);
+// M25
+row("M25a", L("T0w" + BQ("Q1w")), at("T0w"), button("Divider"));
+row("M25b", L("T0w" + PRE("C1w")), at("T0w"), button("Divider"));
+row("M25c", L("T0w<h3>H1w</h3>"), at("T0w"), button("Divider"));
+row("M25d", L(BQ("Q0w") + "T1w"), at("T1w"), button("Divider"));
+row("M25e", "<blockquote>X1w<p>X2w</p></blockquote>", at("X1w"), button("Divider"));
+// M26
+const M26 = "<blockquote>xq<ul><li>l1q</li></ul>yq</blockquote>";
+row("M26a", M26, at("yq", 0), pasteHtml("<p>Aq</p>"));
+row("M26b", M26, at("yq", 0), pasteHtml("<h2>Aq</h2>"));
+row("M26c", M26, at("yq", 0), pasteHtml("<pre><code>Aq</code></pre>"));
+row("M27", L(BQ("Q0w") + IMG), imageNode(), del);
+
+// M28, M28s
+const WALKS: Array<[string, string, "Left" | "Right", Step]> = [
+  ["BQ", L("<br>" + BQ("Q1w")), "Left", at("Nw", 0)],
+  ["CB", L(PRE("C0w") + "<br>"), "Right", at("C0w", 2)],
+  ["HB", L("<h3>H0w</h3><br>"), "Right", at("H0w", 2)],
+  ["TCB", L("T0w" + PRE("C1w") + "<br>"), "Right", at("C1w", 2)],
+  ["THB", L("T0w<h3>H1w</h3><br>"), "Right", at("H1w", 2)],
+  ["BC", L("<br>" + PRE("C1w")), "Left", at("C1w", 1)],
+  ["BH", L("<br><h3>H1w</h3>"), "Left", at("H1w", 1)],
+  ["BBQ", L("<br><br>" + BQ("Q2w")), "Left", at("Q2w", 1)],
+  ["BQL", L("<br>" + BQ("Q1w") + "<ul><li>L2w</li></ul>"), "Left", at("Q1w", 1)],
+  ["BQQ", L("<br>" + BQ("Q1w") + BQ("Q2w")), "Left", at("Q1w", 1)],
+  ["BQR", L("<br>" + BQ("Q1w") + "<hr>"), "Left", at("Q1w", 1)],
+  ["BQT", L("<br>" + BQ("Q1w") + "T2w"), "Left", at("Q1w", 1)],
+  ["RBQ", L("<hr><br>" + BQ("Q2w")), "Left", at("Q2w", 1)],
+  ["TBC", L("T0w<br>" + PRE("C2w")), "Left", at("C2w", 1)],
+  ["TBH", L("T0w<br><h3>H2w</h3>"), "Left", at("H2w", 1)],
+  ["TBQ", L("T0w<br>" + BQ("Q2w")), "Left", at("Q2w", 1)],
+  ["QBR", L(BQ("Q0w") + "<br><hr>"), "Left", at("Nw", 0)],
+];
+for (const [shape, stored, dir, start] of WALKS) {
+  for (let n = 1; n <= 5; n += 1) {
+    row(`M28-${shape}-${n}`, stored, start, then(times(n, `{Arrow${dir}}`), letter));
+  }
+}
+for (const [shape, stored, , start] of WALKS) {
+  for (const dir of ["Left", "Right"]) {
+    for (let n = 1; n <= 5; n += 1) {
+      row(
+        `M28s-${shape}-${dir}-${n}`,
+        stored,
+        start,
+        times(n, `{Shift>}{Arrow${dir}}{/Shift}`)
+      );
+    }
+  }
+}
+// M29, M30
+row("M29", L("<br>" + BQ("Q1w") + "T2w"), itemPoint(1, 0), pasteHtml("<p>H1</p><p>H2</p>"));
+row("M30", XHY, nodeAfter("xq"), ime("a"));
+// M31
+const A = '<a href="https://example.org/a">';
+const MEET: Array<[string, string, Step]> = [
+  ["TQ@1", L("T0w" + BQ("Q1w")), at("T0w")],
+  ["QT@1", L(BQ("Q0w") + "T1w"), at("T1w", 0)],
+  ["TQT el1", L("T0w" + BQ("Q1w") + "T2w"), at("T0w")],
+  ["TQT el2", L("T0w" + BQ("Q1w") + "T2w"), at("T2w", 0)],
+  ["TH@1", L("T0w<h3>H1w</h3>"), at("T0w")],
+  ["TC@1", L("T0w" + PRE("C1w")), at("T0w")],
+  ["AQ el1", L(A + "Aw</a>" + BQ("Q1w")), at("Aw")],
+  ["QA el1", L(BQ("Q0w") + A + "Lw</a>"), at("Lw", 0)],
+  ["QB el1", L(BQ("Q0w") + "<br>"), at("Q0w")],
+  ["root el1", "<blockquote>X1w<p>X2w</p></blockquote>", at("X1w")],
+];
+for (const [point, stored, place] of MEET) {
+  for (const [label, step] of GRID_COMMANDS) {
+    row(`M31-${point}-${label}`, stored, place, step);
+  }
+}
+// M32..M44
+row("M32a", L("T0w" + BQ("Q0w")), at("Q0w", 0), enter);
+row("M32b", L("T0w" + PRE("C0w")), at("C0w", 0), enter);
+row("M33", "<ul><li>Aw</li></ul>", at("Aw"), pasteHtml("<ul><li>Bq</li></ul><p>H1</p><p>H2</p>"));
+row("M34", L("T0w" + BQ("Q1w")), at("T0w"), sameUpdate("k", "<p>Aq</p><p>Bq</p>"));
+row("M35", "<ul><li>T0w" + BQ("Q1w") + "<ul><li>Nw</li></ul></li></ul>", at("Nw", 1), button("Bulleted list"));
+row("M36a", "<blockquote><p>X0w</p>X1w</blockquote>", at("X1w"), enter);
+row("M36b", "<blockquote><p>X0w</p>X1w</blockquote>", at("X0w"), enter);
+row("M37", "<p>Pw</p>", then(at("Pw"), enter), link());
+row("M38a", L(BQ("Q0w") + "<hr>"), itemPoint(1, 1), button("Divider"));
+row("M38b", L("<hr>" + BQ("Q1w")), itemPoint(1, 1), button("Divider"));
+row("M39a", `<ul><li>${BQ("Q0w")}T1w</li></ul>`, at("Q0w", 0), backspace);
+row("M39b", `<ul><li>${PRE("C0w")}T1w</li></ul>`, at("C0w", 0), backspace);
+row("M40", "<blockquote><p>X1w</p>X2w</blockquote>", at("X2w"), shiftEnter);
+row("M41a", L("T0w<hr>" + BQ("Q2w")), range("T0w", 0, "Q2w", 3), copy, true);
+row("M41b", L("T0w<hr>" + BQ("Q2w")), range("T0w", 0, "Q2w", 3), cut, true);
+row("M42a", "<p>Aw</p><p><br></p><p>Bw</p>", then(at("Aw"), selectAll), copy, true);
+row("M42b", L("T0w" + BQ("Q1w")), range("T0w", 0, "Q1w", 3), copy, true);
+row("M43", L("T0w" + BQ("Q1w") + "T2w"), range("T0w", 1, "T2w", 1), dispatch(INDENT_CONTENT_COMMAND));
+row("M44a", "<ul><li>Pw</li><li>Nw</li></ul>", at("Pw", 1), pasteHtml("<p>Aq</p><p>Bq</p>"));
+row("M44b", `<ul><li>T0w${BQ("Q1w")}Lw</li><li>Nw</li></ul>`, at("Lw", 1), pasteHtml("<p>Aq</p><p>Bq</p>"));
+const QBR = L(BQ("Q0w") + "<br><hr>");
+row("M46", QBR, then(at("Pw"), clickItemCorner(1)), link());
+row("M47", "<p>Aw" + IMG + "Zw</p>", then(at("Zw", 0), keys("{ArrowLeft}")), letter);
+row("M49a", L("T0w<hr>"), itemPoint(1, 2), ime("a"));
+row("M49b", L("T0w<hr>"), then(at("Pw"), clickItemCorner(1)), ime("a"));
+row("M49c", L("<hr>T1w"), itemPoint(1, 0), ime("a"));
+row("M50", L(BQ("Q0w") + "<br>" + BQ("Q2w")), at("Q2w", 0), backspace);
+row("M51", "<ul><li>Pw</li><li>Nw</li></ul>", at("Pw", 1), drop("<p>Dq</p>"));
+row("M52", L("<hr>T1w"), itemPoint(1, 0), enter);
+row("M53a", "<blockquote><p>X0w</p>X1w</blockquote>", at("X0w"), pasteHtml("<p>Aq</p><p><br></p><p>Bq</p>"));
+row("M53b", "<blockquote><p>X0w</p><p>X1w</p>X2w</blockquote>", range("X0w", 3, "X1w", 3), cut);
+row("M54a", "<ul><li><hr>T1w</li></ul><p>Zw</p>", then(at("Zw"), selectAll), letter);
+row("M54b", "<ul><li>T0w<hr></li></ul>", then(at("T0w"), selectAll), letter);
+row("M58", XHY, nodeAfter("xq"), backspace);
+row("M59", `<ul><li>${BQ("Q0w")}<br></li><li>Nw</li></ul>`, range("Q0w", 0, "Nw", 2), copy, true);
+row("M60", "<ul><li>Aw<ul><li>T0w" + BQ("Q1w") + "T2w</li></ul></li></ul>", range("T0w", 1, "T2w", 1), dispatch(OUTDENT_CONTENT_COMMAND));
+row("M61", `<ul><li>${PRE("C0w")}<br></li><li>Nw</li></ul>`, rangeToLineStart("C0w", 0), copy, true);
+row("M63", BQ("Q0w") + "<hr><p>Nw</p>", at("Q0w"), del);
+// M56, M57 (P20, P21 at base)
+row("M56", L(BQ("Q0w") + "T1w<br>"), itemPoint(1, 3), newlineInput);
+row("M57", L("T0w<br>" + BQ("Q2w")), itemPoint(1, 2), newlineInput);
+// M64
+{
+  const endings: Array<[string, number]> = [
+    ["T0w<br>", 2],
+    ["T0w<br><br>", 3],
+    [IMG + "<br>", 2],
+    [A + "Lw</a><br>", 2],
+    ["<br>T0w<br>", 3],
+    ["<br>", 1],
+  ];
+  const blocks = [BQ("Q1w"), "<h3>H1w</h3>", PRE("C1w")];
+  let i = 0;
+  for (const [ending, n] of endings) {
+    for (const block of blocks) {
+      row(`M64${"abcdefghijklmnopqr"[i]}`, L(ending + block), itemPoint(1, n), letter);
+      i += 1;
+    }
+  }
+}
+
+// P rows (run at the carry; at <base> they are the "base result" of each)
+const PL = (t: string) => L(t);
+row("P1", PL("T0w<hr>"), itemPoint(1, 2), blockType("Quote"));
+row("P2", PL("T0w<hr>"), itemPoint(1, 2), blockType("Code"));
+row("P3", PL("T0w" + BQ("Q1w")), at("T0w"), pasteText("L1\nL2"));
+["<blockquote><p>Aq</p></blockquote>", "<hr>", UL2].forEach((html, i) =>
+  row(`P4${"abc"[i]}`, M26, at("xq"), pasteHtml(html))
+);
+row("P5a", L("T0w" + BQ("Q1w") + "<hr>"), range("T0w", 1, "Nw", 1), link());
+row("P5b", "<blockquote><p>X1w</p>Y2w<hr></blockquote><p>Z3w</p>", range("Y2w", 1, "Z3w", 1), link());
+row("P6", "<ul><li>Aw</li><li>T0w" + BQ("Q1w") + "T2w</li></ul>", range("Aw", 1, "T2w", 1), blockType("Heading 2"));
+for (const [label, step] of GRID_COMMANDS) {
+  row(`P7-${label}`, L("<br>" + BQ("Q1w")), itemPoint(1, 1), step);
+}
+row("P8", M20B, then(at("Q0w"), shiftRight), then(copy, at("Iw", 1), pasteClip), true);
+row("P9", "<blockquote><p>X1w</p>X2w</blockquote>", at("X1w", 1), blockType("Quote"));
+["Enter", "Shift+Enter", "Divider"].forEach((label, i) =>
+  row(`P10${"abc"[i]}`, L(BQ("Q1w")), range("Pw", 1, "Q1w", 3), cmd(label))
+);
+row("P11a", L("T0w<hr>"), itemPoint(1, 2), link());
+row("P11b", XHY, nodeAfter("xq"), link());
+row("P12a", `<ul><li>${BQ("Q0w")}T1w</li></ul>`, at("Q0w", 0), backspace);
+row("P12b", `<ul><li>${PRE("C0w")}T1w</li></ul>`, at("C0w", 0), backspace);
+row("P13a", L("<h3>H0w</h3>T1w"), itemPoint(1, 0), enter);
+row("P13b", L(BQ("Q0w") + "T1w"), itemPoint(1, 0), enter);
+row("P13c", L(PRE("C0w") + "T1w"), itemPoint(1, 0), enter);
+row("P14", QBR, then(at("Pw"), clickItemCorner(1)), link());
+row("P15", "<ul><li>xq<h3>hq</h3>yq</li></ul>", at("hq", 1), pasteHtml("<p>Aq</p><p>Bq</p>"));
+row("P16", `<ul><li>${BQ("bq")}t1q</li><li>n1q</li></ul><p>sepq</p>`, range("t1q", 1, "n1q", 1), pasteHtml("<p>Aq</p><p>Bq</p>"));
+row("P17", L("T0w<hr>"), range("T0w", 0, "T0w", 3), imageButton);
+row("P18", `<ul><li>Pw</li><li><blockquote>X0w<ul><li>X1w</li></ul>X2w</blockquote></li><li>Nw</li></ul>`, range("X1w", 1, "X2w", 2), imageButton);
+row("P19", `<ul><li>xq${BQ("qq")}yyq</li><li>nq</li></ul><p>sepq</p>`, range("qq", 0, "yyq", 1), pasteHtml("<p>Aq</p><p>Bq</p>"));
+row("P20", L(BQ("Q0w") + "T1w<br>"), itemPoint(1, 3), newlineInput);
+row("P21", L("T0w<br>" + BQ("Q2w")), itemPoint(1, 2), newlineInput);
+row("P22", L("T0w" + BQ("Q1w") + "T2w"), tripleClick("T2w"), letter);
+row("P23", L("T0w" + BQ("Q1w") + "T2w"), then(at("Q1w"), shiftRight, shiftRight), backspace);
+row("P24", L("<h3>H0w</h3>T1w"), at("H0w"), then(enter, letter));
+row("P25", "<ul><li>Zw<ul><li><blockquote><p>Q0w</p>X1w</blockquote></li></ul></li></ul>", at("X1w"), then(enter, letter));
+row("P26", `<ul><li>${BQ("Q0w")}T1w</li><li>Nw</li></ul>`, then(at("T1w"), times(3, "{Backspace}")), letter);
+row("P27", "<p>Pw</p><blockquote><p>X0w" + IMG + "</p></blockquote><p>Nw</p>", nodeSelect("cms-image"), button("Bulleted list"));
+row("P28", L(BQ("Q0w") + "<ul><li>L1w</li></ul>"), at("Q0w"), del);
+row("P29", M20A, then(at("Q0w"), shiftRight), then(copy, secondField(SF, "Iw", 1)), true);
+row("P30", L(A + "Aw</a><h3>H1w</h3>"), at("H1w", 0), backspace);
+
+// ---------------------------------------------------------------------------
+
+const withWatchdog = <T,>(id: string, work: Promise<T>) =>
+  Promise.race([
+    work,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`watchdog ${WATCHDOG} ms`)), WATCHDOG)
+    ),
+  ]);
+
+test("ids", async () => {
+  await expect(JSON.stringify(rows.map((r) => r.id), null, 1) + "\n").toMatchFileSnapshot("./r1-ids.json");
+});
+
+type LexicalElement = HTMLElement & {
+  __lexicalEditor?: ReturnType<typeof editorOf>;
+};
+/** The editor of the field that holds the focus, or the harness's. */
+const focusedEditor = () =>
+  (
+    document.activeElement?.closest?.('[contenteditable="true"]') as
+      | LexicalElement
+      | null
+      | undefined
+  )?.__lexicalEditor ?? editorOf()!;
+
+let captured: string | undefined;
+const capture: Step = async () => {
+  captured = exportRichTextHtml(focusedEditor());
+};
+
+/** The written value, mounted again in the field: does it export itself? */
+const fixedPointOf = async (html: string) => {
+  const stored = sanitizeRichTextHtml(html);
+  const readOnly = getRichTextReadOnlyReason(stored);
+  await mount(stored);
+  await settle();
+  const editor = editorOf();
+  if (editor === undefined) {
+    return { fixedPoint: false, readOnly: String(readOnly ?? "no editable") };
+  }
+  const out = exportRichTextHtml(editor);
+  const fixedPoint = plain(out) === plain(stored);
+  return {
+    fixedPoint,
+    ...(fixedPoint ? {} : { fixedPointOut: short(out) }),
+    ...(readOnly === undefined ? {} : { readOnly: String(readOnly) }),
+  };
+};
+
+/** A second run to the first Ctrl+Z: what the undo left. */
+const undoProbe = async (r: Row) => {
+  await mount(r.stored);
+  await r.place?.();
+  await r.action();
+  await keys("{Control>}z{/Control}")();
+  const editor = focusedEditor();
+  return {
+    afterUndo: short(exportRichTextHtml(editor)),
+    caretAfterUndo: caretKey(editor),
+  };
+};
+
+const record = async (r: Row) => {
+  if (hangList.includes(r.id)) {
+    return {
+      id: r.id,
+      hang: "the page froze: no record within the runner's 100 s idle watchdog",
+    };
+  }
+  try {
+    captured = undefined;
+    const result = await withWatchdog(
+      r.id,
+      recordEdit(
+        { stored: r.stored, place: r.place, action: then(r.action, capture) },
+        { typeAfter: true }
+      )
+    );
+    const clip = r.clip ? clipboard() : undefined;
+    const extra: Record<string, unknown> = {};
+    if (result.write !== null && captured !== undefined) {
+      if (short(captured) !== result.write) {
+        extra.captureDiffers = short(captured);
+      }
+      Object.assign(extra, await withWatchdog(r.id, fixedPointOf(captured)));
+    } else if (result.write !== null) {
+      extra.fixedPoint = "not captured";
+    }
+    if (result.undoRestores === false) {
+      Object.assign(extra, await withWatchdog(r.id, undoProbe(r)));
+    }
+    return {
+      id: r.id,
+      ...result,
+      ...extra,
+      ...(clip === undefined ? {} : { clipboard: clip }),
+    };
+  } catch (error) {
+    return { id: r.id, failed: String((error as Error)?.message ?? error).slice(0, 400) };
+  }
+};
+
+// A failed row (a throw, or the 20 s watchdog with the action still
+// running) leaves the page in no state to measure: the rows after it in
+// this run write nothing, and the runner starts a new run after it.
+let broken = false;
+for (const r of rows) {
+  if (done.has(fileOf(r.id))) {
+    continue;
+  }
+  test(r.id, { timeout: 90000 }, async () => {
+    if (broken) {
+      return;
+    }
+    const result = await record(r);
+    if ("failed" in result) {
+      broken = true;
+    }
+    await commands.writeFile(`./r1-m/${fileOf(r.id)}.json`, JSON.stringify(result, null, 1) + "\n");
+    // D6's over-copy, a checked fact (Step 1): M20b's copy holds the next
+    // item; M20a's (measured at the first run) holds a line break
+    if ((r.id === "M20b" || r.id === "M20a") && "clipboard" in result) {
+      const html = (result as { clipboard: Record<string, string> }).clipboard["text/html"] ?? "";
+      if (r.id === "M20b") {
+        expect(html).toContain("Iw");
+      }
+      expect(html).toContain("<br");
+    }
+  });
+}
+
+// M62: plain records
+for (const [i, how] of (["empty", "commit", "escape"] as const).entries()) {
+  const id = `M62${"abc"[i]}`;
+  if (done.has(id)) {
+    continue;
+  }
+  test(id, { timeout: 60000 }, async () => {
+    if (broken) {
+      return;
+    }
+    let result: unknown;
+    try {
+      result = await withWatchdog(
+        id,
+        (async () => {
+          const onChange = await mount("<p>Pw</p><p>T0w</p>");
+          await then(at("Pw", 2), letter, at("T0w", 1))();
+          onChange.mockClear();
+          await imeCancel(how)();
+          const calls = onChange.mock.calls.length;
+          await keys("{Control>}z{/Control}")();
+          return { id, calls, afterUndo: short(exportRichTextHtml(editorOf()!)) };
+        })()
+      );
+    } catch (error) {
+      result = { id, failed: String((error as Error)?.message ?? error).slice(0, 400) };
+    }
+    await commands.writeFile(`./r1-m/${id}.json`, JSON.stringify(result, null, 1) + "\n");
+  });
+}
+
+// M55
+const POINTS: Array<[string, string, (n: number) => Step]> = [];
+const addPoints = (shape: string, stored: string, count: number, place?: (n: number) => Step) => {
+  for (let n = 0; n < count; n += 1) {
+    POINTS.push([`${shape}@${n}`, stored, place ?? ((k) => itemPoint(1, k))]);
+  }
+};
+addPoints("TR", L("T0w<hr>"), 3);
+addPoints("RT", L("<hr>T1w"), 3);
+addPoints("QR", L(BQ("Q0w") + "<hr>"), 3);
+addPoints("RQ", L("<hr>" + BQ("Q1w")), 3);
+addPoints("TRT", L("T0w<hr>T2w"), 4);
+addPoints("QRQ", L(BQ("Q0w") + "<hr>" + BQ("Q2w")), 4);
+addPoints("RR", L("<hr><hr>"), 3);
+const MEETING: Array<[string, string, Step]> = [
+  ["TQ@1", L("T0w" + BQ("Q1w")), itemPoint(1, 1)],
+  ["QT@1", L(BQ("Q0w") + "T1w"), itemPoint(1, 1)],
+  ["TQT el1", L("T0w" + BQ("Q1w") + "T2w"), itemPoint(1, 1)],
+  ["TQT el2", L("T0w" + BQ("Q1w") + "T2w"), itemPoint(1, 2)],
+  ["TH@1", L("T0w<h3>H1w</h3>"), itemPoint(1, 1)],
+  ["TC@1", L("T0w" + PRE("C1w")), itemPoint(1, 1)],
+  ["AQ el1", L(A + "Aw</a>" + BQ("Q1w")), itemPoint(1, 1)],
+  ["QA el1", L(BQ("Q0w") + A + "Lw</a>"), itemPoint(1, 1)],
+  ["QB el1", L(BQ("Q0w") + "<br>"), itemPoint(1, 1)],
+  ["root el1", "<blockquote>X1w<p>X2w</p></blockquote>", containerPoint("X1w", 1)],
+  ["BQ el1", L("<br>" + BQ("Q1w")), itemPoint(1, 1)],
+];
+test("M55", { timeout: 300000 }, async () => {
+  const out: Array<{ point: string; x: number; y: number }> = [];
+  const all: Array<[string, string, Step]> = [
+    ...POINTS.map(([p, s, f]) => [p, s, f(Number(p.split("@")[1]))] as [string, string, Step]),
+    ...MEETING,
+  ];
+  for (const [point, stored, place] of all) {
+    await mount(stored);
+    await place();
+    await settle();
+    const box = editable()!.getBoundingClientRect();
+    const selection = window.getSelection()!;
+    const sel = selection.getRangeAt(0);
+    let rect: { x: number; y: number } | undefined;
+    const first = sel.getClientRects()[0];
+    if (first !== undefined) {
+      rect = { x: first.left + first.width / 2, y: first.top + first.height / 2 };
+    } else {
+      const container = sel.startContainer;
+      const offset = sel.startOffset;
+      const rectsOf = (node: Node) => {
+        const r = document.createRange();
+        r.selectNode(node);
+        return [...r.getClientRects()];
+      };
+      const before = container.childNodes[offset - 1];
+      const after = container.childNodes[offset];
+      if (before !== undefined) {
+        const list = rectsOf(before);
+        const last = list[list.length - 1];
+        rect = last && { x: last.right + 1, y: last.top + last.height / 2 };
+      }
+      if (rect === undefined && after !== undefined) {
+        const list = rectsOf(after);
+        const firstRect = list[0];
+        rect = firstRect && { x: firstRect.left - 1, y: firstRect.top + firstRect.height / 2 };
+      }
+    }
+    out.push({
+      point,
+      x: Math.round((rect?.x ?? NaN) - box.left),
+      y: Math.round((rect?.y ?? NaN) - box.top),
+    });
+  }
+  await expect(JSON.stringify(out, null, 1) + "\n").toMatchFileSnapshot("./r1-visible-places.head.json");
+});
+
+// The one combined output (chunk mode's last step, run on its own)
+test("merge", async () => {
+  const ids = [...rows.map((r) => r.id), "M62a", "M62b", "M62c"];
+  const all: Array<{ id: string }> = [];
+  const missing: string[] = [];
+  for (const id of ids) {
+    try {
+      all.push(JSON.parse(await commands.readFile(`./r1-m/${fileOf(id)}.json`)));
+    } catch {
+      missing.push(id);
+    }
+  }
+  expect(missing).toEqual([]);
+  const m = all.filter((r) => r.id.startsWith("M"));
+  const p = all.filter((r) => r.id.startsWith("P"));
+  await expect(JSON.stringify(m, null, 1) + "\n").toMatchFileSnapshot("./r1-measurements.head.json");
+  await expect(JSON.stringify(p, null, 1) + "\n").toMatchFileSnapshot("./r1-records.proto.json");
+});
