@@ -122,16 +122,6 @@ describe("the one registration of the field's and the line rules' handlers", () 
       },
       {
         command: "COPY_COMMAND",
-        priority: "CRITICAL",
-        handlers: ["field.markCopy"],
-      },
-      {
-        command: "CUT_COMMAND",
-        priority: "CRITICAL",
-        handlers: ["field.markCopy"],
-      },
-      {
-        command: "COPY_COMMAND",
         priority: "HIGH",
         handlers: ["clipboard.writeCopyCut"],
       },

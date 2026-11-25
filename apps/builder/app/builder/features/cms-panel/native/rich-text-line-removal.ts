@@ -1174,7 +1174,8 @@ export const $endsInOrder = (selection: RangeSelection) => {
  * 15.11 (candidate iii): each element-point end of a range gets a place of
  * its own in text, the same place for the clipboard writer and for a
  * removal: the edge of a text node directly beside it in the same parent
- * (the side inside the range first), else an empty text node at the point.
+ * (the side inside the range first; for the writer that side only, 16.6),
+ * else an empty text node at the point.
  * Where no text can stand (the root, a list, a quote between its
  * paragraphs) nothing moves and the result is null. With `mark`, the
  * inserted nodes carry the mark the writer drops them by.
@@ -1214,7 +1215,11 @@ export const $endsIntoText = (
           [left, "left"],
           [right, "right"],
         ];
-    const beside = sides.find(([node]) => $isTextNode(node));
+    // 16.6, the scratch editor: only a text inside the range gives the end
+    // its place; an edge outside it would export an empty span of its own
+    const beside = (mark ? sides.slice(0, 1) : sides).find(([node]) =>
+      $isTextNode(node)
+    );
     if (beside !== undefined) {
       const text = beside[0] as TextNode;
       point.set(

@@ -99,6 +99,7 @@ import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
 import { HorizontalRulePlugin } from "@lexical/react/LexicalHorizontalRulePlugin";
 import { LEXICAL_CLIPBOARD_TYPE } from "./rich-text-line-clipboard";
 import {
+  fieldNamespaceOf,
   provideFieldHandlers,
   registerRichTextCommands,
 } from "./rich-text-line-commands";
@@ -184,7 +185,6 @@ import {
   exportRichTextHtml,
   getRichTextReadOnlyReason,
   importRichTextHtml,
-  markRichTextCopy,
   readRichTextValue,
   richTextHasImage,
   richTextHref,
@@ -2479,11 +2479,6 @@ const ImageEditingPlugin = () => {
           }
           return false;
         },
-        // a copy or cut marks its selection, for the code block's export
-        markCopy: () => {
-          markRichTextCopy($getSelection());
-          return false;
-        },
       }),
       // text input with no key of its own (an IME, dictation, an emoji
       // picker) does the same, before the browser inserts it
@@ -3065,7 +3060,7 @@ const $ownClipboardNodes = (editor: LexicalEditor, data: DataTransfer) => {
       nodes?: unknown;
     };
     if (
-      payload.namespace === editor._config.namespace &&
+      payload.namespace === fieldNamespaceOf(editor) &&
       Array.isArray(payload.nodes)
     ) {
       return $generateNodesFromSerializedNodes(payload.nodes);
