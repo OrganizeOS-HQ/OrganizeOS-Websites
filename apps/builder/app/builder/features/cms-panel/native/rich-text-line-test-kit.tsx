@@ -791,15 +791,43 @@ export const clipboard = () => ({ ...(clip ?? {}) });
 
 export const pasteClip: Step = () => pasteData(transfer(clipboard()));
 
+/**
+ * Chooses `name` in the Block type select, then hands the keys back to the
+ * field the select belongs to. The toolbar's change handler focuses the
+ * editor, but the select's close focuses its trigger after it, so a key
+ * pressed next would reach the select. A person goes on in the editor with
+ * the selection the command left: the driver makes the toolbar's own call,
+ * `editor.focus()`, once the close has settled, and moves no point.
+ */
 export const blockType =
   (name: string): Step =>
   async () => {
-    await click(byLabel("Block type"));
+    const trigger = byLabel("Block type");
+    await click(trigger);
     await click(
       [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(
         (option) => option.textContent === name
       )
     );
+    let field = trigger?.parentElement ?? null;
+    while (
+      field !== null &&
+      field.querySelector('[contenteditable="true"]') === null
+    ) {
+      field = field.parentElement;
+    }
+    const element = field?.querySelector<LexicalElement>(
+      '[contenteditable="true"]'
+    );
+    if (element === null || element === undefined) {
+      return;
+    }
+    if (document.activeElement !== element) {
+      await act(async () => {
+        element.__lexicalEditor?.focus();
+      });
+      await settle();
+    }
   };
 export const button =
   (label: string): Step =>

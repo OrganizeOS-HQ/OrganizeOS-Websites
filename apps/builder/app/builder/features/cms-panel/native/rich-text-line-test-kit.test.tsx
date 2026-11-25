@@ -41,6 +41,7 @@ import {
   LI,
   at,
   baselineChildCount,
+  blockType,
   caretKey,
   clickItemCorner,
   clipboard,
@@ -278,6 +279,28 @@ describe("the line tests' kit", () => {
     await mount(LI("T0w<hr>"));
     await then(at("Pw"), clickItemCorner(1))();
     expect(caretKey()).toBe("element:listitem@2");
+  });
+
+  test("blockType hands the keys back to the editor", async () => {
+    const onChange = await mount("<p>Aw</p><p>Bw</p>");
+    await at("Aw", 1)();
+    await blockType("Heading 2")();
+    expect(document.activeElement).toBe(editable());
+    expect(caretKey()).toBe("text:Aw@1");
+    await keys("{Control>}z{/Control}")();
+    expect(plain(lastHtml(onChange))).toBe("<p>Aw</p><p>Bw</p>");
+    const record = await recordEdit(
+      {
+        stored: "<p>Aw</p>",
+        place: at("Aw", 1),
+        action: blockType("Heading 2"),
+      },
+      { typeAfter: true }
+    );
+    expect(record.write).toBe("<h2>Aw</h2>");
+    expect(record.typed).toBe("<h2>Akw</h2>");
+    expect(record.undoRestores).toBe(true);
+    expect(record.redoEquals).toBe(true);
   });
 
   test("the short form records no undo", async () => {
