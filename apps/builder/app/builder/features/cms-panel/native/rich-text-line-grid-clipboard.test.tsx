@@ -6,9 +6,9 @@
 // - the writer against the oracle: text/html and the editor data hold
 //   exactly `$rangeOracle`'s H (text, images, rules, line breaks), judged on
 //   the raw text/html, and text/plain is H's text or F7's one new line;
-// - 16.6: an element-point end adds no empty span to the raw text/html
-//   (no range here holds an empty text of its own); the shell of an item
-//   or a quote a range starts or ends in is D6's and FS9's, not judged here;
+// - 16.6: the raw text/html and the editor data hold no empty element the
+//   range does not enter (an element holding one of its ends, a text end at
+//   a block's edge included: D6, FS9, or lying inside it), by type;
 // - D6: the clipboard holds nothing outside the selection and everything in
 //   it; a cut removes exactly what its clipboard holds (P and S stay).
 import { describe, expect, test, vi } from "vitest";
@@ -17,7 +17,11 @@ import {
   $createRangeSelection,
   $getRoot,
   $getSelection,
+  $isElementNode,
   $isRangeSelection,
+  $isTextNode,
+  type ElementNode,
+  type LexicalNode,
   type PointType,
   type RangeSelection,
 } from "lexical";
@@ -113,35 +117,191 @@ const oracleContent = (held: Held) => ({
   breaks: held.breaks,
 });
 
-/** The empty spans of the raw text/html (16.6: an image alone copies as `<img>`). */
-const emptySpans = (html: string) =>
-  [...html.matchAll(/<span\b[^>]*><\/span>/g)].map((match) => match[0]);
+/** The node type each exported tag stands for (16.6: an empty element by its type). */
+const TAG_TYPE: Record<string, string> = {
+  P: "paragraph",
+  BLOCKQUOTE: "quote",
+  LI: "listitem",
+  UL: "list",
+  OL: "list",
+  H1: "heading",
+  H2: "heading",
+  H3: "heading",
+  H4: "heading",
+  H5: "heading",
+  H6: "heading",
+  PRE: "code",
+  SPAN: "text",
+  A: "link",
+};
+
+type Counts = Record<string, number>;
+
+const add = (counts: Counts, type: string) => {
+  counts[type] = (counts[type] ?? 0) + 1;
+};
+
+/** The empty elements of the raw text/html by type: no text, image, rule or line break. */
+const emptyInHtml = (html: string) => {
+  const counts: Counts = {};
+  const body = new DOMParser().parseFromString(html, "text/html").body;
+  for (const element of body.querySelectorAll("*")) {
+    if (
+      element.tagName === "CODE" &&
+      element.parentElement?.tagName === "PRE"
+    ) {
+      continue;
+    }
+    if (
+      (element.textContent ?? "") === "" &&
+      ["IMG", "HR", "BR"].includes(element.tagName) === false &&
+      element.querySelector("img, hr, br") === null
+    ) {
+      add(counts, TAG_TYPE[element.tagName] ?? element.tagName.toLowerCase());
+    }
+  }
+  return counts;
+};
+
+type JNode = { type: string; text?: string; children?: JNode[] };
+
+/** The empty nodes of the editor data by type: no text, image, rule or line break. */
+const emptyInData = (json: string | undefined) => {
+  const counts: Counts = {};
+  const holds = (node: JNode): boolean =>
+    node.text !== undefined
+      ? node.text !== ""
+      : node.children === undefined || node.children.some(holds);
+  const walk = (node: JNode) => {
+    if (holds(node) === false) {
+      add(counts, node.type);
+    }
+    node.children?.forEach(walk);
+  };
+  (JSON.parse(json ?? "{}").nodes as JNode[]).forEach(walk);
+  return counts;
+};
 
 /**
- * The ends of the committed range that are text points holding nothing of
- * their text (a first point at its end, a last point at its start): Lexical
- * exports each as an empty span, at the head too (D6). An element-point end
- * adds none (16.6).
+ * The elements the committed range enters that hold none of its content
+ * (H), by type: the oracle's side of 16.6. An element is entered when it
+ * holds one of the range's ends (a text end at a block's edge is inside the
+ * block: D6, FS9) or lies inside the range; one holding H's content is not
+ * empty in the clipboard. The root and the lines (never exported) are left
+ * out.
  */
-const emptyTextEndsNow = () =>
+const enteredEmptyNow = (): Counts =>
   editorOf()!
     .getEditorState()
     .read(() => {
+      const counts: Counts = {};
       const selection = $getSelection();
       if ($isRangeSelection(selection) === false) {
-        return 0;
+        return counts;
       }
+      const leaves: LexicalNode[] = [];
+      const first = new Map<string, number>();
+      const after = new Map<string, number>();
+      const walk = (node: LexicalNode) => {
+        first.set(node.getKey(), leaves.length);
+        if ($isElementNode(node)) {
+          node.getChildren().forEach(walk);
+        } else {
+          leaves.push(node);
+        }
+        after.set(node.getKey(), leaves.length);
+      };
+      walk($getRoot());
+      const position = (point: PointType): [number, number] => {
+        const node = point.getNode();
+        if (point.type === "text") {
+          return [first.get(node.getKey())!, point.offset];
+        }
+        const child = (node as ElementNode).getChildAtIndex(point.offset);
+        return [
+          child === null
+            ? after.get(node.getKey())!
+            : first.get(child.getKey())!,
+          0,
+        ];
+      };
+      const before = (a: [number, number], b: [number, number]) =>
+        a[0] < b[0] || (a[0] === b[0] && a[1] <= b[1]);
       const backward = $rangeOracle(selection).order === "backward";
-      const [first, last] = backward
+      const [startPoint, endPoint] = backward
         ? [selection.focus, selection.anchor]
         : [selection.anchor, selection.focus];
-      return (
-        Number(
-          first.type === "text" &&
-            first.offset === first.getNode().getTextContentSize()
-        ) + Number(last.type === "text" && last.offset === 0)
-      );
+      const start = position(startPoint);
+      const end = position(endPoint);
+      // the leaves H holds, by the oracle's rule
+      const held = new Set<number>();
+      for (
+        let index = start[0];
+        index <= end[0] && index < leaves.length;
+        index += 1
+      ) {
+        const leaf = leaves[index];
+        if ($isTextNode(leaf)) {
+          const size = leaf.getTextContentSize();
+          const from = index === start[0] ? start[1] : 0;
+          const to = index === end[0] ? end[1] : size;
+          if (to > from) {
+            held.add(index);
+          }
+        } else if (index !== end[0] && (index !== start[0] || start[1] === 0)) {
+          held.add(index);
+        }
+      }
+      const ends = [startPoint.getNode(), endPoint.getNode()];
+      const visit = (node: LexicalNode) => {
+        if ($isElementNode(node)) {
+          node.getChildren().forEach(visit);
+        }
+        const type = node.getType();
+        if (node.getKey() === $getRoot().getKey() || type === "cms-line") {
+          return;
+        }
+        if ($isElementNode(node) === false && $isTextNode(node) === false) {
+          return;
+        }
+        const from = first.get(node.getKey())!;
+        const to = after.get(node.getKey())!;
+        for (let index = from; index < to; index += 1) {
+          if (held.has(index)) {
+            return;
+          }
+        }
+        const holdsAnEnd = ends.some(
+          (end) => end.is(node) || end.getParents().some((up) => up.is(node))
+        );
+        const inside =
+          before(start, [from, 0]) &&
+          (to > from ? before([to, 0], end) : before([from, 0], end));
+        if (holdsAnEnd || inside) {
+          add(counts, type);
+        }
+      };
+      visit($getRoot());
+      return counts;
     });
+
+/** The types whose empty elements in `found` exceed what the range enters. */
+const beyond = (found: Counts, entered: Counts) =>
+  Object.entries(found)
+    .filter(([type, count]) => count > (entered[type] ?? 0))
+    .map(([type, count]) => `${type}: ${count} > ${entered[type] ?? 0}`);
+
+/**
+ * The cells whose real input leaves the field no range: a Shift+click on an
+ * image opens its popover, and Lexical holds no selection while it is open
+ * (T12.1; T27.1: no real input node-selects an image, so D15 does not
+ * apply). What their copy and cut do is P18-5, not pinned here.
+ */
+const NO_RANGE = [
+  'real03 imgLineEnd-QTIQ | {"k":"shiftclickImg","click":["T1w",1],"img":0,"side":"right"}',
+  'real04 imgLineEnd-QTIQ | {"k":"shiftclickImg","click":["Q2w",1],"img":0,"side":"right"}',
+  'real11 imgLineStart-TQIT | {"k":"shiftclickImg","click":["T0w",1],"img":0,"side":"left"}',
+];
 
 const runCell = async (cell: Case) => {
   const errors: string[] = [];
@@ -155,7 +315,11 @@ const runCell = async (cell: Case) => {
   await mount(cell.html);
   await place(cell);
   const before = parts();
-  const emptyTextEnds = emptyTextEndsNow();
+  const entered = enteredEmptyNow();
+  const noSelection = editorOf()!
+    .getEditorState()
+    .read(() => $getSelection() === null);
+  const popovers = document.querySelectorAll('[role="dialog"]').length;
   await copy();
   const copied = clipboard();
   // the cut, of the same range, after a remount
@@ -174,8 +338,12 @@ const runCell = async (cell: Case) => {
     copied[EDITOR_DATA]
   );
   expect(errors, "console errors").toEqual([]);
-  // a Shift+click on an image opens the image's popover and leaves the
-  // field no range: there is nothing for the writer to judge
+  if (NO_RANGE.includes(cell.id)) {
+    expect(noSelection, "Lexical holds no selection (T12.1)").toBe(true);
+    expect(popovers, "the image's popover is open (T12.1)").toBeGreaterThan(0);
+    return;
+  }
+  expect(before, "the real input leaves a range").not.toBeNull();
   if (before === null) {
     return;
   }
@@ -201,11 +369,16 @@ const runCell = async (cell: Case) => {
     "text/plain: H's text"
   ).toBe(h.text);
 
-  // 16.6: an element-point end adds nothing to the clipboard
+  // 16.6: an element-point end adds nothing to the clipboard: no empty
+  // element the range does not enter, in text/html and in the editor data
   expect(
-    emptySpans(html).length,
-    `16.6: an empty span only for a text end that holds nothing: ${html}`
-  ).toBeLessThanOrEqual(emptyTextEnds);
+    beyond(emptyInHtml(html), entered),
+    `16.6: text/html holds an empty element the range does not enter: ${html}`
+  ).toEqual([]);
+  expect(
+    beyond(emptyInData(copied[EDITOR_DATA]), entered),
+    "16.6: the editor data holds an empty node the range does not enter"
+  ).toEqual([]);
 
   // D6: a cut removes exactly what its clipboard holds
   const after = documentHeld();

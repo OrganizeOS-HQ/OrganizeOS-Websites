@@ -1061,6 +1061,99 @@ describe("Task 18: 16.7, the shell rule holds in a list item and a quote", () =>
     expect(clipboard()["text/html"]).not.toContain("<ul");
     expect(clipboard()["text/html"]).not.toContain("<li");
   });
+
+  // K14 in a lined item. The cells whose end is a point between two quotes
+  // (P18-2) or before an item (P18-3) do not give the ruled result and are
+  // not pinned here
+  type Shell = { tag: string; type: string; most: number };
+  const inLine: Array<{
+    name: string;
+    stored: string;
+    from: string;
+    $end: () => { key: string; offset: number; type: "element" };
+    shells: Shell[];
+  }> = [
+    {
+      name: "a range that ends after a quote at its item's end carries no shell of the next item's list",
+      stored: LI("T0w<blockquote><p>Q1w</p></blockquote><ul><li>Lw</li></ul>"),
+      from: "T0w",
+      $end: $besideNode("quote", "after"),
+      shells: [
+        { tag: "ul", type: "list", most: 1 },
+        { tag: "li", type: "listitem", most: 1 },
+      ],
+    },
+    {
+      name: "a range that ends after a quote's text in a lined item carries no shell of the next item's list",
+      stored: LI("T0w<blockquote><p>Q1w</p></blockquote><ul><li>Lw</li></ul>"),
+      from: "Q1w",
+      $end: $besideNode("quote", "after"),
+      shells: [
+        { tag: "ul", type: "list", most: 0 },
+        { tag: "li", type: "listitem", most: 0 },
+      ],
+    },
+    {
+      name: "a range that ends before a quote's list in a lined item carries no shell of the list",
+      stored: LI("T0w<blockquote><p>Q1w</p><ul><li>Lw</li></ul></blockquote>"),
+      from: "T0w",
+      $end: $besideNode("list", "before", 1),
+      shells: [
+        { tag: "ul", type: "list", most: 0 },
+        { tag: "li", type: "listitem", most: 0 },
+      ],
+    },
+    {
+      name: "a range from a quote's text to the point before its list in a lined item carries no shell of the list",
+      stored: LI("T0w<blockquote><p>Q1w</p><ul><li>Lw</li></ul></blockquote>"),
+      from: "Q1w",
+      $end: $besideNode("list", "before", 1),
+      shells: [
+        { tag: "ul", type: "list", most: 0 },
+        { tag: "li", type: "listitem", most: 0 },
+      ],
+    },
+  ];
+  const countTypes = (json: string | undefined, type: string) => {
+    let count = 0;
+    const walk = (node: { type: string; children?: unknown[] }) => {
+      count += node.type === type ? 1 : 0;
+      (node.children as Array<typeof node> | undefined)?.forEach(walk);
+    };
+    (JSON.parse(json ?? "{}").nodes as Array<{ type: string }>).forEach(walk);
+    return count;
+  };
+  for (const cell of inLine) {
+    for (const backward of [false, true]) {
+      test(`16.7 in a lined item: ${cell.name}${backward ? ", backward" : ""}`, async () => {
+        const onChange = await mount(cell.stored);
+        const $start = $textPoint(cell.from, 1);
+        await (
+          backward ? setRange(cell.$end, $start) : setRange($start, cell.$end)
+        )();
+        const { h } = oracleParts();
+        await copyKeeps(onChange)();
+        const held = clipboard();
+        const doc = new DOMParser().parseFromString(
+          held["text/html"] ?? "",
+          "text/html"
+        );
+        expect(doc.body.textContent, "the oracle's text").toBe(h.text);
+        expect(doc.querySelectorAll("img").length, "images").toBe(h.images);
+        expect(doc.querySelectorAll("hr").length, "rules").toBe(h.rules);
+        for (const shell of cell.shells) {
+          expect(
+            doc.querySelectorAll(shell.tag).length,
+            `no shell in text/html: ${shell.tag}`
+          ).toBeLessThanOrEqual(shell.most);
+          expect(
+            countTypes(held[EDITOR_DATA], shell.type),
+            `no shell in the editor data: ${shell.type}`
+          ).toBeLessThanOrEqual(shell.most);
+        }
+      });
+    }
+  }
 });
 
 /** The editor data's top-level node types. */

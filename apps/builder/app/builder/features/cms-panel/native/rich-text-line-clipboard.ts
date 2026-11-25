@@ -681,7 +681,7 @@ export const $writeCopyCut =
       // ends
       plain = $plainTextOf($writerEnds(user).range);
       data = $headFormClipboard(editor, user, config);
-      if (data === null && process.env.NODE_ENV !== "production") {
+      if (data === null && import.meta.env.DEV) {
         console.error(
           "cms-line clipboard: the head-form copy could not be written"
         );
@@ -753,6 +753,13 @@ export const $dragStart =
     }
     if ($isRangeSelection(selection) && selection.isCollapsed() === false) {
       const data = $headFormClipboard($getEditor(), selection, config);
+      // the writer failed: nothing is set and the browser's own drag data
+      // stays; the development assertion is the copy's
+      if (data === null && import.meta.env.DEV) {
+        console.error(
+          "cms-line clipboard: the head-form copy could not be written"
+        );
+      }
       for (const type of ["text/html", LEXICAL_CLIPBOARD_TYPE] as const) {
         const value = data?.[type];
         if (value !== undefined) {
