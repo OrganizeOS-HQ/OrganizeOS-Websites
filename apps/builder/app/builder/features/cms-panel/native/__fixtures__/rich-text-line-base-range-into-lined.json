@@ -1,0 +1,14 @@
+{
+  "Pw@1 to T0w@1": {
+    "write": "<ul><li>PAq</li></ul><p>Bq0w</p><blockquote><p>Q1w</p></blockquote><p>T2w</p><ul><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Bq0w@2",
+    "typed": "<ul><li>PAq</li></ul><p>Bqk0w</p><blockquote><p>Q1w</p></blockquote><p>T2w</p><ul><li>Nw</li></ul>"
+  },
+  "Pw@1 to Q1w@1": {
+    "write": "<ul><li>PAq</li></ul><p>Bq1w</p><ul><li><blockquote></blockquote>T2w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Bq1w@2",
+    "typed": "<ul><li>PAq</li></ul><p>Bqk1w</p><ul><li><blockquote></blockquote>T2w</li><li>Nw</li></ul>"
+  }
+}

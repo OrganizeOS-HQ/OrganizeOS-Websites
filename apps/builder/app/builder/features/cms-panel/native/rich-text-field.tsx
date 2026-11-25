@@ -112,7 +112,7 @@ import {
   $unwrapLines,
   registerLineTransforms,
 } from "./rich-text-line-normalise";
-import { $intoLine } from "./rich-text-line-paste";
+import { $intoLine, $pasteTextIntoItemLine } from "./rich-text-line-paste";
 import {
   $caretOffEmptyLine,
   $pointIntoAdjacentBlock,
@@ -3687,7 +3687,8 @@ const PasteRulesPlugin = () => {
             if (
               $pasteIntoCode(editor, data) ||
               $pasteFiguresBesideHeading(editor, data) ||
-              $insertPlainTextAtBlockLed(editor, data)
+              $insertPlainTextAtBlockLed(editor, data) ||
+              $pasteTextIntoItemLine(data)
             ) {
               event.preventDefault();
               return true;
