@@ -26,6 +26,18 @@ const keepRequestInterception: BrowserCommand<[]> = async (context) => {
   );
 };
 
+// OrganizeOS fork: lets a test read and write the system clipboard through
+// navigator.clipboard, to see what a real copy or cut key leaves there.
+const grantClipboard: BrowserCommand<[]> = async (context) => {
+  if (context.provider.name !== "playwright") {
+    return;
+  }
+  const { page } = context as unknown as { page: Page };
+  await page
+    .context()
+    .grantPermissions(["clipboard-read", "clipboard-write"]);
+};
+
 const browserProject = (
   group: "core" | "app",
   name: string,
@@ -45,7 +57,7 @@ const browserProject = (
       headless: true,
       screenshotFailures: false,
       instances: [{ browser: "chromium" as const }],
-      commands: { keepRequestInterception },
+      commands: { keepRequestInterception, grantClipboard },
     },
   },
 });

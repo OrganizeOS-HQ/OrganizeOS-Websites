@@ -1,13 +1,17 @@
-// Node selections in a lined container and the root listeners of the typing after a selected node.
+// Node selections in a lined container, their handlers, and the root listeners of the typing after a selected node.
+import { $insertDataTransferForRichText } from "@lexical/clipboard";
 import {
   $createRangeSelection,
+  $getEditor,
   $getSelection,
   $isElementNode,
   $isNodeSelection,
   $isRangeSelection,
   $setSelection,
   CONTROLLED_TEXT_INSERTION_COMMAND,
+  type LexicalCommand,
   type LexicalEditor,
+  PASTE_COMMAND,
 } from "lexical";
 import {
   $isCmsLineNode,
@@ -17,7 +21,12 @@ import {
 } from "./rich-text-line-node";
 import { $unwrapLines } from "./rich-text-line-normalise";
 import { $liftPointsIntoLines } from "./rich-text-line-points";
-import { $mark, HEAD_PATH_TAG } from "./rich-text-line-removal";
+import {
+  $hasMark,
+  $mark,
+  HEAD_PATH_TAG,
+  PASTE_OVER_NODE_MARK,
+} from "./rich-text-line-removal";
 
 /**
  * A node selection of a block in a lined container becomes a caret in a
@@ -68,6 +77,88 @@ export const $headPathOverNodeSelection = () => {
   $unwrapLines(container.getChildren());
   $mark(HEAD_PATH_TAG);
   return true;
+};
+
+/** Typed or composed text lands directly after a selected node, which stays (D15). */
+export const $typeIntoLine = (payload: unknown): boolean => {
+  if ($hasMark(HEAD_PATH_TAG)) {
+    return false;
+  }
+  // a drop carries a data transfer: it is a paste
+  if (typeof payload === "string") {
+    $nodeSelectionIntoLine(false, true);
+  }
+  return false;
+};
+
+/** A paste or drop over a node selection in a lined container (D15). */
+export const $nodeSelectionPaste = (
+  command: LexicalCommand<unknown>,
+  payload: unknown
+): boolean => {
+  if ($hasMark(HEAD_PATH_TAG)) {
+    return false;
+  }
+  const selection = $getSelection();
+  const data =
+    command === PASTE_COMMAND && payload instanceof ClipboardEvent
+      ? payload.clipboardData
+      : null;
+  const isRich =
+    data !== null &&
+    (data.getData("text/html") !== "" ||
+      data.getData("application/x-lexical-editor") !== "");
+  // 14.8 (D15): in a lined container that starts with a block,
+  // where the head's own path does not end, Lexical's order for a
+  // node selection, with the point after the last selected node
+  // resolved by D18 first: the paste runs at that caret, as a paste
+  // there does (D14), then the selected nodes go. A container that
+  // starts with a line keeps the head's write
+  if (isRich && $isNodeSelection(selection)) {
+    const nodes = selection.getNodes();
+    const container = nodes.at(-1)?.getParent() ?? null;
+    if (
+      isLinedContainer(container) &&
+      $isCmsLineNode(container.getFirstChild()) === false
+    ) {
+      $nodeSelectionIntoLine(false, true);
+      const caret = $getSelection();
+      if ($isRangeSelection(caret)) {
+        (payload as ClipboardEvent).preventDefault();
+        $mark(PASTE_OVER_NODE_MARK);
+        $insertDataTransferForRichText(data, caret, $getEditor());
+        for (const node of nodes) {
+          if (node.isAttached()) {
+            node.remove();
+          }
+        }
+        return true;
+      }
+    }
+  }
+  if (isRich && $headPathOverNodeSelection()) {
+    return false;
+  }
+  // plain text replaces the node; a clipboard of files only leaves it
+  if (
+    command === PASTE_COMMAND &&
+    data !== null &&
+    data.getData("text/plain") !== ""
+  ) {
+    $nodeSelectionIntoLine(true, false);
+  }
+  return false;
+};
+
+/**
+ * A remove command under a node selection in a lined container takes the
+ * head's path (D15); the removal mark then skips the update.
+ */
+export const $headPathOnRemove = (): boolean => {
+  if ($hasMark(HEAD_PATH_TAG) === false) {
+    $headPathOverNodeSelection();
+  }
+  return false;
 };
 
 /**
