@@ -42,9 +42,12 @@ import {
   click,
   editable,
   editorOf,
+  expectFixedPoint,
   lastHtml,
   settle,
 } from "./rich-text-test-harness";
+import { exportRichTextHtml } from "./rich-text-html";
+import { sameState } from "./rich-text-line-test-compare";
 import { $isCmsLineNode, isLinedContainer } from "./rich-text-line-node";
 
 const QUOTE0 = "<blockquote><p>Q0w</p></blockquote>";
@@ -323,9 +326,72 @@ describe("D18: one letter at each kind of point", () => {
     });
   });
 
-  // "a composition at the start of a line led by a link lands before the
-  // link (round 9)" waits for P9-1: the write is the spec's, but undo
-  // leaves the caret on the line's start, not in the link's text.
+  // expectEdit has no option to leave out the caret after undo, so this
+  // test uses the kit's drivers with explicit checks for everything
+  // expectEdit checks except that caret (T22.1: undo puts the caret at
+  // the line's start, the same place before the link): the write, calls,
+  // caret, D19, undo's value and state, redo, no console error, the 2 s
+  // bound and the fixed point; then a letter right after the undo lands
+  // before the link, outside it
+  test("a composition at the start of a line led by a link lands before the link (round 9)", async () => {
+    const stored = LI(`${QUOTE0}${LINK}`);
+    // M31-QA el1-ime, ruled (T21)
+    const write = W(`<li>${QUOTE0}a<a>Lw</a></li>`);
+    const errors: string[] = [];
+    const timed = async (step: Step) => {
+      const start = performance.now();
+      await step();
+      expect(performance.now() - start, "step in ms").toBeLessThan(2000);
+    };
+    const run = async () => {
+      const onChange = await mount(stored);
+      await itemPoint(1, 1)();
+      const editor = editorOf()!;
+      const before = editor.getEditorState().toJSON();
+      const valueBefore = exportRichTextHtml(editor);
+      vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+        const text = args.map(String).join(" ");
+        if (text.includes("not wrapped in act") === false) {
+          errors.push(text);
+        }
+      });
+      onChange.mockClear();
+      await timed(ime("a"));
+      expect(onChange, "calls").toHaveBeenCalledTimes(3);
+      const written = lastHtml(onChange);
+      expect(short(written), "write").toBe(write);
+      expect(short(written), "D19").not.toBe(short(valueBefore));
+      expect(caretKey(), "caret").toBe("text:a@1");
+      const after = editor.getEditorState().toJSON();
+      await timed(keys("{Control>}z{/Control}"));
+      expect(
+        sameState(before, editor.getEditorState().toJSON()),
+        "one undo restores the state before"
+      ).toBe(true);
+      expect(short(lastHtml(onChange)), "undo hands out the value before").toBe(
+        short(valueBefore)
+      );
+      return { onChange, editor, after, written };
+    };
+
+    // a letter right after the undo lands before the link, outside it
+    const first = await run();
+    await timed(letter);
+    expect(short(lastHtml(first.onChange)), "the letter after undo").toBe(
+      W(`<li>${QUOTE0}k<a>Lw</a></li>`)
+    );
+
+    // redo equals the write, and the write reopens editable
+    const second = await run();
+    await timed(keys("{Control>}y{/Control}"));
+    expect(
+      sameState(second.after, second.editor.getEditorState().toJSON()),
+      "redo equals the write"
+    ).toBe(true);
+    expect(short(lastHtml(second.onChange)), "redo's value").toBe(write);
+    expect(errors, "console errors").toEqual([]);
+    expectFixedPoint(second.written);
+  });
 
   test("a composition at QR@1 is inserted once", async () => {
     await expectEdit({
