@@ -578,16 +578,17 @@ const codeCanHold = (node: LexicalNode) =>
  * start in `<pre><code>C0w</code></pre><p>T1w<a href="https://example.org/">
  * Lw</a></p>` writes `<pre><code>C0wT1w</code></pre><p><a href=
  * "https://example.org/">Lw</a></p>`). Splits the rest off before the
- * join, which Lexical's delete then makes with what is left. A quote's
- * paragraph is not ruled (P14-10) and is left as it was.
+ * join, which Lexical's delete then makes with what is left. From a
+ * quote's first paragraph, the rest stays in the quote (T34.1, P14-10).
  */
 const $leaveBehindWhatCodeCannotHold = (holder: ElementNode) => {
   const parent = holder.getParent();
   const atRoot = $isParagraphNode(holder) && $isRootOrShadowRoot(parent);
+  const inQuote = $isParagraphNode(holder) && $isQuoteNode(parent);
   const inItem = $isCmsLineNode(holder) && $isListItemNode(parent);
   // a line led by a line break joins nothing (D3 group C)
   if (
-    (atRoot === false && inItem === false) ||
+    (atRoot === false && inQuote === false && inItem === false) ||
     (inItem && $isTextNode(holder.getFirstChild()) === false)
   ) {
     return;
@@ -598,7 +599,7 @@ const $leaveBehindWhatCodeCannotHold = (holder: ElementNode) => {
   if (stop === undefined) {
     return;
   }
-  const rest = atRoot ? $createParagraphNode() : $createCmsLineNode();
+  const rest = inItem ? $createCmsLineNode() : $createParagraphNode();
   const moved: LexicalNode[] = [];
   for (
     let node: LexicalNode | null = stop;

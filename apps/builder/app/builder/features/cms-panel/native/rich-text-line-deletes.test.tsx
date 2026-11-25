@@ -1052,6 +1052,36 @@ describe("F2 in R1, and check 5's delete rules (Step 1b)", () => {
       "<pre><code>C0wT1w</code></pre><p><a>Lw</a>T2w</p>",
       true,
     ],
+    // T34.1 (P14-10): from a quote's first paragraph, the rest stays in
+    // the quote
+    [
+      "a link later in a quote's paragraph stays in the quote",
+      `${CODE}<blockquote><p>T1w${ADDRESS}</p></blockquote>`,
+      "<pre><code>C0wT1w</code></pre><blockquote><p><a>Lw</a></p></blockquote>",
+      true,
+    ],
+    [
+      "an image later in a quote's paragraph stays in the quote",
+      `${CODE}<blockquote><p>T1w${IMG}</p></blockquote>`,
+      "<pre><code>C0wT1w</code></pre><blockquote><p><img /></p></blockquote>",
+      false,
+    ],
+    [
+      "a link later in a quote's paragraph in an item stays in the quote",
+      LI(`${CODE}<blockquote><p>T1w${ADDRESS}</p></blockquote>`),
+      W(
+        "<li><pre><code>C0wT1w</code></pre><blockquote><p><a>Lw</a></p></blockquote></li>"
+      ),
+      true,
+    ],
+    [
+      "an image later in a quote's paragraph in an item stays in the quote",
+      LI(`${CODE}<blockquote><p>T1w${IMG}</p></blockquote>`),
+      W(
+        "<li><pre><code>C0wT1w</code></pre><blockquote><p><img /></p></blockquote></li>"
+      ),
+      false,
+    ],
   ];
   for (const [name, stored, write, link] of JOINS) {
     for (const [key, action] of [

@@ -96,6 +96,8 @@ Measured at the branch (Task 14's work on fb4f6c8), at `<base>` (SP/r1-base, 2a9
 
 ## P14-10: T33.3's join into a code block from a quote's first paragraph (found building T33.3)
 
+- **Ruled (T34.1), candidate (a).** What the code block cannot hold stays where it was, in the quote: the link `<pre><code>C0wT1w</code></pre><blockquote><p><a href="https://example.org/">Lw</a></p></blockquote>` (the address kept), the image `<pre><code>C0wT1w</code></pre><blockquote><p><img /></p></blockquote>`, caret `text:C0wT1w@3`. Built in `$leaveBehindWhatCodeCannotHold`; pinned in the "T33.3:" rows for a root quote and a quote in a list item (Backspace, Ctrl+Backspace, `lineBack`). `<base>` measured again for T34.1 (SP/r1-base, raw export): the image at the root `<pre><code>C0wT1w</code></pre><p><img /></p><blockquote></blockquote>`, in an item `<li><pre><code>C0wT1w</code></pre><p><img /></p><blockquote></blockquote></li>`; the link `<pre><code>C0wT1wLw</code></pre><blockquote></blockquote>` (in an item the same inside the `li`), no address; caret as below for all three keys. Same D1 entry as T33.3.
+
 - Stored: `<pre><code>C0w</code></pre><blockquote><p>T1w<a href="https://example.org/">Lw</a></p></blockquote>`, and the same with `IMG` in place of the link.
 - Place: `T1w@0` (a real click). Actions: Backspace; Ctrl+Backspace; `lineBack` (each gives the same write at both builds).
 - `<base>`: the link: `<pre><code>C0wT1wLw</code></pre><blockquote></blockquote>`, caret `text:C0wT1wLw@3` (the address is lost); the image: `<pre><code>C0wT1w</code></pre><p><img /></p><blockquote></blockquote>`, caret `text:C0wT1w@3`.
