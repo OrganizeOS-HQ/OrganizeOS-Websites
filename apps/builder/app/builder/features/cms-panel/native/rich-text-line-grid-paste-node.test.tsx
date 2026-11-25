@@ -4,7 +4,8 @@
 // - In an item that starts with a block, an HTML or own-node paste runs at
 //   the caret D18 gives the point directly after the last selected rule,
 //   and the selected rules then go (D15, 5.4): its write is that paste's
-//   write with the selected rules taken out (P16-4).
+//   write with the selected rules taken out (P16-4, T37.1), and the letter
+//   after it lands as there (T37.2).
 // - A plain-text paste replaces the rule as an HTML paste does (C15): the
 //   same, in every item; the head writes nothing there.
 // - Every other cell (an HTML paste in the line-led item XRY) equals its
@@ -23,16 +24,6 @@ type Recorded =
   | { write: string | null; calls: number; caret: string; typed?: string }
   | { failed: string };
 const fixture = pasteNodeJson as Record<string, Recorded>;
-
-const P16_3_SHAPES = new Set([
-  "QR",
-  "QQR",
-  "QRL",
-  "QRR",
-  "QRd2",
-  "QRol",
-  "RQR",
-]);
 
 const isPlain = (cell: PasteNodeCell) =>
   cell.kind === "plain" || cell.kind === "plain2";
@@ -65,14 +56,11 @@ describe("14.8: a paste with a rule node-selected in a lined item", () => {
         expect(record.write, "the paste at D18's caret, the rule removed").toBe(
           withoutSelectedRules(atPoint.write ?? atPoint.htmlBefore, cell.rules)
         );
-        // where the caret goes when nothing is inserted and the rule goes
-        // is no rule's in the shapes where the rule ends the item or stands
-        // before a list or another rule (P16-3)
-        if (!(cell.kind === "emptyP" && P16_3_SHAPES.has(cell.shape))) {
-          expect(record.typed, "the letter after it").toBe(
-            withoutSelectedRules(atPoint.typed ?? "", cell.rules)
-          );
-        }
+        // where the paste inserts nothing the caret stands where the rule
+        // was (T37.2), so the letter lands as at D18's caret
+        expect(record.typed, "the letter after it").toBe(
+          withoutSelectedRules(atPoint.typed ?? "", cell.rules)
+        );
         if (isPlain(cell) && "failed" in base === false) {
           expect(base.calls, "the head writes nothing").toBe(0);
         }

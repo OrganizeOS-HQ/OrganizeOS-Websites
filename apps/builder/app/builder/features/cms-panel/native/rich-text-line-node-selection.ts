@@ -21,7 +21,10 @@ import {
   linesOff,
 } from "./rich-text-line-node";
 import { $unwrapLines } from "./rich-text-line-normalise";
-import { $resolveLinedPoints } from "./rich-text-line-points";
+import {
+  $notePasteHeldLine,
+  $resolveLinedPoints,
+} from "./rich-text-line-points";
 import {
   $hasMark,
   $mark,
@@ -132,6 +135,19 @@ export const $nodeSelectionPaste = (
           if (node.isAttached()) {
             node.remove();
           }
+        }
+        // T37.2: where the paste inserted nothing, the caret stays in the
+        // line made at the point after the nodes, where they were
+        const after = $getSelection();
+        const line = $isRangeSelection(after) ? after.anchor.getNode() : null;
+        if (
+          $isRangeSelection(after) &&
+          after.isCollapsed() &&
+          $isCmsLineNode(line) &&
+          line.isEmpty() &&
+          line.isAttached()
+        ) {
+          $notePasteHeldLine(line);
         }
         return true;
       }

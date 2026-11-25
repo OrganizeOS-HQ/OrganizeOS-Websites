@@ -75,6 +75,27 @@ export const $noteRemovalLines = () => {
   }
 };
 
+/**
+ * T37.2: per editor, the empty lines a paste over a node selection made at
+ * the point after the selected nodes, where the paste inserted nothing and
+ * the nodes went. Such a line stands where the nodes were and keeps the
+ * caret as an emptied line does, in the paste's update, at its commit and
+ * at a redo of it (the commit listener adds it to `emptiedLines` whenever
+ * it is empty and holds a point). Once the caret leaves, the line goes.
+ */
+const pasteHeldLines = new WeakMap<LexicalEditor, Set<NodeKey>>();
+
+/** A paste over a node selection left the caret in this empty line (T37.2). */
+export const $notePasteHeldLine = (line: CmsLineNode) => {
+  const editor = $getEditor();
+  let lines = pasteHeldLines.get(editor);
+  if (lines === undefined) {
+    lines = new Set();
+    pasteHeldLines.set(editor, lines);
+  }
+  lines.add(line.getKey());
+};
+
 const emptiedOf = (editor: LexicalEditor) => {
   let emptied = emptiedLines.get(editor);
   if (emptied === undefined) {
@@ -110,6 +131,12 @@ const noteEmptiedLines = (
       emptied.delete(key);
     }
   }
+  const pasted = pasteHeldLines.get(editor);
+  for (const key of held) {
+    if (pasted?.has(key) === true) {
+      emptied.add(key);
+    }
+  }
   const removed = removalLines.get(prevEditorState);
   if (removed === undefined) {
     return;
@@ -132,12 +159,16 @@ const noteEmptiedLines = (
 /**
  * Whether a removal emptied this line while it held the caret: in a commit
  * before (`noteEmptiedLines`), or in this update (a removal started in it,
- * and it held content in the state this update started from). Reads only.
+ * and it held content in the state this update started from), or a paste
+ * over a node selection left the caret in it (T37.2). Reads only.
  */
 const $emptiedHoldingPoint = (line: CmsLineNode) => {
   const editor = $getEditor();
   const key = line.getKey();
   if (emptiedLines.get(editor)?.has(key) === true) {
+    return true;
+  }
+  if (pasteHeldLines.get(editor)?.has(key) === true) {
     return true;
   }
   const base = editor.getEditorState();
@@ -1470,6 +1501,7 @@ export const pointRules = (editor: LexicalEditor, tracker?: EditTracker) => {
         }),
         () => {
           emptiedLines.delete(editor);
+          pasteHeldLines.delete(editor);
         }
       ),
   };

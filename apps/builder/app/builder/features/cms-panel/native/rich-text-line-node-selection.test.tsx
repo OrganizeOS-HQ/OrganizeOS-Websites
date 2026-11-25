@@ -199,6 +199,15 @@ const ROWS: Row[] = [
     source: "check 4, Ruled with no change (C15)",
   },
   {
+    name: "an empty-paragraph paste over a rule that ends a block-led item: the caret stands where the rule was",
+    stored: LI("<blockquote><p>Q0w</p></blockquote><hr>"),
+    place: nodeAfter("Q0w"),
+    action: pasteHtml("<p></p>", ""),
+    write: W("<li><blockquote><p>Q0w</p></blockquote></li>"),
+    typed: W("<li><blockquote><p>Q0w</p></blockquote>k</li>"),
+    source: "T37.2 (P16-3)",
+  },
+  {
     name: "after a removed rule the caret is at the end of what stood before",
     stored: QRT,
     place: nodeAfter("Q0w"),

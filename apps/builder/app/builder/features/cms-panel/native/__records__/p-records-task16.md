@@ -15,7 +15,7 @@ Measured at the branch (Task 16's work on 1c41131) and at `<base>` (SP/r1-base, 
 - Branch, with and without `setRootElement(null)` then the same element first: 3 onChanges, `PwkT0w`, `PwkTa0w`, `PwkTa0w` (the last repeats the one before).
 - Ruled: 16.10 and T29.6 give one onChange for the composition. Task 20 builds it; no test here pins the count. Pinned: the last value `<p>Pwk</p><p>Ta0w</p>`, one undo gives the state before the composition (`sameState`), a second undo `<p>Pw</p><p>T0w</p>`, and the listener counts.
 
-## P16-3: an empty-paragraph paste over a rule after a leading block: where the letter lands
+## P16-3: an empty-paragraph paste over a rule after a leading block: where the letter lands (ruled T37.2: candidate (b); built)
 
 - Stored: the 16 cells of `base-paste-node` with the kind `emptyP` whose shape is `QR`, `QQR`, `QRL`, `QRR`, `QRd2`, `QRol` or `RQR`, where the rule is the item's last child or stands before a list or another rule (click: 7 cells; arrow: `QR`, `QQR`, `QRL`, `QRd2`, `QRol`, 5 cells; `QRR` and `RQR` by arrow and by both rules, 4 cells). E.g. `LI(<blockquote><p>Q0w</p></blockquote><hr>)`.
 - The other 8 emptyP cells of block-led shapes (`QRT`, `QRB`, `QRQ`, `QRTQ`, by click and by arrow) are compared for the letter as every other cell is, and pass. `QRQ`, whose rule stands before a block, passes too.
@@ -23,12 +23,14 @@ Measured at the branch (Task 16's work on 1c41131) and at `<base>` (SP/r1-base, 
 - Branch: the rule goes (one onChange, the write equals the paste at D18's caret with the rule removed: `W(<li><blockquote><p>Q0w</p></blockquote></li>)`), and the letter lands at the quote's end: `...<p>Q0wk</p>...`.
 - The oracle (the same paste at the point after the rule, the rule kept, then the rule taken out of the result) leaves the caret in the line after the rule, so its letter lands after the quote: `...</blockquote>k...`. `<base>`: the head runs away in these cells (fixture `failed: runaway`).
 - No rule names the caret when the paste inserts nothing and the rule goes. Pinned: the write and the count; the letter is not compared for these 16 cells. Candidates: (a) the branch's (5.8: after a node selection is removed, the caret is at the end of the content before it); (b) the line after the quote, where the paste's caret stood.
+- Ruled T37.2: (b). Where the paste inserts nothing, the rule goes and the caret stands where the rule was; the next letter lands in a line after the quote (`...</blockquote>k...`). 5.8's caret stays for a delete or a cut only (P16-8). Built: the empty line D18 made at the point after the rules keeps the caret as an emptied line does, at the commit and at a redo (`$notePasteHeldLine` in `rich-text-line-points.ts`, called from `$nodeSelectionPaste`); `rich-text-line-paste.ts` is not touched. The grid now compares the letter by the oracle in these 16 cells; the write and the count are unchanged. Named test: QR in `rich-text-line-node-selection.test.tsx`.
 
-## P16-4: the test of "the paste at D18's caret" keeps the rule, then takes it out
+## P16-4: the test of "the paste at D18's caret" keeps the rule, then takes it out (ruled T37.1: candidate (a), as built)
 
 - The task's row runs the oracle "as `then(at("T2w", 0), paste)` on the same shape with the rule removed first". Measured on the branch over the 213 cells: removing the rule first changes D18's caret wherever nothing but the item's end, a nested list or another block follows the rule (`QR`: the caret goes into the quote's text, `<blockquote><p>Q0wAq</p></blockquote>`), while the paste over the rule lands in a line after the quote (`<blockquote><p>Q0w</p></blockquote>Aq`, the prototype's 14.8 literal for the same cell).
 - Built: the oracle pastes at the point directly after the last selected rule on the same shape (`beside("horizontalrule", "after")`, resolved by D18 with the rule present) and takes the selected rules out of its write. With it, all 155 block-led HTML and own-node cells give the oracle's write; in `QRT` and the other cells where text follows the rule, both readings agree.
 - Candidates: (a) as built; (b) the task's reading (the rule removed first), under which 90 of the 155 cells differ (in the write or the letter after it).
+- Ruled T37.1: (a), the oracle as built.
 
 ## P16-5: the listener counts on the field's root
 
