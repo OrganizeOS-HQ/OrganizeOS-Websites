@@ -1400,13 +1400,24 @@ export type EditCase = {
   stored: string;
   place?: Step;
   action: Step;
-  write: string | null;
   calls?: number;
   caret?: string;
   typed?: string;
   fixedPoint?: boolean;
   source?: unknown;
-};
+} & (
+  | { write: string | null; writeMatches?: undefined }
+  | {
+      write?: undefined;
+      /**
+       * A write ruled by its properties, not by a literal: in place of the
+       * comparison with `write`, called with the value handed out (as the
+       * field wrote it). Every other check runs unchanged; `calls` defaults
+       * to 1.
+       */
+      writeMatches: (written: string) => void;
+    }
+);
 export type EditRecord = {
   write: string | null;
   calls: number;
@@ -1437,7 +1448,7 @@ const timed = async (step: Step) => {
 
 /** Mounts, places, acts, and records the write, undo and redo. */
 export const recordEdit = async (
-  edit: Omit<EditCase, "write" | "calls" | "caret" | "typed">,
+  edit: Pick<EditCase, "stored" | "place" | "action">,
   options: RecordOptions = {}
 ): Promise<EditRecord> => {
   let onChange = await mount(edit.stored);
@@ -1510,6 +1521,7 @@ export const recordEdit = async (
 export const expectEdit = async (edit: EditCase) => {
   const {
     write,
+    writeMatches,
     calls,
     caret,
     typed,
@@ -1518,8 +1530,13 @@ export const expectEdit = async (edit: EditCase) => {
     ...rest
   } = edit;
   const record = await recordEdit(rest, { typeAfter: typed !== undefined });
-  expect(record.calls, "calls").toBe(calls ?? (write === null ? 0 : 1));
-  expect(record.write, "write").toBe(write);
+  if (writeMatches === undefined) {
+    expect(record.calls, "calls").toBe(calls ?? (write === null ? 0 : 1));
+    expect(record.write, "write").toBe(write);
+  } else {
+    expect(record.calls, "calls").toBe(calls ?? 1);
+    writeMatches(writtenHtml);
+  }
   if (record.calls > 0) {
     expect(record.write, "D19: a write that changes the value").not.toBe(
       record.htmlBefore

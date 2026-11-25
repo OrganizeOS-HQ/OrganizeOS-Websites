@@ -31,13 +31,10 @@ import {
   LI,
   pasteHtml,
   range,
-  recordEdit,
   sameUpdate,
   W,
 } from "./rich-text-line-test-kit";
-import { editorOf, expectFixedPoint } from "./rich-text-test-harness";
 import {
-  exportRichTextHtml,
   registerRichTextTransforms,
   richTextHtmlConfig,
   richTextNodes,
@@ -233,48 +230,45 @@ describe("D3: lines that meet (5.8)", () => {
 
   test("D3 case 3: a heading's text joins a line that ends in a link, outside the link", async () => {
     // P30, ruled by its properties (D3 case 3, 5.8 "outside any link")
-    const record = await recordEdit({
+    await expectEdit({
       stored: LI('<a href="https://example.org/a">Aw</a><h3>H1w</h3>'),
       place: at("H1w", 0),
       action: backspace,
+      writeMatches: (written) => {
+        const body = new DOMParser().parseFromString(written, "text/html").body;
+        const middle = body.querySelectorAll("li")[1];
+        const link = middle.querySelector("a");
+        expect(link?.getAttribute("href"), written).toBe(
+          "https://example.org/a"
+        );
+        const walker = document.createTreeWalker(middle, NodeFilter.SHOW_TEXT);
+        let moved: Text | undefined;
+        for (
+          let node = walker.nextNode();
+          node !== null;
+          node = walker.nextNode()
+        ) {
+          if ((node as Text).data.includes("H1w")) {
+            moved = node as Text;
+            break;
+          }
+        }
+        expect(moved, `H1w in ${written}`).toBeDefined();
+        expect(moved!.parentElement?.closest("a"), "H1w in no a").toBeNull();
+        expect(moved!.parentElement?.closest("li"), "in the same li").toBe(
+          middle
+        );
+        // directly after the link: the li's child that holds it follows the a
+        let top: Node = moved!;
+        while (top.parentNode !== middle) {
+          top = top.parentNode!;
+        }
+        expect(top.previousSibling, written).toBe(link);
+        expect(top.textContent?.startsWith("H1w"), written).toBe(true);
+        expect(written.includes("<br"), written).toBe(false);
+      },
+      source: 'P30: derived (D3 case 3, 5.8 "outside any link"); measured',
     });
-    expect(record.calls, "calls").toBe(1);
-    expect(record.write, "D19: a write that changes the value").not.toBe(
-      record.htmlBefore
-    );
-    expect(record.undoRestores, "undo restores the state before").toBe(true);
-    expect(record.redoEquals, "redo equals the write").toBe(true);
-    expect(record.errors, "console errors").toEqual([]);
-    expect(record.slowest, "slowest step in ms").toBeLessThan(2000);
-    // after the redo the state is the write's
-    const written = exportRichTextHtml(editorOf()!);
-    expectFixedPoint(written);
-    const body = new DOMParser().parseFromString(written, "text/html").body;
-    const items = body.querySelectorAll("li");
-    const middle = items[1];
-    const link = middle.querySelector("a");
-    expect(link?.getAttribute("href")).toBe("https://example.org/a");
-    const texts: Text[] = [];
-    const walker = document.createTreeWalker(middle, NodeFilter.SHOW_TEXT);
-    for (
-      let node = walker.nextNode();
-      node !== null;
-      node = walker.nextNode()
-    ) {
-      texts.push(node as Text);
-    }
-    const moved = texts.find((text) => text.data.includes("H1w"));
-    expect(moved, "H1w").toBeDefined();
-    expect(moved!.parentElement?.closest("a"), "H1w in no a").toBeNull();
-    expect(moved!.parentElement?.closest("li"), "in the same li").toBe(middle);
-    // directly after the link: the li's child that holds it follows the a
-    let top: Node = moved!;
-    while (top.parentNode !== middle) {
-      top = top.parentNode!;
-    }
-    expect(top.previousSibling, written).toBe(link);
-    expect(top.textContent?.startsWith("H1w"), written).toBe(true);
-    expect(written.includes("<br")).toBe(false);
   });
 
   test("D3 case 3 in a quote: a code block's text joins the line before", async () => {
@@ -367,6 +361,18 @@ describe("D19 in a lined quote: the empty paragraph that holds the caret", () =>
       source: "from M36b, ruled T19.2",
     });
   });
+
+  test("D19 in a lined quote: a stored empty paragraph is not turned into a line by a later edit", async () => {
+    await expectEdit({
+      stored: "<blockquote><p>X0w</p>X1w<p></p></blockquote>",
+      place: at("X0w"),
+      action: enter,
+      write: "<blockquote><p>X0w</p><p></p>X1w<p></p></blockquote>",
+      caret: "element:paragraph@0",
+      source:
+        'derived (D19 "does not become a line later", from M36b): measured at <proto> and <base> (T12.9)',
+    });
+  });
 });
 
 describe("5.5: the lift and the line step", () => {
@@ -398,24 +404,20 @@ describe("5.5: the lift and the line step", () => {
   test("5.5: two paragraphs pasted into a nested item (the lift runs before the line step)", async () => {
     // the input and outline of rich-text-structure.test.tsx's "depth 2,
     // two paragraphs" (spec section 14)
-    const record = await recordEdit({
+    await expectEdit({
       stored: "<ul><li>a<ul><li>b</li><li>c</li></ul></li></ul>",
       place: at("b"),
       action: pasteHtml("<p>one</p><p>two</p>", "x"),
+      writeMatches: (written) => {
+        expect(outline(sanitizeRichTextHtml(written)), written).toEqual([
+          "1:a",
+          "2:bone",
+          "1:two",
+          "2:c",
+        ]);
+      },
+      source: "rich-text-structure.test.tsx, depth 2, two paragraphs (5.5)",
     });
-    expect(record.calls, "calls").toBe(1);
-    expect(record.undoRestores, "undo restores the state before").toBe(true);
-    expect(record.redoEquals, "redo equals the write").toBe(true);
-    expect(record.errors, "console errors").toEqual([]);
-    expect(record.slowest, "slowest step in ms").toBeLessThan(2000);
-    const written = exportRichTextHtml(editorOf()!);
-    expect(outline(sanitizeRichTextHtml(written)), written).toEqual([
-      "1:a",
-      "2:bone",
-      "1:two",
-      "2:c",
-    ]);
-    expectFixedPoint(written);
   });
 });
 

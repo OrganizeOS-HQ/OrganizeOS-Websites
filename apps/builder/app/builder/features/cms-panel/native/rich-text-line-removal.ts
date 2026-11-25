@@ -892,8 +892,6 @@ const deleteCommands: LexicalCommand<unknown>[] = [
 /** The other commands the removal mark is on whatever the selection. */
 const removeCommands: LexicalCommand<unknown>[] = [
   REMOVE_TEXT_COMMAND,
-  KEY_BACKSPACE_COMMAND,
-  KEY_DELETE_COMMAND,
 ] as LexicalCommand<unknown>[];
 
 /**
