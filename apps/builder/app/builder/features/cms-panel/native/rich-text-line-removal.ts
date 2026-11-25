@@ -44,7 +44,7 @@ import {
   holdsSelection,
   isBlockDecorator,
   isLineBreak,
-  isLineContainer,
+  isListItemOrQuote,
   isLinedContainer,
   lineSpike,
 } from "./rich-text-line-node";
@@ -219,7 +219,10 @@ const $joinsInlineContent = (block: ElementNode) => {
  * that direction runs from beside the element, as at the edge of the same
  * text unwrapped.
  */
-export const $caretBesideInlineEdge = (isBackward: boolean, character: boolean) => {
+export const $caretBesideInlineEdge = (
+  isBackward: boolean,
+  character: boolean
+) => {
   const selection = $getSelection();
   if (
     $isRangeSelection(selection) === false ||
@@ -870,7 +873,10 @@ export const $joinRestOfItem = (item: ElementNode) => {
  * detached goes, as an item or quote does (K12).
  */
 export const $dropEmptiedBlockInContainer = (block: ElementNode) => {
-  if (lineSpike.on === false || isLineContainer(block.getParent()) === false) {
+  if (
+    lineSpike.on === false ||
+    isListItemOrQuote(block.getParent()) === false
+  ) {
     return;
   }
   $dropEmptied(block);
@@ -1079,6 +1085,13 @@ export const $removalMark = (
   if (deleteCommands.includes(command)) {
     return $tagRemoval(payload as boolean);
   }
+  // the two key commands pass their direction, as the delete commands do
+  if (command === KEY_BACKSPACE_COMMAND) {
+    return $tagRemoval(true);
+  }
+  if (command === KEY_DELETE_COMMAND) {
+    return $tagRemoval(false);
+  }
   if (removeCommands.includes(command)) {
     return $tagRemoval(undefined);
   }
@@ -1100,10 +1113,7 @@ export const $nothingHeldKey = (event: KeyboardEvent | null): boolean => {
     return false;
   }
   const moved = selection.clone();
-  if (
-    $lastPointToBlockEnd(moved) === false ||
-    moved.isCollapsed() === false
-  ) {
+  if ($lastPointToBlockEnd(moved) === false || moved.isCollapsed() === false) {
     return false;
   }
   event?.preventDefault();

@@ -50,7 +50,7 @@ import {
   $nodeSelectionPaste,
   $typeIntoLine,
 } from "./rich-text-line-node-selection";
-import { pointRules } from "./rich-text-line-points";
+import { pointRules, registerCaretLineMark } from "./rich-text-line-points";
 import {
   $enterInHeading,
   $enterRangeWithBreak,
@@ -562,6 +562,7 @@ export const registerRichTextCommands = (
         PRIORITIES[priority]
       );
     }),
+    registerCaretLineMark(editor),
     points.register()
   );
 };

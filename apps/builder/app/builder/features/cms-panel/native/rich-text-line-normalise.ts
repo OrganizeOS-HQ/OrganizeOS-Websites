@@ -2,7 +2,7 @@
 import { CodeNode } from "@lexical/code";
 import { LinkNode } from "@lexical/link";
 import { $isListItemNode, ListItemNode } from "@lexical/list";
-import { HeadingNode, QuoteNode } from "@lexical/rich-text";
+import { $isQuoteNode, HeadingNode, QuoteNode } from "@lexical/rich-text";
 import { mergeRegister } from "@lexical/utils";
 import {
   $copyNode,
@@ -32,7 +32,7 @@ import {
   isBlockDecorator,
   isInlineContent,
   isLineBreak,
-  isLineContainer,
+  isListItemOrQuote,
   linesOff,
   lineSpike,
   setPoint,
@@ -202,12 +202,67 @@ const $caretAfterRemovedNode = (node: LexicalNode, inside: boolean) => {
 };
 
 /**
+ * Whether this update left the paragraph empty: it is not in the state
+ * before this update, or it was not empty there (public API).
+ */
+const $leftEmptyByThisUpdate = (paragraph: ParagraphNode) => {
+  const key = paragraph.getKey();
+  return $getEditor()
+    .getEditorState()
+    .read(() => {
+      const before = $getNodeByKey(key);
+      return $isElementNode(before) === false || before.isEmpty() === false;
+    });
+};
+
+/**
+ * D19 in a lined quote, for any edit: an empty paragraph directly in the
+ * quote that this update left empty and that holds no point of the
+ * selection becomes a line of one line break (two where inline content
+ * without a closing break stands directly before it). An empty paragraph
+ * that was empty before this update stays, as one that holds a point does:
+ * it does not become a line later, and a stored one stays when the field
+ * opens (the state before the load is empty). True when it made a line.
+ */
+const $emptyParagraphsToLines = (quote: ElementNode) => {
+  if (
+    $isQuoteNode(quote) === false ||
+    quote.isAttached() === false ||
+    quote.getChildren().some($isCmsLineNode) === false ||
+    $getEditor().getEditorState().isEmpty()
+  ) {
+    return false;
+  }
+  let made = false;
+  for (const child of quote.getChildren()) {
+    if (
+      $isParagraphNode(child) &&
+      child.isEmpty() &&
+      holdsSelection(child) === false &&
+      $leftEmptyByThisUpdate(child)
+    ) {
+      $paragraphToLine(child);
+      made = true;
+    }
+  }
+  return made;
+};
+
+/**
  * The container's inline runs each in one line when it holds a block, and
  * no line when it holds none. Lines that meet join as the texts would join
  * with no line between them: no line break is added. An empty line holding
- * no point of the selection goes.
+ * no point of the selection goes. In a quote that is lined after this,
+ * D19's empty paragraphs become lines, and the runs are read again.
  */
 export const $normaliseLines = (container: ElementNode) => {
+  $normaliseLineRuns(container);
+  if ($emptyParagraphsToLines(container)) {
+    $normaliseLineRuns(container);
+  }
+};
+
+const $normaliseLineRuns = (container: ElementNode) => {
   if ($isListItemNode(container)) {
     for (const child of container.getChildren()) {
       // a paragraph holding a block waits for its lift
@@ -343,29 +398,74 @@ export const $normaliseLines = (container: ElementNode) => {
 /**
  * A line that comes to hold a non-inline child splits around it: the child
  * goes to the container between the two halves, and an empty half goes.
+ * An element point on the line goes with what it stands before: offset k
+ * to the half that holds child k, or to the end of the half before when
+ * child k is the non-inline child (5.8); with no half before, to the start
+ * of the half after, and with neither, to the container beside the child.
  */
-const $splitAroundBlocks = (line: CmsLineNode) => {
+export const $splitAroundBlocks = (line: CmsLineNode) => {
   const children = line.getChildren();
   if (children.every((child) => isInlineContent(child))) {
     return;
   }
+  const onLine = elementPoints().filter((point) => point.key === line.getKey());
+  // where each child position of the line lands
+  const places: Array<{ key: string; offset: number } | null> = [];
+  const pending: number[] = [];
   let last: LexicalNode = line;
   let half: CmsLineNode | null = null;
-  for (const child of children) {
+  for (const [index, child] of children.entries()) {
     if (isInlineContent(child)) {
       if (half === null) {
         half = $createCmsLineNode();
         last.insertAfter(half);
         last = half;
+        // a block's position with no half before it: the start of this half
+        for (const at of pending.splice(0)) {
+          places[at] = { key: half.getKey(), offset: 0 };
+        }
       }
+      places[index] = { key: half.getKey(), offset: half.getChildrenSize() };
       half.append(child);
     } else {
+      if (half !== null) {
+        places[index] = {
+          key: half.getKey(),
+          offset: half.getChildrenSize(),
+        };
+      } else {
+        places[index] = null;
+        pending.push(index);
+      }
       last.insertAfter(child);
       last = child;
       half = null;
     }
   }
+  // the line's end: the end of the last half when it ends the line
+  const end = half as CmsLineNode | null;
+  places[children.length] =
+    end === null ? null : { key: end.getKey(), offset: end.getChildrenSize() };
+  if (end === null) {
+    pending.push(children.length);
+  }
   line.remove();
+  for (const point of onLine) {
+    const at = Math.min(point.offset, children.length);
+    let to = places[at];
+    if (to === null || to === undefined) {
+      // no half before and none after: beside the child, in the container
+      const child = children[Math.min(at, children.length - 1)];
+      const parent = child.getParent();
+      if (parent === null) {
+        continue;
+      }
+      const index =
+        child.getIndexWithinParent() + (at >= children.length ? 1 : 0);
+      to = { key: parent.getKey(), offset: index };
+    }
+    setPoint(point.which, to.key, to.offset);
+  }
 };
 
 const $keepLineInPlace = (line: CmsLineNode) => {
@@ -373,7 +473,7 @@ const $keepLineInPlace = (line: CmsLineNode) => {
     return;
   }
   const parent = line.getParent();
-  if (isLineContainer(parent)) {
+  if (isListItemOrQuote(parent)) {
     $splitAroundBlocks(line);
     $normaliseLines(parent);
     return;
