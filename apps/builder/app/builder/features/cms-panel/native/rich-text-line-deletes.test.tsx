@@ -538,6 +538,90 @@ const ROWS: Row[] = [
     caret: "text:PwX1w@2",
     source: "from M2b (ruled base); 5.8",
   },
+  // the line form at the same first lines: measured, <base> writes the same
+  {
+    name: "a nested first item's line, line form",
+    stored: "<ul><li>Aw<ul><li>T0w<hr></li><li>Nw</li></ul></li></ul>",
+    place: at("T0w", 0),
+    action: lineBack,
+    write: "<ul><li>AwT0w<hr /><ul><li>Nw</li></ul></li></ul>",
+    caret: "text:AwT0w@2",
+    source: "measured: <base> writes the same",
+  },
+  {
+    name: "a quote's first line, line form",
+    stored: "<p>Pw</p><blockquote>X1w<hr></blockquote>",
+    place: at("X1w", 0),
+    action: lineBack,
+    write: "<p>PwX1w</p><hr />",
+    caret: "text:PwX1w@2",
+    source: "measured: <base> writes the same",
+  },
+  {
+    name: "a quote with a paragraph, line form",
+    stored: "<p>Pw</p><blockquote>X1w<p>X2w</p></blockquote>",
+    place: at("X1w", 0),
+    action: lineBack,
+    write: "<p>PwX1w</p><p>X2w</p>",
+    caret: "text:PwX1w@2",
+    source: "measured: <base> writes the same",
+  },
+  {
+    name: "a quote with a line break in its first line, Backspace",
+    stored: "<p>Pw</p><blockquote>X1w<br>X2w</blockquote>",
+    place: at("X1w", 0),
+    action: backspace,
+    write: "<p>PwX1w<br />X2w</p>",
+    caret: "text:PwX1w@2",
+    source: "measured: <base> writes the same",
+  },
+  {
+    name: "a quote with a line break in its first line, word form",
+    stored: "<p>Pw</p><blockquote>X1w<br>X2w</blockquote>",
+    place: at("X1w", 0),
+    action: wordBack,
+    write: "<p>PwX1w<br />X2w</p>",
+    caret: "text:PwX1w@2",
+    source: "measured: <base> writes the same",
+  },
+  // a code block or a heading in a root quote after a root rule is not
+  // 16.10's shape: the head's delete (measured, <base> writes the same)
+  {
+    name: "a code block in a root quote after a root rule, Backspace at its start",
+    stored: "<hr><blockquote><pre><code>C0w</code></pre></blockquote>",
+    place: at("C0w", 0),
+    action: backspace,
+    write: "<hr /><blockquote><p>C0w</p></blockquote>",
+    caret: "text:C0w@0",
+    source: "measured: <base> writes the same",
+  },
+  {
+    name: "the same, word form",
+    stored: "<hr><blockquote><pre><code>C0w</code></pre></blockquote>",
+    place: at("C0w", 0),
+    action: wordBack,
+    write: null,
+    caret: "text:C0w@0",
+    source: "measured: <base> writes the same",
+  },
+  {
+    name: "the same, line form",
+    stored: "<hr><blockquote><pre><code>C0w</code></pre></blockquote>",
+    place: at("C0w", 0),
+    action: lineBack,
+    write: null,
+    caret: "text:C0w@0",
+    source: "measured: <base> writes the same",
+  },
+  {
+    name: "a heading in a root quote after a root rule, line form at its start",
+    stored: "<hr><blockquote><h3>H0w</h3></blockquote>",
+    place: at("H0w", 0),
+    action: lineBack,
+    write: null,
+    caret: "text:H0w@0",
+    source: "measured: <base> writes the same",
+  },
 ];
 
 describe("deletes at a resolved caret (D3 fourth case, D9, D5, V5, V6, V12, KS1 to KS4)", () => {
@@ -703,6 +787,31 @@ describe("the delete cells at an empty line (5.3, 5.7)", () => {
       }
     }
   }
+});
+
+describe("an empty line outside 5.3's join cells keeps Lexical's word and line delete", () => {
+  // the first item's empty first line before a rule, no item before:
+  // measured, <base> writes the same
+  const FIRST = "<ul><li><hr>T1w</li><li>Nw</li></ul>";
+  test("the first item's empty first line, word form backward", async () => {
+    await expectEdit({
+      stored: FIRST,
+      place: itemPoint(0, 0),
+      action: wordBack,
+      write: null,
+      source: "measured: <base> writes the same",
+    });
+  });
+  test("the first item's empty first line, line form backward: the value stays", async () => {
+    const record = await recordEdit({
+      stored: FIRST,
+      place: itemPoint(0, 0),
+      action: lineBack,
+    });
+    expect(record.write ?? record.htmlBefore).toBe(
+      "<ul><li><hr />T1w</li><li>Nw</li></ul>"
+    );
+  });
 });
 
 describe("F2 in R1, and check 5's delete rules (Step 1b)", () => {

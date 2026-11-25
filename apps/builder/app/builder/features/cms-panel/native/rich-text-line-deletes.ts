@@ -1,7 +1,7 @@
 // The delete rules at a resolved caret and round 14's delete forms at a line's edge.
 import { $isCodeNode } from "@lexical/code";
 import { $isListItemNode } from "@lexical/list";
-import { $isQuoteNode } from "@lexical/rich-text";
+import { $isHeadingNode, $isQuoteNode } from "@lexical/rich-text";
 import { $findMatchingParent } from "@lexical/utils";
 import {
   $getEditor,
@@ -92,11 +92,22 @@ export const $emptyLine = (
     beside.remove();
     return true;
   }
-  // no rule that way: the line is the container's first or last
-  // line, and Lexical's own delete runs from it, with D5's join
-  // carrying the item's rest; a word or line form joins as the
-  // character form does (RR@2 lineForward: no word of Nw goes)
-  if (command !== DELETE_CHARACTER_COMMAND) {
+  // no rule that way: Lexical's own delete runs from the line. The join
+  // cells of 5.3 (TR@2 and RR@2 forward, RT@0 and RR@0 backward: a rule on
+  // the line's other side, the item's edge that way and an item beyond)
+  // give the word and line forms the character form's join, with D5's join
+  // carrying the item's rest (RR@2 lineForward: no word of Nw goes); every
+  // other empty line keeps Lexical's own word and line delete
+  const behind = isBackward ? line.getNextSibling() : line.getPreviousSibling();
+  if (
+    command !== DELETE_CHARACTER_COMMAND &&
+    beside === null &&
+    isBlockDecorator(behind) &&
+    $isListItemNode(container) &&
+    $isListItemNode(
+      isBackward ? container.getPreviousSibling() : container.getNextSibling()
+    )
+  ) {
     $getEditor().dispatchCommand(DELETE_CHARACTER_COMMAND, isBackward);
     return true;
   }
@@ -349,8 +360,8 @@ export const $itemStartJoin = (isBackward: boolean): boolean => {
 };
 
 /**
- * A collapsed caret at the content edge of a block at the root (or of a
- * root quote's first or last block) in a direction, with a rule at the
+ * A collapsed caret at the content edge of a root paragraph or heading (or
+ * of a paragraph that is a root quote's first or last block) in a direction, with a rule at the
  * root directly beside that block and nothing beyond the rule: the rule,
  * and whether a quote stands between. The caret's edge is read through
  * inline elements ($atContentEdge).
@@ -396,6 +407,15 @@ const $rootRuleBeside = (isBackward: boolean) => {
     }
     top = parent;
     inQuote = true;
+  }
+  // the fixture's shapes only (base-key-changes-nothing): a paragraph in
+  // a root quote, a root heading or a root paragraph; any other block (a
+  // code block, a heading in a quote) keeps the head's delete
+  if (
+    $isParagraphNode(block) === false &&
+    (inQuote || $isHeadingNode(block) === false)
+  ) {
+    return null;
   }
   const rule = isBackward ? top.getPreviousSibling() : top.getNextSibling();
   // a rule with content beyond it is the head's to step past (it joins

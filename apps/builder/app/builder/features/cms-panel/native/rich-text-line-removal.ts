@@ -101,6 +101,13 @@ const REMOVAL_END_TAG = "cms-removal-end:";
 
 export const BREAK_AFTER_TAG = "cms-break-after:";
 
+/**
+ * A removal made by a backward delete at a collapsed caret (Backspace, its
+ * word and line forms): the first line's join of 5.8 (M1b, M2a, M2b) acts
+ * for these only, never for a removal over a range.
+ */
+const COLLAPSED_BACK_TAG = "cms-collapsed-back";
+
 /** A paste the line code runs over a node selection (Lexical's own paste is tagged "paste"). */
 export const PASTE_OVER_NODE_MARK = "cms-paste-over-node";
 
@@ -1070,6 +1077,12 @@ export const $joinRestOfItem = (item: ElementNode) => {
   const list = item.getParent();
   const wrapper = list?.getParent() ?? null;
   const outer = $isListItemNode(wrapper) ? wrapper.getPreviousSibling() : null;
+  // the two joins below are 5.8's first line, a backward delete at a
+  // collapsed caret; a removal over a range leaves the item or quote as it
+  // was (T31: a removal joins only the rows its range starts and ends in)
+  if ($hasMark(COLLAPSED_BACK_TAG) === false) {
+    return false;
+  }
   if (
     $isListItemNode(item) &&
     before === null &&
@@ -1335,6 +1348,14 @@ export const $removalMark = (
         : undefined;
   const removes = isDelete || removeCommands.includes(command);
   const selection = $getSelection();
+  if (
+    $isRangeSelection(selection) &&
+    selection.isCollapsed() &&
+    isBackward === true &&
+    deleteCommands.includes(command)
+  ) {
+    $mark(COLLAPSED_BACK_TAG);
+  }
   if ($isRangeSelection(selection) === false) {
     // a node selection: the delete and remove commands mark it
     if (removes) {

@@ -852,6 +852,59 @@ describe("T32.2: T30.2 applies from the block the range starts in, wherever it s
   }
 });
 
+describe("T31: a range from a block into a root quote's first line joins only that line; the quote's rest stays", () => {
+  const QP = "<p>Pw</p><blockquote>X1w<p>X2w</p></blockquote>";
+  const QB = "<p>Pw</p><blockquote>X1w<br>X2w</blockquote>";
+  const cells: Array<[string, string, Step, string, string]> = [
+    [
+      "a letter, the quote's rest a paragraph",
+      QP,
+      letter,
+      "<p>Pk1w</p><blockquote><p>X2w</p></blockquote>",
+      "T31's row principle",
+    ],
+    [
+      "Backspace, the quote's rest a paragraph",
+      QP,
+      backspace,
+      "<p>P1w</p><blockquote><p>X2w</p></blockquote>",
+      "T31's row principle",
+    ],
+    [
+      "a cut, the quote's rest a paragraph",
+      QP,
+      cut,
+      "<p>P1w</p><blockquote><p>X2w</p></blockquote>",
+      "T31's row principle",
+    ],
+    [
+      "a letter, the line led on by a line break",
+      QB,
+      letter,
+      "<p>Pk1w<br />X2w</p>",
+      "measured: <base> writes the same",
+    ],
+    [
+      "Backspace, the line led on by a line break",
+      QB,
+      backspace,
+      "<p>P1w<br />X2w</p>",
+      "measured: <base> writes the same",
+    ],
+  ];
+  for (const [name, stored, action, write, source] of cells) {
+    test(name, async () => {
+      await expectEdit({
+        stored,
+        place: range("Pw", 1, "X1w", 1),
+        action,
+        write,
+        source,
+      });
+    });
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Step 1b: a removal removes what its range holds (5.4; T10.2, T10.5, T9.2 E)
 
