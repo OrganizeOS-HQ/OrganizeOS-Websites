@@ -23,16 +23,18 @@ import {
 } from "lexical";
 import {
   at,
+  button,
   caretKey,
   cutByKey,
   expectEdit,
   forceOrder,
   IMG,
-  nodeSelect,
   keys,
   letter,
   LI,
+  link,
   mount,
+  nodeAfter,
   noWait,
   recordEdit,
   short,
@@ -488,9 +490,13 @@ const watchStep = () => {
 };
 
 const LINK = '<a href="https://example.org/l">Lw</a>';
-// measured equal at <base>, <proto> and the branch; the link's Enter and
-// Backspace differ at <base> (P11-2, P11-3: not pinned until ruled)
 const NOT_MOVED_WRITES: Record<string, string> = {
+  // T29.5: the carry's writes (the link kept); <base> loses the link on
+  // Backspace and writes an empty paragraph on Enter
+  "link Enter":
+    "<ul><li>Pw</li><li><br /><h3><a>Lw</a>X0w</h3>T1w</li><li>Nw</li></ul>",
+  "link Backspace": "<ul><li>Pw<a>Lw</a>X0w</li><li>T1w</li><li>Nw</li></ul>",
+  // equal at <base>, <proto> and the branch
   "pending format":
     "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>T2wx<b><strong>y</strong></b></li><li>Nw</li></ul>",
   "field focus":
@@ -521,7 +527,7 @@ describe("15.12: the page has not moved, the step does nothing", () => {
       expect(seen[0].atKey).toBe("heading@0[link]->heading@0[link] format=0");
       expect(seen[0].page).toBe('"Lw"@0->"Lw"@0 format=0');
       expect(seen[0].atKey).toBe(seen[0].before);
-      expect(written(onChange)).not.toBe("none");
+      expect(written(onChange)).toBe(NOT_MOVED_WRITES[`link ${key}`]);
     }
   );
 
@@ -539,23 +545,22 @@ describe("15.12: the page has not moved, the step does nothing", () => {
     expect(written(onChange)).toBe(NOT_MOVED_WRITES["pending format"]);
   });
 
+  // a state only code makes (T27, T28): the field's Shift step resolves a
+  // focus beside a rule to the quote's text (T29.7), so the element focus
+  // on the quote is set directly, after a real click
   test("a focus the field set", async () => {
     const onChange = await mount(LI(BQ("Q0w") + "<hr>T2w"));
     await at("Nw", 0)();
-    const focusIsQuote = () =>
-      editorOf()!
-        .getEditorState()
-        .read(() => {
-          const selection = $getSelection();
-          return (
-            $isRangeSelection(selection) &&
-            selection.focus.type === "element" &&
-            selection.focus.getNode().getType() === "quote"
-          );
-        });
-    for (let press = 0; press < 10 && focusIsQuote() === false; press += 1) {
-      await keys("{Shift>}{ArrowLeft}{/Shift}")();
-    }
+    await act(async () => {
+      editorOf()!.update(() => {
+        const selection = $getSelection();
+        const quote = all().find((node) => node.getType() === "quote")!;
+        if ($isRangeSelection(selection)) {
+          selection.focus.set(quote.getKey(), 1, "element");
+        }
+      });
+    });
+    await settle();
     const { seen, unregister } = watchStep();
     await keys("k")();
     unregister();
@@ -614,12 +619,16 @@ describe("the two event orders forced", () => {
 });
 
 describe("a page range that appears where Lexical last left none is not read back", () => {
+  // a real gesture: ArrowRight from the end of `Aw` node-selects the image;
+  // the page keeps its range where Lexical's node selection sets none
   test("a letter typed beside a node-selected image lands beside the image, 20 runs", async () => {
     const writes = new Set<string>();
     for (let time = 0; time < 20; time += 1) {
-      const onChange = await mount(`<p>Aw${IMG}Bw</p>`);
-      await nodeSelect("cms-image")();
+      const onChange = await mount(`<p>Aw${IMG40}Bw</p>`);
+      await nodeAfter("Aw")();
       expect(caretKey()).toBe("node:cms-image");
+      // the page holds a range Lexical's node selection did not set
+      expect(window.getSelection()!.rangeCount).toBe(1);
       await letter();
       writes.add(written(onChange));
     }
@@ -907,25 +916,35 @@ type KeeperCell = {
   bySite: Step;
   /** The same rule node-selected from text, with no such update. */
   fromText: Step;
+  /**
+   * Whether the node selection and a page range stand when the key comes:
+   * false where the real gesture leaves the page no range (a press on a
+   * rule selects it with no page range) or ends the node selection (the
+   * Image popover's Escape leaves a caret beside the image)
+   */
+  holds: boolean;
 };
 
 const KEEPER_CELLS: KeeperCell[] = [
   // the after-commit removal of the line the selection left: an arrow from
   // an empty caret line selects the rule
   {
-    name: "the after-commit removal: a caret line before a leading rule, ArrowRight",
+    name: "the after-commit removal of a line the selection left: a caret line before a leading rule, ArrowRight",
+    holds: true,
     stored: LI("<hr>T1w"),
     bySite: then(() => caretLineAt(0), keys("{ArrowRight}")),
     fromText: then(at("T1w", 0), () => arrowUntilSelected("{ArrowLeft}")),
   },
   {
-    name: "the after-commit removal: a caret line between two rules, ArrowLeft",
+    name: "the after-commit removal of a line the selection left: a caret line between two rules, ArrowLeft",
+    holds: true,
     stored: LI("<hr><hr>T2w"),
     bySite: then(() => caretLineAt(1), keys("{ArrowLeft}")),
     fromText: then(at("Pw", 2), () => arrowUntilSelected("{ArrowRight}")),
   },
   {
-    name: "the after-commit removal: a caret line between two rules, ArrowRight",
+    name: "the after-commit removal of a line the selection left: a caret line between two rules, ArrowRight",
+    holds: true,
     stored: LI("<hr><hr>T2w"),
     bySite: then(() => caretLineAt(1), keys("{ArrowRight}")),
     fromText: then(at("T2w", 0), () => arrowUntilSelected("{ArrowLeft}")),
@@ -933,7 +952,8 @@ const KEEPER_CELLS: KeeperCell[] = [
   // the kept-line removal and the press's end: a press on a rule with a
   // caret line kept beside it, or in another item
   {
-    name: "the kept-line removal and the press's end: the kept line directly after the rule",
+    name: "the press's end, then the kept-line removal at the keydown read-back: the kept line directly after the rule",
+    holds: false,
     stored: LI("<hr><hr>T2w"),
     bySite: then(
       () => caretLineAt(1),
@@ -946,7 +966,8 @@ const KEEPER_CELLS: KeeperCell[] = [
     fromText: then(at("Pw", 2), () => arrowUntilSelected("{ArrowRight}")),
   },
   {
-    name: "the kept-line removal and the press's end: the kept line in another item",
+    name: "the press's end, then the kept-line removal at the keydown read-back: the kept line in another item",
+    holds: false,
     stored: "<ul><li>Pw</li><li><hr>T1w</li><li><hr>T2w</li><li>Nw</li></ul>",
     bySite: then(
       () => caretLineAt(0),
@@ -957,6 +978,66 @@ const KEEPER_CELLS: KeeperCell[] = [
       }
     ),
     fromText: then(at("T2w", 0), () => arrowUntilSelected("{ArrowLeft}")),
+  },
+  // removeKeptLines from the toolbar: a press on the rule with a caret line
+  // kept beside it, then Bold
+  {
+    name: "removeKeptLines from the toolbar: Bold with a kept line beside the rule",
+    holds: true,
+    stored: LI("<hr><hr>T2w"),
+    bySite: then(
+      () => caretLineAt(1),
+      async () => {
+        await realPress(centre(editable()!.querySelectorAll("hr")[0]));
+        expect(emptyLines()).toBe(1);
+      },
+      button("Bold")
+    ),
+    fromText: then(
+      at("Pw", 2),
+      () => arrowUntilSelected("{ArrowRight}"),
+      button("Bold")
+    ),
+  },
+  // removeKeptLines from the Link popover's Apply
+  {
+    name: "removeKeptLines from the Link popover: Apply with a kept line beside the rule",
+    holds: true,
+    stored: LI("<hr><hr>T2w"),
+    bySite: then(
+      () => caretLineAt(1),
+      async () => {
+        await realPress(centre(editable()!.querySelectorAll("hr")[0]));
+        expect(emptyLines()).toBe(1);
+      },
+      link()
+    ),
+    fromText: then(
+      at("Pw", 2),
+      () => arrowUntilSelected("{ArrowRight}"),
+      link()
+    ),
+  },
+  // removeKeptLines from the Image popover: a press on the image with a
+  // caret line kept in another item, a letter in Alt, then Escape
+  {
+    name: "removeKeptLines from the Image popover: Alt with a kept line in another item",
+    holds: false,
+    stored: `<ul><li>Pw</li><li><hr><hr>T2w</li><li>Nw</li></ul><p>A${IMG40}B</p>`,
+    bySite: then(
+      () => caretLineAt(1),
+      async () => {
+        await realPress(centre(editable()!.querySelector("img")!));
+        expect(emptyLines()).toBe(1);
+      },
+      keys("x"),
+      keys("{Escape}")
+    ),
+    fromText: then(
+      async () => realPress(centre(editable()!.querySelector("img")!)),
+      keys("x"),
+      keys("{Escape}")
+    ),
   },
 ];
 
@@ -977,18 +1058,42 @@ describe("the page-range keeper", () => {
           const onChange = await mount(cell.stored);
           await place();
           const rule = selectedRule();
-          expect(rule).not.toBe(-1);
+          const pageRanges = window.getSelection()!.rangeCount;
+          const selected = walkSel();
           await keys(next === "a letter" ? "k" : "{Backspace}")();
           return {
             write: written(onChange),
             selection: walkSel(),
             lines: emptyLines(),
             rule,
+            pageRanges,
+            selected,
           };
         };
         const fromText = await run(cell.fromText);
-        expect(await run(cell.bySite)).toEqual(fromText);
+        const bySite = await run(cell.bySite);
+        // the node selected, and the page's range kept through the site,
+        // where the site's gesture leaves the page a range (`holds`)
+        if (cell.holds) {
+          expect(bySite.selected).toMatch(/^node:/);
+          expect(bySite.pageRanges).toBe(1);
+        }
+        const { pageRanges: _site, ...siteResult } = bySite;
+        const { pageRanges: _text, ...textResult } = fromText;
+        expect(siteResult).toEqual(textResult);
       });
     }
   }
+});
+
+// the check after a commit: the commit that node-selects the rule by an
+// arrow runs the check with the node selection current; the letter is
+// D15's (M14l's typed value)
+test("the page-range keeper: the check after a commit, then a letter after the selected rule", async () => {
+  const onChange = await mount("<ul><li>xq<hr>yq</li></ul>");
+  await nodeAfter("xq")();
+  expect(caretKey()).toBe("node:horizontalrule");
+  expect(window.getSelection()!.rangeCount).toBe(1);
+  await letter();
+  expect(written(onChange)).toBe("<ul><li>xq<hr />kyq</li></ul>");
 });

@@ -28,7 +28,11 @@ import {
   then,
 } from "./rich-text-line-test-kit";
 import { editorOf, lastHtml, settle } from "./rich-text-test-harness";
-import { walkOf, walksRuleCells } from "./rich-text-line-cells-walks-rule";
+import {
+  RULE_NAMED,
+  walkOf,
+  walksRuleCells,
+} from "./rich-text-line-cells-walks-rule";
 import {
   MOST_PRESSES,
   pageEdge,
@@ -599,6 +603,12 @@ describe("V10: the arrow walks (M28)", () => {
     V10_WRITES.map(([id, write, caret]) => ({ ...parse(id), write, caret }))
   )("V10 $shape $count presses", async ({ shape, count, write, caret }) => {
     const [stored, dir, start] = WALKS[shape];
+    // the presses hand out nothing
+    const onChange = await mount(stored);
+    await start();
+    onChange.mockClear();
+    await presses(count, `{Arrow${dir}}`)();
+    expect(onChange).not.toHaveBeenCalled();
     await expectEdit({
       stored,
       // the walk is the place: one undo takes the letter back to the
@@ -759,189 +769,51 @@ describe("B: an arrow from a block's text edge to a rule beside the block", () =
   });
 });
 
-// The walks past a rule beside a block against `base-walks-rule`. A cell
-// equals its fixture cell, except:
-// - "shorter": the head stops on the item point beside the block and at
-//   the block's edge, one caret under D18 (5.3), so the build's walk is one
-//   press shorter there: the cell equals the head's next press;
-// - D15: the build node-selects the rule where the head does (or one press
-//   earlier), and the letter lands directly after the rule where the head's
-//   lands at the start of `Pw` (the build's letter, its class's form);
-// - the P records of p-records-task11.md (the head's walk cycles back to the
-//   block, K8, where the build's goes on into the next item; QRQ's left walk,
-//   where the head's first press stays): not asserted until ruled.
-const RULE_NAMED: Record<string, "shorter" | "P" | { D15: string }> = {
-  "QR-Right-1": {
-    D15: "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />k</li><li>Nw</li></ul>",
-  },
-  "QR-Right-2": "shorter",
-  "QR-Right-3": "P",
-  "QR-Right-4": "P",
-  "QR-Right-5": "P",
-  "QR-Left-2": {
-    D15: "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />k</li><li>Nw</li></ul>",
-  },
-  "QRT-Right-1": {
-    D15: "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />kT2w</li><li>Nw</li></ul>",
-  },
-  "QRT-Right-2": "shorter",
-  "QRT-Right-3": "shorter",
-  "QRT-Right-4": "shorter",
-  "QRT-Right-5": "shorter",
-  "QRT-Left-1": {
-    D15: "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />kT2w</li><li>Nw</li></ul>",
-  },
-  "TQRT-Right-1": {
-    D15: "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote><hr />kT3w</li><li>Nw</li></ul>",
-  },
-  "TQRT-Right-2": "shorter",
-  "TQRT-Right-3": "shorter",
-  "TQRT-Right-4": "shorter",
-  "TQRT-Right-5": "shorter",
-  "TQRT-Left-1": {
-    D15: "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote><hr />kT3w</li><li>Nw</li></ul>",
-  },
-  "BQR-Right-1": {
-    D15: "<ul><li>Pw</li><li><br /><blockquote><p>Q1w</p></blockquote><hr />k</li><li>Nw</li></ul>",
-  },
-  "BQR-Right-2": "shorter",
-  "BQR-Right-3": "P",
-  "BQR-Right-4": "P",
-  "BQR-Right-5": "P",
-  "BQR-Left-2": {
-    D15: "<ul><li>Pw</li><li><br /><blockquote><p>Q1w</p></blockquote><hr />k</li><li>Nw</li></ul>",
-  },
-  "QQR-Right-1": {
-    D15: "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><blockquote><p>Q1w</p></blockquote><hr />k</li><li>Nw</li></ul>",
-  },
-  "QQR-Right-2": "shorter",
-  "QQR-Right-3": "P",
-  "QQR-Right-4": "P",
-  "QQR-Right-5": "P",
-  "QQR-Left-2": {
-    D15: "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><blockquote><p>Q1w</p></blockquote><hr />k</li><li>Nw</li></ul>",
-  },
-  "QRB-Right-1": {
-    D15: "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />k<br /></li><li>Nw</li></ul>",
-  },
-  "QRB-Right-2": "shorter",
-  "QRB-Right-3": "shorter",
-  "QRB-Right-4": "shorter",
-  "QRB-Right-5": "shorter",
-  "QRB-Left-3": {
-    D15: "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />k<br /></li><li>Nw</li></ul>",
-  },
-  "QRL-Right-1": {
-    D15: "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />k<ul><li>L2w</li></ul></li><li>Nw</li></ul>",
-  },
-  "QRL-Right-2": "shorter",
-  "QRL-Right-3": "P",
-  "QRL-Right-4": "P",
-  "QRL-Right-5": "P",
-  "QRL-Left-2": {
-    D15: "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />k<ul><li>L2w</li></ul></li><li>Nw</li></ul>",
-  },
-  "QRQ-Right-1": "P",
-  "QRQ-Right-2": "shorter",
-  "QRQ-Right-3": "shorter",
-  "QRQ-Right-4": "shorter",
-  "QRQ-Right-5": "shorter",
-  "QRQ-Left-1": "P",
-  "QRQ-Left-2": "P",
-  "QRQ-Left-3": "shorter",
-  "QRQ-Left-4": "shorter",
-  "QRQ-Left-5": "P",
-  "QRR-Right-1": {
-    D15: "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />k<hr /></li><li>Nw</li></ul>",
-  },
-  "QRR-Right-2": "shorter",
-  "QRR-Right-3": {
-    D15: "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr /><hr />k</li><li>Nw</li></ul>",
-  },
-  "QRR-Right-4": "shorter",
-  "QRR-Right-5": "P",
-  "QRR-Left-2": {
-    D15: "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr /><hr />k</li><li>Nw</li></ul>",
-  },
-  "QRR-Left-4": {
-    D15: "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />k<hr /></li><li>Nw</li></ul>",
-  },
-  "RQR-Right-1": {
-    D15: "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><hr />k</li><li>Nw</li></ul>",
-  },
-  "RQR-Right-2": "shorter",
-  "RQR-Right-3": "P",
-  "RQR-Right-4": "P",
-  "RQR-Right-5": "P",
-  "RQR-Left-2": {
-    D15: "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><hr />k</li><li>Nw</li></ul>",
-  },
-  "TQR-Right-1": {
-    D15: "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote><hr />k</li><li>Nw</li></ul>",
-  },
-  "TQR-Right-2": "shorter",
-  "TQR-Right-3": "P",
-  "TQR-Right-4": "P",
-  "TQR-Right-5": "P",
-  "TQR-Left-2": {
-    D15: "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote><hr />k</li><li>Nw</li></ul>",
-  },
-  "QRTQ-Right-1": {
-    D15: "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />kT2w<blockquote><p>Q3w</p></blockquote></li><li>Nw</li></ul>",
-  },
-  "QRTQ-Right-2": "shorter",
-  "QRTQ-Right-3": "shorter",
-  "QRTQ-Right-4": "shorter",
-  "QRTQ-Right-5": "shorter",
-  "QRTQ-Left-1": {
-    D15: "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />kT2w<blockquote><p>Q3w</p></blockquote></li><li>Nw</li></ul>",
-  },
-};
 const RULE_FIXTURE = walksRuleFixture as Record<string, WalkRecord>;
 
 describe("B: the walks past a rule beside a block", () => {
   const cells = walksRuleCells.filter((cell) => cell.presses <= 5);
 
-  test("every cell is equal, named or a P record", () => {
+  test("every cell is equal or named", () => {
     expect(cells).toHaveLength(120);
     const named = Object.values(RULE_NAMED);
+    const why = (name: string) =>
+      named.filter((entry) => typeof entry === "object" && entry.why === name);
     expect(named.filter((entry) => entry === "shorter")).toHaveLength(30);
-    expect(named.filter((entry) => typeof entry === "object")).toHaveLength(24);
-    expect(named.filter((entry) => entry === "P")).toHaveLength(23);
+    expect(why("D15")).toHaveLength(24);
+    expect(why("D18: the quote's text")).toHaveLength(12);
+    expect(why("T29.2")).toHaveLength(22);
   });
 
-  test.each(cells.filter((cell) => RULE_NAMED[cell.id] !== "P"))(
-    "B $id presses, then a letter",
-    async (cell) => {
-      const record = await recordEdit(
-        { stored: cell.stored, place: cell.start, action: walkOf(cell) },
-        { short: true }
-      );
-      const named = RULE_NAMED[cell.id];
-      const got = {
-        write: record.write,
-        calls: record.calls,
-        caret: record.caret,
-        typed: record.typed,
-      };
-      if (typeof named === "object") {
-        expect(got).toEqual({
-          write: null,
-          calls: 0,
-          caret: "node:horizontalrule",
-          typed: named.D15,
-        });
-      } else {
-        const id =
-          named === "shorter"
-            ? `${cell.id.replace(/-\d+$/, "")}-${cell.presses + 1}`
-            : cell.id;
-        expect(got).toEqual(RULE_FIXTURE[id]);
-      }
-      expect(record.errors).toEqual([]);
-      expect(record.slowest).toBeLessThan(2000);
+  test.each(cells)("B $id presses, then a letter", async (cell) => {
+    const record = await recordEdit(
+      { stored: cell.stored, place: cell.start, action: walkOf(cell) },
+      { short: true }
+    );
+    const named = RULE_NAMED[cell.id];
+    const got = {
+      write: record.write,
+      calls: record.calls,
+      caret: record.caret,
+      typed: record.typed,
+    };
+    if (typeof named === "object") {
+      expect(got).toEqual({
+        write: null,
+        calls: 0,
+        caret: named.caret,
+        typed: named.typed,
+      });
+    } else {
+      const id =
+        named === "shorter"
+          ? `${cell.id.replace(/-\d+$/, "")}-${cell.presses + 1}`
+          : cell.id;
+      expect(got).toEqual(RULE_FIXTURE[id]);
     }
-  );
+    expect(record.errors).toEqual([]);
+    expect(record.slowest).toBeLessThan(2000);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -991,24 +863,28 @@ const SHIFT_FIXTURE = shiftPastRuleFixture as Record<
 // block's edge, one caret under D18, so the build is one press shorter, 5.3)
 // and the stops where the build's caret differs from the head's only because
 // D18 resolved the point to the block's text, not to the block
-// (`pointOnBlock`: P records P-shift-past-rule-<walk>-<press> of
-// p-records-task11.md, not asserted until ruled).
+// (`pointOnBlock`: the head's press and the build's focus, the quote's
+// text, pinned by T29.4).
 const SHIFT_NAMED: Record<
   string,
-  { stuck?: number[]; merged?: number[]; pointOnBlock?: number[] }
+  {
+    stuck?: number[];
+    merged?: number[];
+    pointOnBlock?: Record<number, string>;
+  }
 > = {
   "ltr-QR-F": { merged: [5] },
-  "ltr-QR-B": { pointOnBlock: [4] },
-  "ltr-RQ-F": { pointOnBlock: [2] },
+  "ltr-QR-B": { pointOnBlock: { 4: "text:Pw@2|text:Q0w@3" } },
+  "ltr-RQ-F": { pointOnBlock: { 2: "text:Pw@2|text:Q1w@0" } },
   "ltr-RQ-B": { stuck: [7] },
-  "ltr-QRQ-F": { merged: [5], pointOnBlock: [6] },
+  "ltr-QRQ-F": { merged: [5], pointOnBlock: { 6: "text:Pw@2|text:Q2w@0" } },
   "ltr-QRQ-B": { stuck: [7], merged: [8] },
-  "ltr-RQR-F": { merged: [6], pointOnBlock: [2] },
-  "ltr-RQR-B": { merged: [7], pointOnBlock: [4] },
+  "ltr-RQR-F": { merged: [6], pointOnBlock: { 2: "text:Pw@2|text:Q1w@0" } },
+  "ltr-RQR-B": { merged: [7], pointOnBlock: { 4: "text:Pw@2|text:Q1w@3" } },
   "ltr-QRR-F": { merged: [5] },
-  "ltr-QRR-B": { pointOnBlock: [5] },
+  "ltr-QRR-B": { pointOnBlock: { 5: "text:Pw@2|text:Q0w@3" } },
   "ltr-d2-F": { merged: [5] },
-  "ltr-d2-B": { pointOnBlock: [7] },
+  "ltr-d2-B": { pointOnBlock: { 7: "text:Aw@2|text:Q0w@3" } },
   "rtl-QR-F": { merged: [5] },
   "rtl-QR-B": { merged: [4] },
   "rtl-RQ-F": { merged: [2] },
@@ -1018,7 +894,7 @@ const SHIFT_NAMED: Record<
   "rtl-RQR-F": { merged: [2, 7] },
   "rtl-RQR-B": { merged: [4, 8] },
   "rtl-QRR-F": { merged: [5] },
-  "rtl-QRR-B": { pointOnBlock: [5] },
+  "rtl-QRR-B": { pointOnBlock: { 5: "text:פא@2|text:קבג@3" } },
   "rtl-Rfirst-F": { merged: [2] },
   "rtl-Rfirst-B": { stuck: [7] },
   "rtl-Rlast-F": { merged: [5] },
@@ -1058,13 +934,9 @@ describe("T10.7: Shift and an arrow pass a rule beside a block", () => {
           expect(got[way].length).toBeGreaterThanOrEqual(expected.length);
         }
         expected.forEach(({ press, caret }, index) => {
-          if (named.pointOnBlock?.includes(press)) {
-            expect(got[way][index].moved, `${way} ${press}`).toBe(true);
-          } else {
-            expect(got[way][index].caret, `${way}: the head's ${press}`).toBe(
-              caret
-            );
-          }
+          expect(got[way][index].caret, `${way}: the head's ${press}`).toBe(
+            named.pointOnBlock?.[press] ?? caret
+          );
         });
       }
       expect(errors).toEqual([]);
@@ -1325,11 +1197,11 @@ const DIRECTION_STOPS: Record<string, { stops: string[]; k: string }> = {
       '"T0w"@2',
       '"T0w"@3',
       "node:horizontalrule",
-      "quote@0[paragraph]",
+      '"קבג"@0',
       "node:horizontalrule",
-      "quote@0[paragraph]",
+      '"קבג"@0',
       "node:horizontalrule",
-      "quote@0[paragraph]",
+      '"קבג"@0',
     ],
     k: "<ul><li>Pw</li><li>T0w<hr /><blockquote><p>kקבג</p></blockquote></li><li>Nw</li></ul>",
   },
@@ -1357,7 +1229,7 @@ const DIRECTION_STOPS: Record<string, { stops: string[]; k: string }> = {
       '"תאב"@2',
       '"תאב"@3',
       "node:horizontalrule",
-      "quote@0[paragraph]",
+      '"קבג"@0',
       '"קבג"@1',
       '"קבג"@2',
       '"קבג"@3',

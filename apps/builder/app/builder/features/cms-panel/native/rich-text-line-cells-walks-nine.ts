@@ -93,3 +93,74 @@ const cellsOf = (w: Words, rtl: boolean): WalkCell[] =>
 
 export const walksNineCells = cellsOf(LTR, false);
 export const walksNineRtlCells = cellsOf(RTL, true);
+
+// the 18 cells of T9.2 D that differ from the head: [class, the letter typed
+// at the stop, from the carry's run]
+export const NINE_NAMED: Record<string, readonly [string, string]> = {
+  "BR-Left-2": ["D15", "<ul><li>Pw</li><li><br /><hr />k</li><li>Nw</li></ul>"],
+  "BR-Right-3": [
+    "D15",
+    "<ul><li>Pw</li><li><br /><hr />k</li><li>Nw</li></ul>",
+  ],
+  "BR-Right-5": ["K8", "<ul><li>Pw</li><li><br /><hr /></li><li>kNw</li></ul>"],
+  "QBR-Down-2": [
+    "a line's start",
+    "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>k<br /><hr /></li><li>Nw</li></ul>",
+  ],
+  "QBR-Up-1": [
+    "a line's start",
+    "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>k<br /><hr /></li><li>Nw</li></ul>",
+  ],
+  "QBR-Left-2": [
+    "D15",
+    "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><br /><hr />k</li><li>Nw</li></ul>",
+  ],
+  "QBR-Left-4": [
+    "a line's start",
+    "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>k<br /><hr /></li><li>Nw</li></ul>",
+  ],
+  "QBR-Right-5": [
+    "a line's start",
+    "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>k<br /><hr /></li><li>Nw</li></ul>",
+  ],
+  "HB-Down-2": [
+    "a line's start",
+    "<ul><li>Pw</li><li><h3>H0w</h3>k<br /></li><li>Nw</li></ul>",
+  ],
+  "HB-Up-2": [
+    "a line's start",
+    "<ul><li>Pw</li><li><h3>H0w</h3>k<br /></li><li>Nw</li></ul>",
+  ],
+  "HB-Left-2": [
+    "a line's start",
+    "<ul><li>Pw</li><li><h3>H0w</h3>k<br /></li><li>Nw</li></ul>",
+  ],
+  "CB-Down-2": [
+    "a line's start",
+    "<ul><li>Pw</li><li><pre><code>C0w</code></pre>k<br /></li><li>Nw</li></ul>",
+  ],
+  "CB-Up-2": [
+    "a line's start",
+    "<ul><li>Pw</li><li><pre><code>C0w</code></pre>k<br /></li><li>Nw</li></ul>",
+  ],
+  "CB-Left-2": [
+    "a line's start",
+    "<ul><li>Pw</li><li><pre><code>C0w</code></pre>k<br /></li><li>Nw</li></ul>",
+  ],
+  "QB-Down-2": [
+    "a line's start",
+    "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>k<br /></li><li>Nw</li></ul>",
+  ],
+  "QB-Up-2": [
+    "a line's start",
+    "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>k<br /></li><li>Nw</li></ul>",
+  ],
+  "QB-Left-2": [
+    "a line's start",
+    "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>k<br /></li><li>Nw</li></ul>",
+  ],
+  "QB-Right-5": [
+    "a line's start",
+    "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>k<br /></li><li>Nw</li></ul>",
+  ],
+};

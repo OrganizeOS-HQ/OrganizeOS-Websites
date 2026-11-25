@@ -625,25 +625,19 @@ export const $inlineEdgeOf = (point: PointType, atStart: boolean) => {
 };
 
 /**
- * The focus at a block's edge in a lined container, with a rule directly
- * beside the block in the direction of the key, moves past the rule: the
- * container point on the rule's far side, resolved by D18. True when it moved.
- * The same from an empty caret line (15.3), and, with `fromText`, from a
- * line's text edge (16.15). With `move` false, only whether it would move.
+ * The focus at the edge of a block or a line in a lined container, with a
+ * rule directly beside it in the direction of the key, moves past the rule:
+ * the container point on the rule's far side, resolved by D18. True when it
+ * moved. The field decides the step at the key (15.3, 16.15): from a block,
+ * an empty caret line or a line's text, in either direction of text.
  */
-const $focusPastRule = (
-  selection: RangeSelection,
-  isBackward: boolean,
-  fromText = false,
-  move = true
-) => {
+const $focusPastRule = (selection: RangeSelection, isBackward: boolean) => {
   const focus = selection.focus;
   const node = focus.getNode();
   let child: LexicalNode | null = node;
   while (child !== null && isLinedContainer(child.getParent()) === false) {
     child = child.getParent();
   }
-  // a block or a line at whose edge the focus stands
   if (child === null || $isElementNode(child) === false) {
     return false;
   }
@@ -654,17 +648,30 @@ const $focusPastRule = (
   if (isBlockDecorator(rule) === false) {
     return false;
   }
-  if ($isCmsLineNode(child) && child.isEmpty() === fromText) {
-    return false;
-  }
-  if (move === false) {
-    return true;
-  }
   const container = child.getParentOrThrow();
   const index = rule.getIndexWithinParent();
   focus.set(container.getKey(), isBackward ? index : index + 1, "element");
   $resolveLinedPoints(false);
   return true;
+};
+
+/**
+ * The text at the end (`atEnd`) or start of a block that is neither a line
+ * nor a lined container (a quote of paragraphs, a heading): null otherwise.
+ */
+const $textEdgeOfBlock = (node: LexicalNode, atEnd: boolean) => {
+  if (
+    $isElementNode(node) === false ||
+    node.isInline() ||
+    $isCmsLineNode(node) ||
+    isLinedContainer(node)
+  ) {
+    return null;
+  }
+  const edge = atEnd
+    ? (node as ElementNode).getLastDescendant()
+    : (node as ElementNode).getFirstDescendant();
+  return $isTextNode(edge) ? edge : null;
 };
 
 /**
@@ -1161,6 +1168,17 @@ export const pointRules = (editor: LexicalEditor, tracker?: EditTracker) => {
     } else {
       node.selectNext();
     }
+    // T29.3: a block beside the rule (a quote, a heading) takes the caret at
+    // its text edge, the one caret D18 names there, as the Shift step's
+    // focus does; Lexical's step leaves an element point on the block
+    const moved = $getSelection();
+    if ($isRangeSelection(moved) && moved.anchor.type === "element") {
+      const edge = $textEdgeOfBlock(moved.anchor.getNode(), isBackward);
+      if (edge !== null) {
+        const offset = isBackward ? edge.getTextContentSize() : 0;
+        edge.select(offset, offset);
+      }
+    }
     // a caret move, not an edit: a caret line made or removed is merged
     // into the history's current step (the lift is true only then)
     const edited = isEdit();
@@ -1180,35 +1198,15 @@ export const pointRules = (editor: LexicalEditor, tracker?: EditTracker) => {
     if ($isRangeSelection(selection) === false) {
       return false;
     }
-    // 14.3: with Shift held, from a block's edge (or a line's text edge,
-    // 16.15) toward a rule directly beside it the focus takes the caret's
+    // 14.3, 16.15: with Shift held, from a block's edge or a line's text
+    // edge toward a rule directly beside it the focus takes the caret's
     // step and passes the rule, to where D18 resolves the container point
-    // on its far side; the rule is inside the selection
+    // on its far side; the rule is inside the selection. Decided here, at
+    // the key, in either direction of text (15.3); the update only moves
+    // the focus
     if (event.shiftKey && $focusPastRule(selection, isBackward)) {
       event.preventDefault();
       return true;
-    }
-    // 16.15: from a line's text edge toward a rule directly beside the
-    // line, the page takes its own step; where the key leaves the focus
-    // where it was once the page's step has been read back (right-to-left
-    // text), the field takes the step past the rule
-    if (event.shiftKey && $focusPastRule(selection, isBackward, true, false)) {
-      const { key, offset, type } = selection.focus;
-      setTimeout(() => {
-        setTimeout(() => {
-          editor.update(() => {
-            const range = $getSelection();
-            if (
-              $isRangeSelection(range) &&
-              range.focus.key === key &&
-              range.focus.offset === offset &&
-              range.focus.type === type
-            ) {
-              $focusPastRule(range, isBackward, true);
-            }
-          });
-        }, 0);
-      }, 0);
     }
     // B: from the edge of a block's text toward a rule directly beside
     // the block, the arrow node-selects the rule
