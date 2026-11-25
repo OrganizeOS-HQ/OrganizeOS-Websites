@@ -44,11 +44,40 @@ export const lineRuleViolations: string[] = [];
 let checkFailed = false;
 
 /**
- * 5.4 and F8: lines a removal emptied while they held the caret, per
- * editor. Such a line is not emptied: it keeps the caret (D18 step 1), and
- * C2's give-back is for the caret lines the resolver makes.
+ * 5.4, F8 and P9-2: lines a removal emptied while they held the caret, per
+ * editor. Such a line is not emptied: it keeps the caret (D18 step 1) until
+ * the caret leaves it, whatever stands beside it; C2's give-back is for the
+ * caret lines the resolver makes. Only the commit listener changes the set.
  */
 const emptiedLines = new WeakMap<LexicalEditor, Set<NodeKey>>();
+
+/**
+ * The lines that held a point of the selection when a removal started, by
+ * the committed state the removal's update started from: the commit that
+ * follows that state confirms them, so an update that is discarded adds
+ * nothing to `emptiedLines`.
+ */
+const removalLines = new WeakMap<EditorState, Set<NodeKey>>();
+
+/** A removal starts (`$tagRemoval`): the lines that hold the caret now. */
+export const $noteRemovalLines = () => {
+  const selection = $getSelection();
+  if ($isRangeSelection(selection) === false) {
+    return;
+  }
+  const base = $getEditor().getEditorState();
+  for (const point of [selection.anchor, selection.focus]) {
+    const line = $findMatchingParent(point.getNode(), $isCmsLineNode);
+    if (line !== null) {
+      let lines = removalLines.get(base);
+      if (lines === undefined) {
+        lines = new Set();
+        removalLines.set(base, lines);
+      }
+      lines.add(line.getKey());
+    }
+  }
+};
 
 const emptiedOf = (editor: LexicalEditor) => {
   let emptied = emptiedLines.get(editor);
@@ -60,9 +89,10 @@ const emptiedOf = (editor: LexicalEditor) => {
 };
 
 /**
- * After a commit: the lines that hold the caret and are empty, and held
- * content before it, are emptied lines; the set keeps only lines that are
- * still empty.
+ * After a commit: a line a removal in it started in, which held content
+ * and a point of the selection before it and is empty and holds a point
+ * now, is an emptied line. The set keeps only lines that are still empty
+ * and still hold a point of the selection (the caret has not left).
  */
 const noteEmptiedLines = (
   editor: LexicalEditor,
@@ -70,30 +100,33 @@ const noteEmptiedLines = (
   prevEditorState: EditorState
 ) => {
   const emptied = emptiedOf(editor);
-  const empty = editorState.read(() =>
+  const held = editorState.read(() =>
     $dfs()
       .map(({ node }) => node)
       .filter(
-        (node): node is CmsLineNode => $isCmsLineNode(node) && node.isEmpty()
+        (node): node is CmsLineNode =>
+          $isCmsLineNode(node) && node.isEmpty() && holdsSelection(node)
       )
-      .map((node) => ({
-        key: node.getKey(),
-        holds: holdsSelection(node),
-      }))
+      .map((node) => node.getKey())
   );
   for (const key of [...emptied]) {
-    if (empty.some((line) => line.key === key) === false) {
+    if (held.includes(key) === false) {
       emptied.delete(key);
     }
   }
-  const held = empty.filter((line) => line.holds);
-  if (held.length === 0) {
+  const removed = removalLines.get(prevEditorState);
+  if (removed === undefined) {
     return;
   }
   prevEditorState.read(() => {
-    for (const { key } of held) {
+    for (const key of held) {
       const before = $getNodeByKey(key);
-      if ($isCmsLineNode(before) && before.isEmpty() === false) {
+      if (
+        removed.has(key) &&
+        $isCmsLineNode(before) &&
+        before.isEmpty() === false &&
+        holdsSelection(before)
+      ) {
         emptied.add(key);
       }
     }
@@ -101,25 +134,24 @@ const noteEmptiedLines = (
 };
 
 /**
- * Whether a removal emptied this line while it held the caret: in this
- * update (it was in the state before and held content there), or in a
- * commit before (`noteEmptiedLines`).
+ * Whether a removal emptied this line while it held the caret: in a commit
+ * before (`noteEmptiedLines`), or in this update (a removal started in it,
+ * and it held content in the state this update started from). Reads only.
  */
 const $emptiedHoldingPoint = (line: CmsLineNode) => {
   const editor = $getEditor();
-  const emptied = emptiedOf(editor);
   const key = line.getKey();
-  if (emptied.has(key)) {
+  if (emptiedLines.get(editor)?.has(key) === true) {
     return true;
   }
-  const byThisUpdate = editor.getEditorState().read(() => {
+  const base = editor.getEditorState();
+  if (removalLines.get(base)?.has(key) !== true) {
+    return false;
+  }
+  return base.read(() => {
     const before = $getNodeByKey(key);
     return $isCmsLineNode(before) && before.isEmpty() === false;
   });
-  if (byThisUpdate) {
-    emptied.add(key);
-  }
-  return byThisUpdate;
 };
 
 /**
@@ -1259,6 +1291,9 @@ export const pointRules = (editor: LexicalEditor) => {
         editor.registerUpdateListener(({ editorState, prevEditorState }) => {
           noteEmptiedLines(editor, editorState, prevEditorState);
         }),
+        () => {
+          emptiedLines.delete(editor);
+        },
         // the third place of 5.3: after every commit, a point that rests on a
         // lined container resolves at once, in an update of its own that makes
         // no undo step and fires no onChange; the rule then holds (5.3, 5.5)

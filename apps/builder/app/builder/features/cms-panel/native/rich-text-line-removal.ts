@@ -48,7 +48,7 @@ import {
   isLinedContainer,
   lineSpike,
 } from "./rich-text-line-node";
-import { $inlineEdgeOf } from "./rich-text-line-points";
+import { $inlineEdgeOf, $noteRemovalLines } from "./rich-text-line-points";
 
 /**
  * Whether this update emptied the node: it held children before the
@@ -713,6 +713,7 @@ export const $tagRemoval = (isBackward?: boolean): boolean => {
     $endsIntoText(selection, false);
   }
   $mark(REMOVAL_TAG);
+  $noteRemovalLines();
   if ($isRangeSelection(selection) === false) {
     return false;
   }

@@ -20,11 +20,13 @@ import {
   backspace,
   blockType,
   caretKey,
+  clickItemCorner,
   del,
   enter,
   expectEdit,
   ime,
   IMG,
+  nodeSelect,
   itemPoint,
   keys,
   letter,
@@ -825,6 +827,76 @@ describe("5.3: the resolver's three calling places", () => {
         "<ul><li><blockquote><p>Q0w</p></blockquote>k</li><li>Nw</li></ul>",
       caret: "text:k@1",
       source: "F8, P26 (ruled, not built at the carry)",
+    });
+  });
+});
+
+describe("5.4 and F8: a line a removal empties while it holds the caret", () => {
+  const stored = LI(`${QUOTE0}<hr>`);
+  // a click at the item's end makes the caret line after the rule; a
+  // letter, then Backspace empties it (a removal), then Backspace removes
+  // the rule
+  const emptiedBesideQuote = then(
+    clickItemCorner(1),
+    letter,
+    backspace,
+    backspace
+  );
+
+  test("P9-2: the emptied line keeps the caret after its rule goes", async () => {
+    await expectEdit({
+      stored,
+      place: emptiedBesideQuote,
+      action: letter,
+      // T24.1: the letter in the line, directly after the quote
+      writeMatches: (written) => {
+        expect(short(written)).toContain("</blockquote>k</li>");
+      },
+      source: "P9-2, ruled (T24.1)",
+    });
+  });
+
+  test("P9-2: the caret leaving the emptied line removes it, with no onChange", async () => {
+    const onChange = await mount(stored);
+    await emptiedBesideQuote();
+    const editor = editorOf()!;
+    const emptyLines = () =>
+      editor.getEditorState().read(
+        () =>
+          $items()
+            .flatMap((item) => item.getChildren())
+            .filter((child) => $isCmsLineNode(child) && child.isEmpty()).length
+      );
+    expect(emptyLines(), "the emptied line holds the caret").toBe(1);
+    onChange.mockClear();
+    await at("Pw")();
+    expect(emptyLines(), "no empty line left").toBe(0);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  test("a line emptied by undo, not a removal, is not exempt: C2 gives its point back", async () => {
+    await expectEdit({
+      stored,
+      place: then(
+        clickItemCorner(1),
+        letter,
+        keys("{Control>}z{/Control}"),
+        backspace
+      ),
+      action: letter,
+      write: W("<li><blockquote><p>Q0wk</p></blockquote></li>"),
+      source: "check 2, C2 (QR gives Q0wk)",
+    });
+  });
+
+  test("a line a removal empties without holding the caret is not exempt", async () => {
+    await expectEdit({
+      stored: LI(`${QUOTE0}${IMG}`),
+      // the image node-selected, then Delete: no caret was in its line
+      place: then(nodeSelect("cms-image"), del),
+      action: letter,
+      write: W("<li><blockquote><p>Q0wk</p></blockquote></li>"),
+      source: "check 2, C2 (a clicked image after a quote, deleted)",
     });
   });
 });
