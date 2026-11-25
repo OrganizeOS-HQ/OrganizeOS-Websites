@@ -44,12 +44,93 @@ export const lineRuleViolations: string[] = [];
 let checkFailed = false;
 
 /**
- * Each element point on a lined container moves into the line beside it:
- * the start of the line after, else the end of the line before. With
- * `create`, a point with no line beside it gets an empty line of its own
- * there.
+ * 5.4 and F8: lines a removal emptied while they held the caret, per
+ * editor. Such a line is not emptied: it keeps the caret (D18 step 1), and
+ * C2's give-back is for the caret lines the resolver makes.
  */
-export const $liftPointsIntoLines = (create: boolean, depth = 0): boolean => {
+const emptiedLines = new WeakMap<LexicalEditor, Set<NodeKey>>();
+
+const emptiedOf = (editor: LexicalEditor) => {
+  let emptied = emptiedLines.get(editor);
+  if (emptied === undefined) {
+    emptied = new Set();
+    emptiedLines.set(editor, emptied);
+  }
+  return emptied;
+};
+
+/**
+ * After a commit: the lines that hold the caret and are empty, and held
+ * content before it, are emptied lines; the set keeps only lines that are
+ * still empty.
+ */
+const noteEmptiedLines = (
+  editor: LexicalEditor,
+  editorState: EditorState,
+  prevEditorState: EditorState
+) => {
+  const emptied = emptiedOf(editor);
+  const empty = editorState.read(() =>
+    $dfs()
+      .map(({ node }) => node)
+      .filter(
+        (node): node is CmsLineNode => $isCmsLineNode(node) && node.isEmpty()
+      )
+      .map((node) => ({
+        key: node.getKey(),
+        holds: holdsSelection(node),
+      }))
+  );
+  for (const key of [...emptied]) {
+    if (empty.some((line) => line.key === key) === false) {
+      emptied.delete(key);
+    }
+  }
+  const held = empty.filter((line) => line.holds);
+  if (held.length === 0) {
+    return;
+  }
+  prevEditorState.read(() => {
+    for (const { key } of held) {
+      const before = $getNodeByKey(key);
+      if ($isCmsLineNode(before) && before.isEmpty() === false) {
+        emptied.add(key);
+      }
+    }
+  });
+};
+
+/**
+ * Whether a removal emptied this line while it held the caret: in this
+ * update (it was in the state before and held content there), or in a
+ * commit before (`noteEmptiedLines`).
+ */
+const $emptiedHoldingPoint = (line: CmsLineNode) => {
+  const editor = $getEditor();
+  const emptied = emptiedOf(editor);
+  const key = line.getKey();
+  if (emptied.has(key)) {
+    return true;
+  }
+  const byThisUpdate = editor.getEditorState().read(() => {
+    const before = $getNodeByKey(key);
+    return $isCmsLineNode(before) && before.isEmpty() === false;
+  });
+  if (byThisUpdate) {
+    emptied.add(key);
+  }
+  return byThisUpdate;
+};
+
+/**
+ * The point resolver (D18): each element point on a lined container moves
+ * in D18's order. With `create`, a point no step places gets an empty line
+ * of its own there. A point on a line is never moved. One resolver, three
+ * calling places (5.3): the container's transform, selection change and
+ * select-all, and the check after every commit. True when it made or
+ * removed an empty line.
+ */
+export const $resolveLinedPoints = (create: boolean, depth = 0): boolean => {
   if (lineSpike.on === false) {
     return false;
   }
@@ -79,7 +160,11 @@ export const $liftPointsIntoLines = (create: boolean, depth = 0): boolean => {
         node !== null &&
         ($isCmsLineNode(node) ||
           ($isElementNode(node) && node.isInline() === false));
-      if (held.isEmpty() && (isBeside(before) || isBeside(after))) {
+      if (
+        held.isEmpty() &&
+        (isBeside(before) || isBeside(after)) &&
+        $emptiedHoldingPoint(held) === false
+      ) {
         // C2: an empty line holds the caret only while D13 holds at its
         // place: with a line or a block beside it, the point goes back to
         // the container there and resolves, and the line goes
@@ -95,9 +180,10 @@ export const $liftPointsIntoLines = (create: boolean, depth = 0): boolean => {
     if (isLinedContainer(container) === false) {
       continue;
     }
-    // D18: a line at the point (its start), else a line directly before
-    // it (its end); else a block at the point (its start), else a block
-    // directly before it (its end); else an empty line
+    // D18 step 1, a line at the point: its start, whatever leads it (QBT
+    // and QA el1).
+    // D18 step 2, else a line directly before the point: its end (TQT el1;
+    // a line ending in a break, then a block: after the break).
     const lineAt = container.getChildAtIndex(point.offset);
     const lineBefore =
       point.offset > 0 ? container.getChildAtIndex(point.offset - 1) : null;
@@ -124,9 +210,12 @@ export const $liftPointsIntoLines = (create: boolean, depth = 0): boolean => {
       }
       continue;
     }
-    if ($pointIntoBlockBeside(point)) {
+    // D18 step 3, else a block at the point: its start; else a block
+    // directly before it: its end (QR@1).
+    if ($pointIntoAdjacentBlock(point)) {
       continue;
     }
+    // D18 step 4, else an empty line (TR@2).
     if (create === false) {
       continue;
     }
@@ -163,16 +252,18 @@ export const $liftPointsIntoLines = (create: boolean, depth = 0): boolean => {
     [selection.anchor, selection.focus].some(
       (point) => point.type === "element" && isLinedContainer(point.getNode())
     );
-  const deeper = again ? $liftPointsIntoLines(create, depth + 1) : false;
+  const deeper = again ? $resolveLinedPoints(create, depth + 1) : false;
   return made.size > 0 || gaveBack || deeper;
 };
 
 /**
  * An element point on a list item or quote moves into the block at it
  * (its start), else the block directly before it (its end); a block is
- * any non-inline element, a line included. True when it moved.
+ * any non-inline element, a line included. True when it moved. The
+ * resolver's step 3 and the field's `$selectionIntoAdjacentBlocks` (a
+ * quote that is not lined) share it.
  */
-export const $pointIntoBlockBeside = (point: PointType) => {
+export const $pointIntoAdjacentBlock = (point: PointType) => {
   if (point.type !== "element") {
     return false;
   }
@@ -476,7 +567,7 @@ const $focusPastRule = (selection: RangeSelection, isBackward: boolean) => {
   const container = child.getParentOrThrow();
   const index = rule.getIndexWithinParent();
   focus.set(container.getKey(), isBackward ? index : index + 1, "element");
-  $liftPointsIntoLines(false);
+  $resolveLinedPoints(false);
   return true;
 };
 
@@ -702,7 +793,7 @@ export const pointRules = (editor: LexicalEditor) => {
   let pressId: number | null = null;
   const $resolvePoint = () => {
     const edited = $updateHasEdits();
-    const made = $liftPointsIntoLines(true);
+    const made = $resolveLinedPoints(true);
     const removed = $removeLeftEmptyLines();
     if ((made || removed) && edited === false) {
       $addUpdateTag("history-merge");
@@ -712,7 +803,7 @@ export const pointRules = (editor: LexicalEditor) => {
   // is kept (15.13 (a))
   const $resolveAfterPress = () => {
     const edited = $updateHasEdits();
-    const made = $liftPointsIntoLines(true);
+    const made = $resolveLinedPoints(true);
     $keepLeftEmptyLines();
     if (made && edited === false) {
       $addUpdateTag("history-merge");
@@ -846,11 +937,11 @@ export const pointRules = (editor: LexicalEditor) => {
           const readBack = $readBack();
           let changed = $removeKeptLines();
           if (readBack && pressId === null) {
-            changed = $liftPointsIntoLines(true) || changed;
+            changed = $resolveLinedPoints(true) || changed;
             changed = $removeLeftEmptyLines() || changed;
           }
           if (pressId !== null) {
-            changed = $liftPointsIntoLines(true) || changed;
+            changed = $resolveLinedPoints(true) || changed;
             changed = $removeLeftEmptyLines() || changed;
           }
           if (changed) {
@@ -909,7 +1000,7 @@ export const pointRules = (editor: LexicalEditor) => {
     // a caret move, not an edit: a caret line made or removed is merged
     // into the history's current step (the lift is true only then)
     const edited = $updateHasEdits();
-    if ($liftPointsIntoLines(true) && edited === false) {
+    if ($resolveLinedPoints(true) && edited === false) {
       $addUpdateTag("history-merge");
     }
     return true;
@@ -1163,6 +1254,11 @@ export const pointRules = (editor: LexicalEditor) => {
           root?.addEventListener("pointerdown", onShiftPress, true);
           root?.addEventListener("mousedown", onShiftMouseDown, true);
         }),
+        // 5.4 and F8: a line this commit emptied while it held the caret is
+        // noted before any later update resolves the caret
+        editor.registerUpdateListener(({ editorState, prevEditorState }) => {
+          noteEmptiedLines(editor, editorState, prevEditorState);
+        }),
         // the third place of 5.3: after every commit, a point that rests on a
         // lined container resolves at once, in an update of its own that makes
         // no undo step and fires no onChange; the rule then holds (5.3, 5.5)
@@ -1237,7 +1333,7 @@ export const pointRules = (editor: LexicalEditor) => {
                 // a point moved and nothing else changed is no edit (no onChange, no
                 // step) and carries no tag; a caret line made or removed is merged
                 // into the history's current step and fires no onChange
-                if ($liftPointsIntoLines(true)) {
+                if ($resolveLinedPoints(true)) {
                   $addUpdateTag("history-merge");
                 }
                 const still = $pointRuleBroken();
