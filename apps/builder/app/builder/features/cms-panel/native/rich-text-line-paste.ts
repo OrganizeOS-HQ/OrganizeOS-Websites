@@ -102,7 +102,9 @@ const $unwrapEndContainer = (
 /**
  * V2, V4: a line in a quote, or a range from a line: the head's path over
  * the containers' own text, their lines unwrapped (D4, D14; undefined: not
- * this branch).
+ * this branch). The range-from-a-line path is unreachable as routed:
+ * branch 1 (`$removeRangeBeforeBlockPaste`) takes every range whose start
+ * is in an attached line, so only a caret in a quote's line gets here.
  */
 const $unwrapForQuoteLineOrRange = (
   nodes: LexicalNode[],
@@ -190,14 +192,14 @@ export const $intoLine = (
 };
 
 /**
- * C10 (D14, P3): plain text of several lines pasted at a caret in a line of
- * a list item, where a line's paragraph break leaves the caret at the
- * start of the block that leads the new item: the next line of text goes
- * on a line of its own before that block, as the first line stays in the
- * line it was pasted in. The data's lines go in as Lexical's rich-text
- * paste puts them (a paragraph break per new line, a tab node per tab).
- * Only that case is the field's: false otherwise, and the head's paste
- * runs.
+ * C10 (D14, P3): two lines of plain text, exactly one paragraph break with
+ * text on both sides, pasted at a caret in a line of a list item. Where the
+ * break leaves the caret at the start of the block that leads the new
+ * item, the second line goes on a line of its own before that block, as
+ * the first line stays in the line it was pasted in. The lines go in as
+ * Lexical's rich-text paste puts them (a tab node per tab). Any other text
+ * (three or more lines, a blank line, a tab-led second line, a trailing
+ * new line) is not the field's: false, and the head's paste runs.
  */
 export const $pasteTextIntoItemLine = (data: DataTransfer): boolean => {
   const text = data.getData("text/plain");
@@ -215,43 +217,36 @@ export const $pasteTextIntoItemLine = (data: DataTransfer): boolean => {
   if ($isListItemNode(line?.getParent()) === false) {
     return false;
   }
-  const parts = text.split(/(\r?\n|\t)/);
-  if (parts[parts.length - 1] === "") {
-    parts.pop();
-  }
-  // the case: a paragraph break directly before a line of text
+  const lines = text.split(/\r?\n/);
   if (
-    parts.some(
-      (part, index) =>
-        (part === "\n" || part === "\r\n") &&
-        parts[index + 1] !== undefined &&
-        /^(\r?\n|\t)$/.test(parts[index + 1]) === false &&
-        parts[index + 1] !== ""
-    ) === false
+    lines.length !== 2 ||
+    lines[0] === "" ||
+    lines[1] === "" ||
+    lines[1].startsWith("\t")
   ) {
     return false;
   }
   // tagged as Lexical's own rich-text paste is
   $addUpdateTag("paste");
-  for (const [index, part] of parts.entries()) {
-    const current = $getSelection();
-    if ($isRangeSelection(current) === false) {
-      return true;
-    }
-    if (part === "\n" || part === "\r\n") {
-      current.insertParagraph();
-      const next = parts[index + 1];
-      if (
-        next !== undefined &&
-        next !== "" &&
-        /^(\r?\n|\t)$/.test(next) === false
-      ) {
-        $lineBeforeLeadingBlock();
+  for (const [index, pasted] of lines.entries()) {
+    if (index === 1) {
+      const current = $getSelection();
+      if ($isRangeSelection(current) === false) {
+        return true;
       }
-    } else if (part === "\t") {
-      current.insertNodes([$createTabNode()]);
-    } else {
-      current.insertText(part);
+      current.insertParagraph();
+      $lineBeforeLeadingBlock();
+    }
+    for (const part of pasted.split(/(\t)/)) {
+      const current = $getSelection();
+      if ($isRangeSelection(current) === false) {
+        return true;
+      }
+      if (part === "\t") {
+        current.insertNodes([$createTabNode()]);
+      } else if (part !== "") {
+        current.insertText(part);
+      }
     }
   }
   return true;

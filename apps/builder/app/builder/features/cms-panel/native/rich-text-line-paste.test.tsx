@@ -137,6 +137,38 @@ describe("D4 and D14: a paste at a caret in a line", () => {
   ]);
 });
 
+describe("C10 is two lines only: other plain text at P3's caret takes the head's paste", () => {
+  runRows([
+    {
+      name: "three lines",
+      stored: TQ,
+      place: at("T0w"),
+      action: pasteText("L1\nL2\nL3"),
+      write: `<ul><li>Pw</li><li>T0wL1</li><li><blockquote><p>L2</p><p>L3Q1w</p></blockquote></li><li>Nw</li></ul>`,
+      caret: "text:L3Q1w@2",
+      source: "equals <base> (P17-2)",
+    },
+    {
+      name: "a blank line",
+      stored: TQ,
+      place: at("T0w"),
+      action: pasteText("L1\n\nL2"),
+      write: `<ul><li>Pw</li><li>T0wL1</li><li><blockquote><p></p><p>L2Q1w</p></blockquote></li><li>Nw</li></ul>`,
+      caret: "text:L2Q1w@2",
+      source: "equals <base> (P17-2)",
+    },
+    {
+      name: "a trailing new line",
+      stored: TQ,
+      place: at("T0w"),
+      action: pasteText("L1\n"),
+      write: `<ul><li>Pw</li><li>T0wL1</li><li>${Q("Q1w")}</li><li>Nw</li></ul>`,
+      caret: "text:Q1w@0",
+      source: "equals <base> (P17-2)",
+    },
+  ]);
+});
+
 describe("V2, V3: a paste over a range keeps the first check's writes", () => {
   runRows([
     {
