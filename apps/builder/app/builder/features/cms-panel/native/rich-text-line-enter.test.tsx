@@ -6,6 +6,7 @@ import { act } from "react-dom/test-utils";
 import {
   $createRangeSelection,
   $getRoot,
+  DELETE_CHARACTER_COMMAND,
   $getSelection,
   $isElementNode,
   $isRangeSelection,
@@ -19,7 +20,6 @@ import {
 import {
   $baselinePoint,
   at,
-  backspace,
   baselineChildCount,
   containerPoint,
   enter,
@@ -75,6 +75,16 @@ const dispatch =
     });
     await settle();
   };
+
+// The field's removal of the range: DELETE_CHARACTER_COMMAND, no key press
+// (T36.1). The oracle for Enter and Shift+Enter where the field adds its
+// removal step is this, then the key.
+const fieldRemoval: Step = async () => {
+  await act(async () => {
+    editorOf()!.dispatchCommand(DELETE_CHARACTER_COMMAND, true);
+  });
+  await settle();
+};
 
 const runRows = (rows: Row[]) => {
   for (const row of rows) {
@@ -652,12 +662,12 @@ describe("Enter over a range: M1 and E1 (T9.2 M1 and E; spec 5.7)", () => {
     ),
   ]);
 
-  test("E1: the same with Shift+Enter is the join, then Shift+Enter (the oracle)", async () => {
+  test("E1: the same with Shift+Enter equals the field's removal (DELETE_CHARACTER_COMMAND), then Shift+Enter", async () => {
     const oracle = await recordEdit(
       {
         stored: TQT,
         place: range("T0w", 3, "Q1w", 1),
-        action: then(backspace, shiftEnter),
+        action: then(fieldRemoval, shiftEnter),
       },
       { short: true }
     );
@@ -693,10 +703,10 @@ describe("T23.1 by Enter: a range ending at a break-led line's start after a blo
       ["Enter", enter],
       ["Shift+Enter", shiftEnter],
     ] as const) {
-      test(`${name}, ${key}: the oracle (Backspace, then the key)`, async () => {
+      test(`${name}, ${key}: equals the field's removal (DELETE_CHARACTER_COMMAND), then ${key}`, async () => {
         const place = rangeToLineStart(word, 2);
         const oracle = await recordEdit(
-          { stored, place, action: then(backspace, action) },
+          { stored, place, action: then(fieldRemoval, action) },
           { short: true }
         );
         await expectEdit({
@@ -781,9 +791,9 @@ describe("16.8: Enter and Shift+Enter over a range with an end on the root are t
     { write: string | null; typed: string }
   >;
   for (const cell of enterRangeRootCells()) {
-    test(cell.id, async () => {
+    test(`${cell.id}: equals the field's removal (DELETE_CHARACTER_COMMAND), then the key`, async () => {
       const oracle = await recordEdit(
-        { ...cell, action: then(backspace, cell.action) },
+        { ...cell, action: then(fieldRemoval, cell.action) },
         { short: true }
       );
       const edit = await expectEdit({
@@ -794,9 +804,10 @@ describe("16.8: Enter and Shift+Enter over a range with an end on the root are t
         typed: undefined,
         source: "16.8, T11.4",
       });
-      expect(edit.write, "the oracle's write: Backspace, then the key").toBe(
-        oracle.write
-      );
+      expect(
+        edit.write,
+        "the oracle's write: the field's removal, then the key"
+      ).toBe(oracle.write);
       const typed = await recordEdit(cell, { short: true });
       expect(typed.typed, "a letter after it lands as after the oracle").toBe(
         oracle.typed
