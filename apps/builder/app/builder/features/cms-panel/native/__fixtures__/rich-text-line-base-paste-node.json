@@ -1,0 +1,878 @@
+{
+  "QQR|click|emptyP": {
+    "failed": "runaway"
+  },
+  "QQR|click|list": {
+    "failed": "runaway"
+  },
+  "QQR|click|own": {
+    "failed": "runaway"
+  },
+  "QQR|click|p1": {
+    "failed": "runaway"
+  },
+  "QQR|click|p2": {
+    "failed": "runaway"
+  },
+  "QR|click|emptyP": {
+    "failed": "runaway"
+  },
+  "QR|click|list": {
+    "failed": "runaway"
+  },
+  "QR|click|own": {
+    "failed": "runaway"
+  },
+  "QR|click|p1": {
+    "failed": "runaway"
+  },
+  "QR|click|p2": {
+    "failed": "runaway"
+  },
+  "QRB|click|emptyP": {
+    "failed": "runaway"
+  },
+  "QRB|click|list": {
+    "failed": "runaway"
+  },
+  "QRB|click|own": {
+    "failed": "runaway"
+  },
+  "QRB|click|p1": {
+    "failed": "runaway"
+  },
+  "QRB|click|p2": {
+    "failed": "runaway"
+  },
+  "QRL|click|emptyP": {
+    "failed": "runaway"
+  },
+  "QRL|click|list": {
+    "failed": "runaway"
+  },
+  "QRL|click|own": {
+    "failed": "runaway"
+  },
+  "QRL|click|p1": {
+    "failed": "runaway"
+  },
+  "QRL|click|p2": {
+    "failed": "runaway"
+  },
+  "QRQ|click|emptyP": {
+    "failed": "runaway"
+  },
+  "QRQ|click|list": {
+    "failed": "runaway"
+  },
+  "QRQ|click|own": {
+    "failed": "runaway"
+  },
+  "QRQ|click|p1": {
+    "failed": "runaway"
+  },
+  "QRQ|click|p2": {
+    "failed": "runaway"
+  },
+  "QRR|click|emptyP": {
+    "failed": "runaway"
+  },
+  "QRR|click|list": {
+    "failed": "runaway"
+  },
+  "QRR|click|own": {
+    "failed": "runaway"
+  },
+  "QRR|click|p1": {
+    "failed": "runaway"
+  },
+  "QRR|click|p2": {
+    "failed": "runaway"
+  },
+  "QRT|click|emptyP": {
+    "failed": "runaway"
+  },
+  "QRT|click|list": {
+    "failed": "runaway"
+  },
+  "QRT|click|own": {
+    "failed": "runaway"
+  },
+  "QRT|click|p1": {
+    "failed": "runaway"
+  },
+  "QRT|click|p2": {
+    "failed": "runaway"
+  },
+  "QRTQ|click|emptyP": {
+    "failed": "runaway"
+  },
+  "QRTQ|click|list": {
+    "failed": "runaway"
+  },
+  "QRTQ|click|own": {
+    "failed": "runaway"
+  },
+  "QRTQ|click|p1": {
+    "failed": "runaway"
+  },
+  "QRTQ|click|p2": {
+    "failed": "runaway"
+  },
+  "QRd2|click|emptyP": {
+    "failed": "runaway"
+  },
+  "QRd2|click|list": {
+    "failed": "runaway"
+  },
+  "QRd2|click|own": {
+    "failed": "runaway"
+  },
+  "QRd2|click|p1": {
+    "failed": "runaway"
+  },
+  "QRd2|click|p2": {
+    "failed": "runaway"
+  },
+  "QRol|click|emptyP": {
+    "failed": "runaway"
+  },
+  "QRol|click|list": {
+    "failed": "runaway"
+  },
+  "QRol|click|own": {
+    "failed": "runaway"
+  },
+  "QRol|click|p1": {
+    "failed": "runaway"
+  },
+  "QRol|click|p2": {
+    "failed": "runaway"
+  },
+  "RQR|click|emptyP": {
+    "failed": "runaway"
+  },
+  "RQR|click|list": {
+    "failed": "runaway"
+  },
+  "RQR|click|own": {
+    "failed": "runaway"
+  },
+  "RQR|click|p1": {
+    "failed": "runaway"
+  },
+  "RQR|click|p2": {
+    "failed": "runaway"
+  },
+  "XRY|click|emptyP": {
+    "write": "<ul><li>Pw</li><li>xq</li></ul><p>yq</p><ul><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:yq@2",
+    "typed": "<ul><li>Pw</li><li>xq</li></ul><p>yqk</p><ul><li>Nw</li></ul>"
+  },
+  "QQR|click|heading": {
+    "failed": "runaway"
+  },
+  "QQR|click|bold": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@3",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><blockquote><p>Q1w</p></blockquote><hr />k</li><li>Nw</li></ul>"
+  },
+  "QQR|click|plain": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": ""
+  },
+  "QQR|click|plain2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": ""
+  },
+  "QR|click|heading": {
+    "failed": "runaway"
+  },
+  "QR|click|bold": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />k</li><li>Nw</li></ul>"
+  },
+  "QR|click|plain": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": ""
+  },
+  "QR|click|plain2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": ""
+  },
+  "QRB|click|heading": {
+    "failed": "runaway"
+  },
+  "QRB|click|bold": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />k<br /></li><li>Nw</li></ul>"
+  },
+  "QRB|click|plain": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": ""
+  },
+  "QRB|click|plain2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": ""
+  },
+  "QRL|click|heading": {
+    "failed": "runaway"
+  },
+  "QRL|click|bold": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />k<ul><li>L2w</li></ul></li><li>Nw</li></ul>"
+  },
+  "QRL|click|plain": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": ""
+  },
+  "QRL|click|plain2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": ""
+  },
+  "QRQ|click|heading": {
+    "failed": "runaway"
+  },
+  "QRQ|click|bold": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr /><blockquote><p>kQ2w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "QRQ|click|plain": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": ""
+  },
+  "QRQ|click|plain2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": ""
+  },
+  "QRR|click|heading": {
+    "failed": "runaway"
+  },
+  "QRR|click|bold": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />k<hr /></li><li>Nw</li></ul>"
+  },
+  "QRR|click|plain": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": ""
+  },
+  "QRR|click|plain2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": ""
+  },
+  "QRT|click|heading": {
+    "failed": "runaway"
+  },
+  "QRT|click|bold": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T2w@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />kT2w</li><li>Nw</li></ul>"
+  },
+  "QRT|click|plain": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": ""
+  },
+  "QRT|click|plain2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": ""
+  },
+  "QRTQ|click|heading": {
+    "failed": "runaway"
+  },
+  "QRTQ|click|bold": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T2w@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />kT2w<blockquote><p>Q3w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "QRTQ|click|plain": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": ""
+  },
+  "QRTQ|click|plain2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": ""
+  },
+  "QRd2|click|heading": {
+    "failed": "runaway"
+  },
+  "QRd2|click|bold": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw<ul><li>Aw</li><li><blockquote><p>Q0w</p></blockquote><hr />k</li><li>Zw</li></ul></li><li>Nw</li></ul>"
+  },
+  "QRd2|click|plain": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": ""
+  },
+  "QRd2|click|plain2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": ""
+  },
+  "QRol|click|heading": {
+    "failed": "runaway"
+  },
+  "QRol|click|bold": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ol><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />k</li><li>Nw</li></ol>"
+  },
+  "QRol|click|plain": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": ""
+  },
+  "QRol|click|plain2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": ""
+  },
+  "RQR|click|heading": {
+    "failed": "runaway"
+  },
+  "RQR|click|bold": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>Pw</li><li><hr /><blockquote><p>kQ1w</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "RQR|click|plain": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": ""
+  },
+  "RQR|click|plain2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": ""
+  },
+  "XRY|click|heading": {
+    "write": "<ul><li>Pw</li><li>xqHqyq</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:xqHqyq@4",
+    "typed": "<ul><li>Pw</li><li>xqHqkyq</li><li>Nw</li></ul>"
+  },
+  "XRY|click|bold": {
+    "write": "<ul><li>Pw</li><li>xq<b><strong>Bq</strong></b>yq</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Bq@2",
+    "typed": "<ul><li>Pw</li><li>xq<b><strong>Bq</strong></b>kyq</li><li>Nw</li></ul>"
+  },
+  "XRY|click|plain": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": ""
+  },
+  "XRY|click|plain2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": ""
+  },
+  "QQR|arrow|emptyP": {
+    "failed": "runaway"
+  },
+  "QQR|arrow|list": {
+    "failed": "runaway"
+  },
+  "QQR|arrow|p1": {
+    "failed": "runaway"
+  },
+  "QQR|arrow|p2": {
+    "failed": "runaway"
+  },
+  "QR|arrow|emptyP": {
+    "failed": "runaway"
+  },
+  "QR|arrow|list": {
+    "failed": "runaway"
+  },
+  "QR|arrow|p1": {
+    "failed": "runaway"
+  },
+  "QR|arrow|p2": {
+    "failed": "runaway"
+  },
+  "QRB|arrow|emptyP": {
+    "failed": "runaway"
+  },
+  "QRB|arrow|list": {
+    "failed": "runaway"
+  },
+  "QRB|arrow|p1": {
+    "failed": "runaway"
+  },
+  "QRB|arrow|p2": {
+    "failed": "runaway"
+  },
+  "QRL|arrow|emptyP": {
+    "failed": "runaway"
+  },
+  "QRL|arrow|list": {
+    "failed": "runaway"
+  },
+  "QRL|arrow|p1": {
+    "failed": "runaway"
+  },
+  "QRL|arrow|p2": {
+    "failed": "runaway"
+  },
+  "QRQ|arrow|emptyP": {
+    "failed": "AssertionError: rules selected: expected +0 to be 1 // Object.is equality"
+  },
+  "QRQ|arrow|list": {
+    "failed": "AssertionError: rules selected: expected +0 to be 1 // Object.is equality"
+  },
+  "QRQ|arrow|p1": {
+    "failed": "AssertionError: rules selected: expected +0 to be 1 // Object.is equality"
+  },
+  "QRQ|arrow|p2": {
+    "failed": "AssertionError: rules selected: expected +0 to be 1 // Object.is equality"
+  },
+  "QRT|arrow|emptyP": {
+    "failed": "runaway"
+  },
+  "QRT|arrow|list": {
+    "failed": "runaway"
+  },
+  "QRT|arrow|p1": {
+    "failed": "runaway"
+  },
+  "QRT|arrow|p2": {
+    "failed": "runaway"
+  },
+  "QRTQ|arrow|emptyP": {
+    "failed": "runaway"
+  },
+  "QRTQ|arrow|list": {
+    "failed": "runaway"
+  },
+  "QRTQ|arrow|p1": {
+    "failed": "runaway"
+  },
+  "QRTQ|arrow|p2": {
+    "failed": "runaway"
+  },
+  "QRd2|arrow|emptyP": {
+    "failed": "runaway"
+  },
+  "QRd2|arrow|list": {
+    "failed": "runaway"
+  },
+  "QRd2|arrow|p1": {
+    "failed": "runaway"
+  },
+  "QRd2|arrow|p2": {
+    "failed": "runaway"
+  },
+  "QRol|arrow|emptyP": {
+    "failed": "runaway"
+  },
+  "QRol|arrow|list": {
+    "failed": "runaway"
+  },
+  "QRol|arrow|p1": {
+    "failed": "runaway"
+  },
+  "QRol|arrow|p2": {
+    "failed": "runaway"
+  },
+  "XRY|arrow|emptyP": {
+    "write": "<ul><li>Pw</li><li>xq</li></ul><p>yq</p><ul><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:yq@2",
+    "typed": "<ul><li>Pw</li><li>xq</li></ul><p>yqk</p><ul><li>Nw</li></ul>"
+  },
+  "QQR|arrow|heading": {
+    "failed": "runaway"
+  },
+  "QQR|arrow|bold": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@3",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><blockquote><p>Q1w</p></blockquote><hr />k</li><li>Nw</li></ul>"
+  },
+  "QQR|arrow|plain": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li><blockquote><p>Q0w</p></blockquote><blockquote><p>Q1w</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "QQR|arrow|plain2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li><blockquote><p>Q0w</p></blockquote><blockquote><p>Q1w</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "QR|arrow|heading": {
+    "failed": "runaway"
+  },
+  "QR|arrow|bold": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />k</li><li>Nw</li></ul>"
+  },
+  "QR|arrow|plain": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li><blockquote><p>Q0w</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "QR|arrow|plain2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li><blockquote><p>Q0w</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "QRB|arrow|heading": {
+    "failed": "runaway"
+  },
+  "QRB|arrow|bold": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />k<br /></li><li>Nw</li></ul>"
+  },
+  "QRB|arrow|plain": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li><blockquote><p>Q0w</p></blockquote><hr /><br /></li><li>Nw</li></ul>"
+  },
+  "QRB|arrow|plain2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li><blockquote><p>Q0w</p></blockquote><hr /><br /></li><li>Nw</li></ul>"
+  },
+  "QRL|arrow|heading": {
+    "failed": "runaway"
+  },
+  "QRL|arrow|bold": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />k<ul><li>L2w</li></ul></li><li>Nw</li></ul>"
+  },
+  "QRL|arrow|plain": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li><blockquote><p>Q0w</p></blockquote><hr /><ul><li>L2w</li></ul></li><li>Nw</li></ul>"
+  },
+  "QRL|arrow|plain2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li><blockquote><p>Q0w</p></blockquote><hr /><ul><li>L2w</li></ul></li><li>Nw</li></ul>"
+  },
+  "QRQ|arrow|heading": {
+    "failed": "AssertionError: rules selected: expected +0 to be 1 // Object.is equality"
+  },
+  "QRQ|arrow|bold": {
+    "failed": "AssertionError: rules selected: expected +0 to be 1 // Object.is equality"
+  },
+  "QRQ|arrow|plain": {
+    "failed": "AssertionError: rules selected: expected +0 to be 1 // Object.is equality"
+  },
+  "QRQ|arrow|plain2": {
+    "failed": "AssertionError: rules selected: expected +0 to be 1 // Object.is equality"
+  },
+  "QRT|arrow|heading": {
+    "failed": "runaway"
+  },
+  "QRT|arrow|bold": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T2w@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />kT2w</li><li>Nw</li></ul>"
+  },
+  "QRT|arrow|plain": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li><blockquote><p>Q0w</p></blockquote><hr />T2w</li><li>Nw</li></ul>"
+  },
+  "QRT|arrow|plain2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li><blockquote><p>Q0w</p></blockquote><hr />T2w</li><li>Nw</li></ul>"
+  },
+  "QRTQ|arrow|heading": {
+    "failed": "runaway"
+  },
+  "QRTQ|arrow|bold": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T2w@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />kT2w<blockquote><p>Q3w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "QRTQ|arrow|plain": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li><blockquote><p>Q0w</p></blockquote><hr />T2w<blockquote><p>Q3w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "QRTQ|arrow|plain2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li><blockquote><p>Q0w</p></blockquote><hr />T2w<blockquote><p>Q3w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "QRd2|arrow|heading": {
+    "failed": "runaway"
+  },
+  "QRd2|arrow|bold": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw<ul><li>Aw</li><li><blockquote><p>Q0w</p></blockquote><hr />k</li><li>Zw</li></ul></li><li>Nw</li></ul>"
+  },
+  "QRd2|arrow|plain": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw<ul><li>Aw</li><li><blockquote><p>Q0w</p></blockquote><hr /></li><li>Zw</li></ul></li><li>Nw</li></ul>"
+  },
+  "QRd2|arrow|plain2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw<ul><li>Aw</li><li><blockquote><p>Q0w</p></blockquote><hr /></li><li>Zw</li></ul></li><li>Nw</li></ul>"
+  },
+  "QRol|arrow|heading": {
+    "failed": "runaway"
+  },
+  "QRol|arrow|bold": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ol><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />k</li><li>Nw</li></ol>"
+  },
+  "QRol|arrow|plain": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ol><li>kPw</li><li><blockquote><p>Q0w</p></blockquote><hr /></li><li>Nw</li></ol>"
+  },
+  "QRol|arrow|plain2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ol><li>kPw</li><li><blockquote><p>Q0w</p></blockquote><hr /></li><li>Nw</li></ol>"
+  },
+  "XRY|arrow|heading": {
+    "write": "<ul><li>Pw</li><li>xqHqyq</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:xqHqyq@4",
+    "typed": "<ul><li>Pw</li><li>xqHqkyq</li><li>Nw</li></ul>"
+  },
+  "XRY|arrow|bold": {
+    "write": "<ul><li>Pw</li><li>xq<b><strong>Bq</strong></b>yq</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Bq@2",
+    "typed": "<ul><li>Pw</li><li>xq<b><strong>Bq</strong></b>kyq</li><li>Nw</li></ul>"
+  },
+  "XRY|arrow|plain": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li>xq<hr />yq</li><li>Nw</li></ul>"
+  },
+  "XRY|arrow|plain2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li>xq<hr />yq</li><li>Nw</li></ul>"
+  },
+  "QRR|arrow|p1": {
+    "failed": "runaway"
+  },
+  "QRR|arrow|p2": {
+    "failed": "runaway"
+  },
+  "QRR|arrow|list": {
+    "failed": "runaway"
+  },
+  "QRR|arrow|emptyP": {
+    "failed": "runaway"
+  },
+  "QRR|arrow|heading": {
+    "failed": "runaway"
+  },
+  "QRR|arrow|bold": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@3",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr /><hr />k</li><li>Nw</li></ul>"
+  },
+  "QRR|arrow|plain": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li><blockquote><p>Q0w</p></blockquote><hr /><hr /></li><li>Nw</li></ul>"
+  },
+  "QRR|arrow|plain2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li><blockquote><p>Q0w</p></blockquote><hr /><hr /></li><li>Nw</li></ul>"
+  },
+  "QRR|two|p1": {
+    "failed": "runaway"
+  },
+  "QRR|two|p2": {
+    "failed": "runaway"
+  },
+  "QRR|two|list": {
+    "failed": "runaway"
+  },
+  "QRR|two|emptyP": {
+    "failed": "runaway"
+  },
+  "QRR|two|heading": {
+    "failed": "runaway"
+  },
+  "QRR|two|bold": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@3",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr /><hr />k</li><li>Nw</li></ul>"
+  },
+  "QRR|two|plain": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule,horizontalrule",
+    "typed": "<ul><li>kPw</li><li><blockquote><p>Q0w</p></blockquote><hr /><hr /></li><li>Nw</li></ul>"
+  },
+  "QRR|two|plain2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule,horizontalrule",
+    "typed": "<ul><li>kPw</li><li><blockquote><p>Q0w</p></blockquote><hr /><hr /></li><li>Nw</li></ul>"
+  },
+  "RQR|arrow|p1": {
+    "failed": "runaway"
+  },
+  "RQR|arrow|p2": {
+    "failed": "runaway"
+  },
+  "RQR|arrow|list": {
+    "failed": "runaway"
+  },
+  "RQR|arrow|emptyP": {
+    "failed": "runaway"
+  },
+  "RQR|arrow|heading": {
+    "failed": "runaway"
+  },
+  "RQR|arrow|bold": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@3",
+    "typed": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><hr />k</li><li>Nw</li></ul>"
+  },
+  "RQR|arrow|plain": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li><hr /><blockquote><p>Q1w</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "RQR|arrow|plain2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>kPw</li><li><hr /><blockquote><p>Q1w</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "RQR|two|p1": {
+    "failed": "runaway"
+  },
+  "RQR|two|p2": {
+    "failed": "runaway"
+  },
+  "RQR|two|list": {
+    "failed": "runaway"
+  },
+  "RQR|two|emptyP": {
+    "failed": "runaway"
+  },
+  "RQR|two|heading": {
+    "failed": "runaway"
+  },
+  "RQR|two|bold": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@3",
+    "typed": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><hr />k</li><li>Nw</li></ul>"
+  },
+  "RQR|two|plain": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule,horizontalrule",
+    "typed": "<ul><li>kPw</li><li><hr /><blockquote><p>Q1w</p></blockquote><hr /></li><li>Nw</li></ul>"
+  },
+  "RQR|two|plain2": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule,horizontalrule",
+    "typed": "<ul><li>kPw</li><li><hr /><blockquote><p>Q1w</p></blockquote><hr /></li><li>Nw</li></ul>"
+  }
+}
