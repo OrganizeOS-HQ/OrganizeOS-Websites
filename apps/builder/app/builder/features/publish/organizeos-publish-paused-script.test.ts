@@ -105,8 +105,91 @@ const find = (
     props: toProps([]),
     dataSources: new Map(),
     resources: new Map(),
+    // the cases below are the pause's, with embeds that may not ship, unless
+    // one says otherwise
+    embedsMayShip: false,
     ...overrides,
   });
+
+// OrganizeOS fork: with orgEmbedsMayShip() on, the five embed kinds publish,
+// and the list names only what publishing still leaves out (spec 2026-11-20,
+// 4.3)
+describe("findPausedScript with embeds on", () => {
+  const embedsOn = { embedsMayShip: true };
+
+  test("with embeds on, lists no script embed, bound embed, Markdown Embed, JSON-LD or custom code", () => {
+    const instances = createInstances([
+      {
+        id: "home-root",
+        component: "Body",
+        children: ids("script", "bound", "markdown", "json-ld"),
+      },
+      { id: "script", component: "HtmlEmbed" },
+      { id: "bound", component: "HtmlEmbed" },
+      { id: "markdown", component: "MarkdownEmbed" },
+      { id: "json-ld", component: "JsonLd" },
+    ]);
+    const props = toProps([
+      stringProp("script", "code", "<script>1</script>"),
+      {
+        id: "bound-code",
+        instanceId: "bound",
+        name: "code",
+        type: "expression",
+        value: '"<b>" + "x" + "</b>"',
+      },
+      stringProp("markdown", "code", "# Title"),
+      jsonProp("json-ld", "code", { "@context": "https://schema.org" }),
+    ]);
+    expect(
+      find({
+        ...embedsOn,
+        pages: createPages({ code: "<script>1</script>" }),
+        projectSettings: { meta: { code: "<meta name=x>" }, compiler: {} },
+        instances,
+        props,
+      })
+    ).toEqual([]);
+  });
+
+  test("with embeds on, still lists an HTML Embed with no code", () => {
+    const instances = createInstances([
+      {
+        id: "home-root",
+        component: "Body",
+        children: ids("none", "blank"),
+      },
+      { id: "none", component: "HtmlEmbed" },
+      { id: "blank", component: "HtmlEmbed" },
+    ]);
+    const props = toProps([stringProp("blank", "code", "  ")]);
+    expect(
+      find({ ...embedsOn, instances, props }).map(({ label }) => label)
+    ).toEqual(["HTML Embed on Home", "HTML Embed on Home"]);
+  });
+
+  test("with embeds on, still lists a dangerouslySetInnerHTML prop and an unsupported tag", () => {
+    const instances = createInstances([
+      {
+        id: "home-root",
+        component: "Body",
+        children: ids("raw", "script"),
+      },
+      { id: "raw", component: "Box" },
+      { id: "script", component: "ws:element", tag: "script" },
+    ]);
+    const props = toProps([
+      jsonProp("raw", "dangerouslySetInnerHTML", { __html: "<b>1</b>" }),
+    ]);
+    const labels = find({ ...embedsOn, instances, props }).map(
+      ({ label }) => label
+    );
+    expect(labels).toEqual(
+      find({ instances, props }).map(({ label }) => label)
+    );
+    expect(labels.length).toBe(2);
+  });
+});
 
 describe("findPausedScript", () => {
   // T10

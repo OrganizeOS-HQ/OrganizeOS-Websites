@@ -37,10 +37,19 @@ import {
 import { migratePages } from "@webstudio-is/project-migrations/pages";
 import {
   assertFrameworkImports,
-  dropOrgScript,
+  dropOrgScript as dropOrgScriptWith,
   frameworkComponentsOf,
   publishedComponents,
 } from "./organizeos-org-script";
+
+// OrganizeOS fork: these cases are the pause's, with embeds that may not ship
+// (orgEmbedsMayShip()), set explicitly so the flip changes none of them; a
+// case that wants embeds on passes it.
+const dropOrgScript = <Bundle extends Parameters<typeof dropOrgScriptWith>[0]>(
+  bundle: Bundle,
+  options: Parameters<typeof dropOrgScriptWith>[1] = {}
+) => dropOrgScriptWith(bundle, { embedsMayShip: false, ...options });
+
 import { assertBuildCodeValid } from "./organizeos-code-check";
 import { ORGANIZEOS_NAMESPACE } from "./organizeos-components";
 import { createFramework as createReactRouterFramework } from "./framework-react-router";

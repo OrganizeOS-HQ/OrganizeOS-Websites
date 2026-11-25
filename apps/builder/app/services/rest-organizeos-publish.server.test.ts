@@ -155,6 +155,8 @@ let staged: CmsForwardRequest[];
 let failedBuilds: string[];
 let order: string[];
 let logged: ReturnType<typeof vi.spyOn>;
+// OrganizeOS fork: the builder's orgEmbedsMayShip(), as the route is given it
+let embedsMayShip: boolean;
 
 const deps = (): PublishRouteDeps => ({
   checkCsrf: async () => {},
@@ -196,6 +198,7 @@ const deps = (): PublishRouteDeps => ({
       : undefined,
   publisherHost: "organizeos.org",
   platformUrl: "https://app.organizeos.org",
+  embedsMayShip,
   loadBuildForms: async () => {
     order.push("load");
     return state.buildForms;
@@ -270,6 +273,7 @@ beforeEach(() => {
   staged = [];
   failedBuilds = [];
   order = [];
+  embedsMayShip = false;
   logged = vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
@@ -680,6 +684,56 @@ describe("rest.organizeos-publish: replacing the old site", () => {
       (await call({ body: { targets: ["builtin"], replacePages: false } }))
         .status
     ).toBe(400);
+    expectNothingWritten();
+  });
+});
+
+// OrganizeOS fork: a tab built with another embed switch cannot publish (spec
+// 2026-11-20, 4.3). The dialog sends `embeds: true` only when its
+// orgEmbedsMayShip() is on, and absent counts as false.
+describe("rest.organizeos-publish: the embed switch", () => {
+  test("a dialog whose embeds value differs from the builder's answers 409 reload and writes no build", async () => {
+    const on = await call({
+      body: { targets: ["builtin"], embeds: true },
+    });
+    expect(on.status).toBe(409);
+    expect(await on.json()).toEqual({ ok: false, error: "reload" });
+    expect(logged).toHaveBeenCalledWith("[organizeos-publish] embeds_mismatch");
+    expectNothingWritten();
+    expect(addressReads).toEqual([]);
+
+    embedsMayShip = true;
+    const off = await call({ body: { targets: ["builtin"] } });
+    expect(off.status).toBe(409);
+    expect(await off.json()).toEqual({ ok: false, error: "reload" });
+    expectNothingWritten();
+    expect(addressReads).toEqual([]);
+  });
+
+  test("a body without embeds counts as false", async () => {
+    const response = await call({ body: { targets: ["builtin"] } });
+    expect(response.status).toBe(200);
+    expect(dispatches).toHaveLength(1);
+  });
+
+  test("a dialog that ships embeds publishes with a builder that does", async () => {
+    embedsMayShip = true;
+    const response = await call({
+      body: { targets: ["builtin"], embeds: true },
+    });
+    expect(response.status).toBe(200);
+    expect(dispatches).toHaveLength(1);
+  });
+
+  test("embeds is true or absent", async () => {
+    for (const embeds of [false, "true"]) {
+      const response = await call({ body: { targets: ["builtin"], embeds } });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({
+        ok: false,
+        error: "invalid_request",
+      });
+    }
     expectNothingWritten();
   });
 });

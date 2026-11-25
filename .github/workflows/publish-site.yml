@@ -7,10 +7,17 @@ name: Publish site
 # OrganizeOS, which flips the org's ledger pointer. Each publish is its own
 # deployment URL, so the flip is atomic and rollback is repointing.
 #
-# With the URL it reports what this run's CLI says of itself, read from the
-# CLI it built and never from configuration: the org script switch (orgScript)
-# and the guard level (guardLevel, ORGANIZEOS_GUARD_LEVEL), which OrganizeOS
-# stores per build (docs/ORGANIZEOS-FORK.md section 5).
+# With the URL it reports whether this build carries org code (orgScript) and
+# the guard level of this run's CLI (guardLevel, ORGANIZEOS_GUARD_LEVEL), which
+# OrganizeOS stores per build (docs/ORGANIZEOS-FORK.md section 5). orgScript is
+# a fact of the build, not of the CLI: prebuild writes it, last, to a facts
+# file outside the directory vercel deploy uploads, and the run fails before
+# anything deploys when the file is missing or malformed, or says the build
+# carries org code while this CLI's orgEmbedsMayShip() is off. The guard level
+# and the switches are read from the CLI it built, never from configuration.
+# The builder sends the embeds input, true, only when it ships embeds; the run
+# fails when that differs from this CLI's orgEmbedsMayShip() (the minutes
+# between a flip merging and the builder deploying).
 #
 # The builder's Publish dialog sends the addresses the admin ticked as the
 # targets input, a JSON array of keys (builtin, or a host the org's site is
@@ -59,6 +66,9 @@ on:
         required: false
       replace_pages:
         description: "true when the admin confirmed replacing the old site"
+        required: false
+      embeds:
+        description: "true when the builder that dispatched ships embeds"
         required: false
 
 concurrency:
@@ -145,6 +155,32 @@ jobs:
           ') || { printf '%s\n' "$value"; exit 1; }
           echo "value=$value" >> "$GITHUB_OUTPUT"
 
+      - name: Read the embeds flag
+        # OrganizeOS fork: the builder that dispatched ships embeds
+        # (orgEmbedsMayShip(), docs/ORGANIZEOS-FORK.md section 5). It sends the
+        # input only when true, so a workflow without it accepts every dispatch
+        # while the switch is off. Untrusted text, checked before anything
+        # installs: absent or empty writes false; exactly true writes true;
+        # anything else fails the run here, writing nothing. "Read the org
+        # script switch" compares it with this run's CLI.
+        id: embeds
+        env:
+          EMBEDS: ${{ inputs.embeds }}
+        run: |
+          value=$(node -e '
+            const raw = process.env.EMBEDS ?? "";
+            if (raw === "") {
+              process.stdout.write("false");
+              process.exit(0);
+            }
+            if (raw !== "true") {
+              console.log("::error::The embeds input is not true.");
+              process.exit(1);
+            }
+            process.stdout.write("true");
+          ') || { printf '%s\n' "$value"; exit 1; }
+          echo "value=$value" >> "$GITHUB_OUTPUT"
+
       - name: Install and build CLI
         run: |
           pnpm install
@@ -171,28 +207,69 @@ jobs:
             --authToken "$WSTD_SERVICE_TOKEN"
 
       - name: Build site
+        # OrganizeOS fork: prebuild writes the publish facts, last, to the
+        # fork's own checkout, outside runner.temp, where vercel deploy uploads
+        # from (docs/ORGANIZEOS-FORK.md section 5). A file from an earlier run
+        # is removed first, so only this build's facts are read.
         working-directory: ${{ runner.temp }}
         run: |
-          node "$GITHUB_WORKSPACE/packages/cli/bin.js" build \
+          rm -f "$GITHUB_WORKSPACE/organizeos-publish-facts.json"
+          ORGANIZEOS_PUBLISH_FACTS_FILE="$GITHUB_WORKSPACE/organizeos-publish-facts.json" node "$GITHUB_WORKSPACE/packages/cli/bin.js" build \
             --template react-router --template react-router-vercel
 
       - name: Read the org script switch
-        # OrganizeOS fork: OrganizeOS launches a Website only from a build that
-        # carries no org script, so the publish reports what this run's CLI
-        # says (docs/ORGANIZEOS-FORK.md section 10), never configuration, and
-        # fails unless the switch is off and the address rule is there.
+        # OrganizeOS fork: what the run reports as orgScript is this build's
+        # fact, read from the facts file prebuild wrote (docs/ORGANIZEOS-FORK.md
+        # sections 5 and 10), never configuration. The step fails, before
+        # anything deploys, unless this run's CLI has the address rule and
+        # orgScriptMayRun() is false, the embeds input equals its
+        # orgEmbedsMayShip(), and the facts are exactly { "orgScript": boolean },
+        # true only while embeds may ship. Its output is that boolean, written
+        # only after every check.
         id: org-script
         working-directory: packages/cli
+        env:
+          EMBEDS: ${{ steps.embeds.outputs.value }}
         run: |
+          export ORGANIZEOS_PUBLISH_FACTS="$GITHUB_WORKSPACE/organizeos-publish-facts.json"
           value=$(node --input-type=module -e '
-            import { orgScriptMayRun, urlMayRun } from "@organizeos/site-components/org-script";
+            import { readFileSync } from "node:fs";
+            import { orgEmbedsMayShip, orgScriptMayRun, urlMayRun } from "@organizeos/site-components/org-script";
+            const fail = (message) => {
+              console.log("::error::" + message);
+              process.exit(1);
+            };
             if (typeof urlMayRun !== "function" || urlMayRun("javascript:alert(1)", false) !== false) {
               throw new Error("this CLI does not check unsafe addresses");
             }
-            process.stdout.write(JSON.stringify(orgScriptMayRun()));
-          ')
-          if [ "$value" != "false" ]; then
-            echo "::error::orgScriptMayRun() is ${value:-unreadable}. OrganizeOS launches a Website only from a build that carries no org script: turn the switch on only together with that gate."
+            const mayRun = orgScriptMayRun();
+            if (mayRun !== false) {
+              fail("orgScriptMayRun() is " + JSON.stringify(mayRun) + ". OrganizeOS launches a Website only from a build that carries no org script: turn the switch on only together with that gate.");
+            }
+            const embeds = orgEmbedsMayShip();
+            if (typeof embeds !== "boolean" || String(embeds) !== process.env.EMBEDS) {
+              fail("The embeds input (" + process.env.EMBEDS + ") differs from this CLI\u0027s orgEmbedsMayShip(). Nothing was deployed.");
+            }
+            let facts;
+            try {
+              facts = JSON.parse(readFileSync(process.env.ORGANIZEOS_PUBLISH_FACTS, "utf8"));
+            } catch {}
+            if (
+              typeof facts !== "object" ||
+              facts === null ||
+              Array.isArray(facts) ||
+              Object.keys(facts).length !== 1 ||
+              typeof facts.orgScript !== "boolean"
+            ) {
+              fail("The publish facts are missing or malformed. Nothing was deployed.");
+            }
+            if (facts.orgScript === true && embeds === false) {
+              fail("The build carries org code while embeds may not ship. Nothing was deployed.");
+            }
+            process.stdout.write(JSON.stringify(facts.orgScript));
+          ') || { printf '%s\n' "$value"; exit 1; }
+          if [ "$value" != "true" ] && [ "$value" != "false" ]; then
+            echo "::error::The publish facts did not read as a boolean. Nothing was deployed."
             exit 1
           fi
           echo "value=$value" >> "$GITHUB_OUTPUT"
@@ -238,11 +315,12 @@ jobs:
         # different PUBLISH_CALLBACK_URL answers 308) would pass while flipping
         # nothing, and the run would still report the build PUBLISHED. Anything
         # but a 2xx fails the run.
-        # OrganizeOS fork: orgScript and guardLevel are what this run's CLI
-        # said ("Read the org script switch", "Read the guard level"), each
-        # from that step's output alone and checked again here before anything
-        # is sent: orgScript the JSON false, guardLevel an integer from 0 to
-        # 32767 (docs/ORGANIZEOS-FORK.md sections 5 and 10). targets is what
+        # OrganizeOS fork: orgScript is this build's fact and guardLevel what
+        # this run's CLI said ("Read the org script switch", "Read the guard
+        # level"), each from that step's output alone and checked again here
+        # before anything is sent: orgScript a JSON boolean, sent as it is,
+        # guardLevel an integer from 0 to 32767 (docs/ORGANIZEOS-FORK.md
+        # sections 5 and 10). Facts and deployment URL come from one run. targets is what
         # "Read the targets" wrote, checked again by the same rule, and sent only
         # when there are any. replacePages is sent, as true, only when "Read the
         # replace flag" wrote true and targets are sent. On success the log
@@ -270,8 +348,8 @@ jobs:
             try {
               orgScript = JSON.parse(env.ORG_SCRIPT ?? "");
             } catch {}
-            if (orgScript !== false) {
-              console.log("::error::The org script switch did not read false, so nothing was sent.");
+            if (typeof orgScript !== "boolean") {
+              console.log("::error::The org script report is not a boolean, so nothing was sent.");
               process.exit(1);
             }
             const level = env.GUARD_LEVEL ?? "";

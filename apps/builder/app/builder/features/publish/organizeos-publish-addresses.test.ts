@@ -191,6 +191,28 @@ describe("the old site, actions and the replace flag", () => {
       { targets: ["builtin"] },
     ]);
   });
+
+  // OrganizeOS fork: the dialog's orgEmbedsMayShip(), sent only when true
+  // (spec 2026-11-20, 4.3)
+  test("sends embeds only when true", async () => {
+    routeFetch.mockResolvedValue(Response.json({ ok: true }));
+    await publishToTargets("project-1", ["builtin"]);
+    await publishToTargets("project-1", ["builtin"], { embeds: false });
+    await publishToTargets("project-1", ["builtin"], { embeds: true });
+    await publishToTargets("project-1", ["builtin"], {
+      embeds: true,
+      replacePages: true,
+    });
+    const bodies = routeFetch.mock.calls.map(([, init]) =>
+      JSON.parse((init as RequestInit).body as string)
+    );
+    expect(bodies).toEqual([
+      { targets: ["builtin"] },
+      { targets: ["builtin"] },
+      { targets: ["builtin"], embeds: true },
+      { targets: ["builtin"], replacePages: true, embeds: true },
+    ]);
+  });
 });
 
 describe("unpublishTarget", () => {

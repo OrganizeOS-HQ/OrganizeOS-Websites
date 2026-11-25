@@ -22,6 +22,14 @@ import { PausedScriptBanner } from "./organizeos-publish";
 const { setActiveSidebarPanel } = vi.hoisted(() => ({
   setActiveSidebarPanel: vi.fn(),
 }));
+// OrganizeOS fork: the banner lists the pause's items while embeds may not
+// ship (orgEmbedsMayShip()), held off here so the flip changes no case
+vi.mock("@organizeos/site-components/org-script", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@organizeos/site-components/org-script")
+  >()),
+  orgEmbedsMayShip: () => false,
+}));
 vi.mock("~/builder/shared/nano-states", async (importOriginal) => ({
   ...(await importOriginal<typeof import("~/builder/shared/nano-states")>()),
   setActiveSidebarPanel,

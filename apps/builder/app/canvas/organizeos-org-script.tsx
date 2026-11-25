@@ -1,48 +1,61 @@
 /**
- * OrganizeOS fork: an org's own script is paused until its sites move to their
- * own domain (docs/ORGANIZEOS-FORK.md section 10, orgScriptMayRun()).
+ * OrganizeOS fork: the builder never runs an org's embed code
+ * (docs/ORGANIZEOS-FORK.md section 10, "The builder never runs embed code";
+ * spec 2026-11-20-builder-code-embeds-design.md, 4.2, in the OrganizeOS
+ * repo).
  *
  * The builder canvas, `p-{projectId}.builder.organizeos.org`, is same-origin
- * with the builder UI and receives the platform session. Upstream's HTML
- * Embed puts its code into the page with `innerHTML` in every mode, which
- * skips `<script>` but fires inline handlers (`<img src=x onerror=…>`), and
- * runs scripts in preview mode. So an embed one admin writes could read the
- * session of every co-admin who opens the page. This module closes that where
- * the code would run, and leaves upstream's many insert and paste paths alone:
+ * with the builder UI. Upstream's HTML Embed puts its code into the page with
+ * `innerHTML` in design mode, which fires inline handlers, and re-creates and
+ * runs its scripts in preview mode or with "Run scripts on canvas". So the
+ * canvas registers its own HTML Embed and Markdown Embed in every mode, which
+ * show an embed only through the sanitized insertion path
+ * (~/shared/organizeos-untrusted-markup.tsx), and drops "Run scripts on
+ * canvas" from the HTML Embed's settings. That is a standing rule, whatever
+ * either switch says.
  *
- * - HTML Embed, Content Embed, Markdown Embed and JSON-LD leave the Components
- *   panel and the command palette;
- * - an HTML Embed on the canvas shows a notice instead of its code, unless the
- *   code is one of the SVG icons upstream's own templates insert;
- * - a Markdown Embed always shows the notice, as publish leaves it out.
- *
- * Nothing is deleted: the embeds stay in the build and show as paused. Publish
- * leaves them out (packages/cli/src/organizeos-org-script.ts).
+ * While orgEmbedsMayShip() is off, publishing leaves the embeds out, so the
+ * canvas also shows them as paused, HTML Embed, Markdown Embed and JSON-LD
+ * leave the Components panel and the command palette, and the Content Embed
+ * and Markdown Embed templates are left out. Nothing is deleted: the embeds
+ * stay in the build. Publish leaves them out
+ * (packages/cli/src/organizeos-org-script.ts).
  */
 import {
   forwardRef,
+  useContext,
+  useMemo,
   type ComponentPropsWithoutRef,
   type ExoticComponent,
+  type Ref,
 } from "react";
 import type { WsComponentMeta } from "@webstudio-is/sdk";
 import type { TemplateMeta } from "@webstudio-is/template";
+import { ReactSdkContext } from "@webstudio-is/react-sdk/runtime";
 import {
   HtmlEmbed,
   MarkdownEmbed,
 } from "@webstudio-is/sdk-components-react/components";
+import { renderMarkdownHtml } from "@webstudio-is/sdk-components-react/markdown";
 import {
   checkElementTag,
   checksInstanceTag,
   elementTagMayRender,
-  htmlEmbedCodeMayRun,
+  orgEmbedsMayShip,
   orgScriptMayRun,
+  templateIconCodes,
 } from "@organizeos/site-components/org-script";
 import { platformName } from "~/shared/branding";
+import { UntrustedMarkup } from "~/shared/organizeos-untrusted-markup";
+// OrganizeOS fork: upstream's own asset URL resolution, by its source path:
+// the package's exports map does not export it, and a runtime package stays
+// byte-identical to upstream (docs/ORGANIZEOS-FORK.md section 7)
+import { resolveHtmlEmbedAssetUrls } from "../../../../packages/sdk-components-react/src/html-embed-assets";
 
 /**
- * The block that stands where a paused embed is. HTML Embed's preset style is
- * `display: contents`, which would give the notice no box, so it sets its own
- * display and padding inline, as upstream's own Placeholder does.
+ * The block that stands where an embed shows nothing. HTML Embed's preset
+ * style is `display: contents`, which would give the notice no box, so it
+ * sets its own display and padding inline, as upstream's own Placeholder does.
  */
 const Notice = forwardRef<
   HTMLDivElement,
@@ -54,63 +67,158 @@ const Notice = forwardRef<
 ));
 Notice.displayName = "PausedEmbedNotice";
 
+/** The box for an embed with nothing the canvas may show. */
+const publishedOnlyText = "Shows on the published site";
+
+const renderPublishedOnly = ({
+  ref,
+  rest,
+}: {
+  ref: Ref<HTMLElement>;
+  rest: Record<string, unknown>;
+}) => (
+  <Notice {...rest} ref={ref as Ref<HTMLDivElement>} text={publishedOnlyText} />
+);
+
+const htmlEmbedPausedText = `HTML Embed is paused. Its code is kept, but it isn't published and doesn't run here: scripts on your site could read the ${platformName} sign-in of people who visit.`;
+
+const markdownEmbedPausedText = `Markdown Embed is paused. Its content is kept, but it isn't published and isn't shown here: a link in it could run script that reads the ${platformName} sign-in of people who visit.`;
+
+const isTemplateIcon = (code: unknown): code is string =>
+  typeof code === "string" && templateIconCodes.has(code);
+
 /**
- * The canvas's HTML Embed. It renders upstream's component only for a template
- * icon (or with the switch on), and never puts any other `code` into the DOM:
- * not in design mode, preview mode, safe mode or with "Run scripts on canvas".
+ * The canvas's HTML Embed, in every mode. It never hands org code to
+ * upstream's component, and never runs a script: not in design mode, preview
+ * mode, safe mode or with a saved "Run scripts on canvas".
+ *
+ * - A template icon (a string byte-identical to one) renders through
+ *   upstream's component, with scripts off.
+ * - While embeds may not ship, anything else shows the paused notice.
+ * - Otherwise: missing or blank code shows upstream's placeholder; anything
+ *   else is `String(code)` with asset URLs resolved as upstream resolves them
+ *   (before sanitizing), put in through the insertion path, and when nothing
+ *   renderable is left, the box reading "Shows on the published site".
  */
-export const PausedHtmlEmbed = forwardRef<
+export const CanvasHtmlEmbed = forwardRef<
   HTMLDivElement,
   ComponentPropsWithoutRef<typeof HtmlEmbed>
 >((props, ref) => {
-  // Upstream's HTML Embed turns whatever it is given into a string with
-  // String(code), so only a string is ever tested against the icons.
-  if (htmlEmbedCodeMayRun(props.code)) {
-    return <HtmlEmbed {...props} ref={ref} />;
-  }
   // $ws$executeScripts is the canvas's, given to every HTML Embed
   // (webstudio-component.tsx): only upstream's embed reads it
   const {
-    code: _code,
+    code: savedCode,
     clientOnly: _clientOnly,
     executeScriptOnCanvas: _executeScriptOnCanvas,
     $ws$executeScripts: _executeScripts,
     children: _children,
     ...rest
   } = props;
+  // the canvas passes whatever the prop computes to, not only a string
+  const code: unknown = savedCode;
+  const { assetUrlsByPath } = useContext(ReactSdkContext);
+  // Upstream's HTML Embed turns whatever it is given into a string with
+  // String(code), so only a string is ever tested against the icons, and a
+  // value whose String() throws shows the box
+  const markup = useMemo(() => {
+    try {
+      // as upstream resolves it: a null field renders nothing, not "null"
+      return resolveHtmlEmbedAssetUrls(String(code ?? ""), assetUrlsByPath);
+    } catch {
+      return undefined;
+    }
+  }, [code, assetUrlsByPath]);
+  if (isTemplateIcon(code)) {
+    return (
+      <HtmlEmbed {...rest} code={code} $ws$executeScripts={false} ref={ref} />
+    );
+  }
+  if (orgEmbedsMayShip() === false) {
+    return <Notice {...rest} ref={ref} text={htmlEmbedPausedText} />;
+  }
+  if (
+    code === undefined ||
+    code === null ||
+    (typeof code === "string" && code.trim() === "")
+  ) {
+    return (
+      <HtmlEmbed
+        {...rest}
+        code={code === null ? (undefined as never) : savedCode}
+        $ws$executeScripts={false}
+        ref={ref}
+      />
+    );
+  }
+  if (markup === undefined) {
+    return <Notice {...rest} ref={ref} text={publishedOnlyText} />;
+  }
   return (
-    <Notice
+    <UntrustedMarkup
       {...rest}
       ref={ref}
-      text={`HTML Embed is paused. Its code is kept, but it isn't published and doesn't run here: scripts on your site could read the ${platformName} sign-in of people who visit.`}
+      markup={markup}
+      renderFallback={renderPublishedOnly}
     />
   );
 });
-PausedHtmlEmbed.displayName = "PausedHtmlEmbed";
+CanvasHtmlEmbed.displayName = "CanvasHtmlEmbed";
 
 /**
- * The canvas's Markdown Embed. Publish leaves it out while org script is
- * paused, and no template icon is Markdown, so unlike the HTML Embed it has no
- * exception. (Until 0.309.0 its renderer kept `javascript:` links; it now
- * sanitizes them.)
+ * The canvas's Markdown Embed, in every mode. While embeds may not ship it
+ * shows the paused notice; otherwise it renders the Markdown with upstream's
+ * renderer and puts the HTML in through the insertion path, since upstream's
+ * own filter (`sanitize-html`, which keeps iframes) is not the canvas's
+ * boundary.
  */
-export const PausedMarkdownEmbed = forwardRef<
-  HTMLDivElement,
-  ComponentPropsWithoutRef<typeof MarkdownEmbed>
->((props, ref) => {
-  if (orgScriptMayRun()) {
-    return <MarkdownEmbed {...props} ref={ref} />;
+type MarkdownEmbedProps = ComponentPropsWithoutRef<typeof MarkdownEmbed>;
+
+/**
+ * The Markdown, once embeds may ship: rendered and put in through the
+ * insertion path, or the box when nothing renderable is left or the renderer
+ * (or the canvas's image loader) throws.
+ */
+const ShippingMarkdownEmbed = forwardRef<HTMLDivElement, MarkdownEmbedProps>(
+  (props, ref) => {
+    const { code, children: _children, ...rest } = props;
+    const { imageLoader, renderer } = useContext(ReactSdkContext);
+    const markup = useMemo(() => {
+      try {
+        return renderMarkdownHtml(typeof code === "string" ? code : "", {
+          imageLoader,
+          renderer,
+        });
+      } catch {
+        return undefined;
+      }
+    }, [code, imageLoader, renderer]);
+    if (markup === undefined) {
+      return <Notice {...rest} ref={ref} text={publishedOnlyText} />;
+    }
+    return (
+      <UntrustedMarkup
+        {...rest}
+        ref={ref}
+        markup={markup}
+        renderFallback={renderPublishedOnly}
+      />
+    );
   }
-  const { code: _code, children: _children, ...rest } = props;
-  return (
-    <Notice
-      {...rest}
-      ref={ref}
-      text={`Markdown Embed is paused. Its content is kept, but it isn't published and isn't shown here: a link in it could run script that reads the ${platformName} sign-in of people who visit.`}
-    />
-  );
+);
+ShippingMarkdownEmbed.displayName = "ShippingMarkdownEmbed";
+
+export const CanvasMarkdownEmbed = forwardRef<
+  HTMLDivElement,
+  MarkdownEmbedProps
+>((props, ref) => {
+  // while embeds may not ship nothing is rendered or computed
+  if (orgEmbedsMayShip() === false) {
+    const { code: _code, children: _children, ...rest } = props;
+    return <Notice {...rest} ref={ref} text={markdownEmbedPausedText} />;
+  }
+  return <ShippingMarkdownEmbed {...props} ref={ref} />;
 });
-PausedMarkdownEmbed.displayName = "PausedMarkdownEmbed";
+CanvasMarkdownEmbed.displayName = "CanvasMarkdownEmbed";
 
 type Library = {
   namespace?: string;
@@ -123,45 +231,60 @@ type Library = {
 };
 
 /**
- * The components publish leaves out while org script is paused, which the
- * Components panel and the command palette do not offer. JSON-LD renders as
- * inert text on the canvas, so it keeps its component.
+ * The components publish leaves out while embeds may not ship, which the
+ * Components panel and the command palette do not offer then. JSON-LD renders
+ * as inert text on the canvas, so it keeps its component.
  */
-const pausedMetas = ["HtmlEmbed", "MarkdownEmbed", "JsonLd"];
+const embedMetas = ["HtmlEmbed", "MarkdownEmbed", "JsonLd"];
+
+/** The HTML Embed's meta without "Run scripts on canvas". */
+const withoutRunScriptsOnCanvas = (meta: WsComponentMeta): WsComponentMeta => {
+  const { executeScriptOnCanvas: _executeScriptOnCanvas, ...props } =
+    meta.props ?? {};
+  return {
+    ...meta,
+    props,
+    initialProps: meta.initialProps?.filter(
+      (name) => name !== "executeScriptOnCanvas"
+    ),
+  };
+};
 
 /**
- * A library of the registry as the canvas registers it, with org script
- * paused: while the switch is off, HTML Embed, Markdown Embed and JSON-LD are
- * hidden from the Components panel and the command palette (`category:
- * "hidden"`; the Navigator, their icons and their labels are unchanged), the
- * Content Embed and Markdown Embed templates are left out, and the canvas
- * renders the paused stand-ins. Everything else, the registry's
- * `componentIds` among it, passes through by reference, and the input comes
- * back untouched when the switch is on.
+ * A library of the registry as the canvas registers it. Always: the canvas's
+ * own HTML Embed and Markdown Embed (CanvasHtmlEmbed, CanvasMarkdownEmbed),
+ * and an HTML Embed meta without "Run scripts on canvas". While embeds may not
+ * ship, also: HTML Embed, Markdown Embed and JSON-LD hidden from the Components
+ * panel and the command palette (`category: "hidden"`; the Navigator, their
+ * icons and their labels are unchanged), and the Content Embed and Markdown
+ * Embed templates left out. Everything else, the registry's `componentIds`
+ * among it, passes through by reference.
  */
 export const withOrgScriptPolicy = <Registered extends Library>(
   library: Registered,
-  { mayRun = orgScriptMayRun() }: { mayRun?: boolean } = {}
+  { embedsMayShip = orgEmbedsMayShip() }: { embedsMayShip?: boolean } = {}
 ): Registered => {
-  if (mayRun) {
-    return library;
-  }
   const components: Library["components"] = { ...library.components };
   if ("HtmlEmbed" in components) {
-    components.HtmlEmbed = PausedHtmlEmbed;
+    components.HtmlEmbed = CanvasHtmlEmbed;
   }
   if ("MarkdownEmbed" in components) {
-    components.MarkdownEmbed = PausedMarkdownEmbed;
+    components.MarkdownEmbed = CanvasMarkdownEmbed;
   }
   const metas: Library["metas"] = { ...library.metas };
-  for (const name of pausedMetas) {
-    if (name in metas) {
-      metas[name] = { ...metas[name], category: "hidden" };
-    }
+  if ("HtmlEmbed" in metas) {
+    metas.HtmlEmbed = withoutRunScriptsOnCanvas(metas.HtmlEmbed);
   }
   const templates: Library["templates"] = { ...library.templates };
-  delete templates.ContentEmbed;
-  delete templates.MarkdownEmbed;
+  if (embedsMayShip === false) {
+    for (const name of embedMetas) {
+      if (name in metas) {
+        metas[name] = { ...metas[name], category: "hidden" };
+      }
+    }
+    delete templates.ContentEmbed;
+    delete templates.MarkdownEmbed;
+  }
   return { ...library, components, metas, templates };
 };
 

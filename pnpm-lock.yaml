@@ -380,6 +380,9 @@ importers:
       debug:
         specifier: ^4.3.7
         version: 4.3.7
+      dompurify:
+        specifier: 3.4.17
+        version: 3.4.17
       downshift:
         specifier: ^6.1.7
         version: 6.1.7(react@18.3.0-canary-14898b6a9-20240318)
@@ -2692,6 +2695,9 @@ importers:
       acorn:
         specifier: ^8.14.1
         version: 8.17.0
+      parse5:
+        specifier: 7.3.0
+        version: 7.3.0
     devDependencies:
       '@fontsource-variable/bricolage-grotesque':
         specifier: ^5.3.0
@@ -7510,6 +7516,9 @@ packages:
   '@types/svg-tags@1.0.2':
     resolution: {integrity: sha512-D8rhCFfpmWzXvzVqdXo40EXNeropfqp4gvwn8fcVfzYIci8M1C1tk/L26Yacn/U9vaPM7FlS73BNoUtfjAjwAw==}
 
+  '@types/trusted-types@2.0.7':
+    resolution: {integrity: sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw==}
+
   '@types/unist@2.0.6':
     resolution: {integrity: sha512-PBjIUxZHOuj0R15/xuwJYjFi+KZdNFrehocChv4g5hu6aFroHue8m0lBP0POdK2nKzbw0cgV1mws8+V/JAcEkQ==}
 
@@ -8815,6 +8824,9 @@ packages:
   domhandler@6.0.1:
     resolution: {integrity: sha512-gYzvtM72ZtxQO0T048kd6HWSbbGCNOUwcnfQ01cqIJ4X2IYKFFHZ5mKvrQETcFXxsRObZulDaKmy//R7TPtsBg==}
     engines: {node: '>=20.19.0'}
+
+  dompurify@3.4.17:
+    resolution: {integrity: sha512-B/pSlYVHQ58kqISD/yDjuJ1yfzI34m1gF4lAod2bwSRhiN4K5Cl3H8Af7hqB2PmTL911tdEudnnXn5FnhRoz0w==}
 
   domutils@3.2.2:
     resolution: {integrity: sha512-6kZKyUajlDuqlHKVX1w7gyslj9MPIXzIFiz/rGu35uC1wMi+kMhQwGhl4lt9unC9Vb9INnY9Z3/ZA3+FhASLaw==}
@@ -17754,6 +17766,9 @@ snapshots:
 
   '@types/svg-tags@1.0.2': {}
 
+  '@types/trusted-types@2.0.7':
+    optional: true
+
   '@types/unist@2.0.6': {}
 
   '@types/unist@3.0.3': {}
@@ -19050,6 +19065,10 @@ snapshots:
   domhandler@6.0.1:
     dependencies:
       domelementtype: 3.0.0
+
+  dompurify@3.4.17:
+    optionalDependencies:
+      '@types/trusted-types': 2.0.7
 
   domutils@3.2.2:
     dependencies:

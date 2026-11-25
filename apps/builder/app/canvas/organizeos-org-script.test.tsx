@@ -1,7 +1,7 @@
 import { createRef, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   blockComponent,
   tags,
@@ -9,6 +9,9 @@ import {
   type WsComponentMeta,
 } from "@webstudio-is/sdk";
 import { ReactSdkContext } from "@webstudio-is/react-sdk/runtime";
+import { createAssetUrlsByPath } from "@webstudio-is/project-build/runtime";
+import { renderMarkdownHtml } from "@webstudio-is/sdk-components-react/markdown";
+import { toRuntimeAsset, type Asset } from "@webstudio-is/sdk";
 import {
   HtmlEmbed,
   MarkdownEmbed,
@@ -50,12 +53,32 @@ import {
 } from "~/builder/features/command-panel/command-state";
 import { $componentOptions } from "~/builder/features/command-panel/groups/components-group";
 import {
-  PausedHtmlEmbed,
-  PausedMarkdownEmbed,
+  CanvasHtmlEmbed,
+  CanvasMarkdownEmbed,
   instanceTagMayRender,
   withOrgScriptPolicy,
   withoutBuiltWithWebstudio,
 } from "./organizeos-org-script";
+import {
+  assertInert,
+  assertNoDataAttributes,
+  corpus,
+  nextFrames,
+} from "~/shared/organizeos-untrusted-markup.test-helpers";
+
+// OrganizeOS fork: the embed switch, held off unless a test turns it on. The
+// mock reaches the canvas module, which reads orgEmbedsMayShip() at render and
+// in withOrgScriptPolicy's default.
+const { embeds } = vi.hoisted(() => ({ embeds: { mayShip: false } }));
+// OrganizeOS fork: upstream's Markdown renderer, observed, so a case can see
+// whether the canvas called it and make it throw
+vi.mock("@webstudio-is/sdk-components-react/markdown", { spy: true });
+vi.mock("@organizeos/site-components/org-script", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@organizeos/site-components/org-script")
+  >()),
+  orgEmbedsMayShip: () => embeds.mayShip,
+}));
 
 (
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -73,6 +96,8 @@ afterEach(() => {
   container = undefined;
   delete (window as { x?: number }).x;
   delete (window as { upstreamX?: number }).upstreamX;
+  delete (window as { __pwned?: unknown }).__pwned;
+  embeds.mayShip = false;
 });
 
 /** The canvas's registration (canvas.tsx), into the registry stores. */
@@ -134,6 +159,12 @@ const render = (mode: Mode, ui: ReactNode) => {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
+  rerender(mode, ui);
+  return container;
+};
+
+/** Renders into the root `render` made, as the canvas re-renders an embed. */
+const rerender = (mode: Mode, ui: ReactNode) => {
   act(() => {
     root?.render(
       <ReactSdkContext.Provider
@@ -151,7 +182,6 @@ const render = (mode: Mode, ui: ReactNode) => {
       </ReactSdkContext.Provider>
     );
   });
-  return container;
 };
 
 // The registry's base library (canvasComponentLibraries: core, base, Radix)
@@ -175,13 +205,20 @@ const hostProps = (element: Element): Record<string, unknown> => {
 describe("withOrgScriptPolicy", () => {
   // T4
   test("hides HTML Embed from the Components panel and the command palette", () => {
-    const result = withOrgScriptPolicy(library);
+    const result = withOrgScriptPolicy(library, { embedsMayShip: false });
     // The panel and the palette list a meta by its category, and skip hidden
     expect(library.metas.HtmlEmbed.category).toBe("general");
     expect(result.metas.HtmlEmbed.category).toBe("hidden");
-    // Nothing else about the meta changes: the Navigator, its icon and its label
+    // Nothing else about the meta changes but Run scripts on canvas: the
+    // Navigator, its icon and its label
+    const { executeScriptOnCanvas: _run, ...props } =
+      library.metas.HtmlEmbed.props ?? {};
     expect(result.metas.HtmlEmbed).toEqual({
       ...library.metas.HtmlEmbed,
+      props,
+      initialProps: library.metas.HtmlEmbed.initialProps?.filter(
+        (name) => name !== "executeScriptOnCanvas"
+      ),
       category: "hidden",
     });
     // The input is not changed
@@ -189,7 +226,7 @@ describe("withOrgScriptPolicy", () => {
   });
 
   test("hides Markdown Embed", () => {
-    const result = withOrgScriptPolicy(library);
+    const result = withOrgScriptPolicy(library, { embedsMayShip: false });
     expect(result.metas.MarkdownEmbed.category).toBe("hidden");
     expect(result.metas.MarkdownEmbed).toEqual({
       ...library.metas.MarkdownEmbed,
@@ -201,7 +238,7 @@ describe("withOrgScriptPolicy", () => {
   // dropOrgScript), so the panel does not offer it either. On the canvas it
   // renders as inert text, so its component stays.
   test("hides JSON-LD, and keeps its component", () => {
-    const result = withOrgScriptPolicy(library);
+    const result = withOrgScriptPolicy(library, { embedsMayShip: false });
     expect(library.metas.JsonLd.category).toBe("general");
     expect(result.metas.JsonLd).toEqual({
       ...library.metas.JsonLd,
@@ -211,7 +248,7 @@ describe("withOrgScriptPolicy", () => {
   });
 
   test("leaves Content Embed and Markdown Embed templates out", () => {
-    const result = withOrgScriptPolicy(library);
+    const result = withOrgScriptPolicy(library, { embedsMayShip: false });
     expect(library.templates).toHaveProperty("ContentEmbed");
     expect(library.templates).toHaveProperty("MarkdownEmbed");
     expect(result.templates).not.toHaveProperty("ContentEmbed");
@@ -223,15 +260,69 @@ describe("withOrgScriptPolicy", () => {
     );
   });
 
-  test("registers the paused stand-ins for HTML Embed and Markdown Embed", () => {
-    const result = withOrgScriptPolicy(library);
-    expect(library.components.HtmlEmbed).not.toBe(PausedHtmlEmbed);
-    expect(result.components.HtmlEmbed).toBe(PausedHtmlEmbed);
-    expect(result.components.MarkdownEmbed).toBe(PausedMarkdownEmbed);
+  test.each([false, true])(
+    "registers the canvas components whatever the switch (embeds %s)",
+    (embedsMayShip) => {
+      const result = withOrgScriptPolicy(library, { embedsMayShip });
+      expect(library.components.HtmlEmbed).not.toBe(CanvasHtmlEmbed);
+      expect(result.components.HtmlEmbed).toBe(CanvasHtmlEmbed);
+      expect(result.components.MarkdownEmbed).toBe(CanvasMarkdownEmbed);
+    }
+  );
+
+  test.each([false, true])(
+    "the HTML Embed meta has no Run scripts on canvas, whatever the switch (embeds %s)",
+    (embedsMayShip) => {
+      // the control: upstream's meta offers it
+      expect(library.metas.HtmlEmbed.props).toHaveProperty(
+        "executeScriptOnCanvas"
+      );
+      expect(library.metas.HtmlEmbed.initialProps).toContain(
+        "executeScriptOnCanvas"
+      );
+      const meta = withOrgScriptPolicy(library, { embedsMayShip }).metas
+        .HtmlEmbed;
+      expect("executeScriptOnCanvas" in (meta.props ?? {})).toBe(false);
+      expect(meta.initialProps).not.toContain("executeScriptOnCanvas");
+      expect(meta.initialProps).toContain("clientOnly");
+      expect(meta.props).toHaveProperty("clientOnly");
+      expect(meta.props).toHaveProperty("code");
+      // the input is not changed
+      expect(library.metas.HtmlEmbed.props).toHaveProperty(
+        "executeScriptOnCanvas"
+      );
+    }
+  );
+
+  test("with embeds on, lists the embeds and keeps their templates", () => {
+    const result = withOrgScriptPolicy(library, { embedsMayShip: true });
+    for (const name of ["HtmlEmbed", "MarkdownEmbed", "JsonLd"]) {
+      expect(result.metas[name].category, name).toBe(
+        library.metas[name].category
+      );
+      expect(result.metas[name].category, name).not.toBe("hidden");
+    }
+    expect(result.metas.MarkdownEmbed).toBe(library.metas.MarkdownEmbed);
+    expect(result.metas.JsonLd).toBe(library.metas.JsonLd);
+    expect(result.templates.ContentEmbed).toBe(library.templates.ContentEmbed);
+    expect(result.templates.MarkdownEmbed).toBe(
+      library.templates.MarkdownEmbed
+    );
+  });
+
+  test("its default reads orgEmbedsMayShip()", () => {
+    embeds.mayShip = true;
+    expect(withOrgScriptPolicy(library).templates).toHaveProperty(
+      "ContentEmbed"
+    );
+    embeds.mayShip = false;
+    expect(withOrgScriptPolicy(library).templates).not.toHaveProperty(
+      "ContentEmbed"
+    );
   });
 
   test("passes every other entry through by reference, the registry's component ids too", () => {
-    const result = withOrgScriptPolicy(library);
+    const result = withOrgScriptPolicy(library, { embedsMayShip: false });
     for (const [name, component] of Object.entries(library.components)) {
       if (name === "HtmlEmbed" || name === "MarkdownEmbed") {
         continue;
@@ -261,17 +352,13 @@ describe("withOrgScriptPolicy", () => {
     expect(withOrgScriptPolicy(radix).namespace).toBe(radix.namespace);
   });
 
-  test("returns its input when the switch is on", () => {
-    expect(withOrgScriptPolicy(library, { mayRun: true })).toBe(library);
-  });
-
   test("leaves a library without these components alone", () => {
     const other = {
       components: { Box: library.components.Box },
       metas: {} as Record<string, WsComponentMeta>,
       templates: {} as Record<string, TemplateMeta>,
     };
-    const result = withOrgScriptPolicy(other);
+    const result = withOrgScriptPolicy(other, { embedsMayShip: false });
     expect(result.components).toEqual({ Box: library.components.Box });
     expect(result.metas).toEqual({});
     expect(result.templates).toEqual({});
@@ -615,12 +702,15 @@ describe("the libraries, as the canvas registers them", () => {
     expect(found).toEqual([]);
   });
 
-  test("registers the paused stand-ins and hides the embeds", () => {
+  test("registers the canvas components and hides the embeds", () => {
     registerAsCanvas();
-    expect($registeredComponents.get().get("HtmlEmbed")).toBe(PausedHtmlEmbed);
+    expect($registeredComponents.get().get("HtmlEmbed")).toBe(CanvasHtmlEmbed);
     expect($registeredComponents.get().get("MarkdownEmbed")).toBe(
-      PausedMarkdownEmbed
+      CanvasMarkdownEmbed
     );
+    expect(
+      $registeredComponentMetas.get().get("HtmlEmbed")?.props
+    ).not.toHaveProperty("executeScriptOnCanvas");
     for (const name of ["HtmlEmbed", "MarkdownEmbed", "JsonLd"]) {
       expect($registeredComponentMetas.get().get(name)?.category, name).toBe(
         "hidden"
@@ -673,7 +763,7 @@ describe("the command palette", () => {
   });
 });
 
-describe("PausedHtmlEmbed", () => {
+describe("CanvasHtmlEmbed while embeds may not ship", () => {
   // T5. Upstream's HTML Embed, which the canvas registers today, puts the
   // markup into the page in every mode.
   describe.each(modes)("in $name", (mode) => {
@@ -691,7 +781,7 @@ describe("PausedHtmlEmbed", () => {
     test("shows the notice and puts neither into the DOM", () => {
       const host = render(
         mode,
-        <PausedHtmlEmbed {...props} code={scriptAndHandler} />
+        <CanvasHtmlEmbed {...props} code={scriptAndHandler} />
       );
       expect(host.textContent).toContain("HTML Embed is paused");
       expect(host.querySelector("script")).toBeNull();
@@ -711,7 +801,7 @@ describe("PausedHtmlEmbed", () => {
       (_name, code) => {
         const host = render(
           mode,
-          <PausedHtmlEmbed {...props} code={code as never} />
+          <CanvasHtmlEmbed {...props} code={code as never} />
         );
         expect(host.textContent).toContain("HTML Embed is paused");
         expect(host.querySelector("script")).toBeNull();
@@ -725,21 +815,21 @@ describe("PausedHtmlEmbed", () => {
       // The canvas passes no code prop for an embed that has none
       const host = render(
         mode,
-        <PausedHtmlEmbed {...props} code={undefined as never} />
+        <CanvasHtmlEmbed {...props} code={undefined as never} />
       );
       expect(host.textContent).toContain("HTML Embed is paused");
     });
 
     // T6. A guard on the exception
     test.each([...templateIconCodes])("renders a template icon", (icon) => {
-      const host = render(mode, <PausedHtmlEmbed {...props} code={icon} />);
+      const host = render(mode, <CanvasHtmlEmbed {...props} code={icon} />);
       expect(host.querySelector("svg")).not.toBeNull();
       expect(host.textContent).not.toContain("paused");
     });
   });
 
   test("renders the MenuIcon of the Sheet", () => {
-    const host = render(modes[1], <PausedHtmlEmbed code={MenuIcon} />);
+    const host = render(modes[1], <CanvasHtmlEmbed code={MenuIcon} />);
     expect(host.querySelector("svg")).not.toBeNull();
     expect(host.querySelector("path")?.getAttribute("d")).toContain("M2.667");
   });
@@ -748,7 +838,7 @@ describe("PausedHtmlEmbed", () => {
     const ref = createRef<HTMLDivElement>();
     const host = render(
       modes[1],
-      <PausedHtmlEmbed
+      <CanvasHtmlEmbed
         ref={ref}
         data-ws-id="embed-1"
         data-ws-component="HtmlEmbed"
@@ -780,7 +870,7 @@ describe("PausedHtmlEmbed", () => {
   test("passes no $ws$executeScripts to the notice's element", () => {
     const host = render(
       modes[1],
-      <PausedHtmlEmbed
+      <CanvasHtmlEmbed
         data-ws-id="embed-3"
         code={scriptAndHandler}
         $ws$executeScripts
@@ -797,21 +887,21 @@ describe("PausedHtmlEmbed", () => {
   test("still renders an icon given $ws$executeScripts", () => {
     const host = render(
       modes[1],
-      <PausedHtmlEmbed code={MenuIcon} $ws$executeScripts />
+      <CanvasHtmlEmbed code={MenuIcon} $ws$executeScripts />
     );
     expect(host.querySelector("svg")).not.toBeNull();
     expect(host.textContent).not.toContain("paused");
   });
 
   test("tells the admin what is going on", () => {
-    const host = render(modes[0], <PausedHtmlEmbed code={scriptAndHandler} />);
+    const host = render(modes[0], <CanvasHtmlEmbed code={scriptAndHandler} />);
     expect(host.textContent).toBe(
       "HTML Embed is paused. Its code is kept, but it isn't published and doesn't run here: scripts on your site could read the OrganizeOS sign-in of people who visit."
     );
   });
 });
 
-describe("PausedMarkdownEmbed", () => {
+describe("CanvasMarkdownEmbed while embeds may not ship", () => {
   const markdown = "[x](javascript:void0)\n\n<script>window.x=1</script>";
 
   describe.each(modes)("in $name", (mode) => {
@@ -831,7 +921,7 @@ describe("PausedMarkdownEmbed", () => {
     // reaches the DOM no longer tells them apart, since upstream's embed
     // drops both too.
     test("shows the notice, and none of the markdown", () => {
-      const host = render(mode, <PausedMarkdownEmbed code={markdown} />);
+      const host = render(mode, <CanvasMarkdownEmbed code={markdown} />);
       expect(host.textContent).toContain("Markdown Embed is paused");
       expect(host.querySelector("a")).toBeNull();
     });
@@ -841,7 +931,7 @@ describe("PausedMarkdownEmbed", () => {
     test("shows the notice for code that is not a string", () => {
       const host = render(
         mode,
-        <PausedMarkdownEmbed code={[markdown] as never} />
+        <CanvasMarkdownEmbed code={[markdown] as never} />
       );
       expect(host.textContent).toContain("Markdown Embed is paused");
       expect(host.querySelector("a")).toBeNull();
@@ -852,7 +942,7 @@ describe("PausedMarkdownEmbed", () => {
     const ref = createRef<HTMLDivElement>();
     const host = render(
       modes[0],
-      <PausedMarkdownEmbed
+      <CanvasMarkdownEmbed
         ref={ref}
         data-ws-id="embed-2"
         className="c2"
@@ -868,6 +958,318 @@ describe("PausedMarkdownEmbed", () => {
       "Markdown Embed is paused. Its content is kept, but it isn't published and isn't shown here: a link in it could run script that reads the OrganizeOS sign-in of people who visit."
     );
   });
+});
+
+const publishedOnly = "Shows on the published site";
+
+// What the document held before a test: an embed's markup must add nothing to
+// the head (React hoists a script with async and src there)
+const headNodes = () =>
+  Array.from(document.head.children, (node) => node.outerHTML);
+
+describe("CanvasHtmlEmbed once embeds may ship", () => {
+  let headBefore: string[];
+  beforeEach(() => {
+    embeds.mayShip = true;
+    headBefore = headNodes();
+  });
+
+  const assertDocumentInert = async () => {
+    await nextFrames();
+    assertInert(document.body);
+    expect(headNodes()).toEqual(headBefore);
+  };
+
+  const variants = modes
+    .filter((mode) => mode.isSafeMode !== true)
+    .flatMap((mode) => [
+      { ...mode, executeScripts: false },
+      { ...mode, executeScripts: true },
+    ]);
+
+  describe.each(variants)(
+    "in $name, $ws$executeScripts $executeScripts",
+    (mode) => {
+      const props = {
+        executeScriptOnCanvas: mode.executeScriptOnCanvas,
+        $ws$executeScripts: mode.executeScripts,
+      };
+
+      test.each([
+        ...Object.entries(corpus),
+        ["a Resource's array", ["<img src=x onerror=window.__pwned=1>"]],
+      ])("%s leaves the document inert", async (_name, code) => {
+        const host = render(
+          mode,
+          <CanvasHtmlEmbed {...props} code={code as never} />
+        );
+        await assertDocumentInert();
+        assertNoDataAttributes(host);
+      });
+
+      test("a script-only embed shows the box", async () => {
+        const host = render(
+          mode,
+          <CanvasHtmlEmbed {...props} code="<script>window.x=1</script>" />
+        );
+        expect(host.textContent).toBe(publishedOnly);
+        await assertDocumentInert();
+        expect((window as { x?: number }).x).toBeUndefined();
+      });
+
+      test("code whose String() throws shows the box", () => {
+        const host = render(
+          mode,
+          <CanvasHtmlEmbed {...props} code={{ toString: 1 } as never} />
+        );
+        expect(host.textContent).toBe(publishedOnly);
+      });
+
+      test("under an svg, any code that is not an icon shows the box and inserts nothing", async () => {
+        const host = render(
+          mode,
+          <svg>
+            <CanvasHtmlEmbed
+              {...props}
+              code='<p>x</p><img src=x onerror="window.__pwned=1">'
+            />
+          </svg>
+        );
+        expect(host.textContent).toBe(publishedOnly);
+        expect(host.querySelector("p, img")).toBeNull();
+        await assertDocumentInert();
+      });
+
+      test("the MenuIcon renders through upstream's component", () => {
+        const host = render(
+          mode,
+          <CanvasHtmlEmbed {...props} code={MenuIcon} />
+        );
+        expect(host.querySelector("svg path")).not.toBeNull();
+      });
+
+      test("the same icon inside an array goes through the insertion path", () => {
+        const host = render(
+          mode,
+          <CanvasHtmlEmbed {...props} code={[MenuIcon] as never} />
+        );
+        const svg = host.querySelector("svg");
+        expect(svg).not.toBeNull();
+        // upstream's embed writes its code with dangerouslySetInnerHTML; the
+        // insertion path's wrapper holds no such prop
+        expect(svg?.parentElement).not.toBeNull();
+        expect(
+          Object.keys(hostProps(svg?.parentElement as Element))
+        ).not.toContain("dangerouslySetInnerHTML");
+      });
+
+      test("missing code shows upstream's placeholder", () => {
+        const host = render(
+          mode,
+          <CanvasHtmlEmbed {...props} code={undefined as never} />
+        );
+        expect(host.textContent).toBe(
+          'Open the "Settings" panel to insert HTML code.'
+        );
+        const blank = render(mode, <CanvasHtmlEmbed {...props} code="  " />);
+        expect(blank.textContent).toBe(
+          'Open the "Settings" panel to insert HTML code.'
+        );
+      });
+
+      // a Content Embed bound to a field that is null: upstream resolves
+      // String(code ?? ""), so the canvas never shows the text "null"
+      test("code that is null is blank, never the text null", () => {
+        const host = render(
+          mode,
+          <CanvasHtmlEmbed {...props} code={null as never} />
+        );
+        expect(host.textContent).not.toContain("null");
+        expect(host.textContent).toBe(
+          'Open the "Settings" panel to insert HTML code.'
+        );
+      });
+    }
+  );
+
+  test("the wrapper, and the box, carry the ref and data-ws-id, and no embed prop", () => {
+    const ref = createRef<HTMLDivElement>();
+    const ui = (code: string) => (
+      <CanvasHtmlEmbed
+        ref={ref}
+        data-ws-id="embed-1"
+        code={code}
+        clientOnly
+        executeScriptOnCanvas
+        $ws$executeScripts
+      />
+    );
+    const host = render(modes[1], ui("<p>x</p>"));
+    const wrapper = host.querySelector('[data-ws-id="embed-1"]');
+    expect(ref.current).toBe(wrapper);
+    expect(wrapper?.querySelector("p")).not.toBeNull();
+    for (const name of ["clientonly", "executescriptoncanvas", "code"]) {
+      expect(wrapper?.hasAttribute(name), name).toBe(false);
+    }
+    expect(Object.keys(hostProps(wrapper as Element))).not.toContain(
+      "$ws$executeScripts"
+    );
+    rerender(modes[1], ui("<script>1</script>"));
+    const box = host.querySelectorAll('[data-ws-id="embed-1"]');
+    expect(box).toHaveLength(1);
+    expect(box[0].textContent).toBe(publishedOnly);
+    expect(ref.current).toBe(box[0]);
+    for (const name of ["clientonly", "executescriptoncanvas", "code"]) {
+      expect(box[0].hasAttribute(name), name).toBe(false);
+    }
+  });
+
+  // upstream's html-embed-assets.browser.test.tsx, through the canvas's own
+  // embed (asset paths are resolved before sanitizing, as upstream does)
+  test("the canvas embed resolves an asset path as upstream does", async () => {
+    const assets = [
+      {
+        id: "stylesheet",
+        projectId: "project",
+        name: "site_hash.css",
+        filename: "site",
+        type: "file",
+        size: 1,
+        format: "css",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        description: null,
+        meta: {},
+      },
+      {
+        id: "image",
+        projectId: "project",
+        name: "hero_hash.png",
+        filename: "hero",
+        type: "image",
+        size: 1,
+        format: "png",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        description: null,
+        meta: { width: 100, height: 100 },
+      },
+    ] as Asset[];
+    const assetUrlsByPath = createAssetUrlsByPath({
+      assets,
+      assetFolders: new Map(),
+      getUrl: (asset) => toRuntimeAsset(asset, "https://webstudio.local").url,
+    });
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () => {
+      root?.render(
+        <ReactSdkContext.Provider
+          value={{
+            renderer: "canvas",
+            assetBaseUrl: "",
+            assetUrlsByPath,
+            imageLoader: ({ src }) => src,
+            resources: {},
+            breakpoints: [],
+            onError: (error) => {
+              throw error;
+            },
+          }}
+        >
+          <CanvasHtmlEmbed
+            code={`
+              <link rel="stylesheet" href="/site.css">
+              <img src="/hero.png">
+            `}
+          />
+        </ReactSdkContext.Provider>
+      );
+    });
+    expect(container.querySelector("img")?.getAttribute("src")).toBe(
+      "/cgi/image/hero_hash.png?format=raw"
+    );
+    // the allowlist removes the link
+    expect(container.querySelector("link")).toBeNull();
+  });
+
+  test("a re-render with the same code keeps the inserted node; new code leaves none of the old", () => {
+    const host = render(modes[1], <CanvasHtmlEmbed code="<p>a</p><i>b</i>" />);
+    const p = host.querySelector("p");
+    expect(p).not.toBeNull();
+    rerender(modes[1], <CanvasHtmlEmbed code="<p>a</p><i>b</i>" />);
+    expect(host.querySelector("p")).toBe(p);
+    rerender(modes[1], <CanvasHtmlEmbed code="<b>c</b>" />);
+    expect(host.querySelector("p, i")).toBeNull();
+    expect(host.querySelectorAll("b")).toHaveLength(1);
+  });
+});
+
+describe("CanvasMarkdownEmbed, whether it renders", () => {
+  afterEach(() => {
+    vi.mocked(renderMarkdownHtml).mockRestore();
+  });
+
+  test("while embeds may not ship, the renderer is not called", () => {
+    embeds.mayShip = false;
+    vi.mocked(renderMarkdownHtml).mockClear();
+    const host = render(modes[1], <CanvasMarkdownEmbed code="# Title" />);
+    expect(host.textContent).toContain("Markdown Embed is paused");
+    expect(renderMarkdownHtml).not.toHaveBeenCalled();
+  });
+
+  test("once embeds may ship, a renderer that throws shows the box", () => {
+    embeds.mayShip = true;
+    vi.mocked(renderMarkdownHtml).mockImplementation(() => {
+      throw new Error("renderer failed");
+    });
+    const host = render(modes[1], <CanvasMarkdownEmbed code="# Title" />);
+    expect(renderMarkdownHtml).toHaveBeenCalled();
+    expect(host.textContent).toBe(publishedOnly);
+    expect(host.querySelector("h1")).toBeNull();
+  });
+});
+
+describe("CanvasMarkdownEmbed once embeds may ship", () => {
+  let headBefore: string[];
+  beforeEach(() => {
+    embeds.mayShip = true;
+    headBefore = headNodes();
+  });
+
+  describe.each(modes.filter((mode) => mode.isSafeMode !== true))(
+    "in $name",
+    (mode) => {
+      test("a javascript: link, a raw iframe and a handler leave the document inert", async () => {
+        const host = render(
+          mode,
+          <CanvasMarkdownEmbed
+            code={
+              '[x](javascript:alert(1))\n\n<iframe src="https://x.example"></iframe>\n\n<img src=x onerror="window.__pwned=1">'
+            }
+          />
+        );
+        await nextFrames();
+        assertInert(document.body);
+        expect(headNodes()).toEqual(headBefore);
+        expect(host.querySelector("iframe")).toBeNull();
+        expect(host.querySelector("a")?.hasAttribute("href")).toBe(false);
+      });
+
+      test("renders Markdown", () => {
+        const host = render(mode, <CanvasMarkdownEmbed code="# Title" />);
+        expect(host.querySelector("h1")?.textContent).toBe("Title");
+      });
+
+      test("code that is not a string renders nothing and shows the box", () => {
+        const host = render(
+          mode,
+          <CanvasMarkdownEmbed code={["# Title"] as never} />
+        );
+        expect(host.querySelector("h1")).toBeNull();
+        expect(host.textContent).toBe(publishedOnly);
+      });
+    }
+  );
 });
 
 describe("instanceTagMayRender", () => {

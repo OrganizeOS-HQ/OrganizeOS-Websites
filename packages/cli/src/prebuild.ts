@@ -157,14 +157,26 @@ import {
   refuseMdxWhilePaused,
 } from "./organizeos-org-script";
 import { checkGeneratedModule } from "./organizeos-generated-code";
-import { pagesForSitemap } from "@organizeos/site-components/org-script";
+import {
+  assertEmbedFact,
+  customCodeCarriesOrgCode,
+  pageCarriesOrgCode,
+  writePublishFacts,
+} from "./organizeos-publish-facts";
+import {
+  orgEmbedsMayShip,
+  pagesForSitemap,
+} from "@organizeos/site-components/org-script";
 import { assertNoPreviewHeader } from "./organizeos-preview-header";
 import { createFramework as createRemixFramework } from "./framework-remix";
 import { createFramework as createReactRouterFramework } from "./framework-react-router";
 import { createFramework as createVikeSsgFramework } from "./framework-vike-ssg";
 import { routeTemplatesDirectory } from "./framework";
 import { readSsgAssetResourceFetchTemplate } from "./ssg-asset-resource-fetch-template";
-import { assertBuildCodeValid } from "./organizeos-code-check";
+import {
+  assertBuildCodeValid,
+  assertCustomCodeNamesValid,
+} from "./organizeos-code-check";
 
 export const generatedFilesManifest = join(
   ".webstudio",
@@ -942,6 +954,12 @@ export const prebuild = async (options: {
   previewIdentity?: boolean;
   /** Read already-synced assets from this directory before downloading them. */
   sourceAssetsDirectory?: string;
+  /**
+   * OrganizeOS fork: where to write whether the build carries org code
+   * (organizeos-publish-facts.ts); the publish workflow sets
+   * ORGANIZEOS_PUBLISH_FACTS_FILE. Nothing is written without a path.
+   */
+  organizeosFactsFile?: string;
 }) => {
   const buildRoot = cwd();
   const feedback = options.silent
@@ -1014,6 +1032,8 @@ export const prebuild = async (options: {
   // does not import (organizeos-org-script.ts).
   const frameworkComponents = frameworkComponentsOf(options.template);
   const siteData = dropOrgScript(parsedSiteData.data, {
+    // OrganizeOS fork: the embed switch, passed explicitly so a test's mock of it reaches the drop (organizeos-org-script.ts)
+    embedsMayShip: orgEmbedsMayShip(),
     components: frameworkComponents,
     log: options.silent ? undefined : (message) => log.info(message),
   });
@@ -1757,6 +1777,8 @@ export const createManagedFormResourceFetch = ({ request, context, projectDomain
 
   await writeGeneratedFile(join(generatedDir, "index.css"), cssText);
 
+  // OrganizeOS fork: whether the build carries org code, from what each page module and the custom code emit (organizeos-publish-facts.ts)
+  let carriesOrgCode = false;
   for (const page of generatedPages) {
     const scope = createScope([
       // manually maintained list of occupied identifiers
@@ -1908,6 +1930,13 @@ export const createManagedFormResourceFetch = ({ request, context, projectDomain
     const usedRuntimeHelpers = new Set<
       "renderText" | "formatManagedFormErrors"
     >();
+    // OrganizeOS fork: the publish facts, from the instances and props the generator is handed (organizeos-publish-facts.ts)
+    const pageCarries = pageCarriesOrgCode({
+      rootInstanceId,
+      instances,
+      props,
+    });
+    carriesOrgCode ||= pageCarries;
     const pageComponent = generateManagedFormComponent({
       usedRuntimeHelpers,
       scope,
@@ -1948,6 +1977,11 @@ export const createManagedFormResourceFetch = ({ request, context, projectDomain
     const favIconAsset = assets.get(projectMeta?.faviconAssetId ?? "")?.name;
 
     const pagePath = getPagePath(page.id, pages);
+    // OrganizeOS fork: custom code's tag and attribute names are written into the home page's module as code (organizeos-code-check.ts)
+    if (pagePath === "/" && projectMeta?.code) {
+      assertCustomCodeNamesValid(projectMeta.code);
+      carriesOrgCode ||= customCodeCarriesOrgCode(projectMeta.code);
+    }
 
     const breakpoints = siteData.build.breakpoints
       .map(([_, value]) => ({
@@ -2102,6 +2136,8 @@ export const createManagedFormResourceFetch = ({ request, context, projectDomain
     const clientFile = join(generatedDir, `${generatedBasename}.tsx`);
     // OrganizeOS fork: while org script is paused, a generated module that reads a name it does not declare, or shadows one, fails the publish (organizeos-generated-code.ts)
     await checkGeneratedModule(pageExports, clientFile);
+    // OrganizeOS fork: a page module that renders an embed the facts do not count fails the build (organizeos-publish-facts.ts)
+    await assertEmbedFact(pageCarries, pageExports, clientFile);
     await checkGeneratedModule(
       serverExports,
       join(generatedDir, `${generatedBasename}.server.tsx`)
@@ -2324,6 +2360,13 @@ export const action = async (args: Parameters<typeof pageAction>[0]) => {
       targetAssetsDirectory: join(buildRoot, "public", assetBaseUrl),
     });
     downloading.stop("Downloaded assets");
+  }
+
+  // OrganizeOS fork: the publish facts are written last, after the assets (organizeos-publish-facts.ts)
+  const factsFile =
+    options.organizeosFactsFile ?? process.env.ORGANIZEOS_PUBLISH_FACTS_FILE;
+  if (factsFile !== undefined && factsFile !== "") {
+    await writePublishFacts(factsFile, { orgScript: carriesOrgCode });
   }
 
   feedback.step("Build finished");

@@ -51,6 +51,7 @@ import {
   elementTagMayRender,
   elementTagMayRun,
   htmlEmbedCodeMayRun,
+  orgEmbedsMayShip,
   orgScriptMayRun,
   pageRedirectMayShip,
   pagesForSitemap,
@@ -114,6 +115,14 @@ describe("orgScriptMayRun", () => {
   });
 });
 
+describe("orgEmbedsMayShip", () => {
+  // Embeds ship once the platform accepts org code (spec 2026-11-20, PR C);
+  // turning it on is a reviewed change that edits this pin.
+  test("is off", () => {
+    expect(orgEmbedsMayShip()).toBe(false);
+  });
+});
+
 describe("templateIconCodes", () => {
   test("holds the 7 icons upstream's templates put in an HTML Embed", () => {
     expect(templateIconCodes.size).toBeGreaterThanOrEqual(7);
@@ -137,47 +146,57 @@ describe("templateIconCodes", () => {
 describe("htmlEmbedCodeMayRun", () => {
   // T2
   test.each(Object.entries(icons))("keeps %s", (_name, icon) => {
-    expect(htmlEmbedCodeMayRun(icon)).toBe(true);
+    expect(htmlEmbedCodeMayRun(icon, false)).toBe(true);
   });
 
   test("pauses an icon with one character changed", () => {
-    expect(htmlEmbedCodeMayRun(MenuIcon.replace("M2.667", "M2.668"))).toBe(
-      false
-    );
-    expect(htmlEmbedCodeMayRun(MenuIcon.slice(0, -1))).toBe(false);
+    expect(
+      htmlEmbedCodeMayRun(MenuIcon.replace("M2.667", "M2.668"), false)
+    ).toBe(false);
+    expect(htmlEmbedCodeMayRun(MenuIcon.slice(0, -1), false)).toBe(false);
   });
 
   test("pauses an icon with surrounding whitespace", () => {
-    expect(htmlEmbedCodeMayRun(` ${MenuIcon}`)).toBe(false);
-    expect(htmlEmbedCodeMayRun(`${MenuIcon}\n`)).toBe(false);
+    expect(htmlEmbedCodeMayRun(` ${MenuIcon}`, false)).toBe(false);
+    expect(htmlEmbedCodeMayRun(`${MenuIcon}\n`, false)).toBe(false);
   });
 
   test("pauses an icon with markup added", () => {
     expect(
-      htmlEmbedCodeMayRun(`${MenuIcon}<img src=x onerror="window.x=1">`)
+      htmlEmbedCodeMayRun(`${MenuIcon}<img src=x onerror="window.x=1">`, false)
     ).toBe(false);
   });
 
   test("pauses script", () => {
-    expect(htmlEmbedCodeMayRun("<script>window.x=1</script>")).toBe(false);
-    expect(htmlEmbedCodeMayRun("")).toBe(false);
+    expect(htmlEmbedCodeMayRun("<script>window.x=1</script>", false)).toBe(
+      false
+    );
+    expect(htmlEmbedCodeMayRun("", false)).toBe(false);
   });
 
   test("pauses a value that is not a string, even one that becomes an icon", () => {
-    expect(htmlEmbedCodeMayRun(undefined)).toBe(false);
-    expect(htmlEmbedCodeMayRun(null)).toBe(false);
-    expect(htmlEmbedCodeMayRun(1)).toBe(false);
-    expect(htmlEmbedCodeMayRun({ toString: () => MenuIcon })).toBe(false);
-    expect(htmlEmbedCodeMayRun({ code: "<script>window.x=1</script>" })).toBe(
+    expect(htmlEmbedCodeMayRun(undefined, false)).toBe(false);
+    expect(htmlEmbedCodeMayRun(null, false)).toBe(false);
+    expect(htmlEmbedCodeMayRun(1, false)).toBe(false);
+    expect(htmlEmbedCodeMayRun({ toString: () => MenuIcon }, false)).toBe(
       false
     );
+    expect(
+      htmlEmbedCodeMayRun({ code: "<script>window.x=1</script>" }, false)
+    ).toBe(false);
     // String([MenuIcon]) is MenuIcon, which upstream's HTML Embed would write
     // into the page.
     expect(String([MenuIcon])).toBe(MenuIcon);
-    expect(htmlEmbedCodeMayRun([MenuIcon])).toBe(false);
-    expect(htmlEmbedCodeMayRun(['<img src=x onerror="window.x=1">'])).toBe(
-      false
-    );
+    expect(htmlEmbedCodeMayRun([MenuIcon], false)).toBe(false);
+    expect(
+      htmlEmbedCodeMayRun(['<img src=x onerror="window.x=1">'], false)
+    ).toBe(false);
+  });
+
+  test("follows the flag it is given, and an icon always may", () => {
+    expect(htmlEmbedCodeMayRun("<p>hi</p>", false)).toBe(false);
+    expect(htmlEmbedCodeMayRun("<p>hi</p>", true)).toBe(true);
+    expect(htmlEmbedCodeMayRun([...templateIconCodes][0], false)).toBe(true);
   });
 
   test("allows anything when the switch is on", () => {

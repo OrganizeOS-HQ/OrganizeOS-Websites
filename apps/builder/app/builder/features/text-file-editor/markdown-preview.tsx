@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode, type Ref } from "react";
 import { css, cssVar, SplitView, theme } from "@webstudio-is/design-system";
 import { renderMarkdownHtml } from "@webstudio-is/sdk-components-react/markdown";
 import {
@@ -21,6 +21,8 @@ import {
 } from "@webstudio-is/sdk";
 import { componentMetas } from "@webstudio-is/sdk-components-registry/metas";
 import type { AssetContainer } from "~/builder/shared/assets";
+// OrganizeOS fork: the sanitized insertion path (docs/ORGANIZEOS-FORK.md section 10)
+import { UntrustedMarkup } from "~/shared/organizeos-untrusted-markup";
 
 const previewStyle = css({
   minWidth: 0,
@@ -240,6 +242,15 @@ const renderMarkdownPreview = async ({
 
 export const __testing__ = { renderMarkdownPreview };
 
+// OrganizeOS fork: an empty preview keeps its region (organizeos-untrusted-markup.tsx)
+const renderEmptyPreview = ({
+  ref,
+  rest,
+}: {
+  ref: Ref<HTMLElement>;
+  rest: Record<string, unknown>;
+}) => <div {...rest} ref={ref as Ref<HTMLDivElement>} />;
+
 export const MarkdownSplitView = ({
   open,
   source,
@@ -284,11 +295,14 @@ export const MarkdownSplitView = ({
       start={children}
       end={
         open ? (
-          <div
+          // OrganizeOS fork: Markdown reaches the builder's own document only through the sanitized insertion path (docs/ORGANIZEOS-FORK.md section 10)
+          <UntrustedMarkup
             className={previewStyle()}
             role="region"
             aria-label="Markdown preview"
-            dangerouslySetInnerHTML={{ __html: html }}
+            markup={html}
+            blobImages
+            renderFallback={renderEmptyPreview}
           />
         ) : undefined
       }

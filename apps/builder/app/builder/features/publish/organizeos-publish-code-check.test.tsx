@@ -78,4 +78,17 @@ describe("findPublishBlocker", () => {
     $props.set(new Map([["p", expressionProp(`"a"`)]]));
     expect(findPublishBlocker(stores())).toBeUndefined();
   });
+
+  test("names a custom code name JSX cannot hold", () => {
+    expect(
+      findPublishBlocker({ ...stores(), customCode: '<b @click="x">' })
+    ).toBe(`Can't publish: Custom code, "@click".`);
+  });
+
+  test("ordinary custom code, or none, has none", () => {
+    expect(
+      findPublishBlocker({ ...stores(), customCode: "<b>ok</b>" })
+    ).toBeUndefined();
+    expect(findPublishBlocker(stores())).toBeUndefined();
+  });
 });

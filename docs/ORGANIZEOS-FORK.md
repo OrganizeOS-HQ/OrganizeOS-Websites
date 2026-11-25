@@ -192,9 +192,11 @@ through `assetResponseHeaders`, after upstream's own, which it keeps:
 `Content-Security-Policy: sandbox` (PDFs excepted) and
 `X-Content-Type-Options: nosniff`. `services/asset-rest-content.server.test.ts`
 checks both for an `.html` and an `.svg` asset. The builder's Markdown preview
-(`features/text-file-editor/markdown-preview.tsx`) puts sanitized Markdown into
-the builder's page, and may frame an uploaded document by a relative address;
-these headers keep that document inert.
+(`features/text-file-editor/markdown-preview.tsx`) puts Markdown into the
+builder's page only through the sanitized insertion path (§10, "The builder
+never runs embed code"), which frames nothing, so it no longer frames an
+uploaded document; these headers keep such a document inert wherever else it
+is opened.
 
 ### Framing
 
@@ -242,20 +244,22 @@ How an org admin's session is wired end to end, and which side owns each step. T
 
    The dialog lists one row per target, in the read's order: the built-in address first, labelled Built-in, then each Website-use domain, the main first, labelled Main. A row has a checkbox, the host (linked to the site while it is live, truncated with its full text in a tooltip when it does not fit) and, under it, the label, Live or Not live, and when it was last published (the exact time in a tooltip). The rules are in `features/publish/organizeos-publish-targets.ts`: the first read ticks exactly the live targets (none before the first go-live); a person's ticks hold through every later read until the publish they started settles, and the read after the settle ticks the live targets again; a ticked target a newer read no longer lists is dropped. Below the rows, one line for each problem and nowhere twice: "Couldn't load your addresses." with Retry when the read failed (no rows); "Addresses unavailable." when the platform sent no targets (no rows, no publish); "This version can't go live. Publish again." while the last build is published and OrganizeOS says `launchable: false`; and a refused publish's own line. Then the banners: the features the plan does not cover, titled "Not in plan", each a link to its element; the Content Blocks that use MDX; and what is paused (section 10). The footer has "Manage domains ↗" (`{ORGANIZEOS_APP_URL}/{subdomain}/settings/domain`) and **Publish to selected**, disabled with nothing ticked, with no rows, or while a build is pending. The title has no settings gear.
 
-   Publish to selected posts the ticked keys to `POST /rest/organizeos-publish/{projectId}` (`routes/rest.organizeos-publish.$projectId.ts`, the logic in `services/organizeos-publish-route.server.ts`), with the page's CSRF token and a 30 second client timeout. The route answers a fetch only, to a user signed in as a user whose builder session (`readBuilderSession`) has a `live` OrganizeOS binding, or `pass` where SSO is not configured, checked with `checkOrganizeosBinding` in either binding mode (the session readers allow every outcome under `observe`; publishing does not), and who holds the project's `admin` permit. The body is strict: 1 to 20 distinct keys, each `builtin` or a host, at most 4 KB. The route resolves the org as the read does, reads the org's addresses at that moment and refuses the whole publish (409 `unknown_target`, nothing written) when any key is not one of the org's targets. It writes the build row exactly as `domain.publish` does for an org site (`createProductionBuild` with `destination: "saas"`, `target: "production"`, `domains` and `assetsDomain` the project's own domain), so the status and the published bundle find the build and the CLI builds what it built before, then hands the read's keys to the OrganizeOS publisher with the build and the org it resolved; the publisher refuses, and marks FAILED, a build whose project resolves to another org. Answers, never stored: `200 { ok: true }`; `400 invalid_request`; `403` (no user session, no live binding, no `admin` permit, not an org's project); `405` for any method but POST; `409 unknown_target`, or `409` on an org mismatch; `422 build_refused` (the builder refused the version, logged by the error's kind only); `502 dispatch_failed` with the publisher's own message; `503 addresses_unavailable`, `targets_unavailable` or `publish_unavailable` (no publisher configured: the route never falls back to upstream's cloud publisher). A failure logs one code, never a host, an id or an upstream message. Upstream's `domain.publish` still works for an older builder tab: it dispatches without targets.
+   Publish to selected posts the ticked keys to `POST /rest/organizeos-publish/{projectId}` (`routes/rest.organizeos-publish.$projectId.ts`, the logic in `services/organizeos-publish-route.server.ts`), with the page's CSRF token and a 30 second client timeout. The route answers a fetch only, to a user signed in as a user whose builder session (`readBuilderSession`) has a `live` OrganizeOS binding, or `pass` where SSO is not configured, checked with `checkOrganizeosBinding` in either binding mode (the session readers allow every outcome under `observe`; publishing does not), and who holds the project's `admin` permit. The body is strict: 1 to 20 distinct keys, each `builtin` or a host, at most 4 KB, `replacePages: true` after the old-site confirm, and `embeds: true` when the dialog's bundle was built with `orgEmbedsMayShip()` on (sent only when true; absent counts as false). Right after the body parses, before the org or a build is read or written, a dialog whose `embeds` differs from the route's own `orgEmbedsMayShip()` gets `409 reload` (logged `embeds_mismatch`), and the dialog shows one line, "Reload to publish.": a tab opened before an embed flip would otherwise say an embed is not published while Publish ships it. The route resolves the org as the read does, reads the org's addresses at that moment and refuses the whole publish (409 `unknown_target`, nothing written) when any key is not one of the org's targets. It writes the build row exactly as `domain.publish` does for an org site (`createProductionBuild` with `destination: "saas"`, `target: "production"`, `domains` and `assetsDomain` the project's own domain), so the status and the published bundle find the build and the CLI builds what it built before, then hands the read's keys to the OrganizeOS publisher with the build and the org it resolved; the publisher refuses, and marks FAILED, a build whose project resolves to another org. Answers, never stored: `200 { ok: true }`; `400 invalid_request`; `403` (no user session, no live binding, no `admin` permit, not an org's project); `405` for any method but POST; `409 unknown_target`, `409 reload`, or `409` on an org mismatch; `422 build_refused` (the builder refused the version, logged by the error's kind only); `502 dispatch_failed` with the publisher's own message; `503 addresses_unavailable`, `targets_unavailable` or `publish_unavailable` (no publisher configured: the route never falls back to upstream's cloud publisher). A failure logs one code, never a host, an id or an upstream message. Upstream's `domain.publish` still works for an older builder tab: it dispatches without targets.
 
    The OrganizeOS publisher (`services/organizeos-publisher.server.ts`) dispatches `publish-site.yml` with the build and organization ids and, from the route, `targets`, the keys as one JSON string. Its one instance comes from `getOrganizeosPublisher()`, which `shared/context.server.ts` hands `domain.publish` in a marked line and the route calls directly; it is undefined while `ORGANIZEOS_PUBLISH_REPO` or its token is unset. A dispatch that never leaves the builder marks the build FAILED at once; a static-export build is refused (it must never be deployed as the live site). The dialog also lists what is paused, and prebuild leaves an org's own script, and the unsafe values of §10, out of the published site.
 
    **Unpublish.** A row whose address has a recorded build that is not taken down (`publishedAt` set, `unpublishedAt` null) has a menu with one item, Unpublish, while the read says `actions: true` (the builder has `WEBSITES2_SITE_ACTION_SECRET` and the platform reports targets) and OrganizeOS has not answered that the action is unavailable. Choosing it turns the row's second line into a one-line confirm, "Unpublish {host}?", with Cancel focused. Unpublish posts `{ action: "unpublish", target }` to `POST /rest/organizeos-site-action/{projectId}` (`routes/rest.organizeos-site-action.$projectId.ts`, the logic in `services/organizeos-site-action-route.server.ts`) with the page's CSRF token and a 20 second client timeout; whatever the answer, a timeout included, the dialog refreshes the project and reads the addresses again. After an `unavailable` answer the dialog offers Unpublish nowhere until it is opened in a new session. A rate limit says "Try again in a few minutes.", a refused role "You can't unpublish this address.", any other failure "Couldn't unpublish. Try again."; one line, no toast. The route answers a fetch only, to a user signed in as a user whose builder session has a `live` OrganizeOS binding (never `pass`: without SSO there is no OrganizeOS session to assert) in either binding mode, with `organizeosUserId` and `organizeosSid`, and who holds the project's `admin` permit; the body is strict, at most 1 KB. With the secret unset it answers 404 and mints nothing. It resolves the org as the read does, reads the org's addresses, and refuses (409 `not_live`, nothing minted or sent) a target that is not listed or has no recorded build. Then it mints `X-OOS-Site-Action: v1.{payload}.{mac}` (`shared/organizeos-site-action.server.ts`): `payload` base64url, unpadded, of the JSON `{ aud: "site-action", act: "unpublish", tgt, org, sub, sid, jti, iat, exp }` in that key order (`sub` and `sid` the session's OrganizeOS user and session, `jti` a random UUID, `exp = iat + 60`), `mac` base64url HMAC-SHA256 over the ASCII payload segment keyed by `WEBSITES2_SITE_ACTION_SECRET`; the byte format is pinned by the platform's fixture, copied to `shared/__fixtures__/site-action-assertion.json`. It POSTs the header, with no body and no cookie, to `{ORGANIZEOS_APP_URL}/api/internal/websites2/site-action` with `redirect: "error"` and a 10 second timeout, and maps the answer: 200 ok; 404 `unavailable`; 409 `unknown_target`; 403 `forbidden`; 429 `rate_limited`; 401 (a refused assertion, a replay or a dead session), any other answer, a timeout or a malformed body `failed` (502). OrganizeOS verifies the assertion, records its `jti` once, checks the session and the user's role again and takes the address down; nothing can bring an address up this way.
 
    **The old site.** While an organization's addresses still show its old site, the read carries `old_site_key`, the key of the address serving it (the custom main, or `builtin` when there is none); the builder reads it leniently, and an unknown shape is treated as absent and logged (`old_site_key_invalid`) without failing the read. Each target also carries `serving`, whether the address serves that build now, which drives the row's word and the link (a platform without it: the target's `live`). The custom rows, and the built-in when it serves the old site, read "Shows your old site". Publishing the built-in alone beside a custom main is a trial copy: no confirm, no flag. Ticking any other marked row without the address serving the old site disables Publish to selected with one line, "Tick {host} to replace your old site."; with it ticked, Publish to selected opens a one-line confirm, "Replace your old site at {host} and your other addresses?", Cancel focused, and Replace posts `{ targets, replacePages: true }`. The publish route refuses a marked key without the flag (409 `replace_unconfirmed`), the flag without the address serving the old site (409 `old_site_needs_main`) and the flag when the read carries no `old_site_key` (409 `old_site_changed`), writing nothing; otherwise it dispatches `replacePages`, and the publisher sends it as the workflow input `replace_pages: "true"`, only when given.
-5. **Execute** (`.github/workflows/publish-site.yml`). Checks the `targets` input, syncs the build with the CLI, builds it, reads the org script switch from the CLI it built and fails unless it is off, reads the guard level from the same CLI and fails unless it is an integer from 0 to 32767, deploys to the `organizeos-sites` Vercel project, POSTs the deployment URL, with `orgScript` (§10, "Reporting to OrganizeOS") and `guardLevel` as the run's CLI read them and the checked `targets`, to OrganizeOS's publish callback (which flips the org's ledger pointer, making the site live through the reverse proxy), then reports `PUBLISHED` to the builder's `POST /internal/publish-status`; any failure, and a run cancelled before the pointer flip (by a newer publish for the org, which `cancel-in-progress` cancels, or by the job's timeout), reports `FAILED`. A run cancelled after the flip reports `PUBLISHED`, since the pointer moved, and never `FAILED`, which the builder would otherwise take over `PUBLISHED`; one cancelled during the flip request reports nothing, because whether the pointer moved is unknown, and the build reads pending until the dialog gives up. Without that report the builder's status would read "pending" forever: upstream's cloud publisher used to flip `Build.publishStatus` directly.
+5. **Execute** (`.github/workflows/publish-site.yml`). Checks the `targets`, `replace_pages` and `embeds` inputs, syncs the build with the CLI, builds it (prebuild writes the publish facts, last, to `$GITHUB_WORKSPACE/organizeos-publish-facts.json`, outside `runner.temp`, from where `vercel deploy` uploads; "Build site" removes any earlier file first and passes the path as `ORGANIZEOS_PUBLISH_FACTS_FILE`), then in "Read the org script switch" checks the CLI it built (the address rule, `orgScriptMayRun()` false), that the `embeds` input equals its `orgEmbedsMayShip()`, and that the facts are exactly `{ "orgScript": boolean }`, `true` only while embeds may ship, and fails before anything deploys otherwise; reads the guard level from the same CLI and fails unless it is an integer from 0 to 32767, deploys to the `organizeos-sites` Vercel project, POSTs the deployment URL, with `orgScript` (the build's fact, §10, "Reporting to OrganizeOS"), `guardLevel` as the run's CLI read it and the checked `targets`, to OrganizeOS's publish callback (which flips the org's ledger pointer, making the site live through the reverse proxy), then reports `PUBLISHED` to the builder's `POST /internal/publish-status`; any failure, and a run cancelled before the pointer flip (by a newer publish for the org, which `cancel-in-progress` cancels, or by the job's timeout), reports `FAILED`. A run cancelled after the flip reports `PUBLISHED`, since the pointer moved, and never `FAILED`, which the builder would otherwise take over `PUBLISHED`; one cancelled during the flip request reports nothing, because whether the pointer moved is unknown, and the build reads pending until the dialog gives up. Without that report the builder's status would read "pending" forever: upstream's cloud publisher used to flip `Build.publishStatus` directly.
 
-   **The guard level** is `ORGANIZEOS_GUARD_LEVEL`, beside the switch in `@organizeos/site-components/org-script`: which of OrganizeOS's launch requirements the CLI built from this commit meets. The step "Read the guard level", after "Read the org script switch" and before "Deploy to Vercel", loads it from `packages/cli` as the CLI does, and the callback sends it as `guardLevel`, a JSON integer. OrganizeOS stores it with the deployment pointer and launches a Website only from a build whose level is high enough. Every level-1 requirement is in this repository, so the constant is 1. `packages/cli/src/organizeos-guard-level.test.ts` lists level 1's requirements, each with a check that runs on fixed samples and the tests that cover it, which must still exist and run, fails if the level is 1 or more while one does not hold or has lost its tests, and pins the level at 1; changing the level is a reviewed change that edits that test.
+   **The guard level** is `ORGANIZEOS_GUARD_LEVEL`, beside the switch in `@organizeos/site-components/org-script`: which of OrganizeOS's launch requirements the CLI built from this commit meets. The step "Read the guard level", after "Read the org script switch" and before "Deploy to Vercel", loads it from `packages/cli` as the CLI does, and the callback sends it as `guardLevel`, a JSON integer. OrganizeOS stores it with the deployment pointer and launches a Website only from a build whose level is high enough. Every level-1 requirement is in this repository, so the constant is 1. `packages/cli/src/organizeos-guard-level.test.ts` lists level 1's requirements, each with a check that runs on fixed samples and the tests that cover it, which must still exist and run, fails if the level is 1 or more while one does not hold or has lost its tests, and pins the level at 1; changing the level is a reviewed change that edits that test. Level 1 includes "`orgEmbedsMayShip()` is false". Level 2, which lets a build that carries org code go live on the platform, is defined in the same test and checked today whatever the level: every level-1 requirement but the two that keep embeds off, a reworded one (raw markup, element references and what the page module cannot ship are left out; embeds and custom code ship exactly when `orgEmbedsMayShip()`), and four more: the publish facts tell the truth for a build with and without an embed, custom code with a name JSX cannot hold fails the build, the module check refuses `import()`, `import.meta` and `this`, and the builder's insertion path exists, pinned, and its tests run. The level stays 1 until the embed flip (spec `2026-11-20-builder-code-embeds-design.md`, PR C, in the OrganizeOS repo), which edits the number and its pins.
 
    **The targets** are the addresses ticked in the dialog, as keys: `builtin`, or a host the org's site is served on, which OrganizeOS maps back to the domain in either form. The input is declared `required: false`. The step "Read the targets" (`id: targets`), after setup-node and before "Install and build CLI", reads it from its env as untrusted text: absent or empty writes an empty output (a builder that sends none; OrganizeOS then records the build at no address); otherwise it must parse as a JSON array of 1 to 20 distinct strings, each `builtin` or a lower-case host with no scheme, port or path, or the step fails with `::error::` and nothing deploys (the run reports FAILED). Its output is the array as compact JSON. The flip step takes it from that output alone, checks it again by the same rule, and adds `targets` to the body as its sixth key only when there are any; `packages/cli/src/__fixtures__/publish-callback-body.json`, a byte-for-byte copy of the platform's fixture, is the body it must build. On success it also logs `live_targets=<count>`, the number of the answer's targets that are live, never a host. The fork is public, and so are a run's inputs and logs: the keys are `builtin` or the org's public addresses, and the log carries a count. OrganizeOS puts each ticked target live when the build passes its checks, and a publish never takes an address down.
 
    **The replace flag.** The input `replace_pages` is declared `required: false`. The step "Read the replace flag" (`id: replace-pages`), right after "Read the targets" and before "Install and build CLI", reads it and the raw `targets` input from its env as untrusted text: absent or empty writes an empty output; exactly `true` with targets given writes `true`; anything else fails the step with `::error::` and nothing deploys. The flip step takes it from that output alone, checks it again (it needs the checked targets), and adds `replacePages: true` to the body as its seventh key only then; `packages/cli/src/__fixtures__/publish-callback-body-replace.json`, a byte-for-byte copy of the platform's fixture, is the body it must build. On success it also logs `replaced_pages=true`, only with the flag.
+
+   **The embeds flag.** The input `embeds` is declared `required: false`. The builder's publisher adds it, as `"true"`, only when its `orgEmbedsMayShip()` is true, so a workflow that does not declare it (a revert) still accepts every dispatch while the switch is off; GitHub refuses a dispatch carrying an undeclared input. The step "Read the embeds flag" (`id: embeds`), right after "Read the replace flag" and before "Install and build CLI", reads it as untrusted text: absent or empty writes `false`; exactly `true` writes `true`; anything else fails the step with `::error::The embeds input is not true.`, writing nothing. "Read the org script switch" compares it with the built CLI's `orgEmbedsMayShip()` and fails on a difference (the minutes between an embed flip merging and the builder deploying). The owner's manual republish (§10, "Existing projects") passes `embeds=true` once embeds ship.
 
    **Inputs reach scripts through `env:`.** No `run:` script holds a `${{ }}` substitution: inputs, variables, secrets and step outputs reach each script through its step's `env:`, and the callback's and the two status reports' JSON bodies are built with `node` from there, so a dispatch input cannot break out of the shell or a body. A step output is written only after its value is checked: the targets' JSON array, the switch's `false`, the level's integer, the deployment's `https://` host. The callback step checks `orgScript`, `guardLevel` and `targets` again before it sends anything, and keeps its 2xx check. On success it logs only the answer's `live` and `launchable`, as `live=<value>` and `launchable=<value>`, each only when it is a boolean, and `live_targets=<count>`, never the answer itself; on failure it prints the answer. The Vercel CLI is installed in a step of its own, with no secret in its environment, at a pinned version and with `--ignore-scripts`, so no install script runs; bump the pin on purpose, to a release at least two weeks old. The deploy step passes the token only in its environment, as `VERCEL_TOKEN`, which the CLI reads, and never on a command line. The token is still in that step's environment while the pinned CLI deploys. `packages/cli/src/organizeos-publish-workflow.test.ts` runs the steps' scripts against a fake `curl`, `npm` and `vercel`.
 
@@ -518,7 +522,13 @@ can be merged with minimal conflict.
   `publish-site.yml`, with the callback body fixture copies
   `packages/cli/src/__fixtures__/publish-callback-body.json` and
   `packages/cli/src/__fixtures__/publish-callback-body-replace.json` and their
-  README;
+  README, its "Read the embeds flag" step, the facts file "Build site" passes
+  and "Read the org script switch" reads (§10); the embed switch's stale-tab
+  check: the route's `embeds` body field and `409 reload`, the publisher's
+  `embeds` input (sent only when true), and the dialog's
+  `publishToTargets(..., { embeds })` and "Reload to publish." line in
+  `features/publish/organizeos-publish-addresses.ts` and
+  `organizeos-publish-targets.ts`;
   `features/publish/organizeos-publish-checkbox.ts` (the Publish popup's
   ticked-address style: `BRAND_ACCENT` fill, light check mark, passed as `css`
   to the design-system Checkbox, so no upstream file changes);
@@ -530,8 +540,8 @@ can be merged with minimal conflict.
   OrganizeOS site.
 - **The guard level (§5).** `ORGANIZEOS_GUARD_LEVEL` beside the switch in
   `packages/sdk-components-organizeos/src/org-script.ts`, its test
-  `packages/cli/src/organizeos-guard-level.test.ts`, and the "Read the guard
-  level" step of `publish-site.yml`.
+  `packages/cli/src/organizeos-guard-level.test.ts` (levels 1 and 2), and the
+  "Read the guard level" step of `publish-site.yml`.
 - **The Publish dialog's address read (§5).**
   `shared/db/organizeos-site-addresses.server.ts`,
   `routes/rest.organizeos-site.$projectId.ts`,
@@ -1113,19 +1123,34 @@ can be merged with minimal conflict.
   `fixtures/react-router-vercel/app/routes/[another-page]._index.tsx`.
   `packages/cli/src/commands/sync.test.ts` turns the org-script pause off for
   its upstream cases, which publish MDX.
-- **The org script pause (§10).**
+- **Org content and the embed switch (§10).**
   `packages/sdk-components-organizeos/src/org-script.ts`, which the blocks
-  package exports as `@organizeos/site-components/org-script`; `acorn`, a
+  package exports as `@organizeos/site-components/org-script`, with
+  `orgEmbedsMayShip()` and the custom code name check it re-exports
+  (`custom-code-names.ts`, with its test); `acorn`, a
   dependency of the blocks package for the address rule and
-  `readLiteralValue`, and so in `pnpm-lock.yaml`; `canvas/organizeos-org-script.tsx`, through which the one
+  `readLiteralValue`, and `parse5` 7.3.0, a dependency of the blocks package
+  for the custom code name check (pinned equal to the CLI's; it reaches the
+  builder and canvas bundles through `org-script.ts`, never a site), and so in
+  `pnpm-lock.yaml`; `dompurify` 3.4.17, exact, a dependency of the builder
+  only, and so in `pnpm-lock.yaml`; `shared/organizeos-untrusted-markup.tsx`,
+  the builder's one insertion path for untrusted markup, with
+  `organizeos-untrusted-markup.test.tsx` and its
+  `organizeos-untrusted-markup.test-helpers.ts`;
+  `features/text-file-editor/markdown-preview.tsx`, one marked change (the
+  preview through the insertion path), with
+  `markdown-preview.organizeos.test.tsx`;
+  `features/settings-panel/props-section/use-props-logic.organizeos.test.ts(x)`,
+  which documents the saved "Run scripts on canvas" row; `canvas/organizeos-org-script.tsx`, through which the one
   marked loop in `canvas/canvas.tsx` registers every library of upstream's
-  registry; the marked changes in
+  registry, and which imports upstream's `html-embed-assets.ts` by its source
+  path (the package does not export it); the marked changes in
   `canvas/features/webstudio-component/webstudio-component.tsx` (the
   instance-tag gate and the two prop skips in `useInstanceProps`, the `div`
   fallback in each renderer, and `withoutPausedProps` in each renderer) that
   keep it off every component; one marked condition in
-  `shared/project-settings/section-general.tsx` that hides Custom code, with
-  `section-general.test.tsx`;
+  `shared/project-settings/section-general.tsx` that shows Custom code only
+  while `orgEmbedsMayShip()`, with `section-general.test.tsx`;
   `features/publish/organizeos-publish-paused-script.ts`, whose banners are in
   `organizeos-publish.tsx`; one marked guard in `getAction` in
   `shared/nano-states/props.ts`, after the input validation check below, with
@@ -1135,8 +1160,16 @@ can be merged with minimal conflict.
   `canvas/elements.tsx`, with its import, that renders no instance stored with
   the global root's id; and the CLI's
   `packages/cli/src/organizeos-org-script.ts`, called from two short marked
-  hooks in `prebuild.ts` (the drop, and the check that the framework imports
-  every component the drop may keep); the CLI's check of each generated
+  hooks in `prebuild.ts` (the drop, given `embedsMayShip: orgEmbedsMayShip()`
+  explicitly, and the check that the framework imports every component the
+  drop may keep); `packages/cli/src/organizeos-publish-facts.ts`, with its
+  test, called from marked hooks in `prebuild.ts` (the fact per page, the
+  custom code's fact, the tripwire beside the module check, and the write at
+  the end); `assertCustomCodeNamesValid` in `organizeos-code-check.ts`,
+  called from a marked hook in `prebuild.ts` right before the custom code is
+  compiled; `html-to-jsx.organizeos.test.ts`, which ties the name check to
+  upstream's `htmlToJsx`; the marked `vi.mock`s of the embed switch and of the
+  facts in `prebuild.test.ts`; the CLI's check of each generated
   module, `packages/cli/src/organizeos-generated-code.ts`, called from a third
   short marked hook in `prebuild.ts`, with TypeScript 5.8.2 a dependency of
   the CLI under its own name (`typescript-5`) and `@webstudio-is/template` a
@@ -4547,9 +4580,19 @@ needed.
   takes its name from the first descendant's label (`w-paragraph`), a cosmetic
   quirk of upstream's naming.
 
-## 10. Org script is paused
+## 10. Org content is data, and embeds have their own switch
 
-**Decision (owner, 2026-10-21).** Until org sites move to `{sub}.organizeos.io`
+**Decision (owner, 2026-11-20).** An org's content is data on its Website
+and in the builder, as a standing rule (`orgScriptMayRun()`, always `false`),
+with five named exceptions that a second switch governs
+(`orgEmbedsMayShip()`): HTML Embed, Content Embed, Markdown Embed, JSON-LD and
+the site-wide Custom code. They come back on Webflow's model: an embed's
+script never runs inside the builder, only on the published site, and each
+publish reports whether its build carries org code. Spec (OrganizeOS repo):
+`docs/superpowers/specs/2026-11-20-builder-code-embeds-design.md`; it
+replaces the October plan to turn the one switch on.
+
+**History (owner decision, 2026-10-21).** Until org sites move to `{sub}.organizeos.io`
 (org sites domain spec, steps C1 and C2), the builder must not let an org ship
 its own script. Reason: decision 10 of the platform components design
 (`docs/superpowers/specs/2026-10-01-website-builder-platform-components-design.md`,
@@ -4563,7 +4606,10 @@ writes could read the session of every co-admin who opens the page. That
 exposure needs no publish. Spec (OrganizeOS repo):
 `docs/superpowers/specs/2026-10-21-website-builder-org-script-off-design.md`.
 
-**What is paused**, behind one switch:
+**What publishing leaves out while the embed switch is off.** The first
+three items and Custom code are the five embed kinds `orgEmbedsMayShip()`
+governs; every other item is the standing rule of `orgScriptMayRun()`,
+whatever the embed switch says:
 
 - **HTML Embed**, and **Content Embed**, which is an HTML Embed whose `code` is
   usually a Resource's HTML.
@@ -4649,78 +4695,240 @@ exposure needs no publish. Spec (OrganizeOS repo):
   publish, with a plain error (Prebuild, below). Filtering that content
   instead is a follow-up.
 
-**The switch** is `orgScriptMayRun()` in `@organizeos/site-components/org-script`
-(`packages/sdk-components-organizeos/src/org-script.ts`), a code constant that
-returns `false`, read by the builder and the CLI alike. It is not an env var: an
-env var has two homes (the builder's Vercel env and the publish workflow's) that
-could disagree, and a missing or mistyped value could fail open. The publish
-workflow reads it too, from the built package, fails unless it is off, and
-reports it to OrganizeOS (Reporting to OrganizeOS, below), so turning it on also
-edits that step. Turning
-it on is one reviewed change that also edits its test (`org-script.test.ts`),
-and only when all three hold:
+**The switches.** Both are code constants in
+`@organizeos/site-components/org-script`
+(`packages/sdk-components-organizeos/src/org-script.ts`), read by the builder,
+the CLI and the publish workflow alike. Neither is an env var: an env var has
+two homes (the builder's Vercel env and the publish workflow's) that could
+disagree, and a missing or mistyped value could fail open.
 
-- org sites are served from `{sub}.organizeos.io` and the old
-  `{sub}.organizeos.org` hosts only redirect (step C2, `PUBLISHER_HOST=organizeos.io`);
-- the platform session is host-only on `app.organizeos.org` (step D), with the
-  old `.organizeos.org` cookies expired, the builder's included, so the canvas,
-  which stays under `organizeos.org`, never receives it;
-- the canvas no longer shares an origin with the builder's publish, action
-  and CMS routes (upstream's `domain.publish`, `rest.organizeos-publish`,
-  `rest.organizeos-site-action` and `rest.organizeos-cms`), or those routes
-  refuse a request that does not come from the builder's top document. Today
-  canvas script could reach any of them with the page's CSRF token, and the
-  pause is what stops it; a publish puts the org's addresses live, a confirmed
-  one replaces its old site, an Unpublish takes an address down, and a CMS
-  write changes the org's collection items, so lifting the pause must not
-  reopen any of that.
+- `orgScriptMayRun()` returns `false` and stays `false`: the standing rule.
+  The publish workflow reads it from the built package and fails unless it is
+  off.
+- `orgEmbedsMayShip()` returns `false` in this commit. Turning it on is the
+  spec's PR C: one reviewed change that edits its pin in `org-script.test.ts`
+  and raises `ORGANIZEOS_GUARD_LEVEL` to 2, made only once the platform's PR B
+  (a gate that accepts a level-2 build with org code, the host rule that keeps
+  such a build off every host under `organizeos.org`, and no remembered donor
+  details beside org code) is live in production and the owner steps of the
+  spec's section 10 are done.
 
-The platform unpauses Website Lite custom code at C2 as well, and the two should
-move together. When it is on, everything follows it: the panel lists the embeds
-again, the canvas renders upstream's components, Custom code shows in Settings again, editable,
-prebuild keeps all of it, and the Publish dialog's list goes away. Nothing needs
-migrating: each org's next publish ships what it saved, including code someone
-may have forgotten, so tell the orgs first. The builder hides Custom code
-while paused, so an org cannot see what it saved: before the flip, tell each
-org whose `meta.code` (or an older build's pages' meta) is not empty what is
-stored there. The unpause also decides how an
+Every caller outside `org-script.ts` passes the embed switch explicitly
+(`htmlEmbedCodeMayRun(code, flag)` has no default; prebuild calls
+`dropOrgScript(bundle, { embedsMayShip: orgEmbedsMayShip() })`; the dialog
+calls `findPausedScript({ embedsMayShip: orgEmbedsMayShip() })`), so a test's
+mock of the switch reaches it: a mock replaces the export, not a binding a
+default inside `org-script.ts` would read. With embeds on, the Components
+panel and the command palette list HTML Embed, Markdown Embed and JSON-LD,
+the Content Embed and Markdown Embed templates return, Custom code shows in
+Settings > General as upstream's editable box, the Publish dialog's banner
+stops listing embeds and custom code, and prebuild ships them as upstream
+does. An HTML Embed with nothing to render (no `code` prop, a blank static
+one, or one whose every `code` the expression rules drop) is still left out,
+since upstream's published page would print its "Open the Settings panel"
+placeholder; a bound embed (a Content Embed) ships, its binding still held to
+the expression rules. Everything else stays under `orgScriptMayRun()`.
+
+Once embed scripts run on a published site, this decides how an
 org's own click handlers meet the share-code carriers (§9, "Share codes"): the
 page's carrier cancels a plain click on a same-origin link to a platform page
 in the document's capture phase, and a block's carrier does the same within its
 block, both before any handler on the link itself (a React `onClick`, an inline
-`onclick`) runs, so once org script returns a designer's handler on such a link
-cannot cancel that click: the carrier has already sent it by document. The
+`onclick`) runs, so a designer's handler on such a link cannot cancel that click: the carrier has already sent it by document. The
 carriers never cancel a middle-click or a context menu, so a designer's
 handler for those still decides them; the carrier has only set the link's
-`href` first. Then this section moves to history.
+`href` first.
 The package builds the `org-script` entry, as every export of its
 `package.json`, with upstream's `vite.sdk-components.config.ts`.
 
 **Nothing is deleted.** The embeds and the custom code stay in the build and show
-as paused, so reversal is the switch.
+as paused while the embed switch is off, so reversal is the switch.
+
+**The builder never runs embed code.** A standing rule, whatever either switch
+says (spec 4.2). Upstream's HTML Embed writes its `code` into the canvas with
+`innerHTML` in design mode, which fires inline handlers, and re-creates and
+runs its scripts in preview mode or with "Run scripts on canvas"; the canvas is
+the builder's own origin. So untrusted markup enters a builder document
+through one path, `shared/organizeos-untrusted-markup.tsx`, and nothing else
+may:
+
+- `insertUntrustedMarkup(wrapper, markup)` sanitizes the string with DOMPurify
+  (3.4.17, pinned exactly, a dependency of the builder only), with an instance
+  made for the window it inserts into, to a document fragment, and appends
+  that fragment's own nodes (adopted from DOMPurify's inert document, never
+  parsed again) to the wrapper. It inserts nothing when the wrapper is not an
+  HTML-namespace element of a window (React creates an embed's wrapper in the
+  SVG or MathML namespace when the embed sits under an `svg` or `math`, where
+  markup parses differently), or when DOMPurify gives back anything but a
+  fragment of that window's realm.
+- The configuration, `untrustedMarkupConfig`, is an allowlist pinned by an
+  inline snapshot: HTML text and table elements, `img`, `a`, `style`, and SVG
+  presentation elements (shapes, `text`, gradients, `clipPath`, `mask`,
+  `pattern`, the SVG `title` and `desc`, and the filter primitives), with
+  `class`, inline `style`, the SVG presentation attributes and `aria-*`.
+  Removed: `script`, every `on…` attribute, `iframe`, `object`, `embed`,
+  `link`, `meta`, `base`, `form` and form controls, `form`, `action` and
+  `formaction`, `srcdoc`, `srcset`, `target`, `ping`, `xlink:href`, SVG
+  `animate`, `set`, `use` and `foreignObject`, MathML, `template`, `noscript`,
+  an HTML `title`, every `data-*` attribute (the canvas maps DOM nodes to
+  instances by `data-ws-*`), and any `href`, `src` or `cite` that is not
+  `http`, `https`, `mailto`, `tel`, a fragment, a query or a path (an
+  `uponSanitizeAttribute` hook, which only tightens: DOMPurify keeps a `data:`
+  image address whatever its URI pattern says). `SAFE_FOR_XML` drops a
+  `<style>` that holds a `<`, such as a range media query; `FORCE_BODY` keeps
+  an embed that is only a `<style>`.
+- `id` and `name` are prefixed `user-content-` (`SANITIZE_NAMED_PROPS`), so
+  markup cannot define a property of the canvas's `window` or `document`. A
+  reference to an id the same fragment defines, a plain name of at most 64
+  characters, is rewritten to match on the sanitized nodes, in `fill`,
+  `stroke`, `clip-path`, `mask` and `filter` (exactly `url(#id)`), `href`
+  (exactly `#id`) and `aria-labelledby` and `aria-describedby`, so an inline
+  SVG's gradients, clips, masks and filters still render. CSS text is not
+  rewritten, so an `#id` selector in an embed's CSS does not match on the
+  canvas, nor does a `[data-…]` selector.
+- The builder UI's Markdown preview has a second DOMPurify instance with its
+  own configuration, `untrustedPreviewMarkupConfig`: the canvas's, with the
+  `style` element and the `style` attribute also forbidden, since the preview
+  writes into the builder's own top document, where an org's style would
+  restyle the builder (the canvas keeps both: an embed's CSS styling its page
+  is what embeds are for). It alone also keeps an HTML `img` `src` that is a
+  `blob:` URL of `http` or `https` (an image still uploading), through a hook
+  that sets `forceKeepAttr` for that one case.
+- `untrustedMarkupPurifier`, the live canvas sanitizer, is exported for the
+  tests that observe or stub it; the wiring test fails when any other module
+  in `apps/builder/app` names it.
+- `UntrustedMarkup` renders the wrapper and fills it in a layout effect keyed
+  on the wrapper and the markup, so a re-render keeps the inserted nodes and a
+  selection, and new markup replaces every old node. When nothing renderable
+  is left, the wrapper is hidden (and drops its `data-*` props) and a fallback
+  stands beside it with the ref and the instance's props.
+
+Who uses it: `CanvasHtmlEmbed` and `CanvasMarkdownEmbed`
+(`canvas/organizeos-org-script.tsx`), registered for HTML Embed and Markdown
+Embed on the canvas in every mode (below), and the builder UI's Markdown
+preview (`features/text-file-editor/markdown-preview.tsx`, one marked change),
+which therefore shows less than the published Markdown Embed. It loses:
+iframes, an uploaded document framed by a relative address among them;
+`data:` images; task-list checkboxes and every other form control; audio,
+video, `picture` and `srcset`; `<style>` blocks and inline `style`
+attributes; `target` on a link, so a raw `<a target="_blank">` opens in the
+builder's tab; `tabindex`; every `data-*` attribute, so its MDX component
+placeholders lose their dotted box, which the preview's style selected by
+one; a link whose address is not `http`, `https`, `mailto`, `tel`, a
+fragment, a query or a path (`sms:` among them); SVG `use`, `symbol`,
+`textPath`, `feImage`, `foreignObject` and the animation elements, MathML,
+`template`, `noscript` and an HTML `title`; and the plain names of ids and
+`name`s, which gain the `user-content-` prefix (an in-preview `#anchor` still
+jumps to an id the same preview defines, a plain name of at most 64
+characters, and to no other). "Run scripts on canvas" leaves the HTML
+Embed's settings: the meta the canvas registers drops `executeScriptOnCanvas`
+from `props` and `initialProps`, and a saved value is ignored; a project that
+saved it still lists it as an added attribute row under its raw name, because
+upstream's props panel lists any saved prop with no meta that way
+(`use-props-logic.organizeos.test.tsx` documents it; hiding it would change an
+upstream file). JSON-LD renders as inert text on the canvas, and Custom code is
+never rendered in the builder. `organizeos-org-script.wiring.node.test.ts`
+counts every raw-HTML sink in `apps/builder/app` (`dangerouslySetInnerHTML`,
+`__html`, `.innerHTML =`, `.innerHTML +=`, `.outerHTML =`,
+`insertAdjacentHTML(`, `createContextualFragment(`, `document.write(`,
+`srcDoc`, `setHTMLUnsafe(`, `parseFromString(`) per file against a reviewed
+list with a reason for each, so a new one fails until it is reviewed, and pins
+that the Markdown preview uses the insertion path. Nothing covers the packages
+the builder bundles. The corpus of the insertion path's tests (inline
+`script`, `img onerror`, `svg onload`, `javascript:` and `data:` addresses,
+`iframe srcdoc`, `form action`, `formaction`, `form=`, `base`, `meta refresh`,
+`animate`, `set`, `use`, `data-ws-id`, a global id, markup in `<style>`,
+mutation XSS shapes) runs in Chromium in `organizeos-untrusted-markup.test.tsx`
+(CI leg `builder app-browser-shared`), under HTML, SVG and MathML parents, and
+again through the canvas components in both renderers
+(`organizeos-org-script.test.tsx`, leg `builder app-browser-canvas-dashboard`).
+
+**Custom code is checked first.** Upstream's `htmlToJsx`
+(`packages/cli/src/html-to-jsx.ts`) compiles the custom code into the home
+page's module, which runs on the server. It escapes text and attribute values
+but writes tag and attribute names as parse5 read them, and an HTML name may
+hold `{`, `}`, `(`, `"` and `.`, so crafted custom code would be a JSX
+expression in the sites' server functions. `checkCustomCodeNames`
+(`packages/sdk-components-organizeos/src/custom-code-names.ts`, re-exported
+from `org-script`) reads the code with parse5 7.3.0 and
+`scriptingEnabled: false`, as `htmlToJsx` does, walks `childNodes` as its
+walker does (a `<template>`'s content is not read, as it is not written), and
+refuses any tag or attribute name outside
+`/^[A-Za-z][A-Za-z0-9_-]*(?::[A-Za-z][A-Za-z0-9_-]*)?$/`, naming the first:
+a JSX identifier of ASCII letters, digits, `_` and `-`, with at most one
+namespace colon. It runs only on code that is about to be compiled: in
+prebuild, on `projectMeta.code` right before `htmlToJsx`
+(`assertCustomCodeNamesValid`, which fails the publish with "Custom code
+cannot be published: …"), and in the Publish dialog on the same effective
+string (`(projectSettings?.meta ?? pages.meta).code`), only when embeds may
+ship and it is not blank (`Can't publish: Custom code, "{name}".`, and no
+dispatch). While embeds are off the code is cleared before it could be
+compiled, and a stale copy in the pages' meta that the project settings
+shadow is never emitted, so neither is checked: checking them would fail a
+publish over code the org can neither see nor edit. Legitimate code with a
+name JSX cannot hold (`@click`, `:class`) is refused the same way; upstream
+fails such a build with a syntax error. `html-to-jsx.organizeos.test.ts` ties
+the check to the compiler: for a corpus the check accepts, every expression
+`htmlToJsx` writes is a string literal or an object of string literals, with
+no spread, member tag or component tag, so an upstream change or a parse5 bump
+fails a test; it also keeps the blocks package's and the CLI's parse5 pins
+equal. The module check (below) refuses `import()`, `import.meta` and `this`
+as a second line.
+
+**Each publish reports whether it carries org code.** Org code, for this
+report, is an HTML Embed a generated page renders whose `code` is not a static
+template icon (a bound one counts), a Markdown Embed, or non-blank custom code.
+JSON-LD does not count: upstream writes it as validated JSON with `<` escaped,
+which `organizeos-org-script.test.ts` pins ("JSON-LD's value cannot close its
+script element in the published markup"). The facts are computed where the
+code is emitted (`packages/cli/src/organizeos-publish-facts.ts`, marked hooks
+in `prebuild.ts`): per page, by `pageCarriesOrgCode` from the exact instances
+and props prebuild hands the page generator, walking the page's tree and
+skipping a Content Block's templates container as the generator does; and by
+`customCodeCarriesOrgCode` where the custom code is compiled. A tripwire,
+`assertEmbedFact`, reads each generated page module beside the module check:
+when the page's fact is false and the module refers to `HtmlEmbed` (other than
+an element whose only `code` is a template icon's literal) or `MarkdownEmbed`,
+imported under any name from any source, the build fails. Prebuild writes
+`{ "orgScript": boolean }` as its last action, after the assets, through a
+temporary file and a rename, to `ORGANIZEOS_PUBLISH_FACTS_FILE` (or the
+`organizeosFactsFile` option), and writes nothing without a path or when the
+build fails. The workflow reads it (§5, and "Reporting to OrganizeOS" below).
 
 **Where it is enforced**: where code runs, not where it enters.
 
 - **Components panel and command palette.** `withOrgScriptPolicy`
   (`apps/builder/app/canvas/organizeos-org-script.tsx`) wraps each library of
   upstream's registry where `canvas/canvas.tsx` registers them, in one marked
-  loop, `withOrgScriptPolicy(withoutBuiltWithWebstudio(library))`. While the
-  switch is off it gives the `HtmlEmbed`, `MarkdownEmbed` and `JsonLd` metas
+  loop, `withOrgScriptPolicy(withoutBuiltWithWebstudio(library))`. It always
+  registers the canvas's own HTML Embed and Markdown Embed (below) and an HTML
+  Embed meta without "Run scripts on canvas". While `orgEmbedsMayShip()` is
+  off it also gives the `HtmlEmbed`, `MarkdownEmbed` and `JsonLd` metas
   `category: "hidden"`, which the panel and the palette skip (the Navigator,
-  their icons and labels are unchanged), leaves the Content Embed and Markdown
-  Embed templates out, and registers the stand-ins below. Everything else, the
-  registry's `componentIds` among it, passes through by reference.
-- **Canvas.** `PausedHtmlEmbed` renders upstream's component only when the
-  embed's `code` is a string identical to a template icon; otherwise it shows a
-  notice where the embed is (its `ref` and `data-ws-*` props, `display: block`
-  and padding, since the preset's `display: contents` would give it no box) and
-  never puts `code` into the DOM: not in design, preview or safe mode, and not
-  with "Run scripts on canvas" (the notice takes no `$ws$executeScripts`). It
-  tests `typeof code === "string"` because upstream's component coerces whatever
-  it gets with `String(code)`, so an array from a Resource holding markup, even
-  an icon, would become markup. `PausedMarkdownEmbed` always shows the notice.
-  The settings panel is unchanged: an embed's code stays editable, and the
-  notice says it is paused.
+  their icons and labels are unchanged), and leaves the Content Embed and
+  Markdown Embed templates out. Everything else, the registry's
+  `componentIds` among it, passes through by reference.
+- **Canvas.** `CanvasHtmlEmbed` renders upstream's component, with scripts
+  off, only when the embed's `code` is a string identical to a template icon
+  (it tests `typeof code === "string"` itself, because upstream's component
+  coerces whatever it gets with `String(code)`, so an array from a Resource
+  holding markup, even an icon, would become markup). While embeds may not
+  ship, anything else shows a notice where the embed is (its `ref` and
+  `data-ws-*` props, `display: block` and padding, since the preset's
+  `display: contents` would give it no box), as before. Once they may, missing
+  or blank code shows upstream's placeholder, and any other code is
+  `String(code)` with asset URLs resolved by upstream's own
+  `resolveHtmlEmbedAssetUrls` (imported by its source path, before
+  sanitizing), put in through the insertion path; when nothing renderable is
+  left (only scripts, only an iframe, a wrapper under `svg`), or `String(code)`
+  throws, a box reading "Shows on the published site" stands in its place. It
+  never puts `code` into the DOM any other way: not in design, preview or safe
+  mode, and not with a saved "Run scripts on canvas" (it passes no
+  `$ws$executeScripts`, `clientOnly` or `executeScriptOnCanvas` on).
+  `CanvasMarkdownEmbed` shows the notice while embeds may not ship, and
+  otherwise renders the Markdown with upstream's `renderMarkdownHtml` and puts
+  it in through the insertion path (upstream's own filter keeps iframes). The
+  settings panel is unchanged: an embed's code stays editable.
 - **Raw HTML props on the canvas.** `useInstanceProps`
   (`canvas/features/webstudio-component/webstudio-component.tsx`) skips a prop
   whose name `propNameMayRun` refuses (`pausedPropNames` in `org-script.ts`:
@@ -4791,10 +4999,11 @@ as paused, so reversal is the switch.
   `organizeos-org-script.props.test.tsx` renders each case in both modes, and
   `organizeos-org-script.wiring.node.test.ts` pins the two calls.
 
-- **Custom code field.** Hidden while paused (owner decision, 2026-11-10:
-  no read-only box with an explanation; `section-general.tsx`, one marked
-  condition). The saved code is kept, untouched, and the box returns, editable,
-  when `orgScriptMayRun()` does.
+- **Custom code field.** Hidden while embeds may not ship (owner decision,
+  2026-11-10: no read-only box with an explanation; `section-general.tsx`, one
+  marked condition). The saved code is kept, untouched, and the box returns,
+  editable, the label and the editor with no paragraph, when
+  `orgEmbedsMayShip()` does.
 - **Builder panels.** The builder's panels never put an org's HTML, styles or
   values into the builder's own page as markup or code. The HTML Embed code
   check is upstream's `validateHtmlEmbedCode`, which reads the code with parse5
@@ -4804,7 +5013,8 @@ as paused, so reversal is the switch.
   as text, and its form, its import and the redirect operations refuse one.
 - **Publish dialog.** A banner after the plan-features banner and the MDX banner
   (below), headed "Paused, not published", lists each HTML Embed that will be
-  dropped, each Markdown Embed, each JSON-LD, each element publishing drops for
+  dropped, each Markdown Embed and each JSON-LD (while embeds may not ship;
+  once they may, only an HTML Embed with nothing to render), each element publishing drops for
   a tag the builder does not offer ("Element with an unsupported tag on
   {page}"), each instance of a component no published page imports ("Unknown
   component"), each instance stored with the global root's id ("Element with
@@ -4821,8 +5031,8 @@ as paused, so reversal is the switch.
   element it is scoped to), each page redirect to an unsafe address or that
   may not run ("Redirect on {page}", which opens that page's settings), each
   project redirect to one ("Redirect from {old} (Settings)", which opens
-  Redirects) and "Custom code", once, as plain text, when the project's
-  settings or the pages' meta hold any (a click selects the element or opens the
+  Redirects) and "Custom code", once, as plain text, while embeds may not ship,
+  when the project's settings or the pages' meta hold any (a click selects the element or opens the
   settings; Custom code has nowhere to open while it is hidden), from `findPausedScript`
   (`features/publish/organizeos-publish-paused-script.ts`). A bound address that
   the canvas shows with a safe value is still listed, and dropped at publish,
@@ -4841,7 +5051,7 @@ as paused, so reversal is the switch.
   core template puts in it is not listed (an embed a content editor inserted
   into the block is). The banner is its heading and the list, with no
   explanation (the builder's panels show options, not explanations); what the
-  org saved is kept. Information only: Publish still runs. Nothing is listed when the switch is on, or when the
+  org saved is kept. Information only: Publish still runs. Nothing is listed when `orgScriptMayRun()` is on, or when the
   site holds only template icons.
 
   The MDX banner, "Publishing fails while these use MDX:", lists each Content
@@ -4872,11 +5082,16 @@ as paused, so reversal is the switch.
   prebuild publishes it as (`migrateResourceFormInstancesMutable`, which
   prebuild runs after the drop). Then it drops:
 
-  1. every instance whose component is `HtmlEmbed`, unless its `code` prop is a
-     static string identical to a template icon. An embed whose `code` is an
-     expression, a Resource or missing is dropped too (upstream's published
-     `Placeholder` would print "Open the Settings panel to insert HTML code.");
-  2. every `MarkdownEmbed`, whatever its code, and every `JsonLd`;
+  1. while embeds may not ship, every instance whose component is
+     `HtmlEmbed`, unless its `code` prop is a static string identical to a
+     template icon. An embed whose `code` is an expression, a Resource or
+     missing is dropped too (upstream's published `Placeholder` would print
+     "Open the Settings panel to insert HTML code."). Once embeds may ship,
+     only an embed with nothing to render: no `code` prop, only blank static
+     ones, or one whose every `code` prop the rules below drop (the drop runs
+     again with such an embed marked, so it goes with what it holds);
+  2. while embeds may not ship, every `MarkdownEmbed`, whatever its code, and
+     every `JsonLd`;
   3. every instance whose tag is set and is not in `tags` (`@webstudio-is/sdk`,
      the list the Tag control offers; the rule is `elementTagMayRun`, which the
      canvas shares), and every instance with a `data-ws-tag` or `tag` prop that
@@ -4911,7 +5126,7 @@ as paused, so reversal is the switch.
   5. every `dangerouslySetInnerHTML` prop (`pausedPropNames`), of any type, on
      any instance. The instance stays, without the prop. Counted in the log
      line, except for the props of an instance that is dropped anyway;
-  6. the site's custom code, from the project's settings
+  6. while embeds may not ship, the site's custom code, from the project's settings
      (`build.projectSettings.meta.code`, which prebuild reads first) and from
      the pages' meta (`build.pages.meta.code`). `CustomCode` is still
      exported from the home page module, as an empty fragment, so `root.tsx`
@@ -5248,29 +5463,48 @@ registry template and every fixture passes it. Tests:
 `organizeos-generated-code.test.ts` and `prebuild.test.ts` ("checks every page
 and server module it generates", the fixtures, the templates, and "fails the
 publish of a module with …, without the pause's rules", one case for each
-shape the pause's own rules leave out).
+shape the pause's own rules leave out). The check also refuses `import()`,
+`import.meta` and `this` (`forbidden`), read from both syntax trees it builds:
+esbuild's compiled tree turns a JSX `<this>` tag into a string and
+TypeScript's stripped one keeps it as `this`, so a JSX spelling is caught and
+text in a string never counts. No module prebuild generates uses them today
+(every fixture's `app/__generated__`, the generators and the templates); it
+runs on the page and server modules only, never on the bundled zod asset query
+module, which uses `this`.
 
 **Reporting to OrganizeOS.** OrganizeOS launches a Website only from a build
-that carries no org script, so the publish reports what the run's CLI says,
-never configuration. The step "Read the org script switch" (`publish-site.yml`,
-after "Build site" and before "Deploy to Vercel", so nothing deploys first)
-loads `@organizeos/site-components/org-script` from `packages/cli`, as the CLI
-does (`lib/org-script.js`, built at the same commit by "Install and build CLI"),
-checks that the module has the address rule (`urlMayRun` refuses a `javascript:`
-address with the switch held off), and reads `orgScriptMayRun()`. The run fails
-unless the rule is there and the switch reads `false`, which is then the step's
-output (`steps.org-script.outputs.value`). The publish callback's body carries
-it as `orgScript`, a JSON boolean from that output alone, checked again before
-the body is sent, beside `organizationId`, `buildId` and `deploymentUrl`, under
-the same shared secret. The callback refuses a body with a key it does not know,
-so OrganizeOS accepted the field first (OrganizeOS #2075). OrganizeOS stores it
-with the deployment pointer, `true` when it is missing (unknown means unsafe),
-and launches a Website only from a build whose report is `false`.
-`organizeos-publish-workflow.test.ts` reads the step and the callback body
-(`orgScript` from the step's output and nothing else, and the body as JSON the
-callback accepts) and runs the step's command against the built package;
-CI's cli leg builds the blocks package, with the workspace packages it
-imports, before the tests.
+it accepts, so the publish reports whether this build carries org code, never
+configuration. "Build site" removes any earlier
+`$GITHUB_WORKSPACE/organizeos-publish-facts.json`, the fork's own checkout and
+not under `runner.temp`, where the site is built and from where
+`vercel deploy` uploads, and passes that path to the CLI as
+`ORGANIZEOS_PUBLISH_FACTS_FILE`; prebuild writes the facts there last. The
+step "Read the org script switch" (`publish-site.yml`, after "Build site" and
+before "Deploy to Vercel", so nothing deploys first) loads
+`@organizeos/site-components/org-script` from `packages/cli`, as the CLI does
+(`lib/org-script.js`, built at the same commit by "Install and build CLI"),
+and in one `node` script checks that the module has the address rule
+(`urlMayRun` refuses a `javascript:` address with the switch held off), that
+`orgScriptMayRun()` is `false` (`::error::orgScriptMayRun() is …`), that the
+`embeds` step's value equals `orgEmbedsMayShip()` ("The embeds input (…)
+differs from this CLI's orgEmbedsMayShip()"), that the facts file parses to
+an object with exactly one key, `orgScript`, a boolean ("The publish facts are
+missing or malformed"), and that it is not `true` while embeds may not ship
+("The build carries org code while embeds may not ship"). Its output, written
+only after every check, is that boolean (`steps.org-script.outputs.value`).
+The publish callback's body carries it as `orgScript`, checked again as a JSON
+boolean before the body is sent and sent as it is, beside `organizationId`,
+`buildId`, `deploymentUrl` and `guardLevel`, under the same shared secret.
+Facts and deployment URL come from one run, so a retry, a stale callback or a
+run in flight at a deploy cannot pair one build's facts with another's
+deployment. OrganizeOS stores it with the deployment pointer, `true` when it is
+missing (unknown means unsafe); until the platform's level-2 gate (spec PR B)
+it launches a Website only from a build whose report is `false`, and while the
+embed switch is off no build reports `true`. `organizeos-publish-workflow.test.ts`
+reads the steps and the callback body and runs the step's script against the
+built package and against stub packages, with temporary facts files; CI's cli
+leg builds the blocks package, with the workspace packages it imports, before
+the tests.
 
 **Existing projects.** Dev builds (`"Build".deployment` null, the build the
 builder edits) keep their embeds and code, and the canvas shows them paused from
@@ -5278,7 +5512,8 @@ the deploy onward. Published deployments are frozen: a deployment built before
 this change keeps its embeds and custom code until the org publishes again, so if
 one is live it has to be republished. The owner can do that without the org: run
 "Publish site" (`publish-site.yml`, `workflow_dispatch`) with `build_id` set to
-the org's `webstudio_published_build_id` and its `organization_id`. The CLI syncs
+the org's `webstudio_published_build_id` and its `organization_id` (after the
+embed flip, PR C, also `embeds=true`, or the run fails on the embeds check). The CLI syncs
 the same build, drops both, deploys and repoints. The callback accepts a repeat
 build id and checks only that the build belongs to the org's project.
 
@@ -5563,7 +5798,14 @@ a `div` for a `ws:element` with such a tag
 `useInstanceProps`, the two `div` fallbacks, which read `instanceTagMayRender`
 (`elementTagMayRender` and input validation's tag rule), and the two renderer
 calls, which are `withoutPausedProps`);
-`section-general.tsx` hides Custom code (`section-general.test.tsx`);
+`section-general.tsx` shows Custom code only while `orgEmbedsMayShip()`
+(`section-general.test.tsx`); `markdown-preview.tsx` puts its HTML into the
+builder's page only through the insertion path
+(`organizeos-org-script.wiring.node.test.ts`, "the Markdown preview writes
+through the insertion path", and the raw-HTML sink list); the canvas module
+imports upstream's `html-embed-assets.ts` by its source path, so a merge that
+moves or renames it fails the builder's typecheck and the canvas's asset test
+("the canvas embed resolves an asset path as upstream does");
 `packages/project-build/src/runtime/data.ts` compiles no expression
 `expressionMayRun` refuses and computes no function
 (`data.organizeos.test.ts`, and `organizeos-org-script.wiring.node.test.ts`,
@@ -5581,8 +5823,12 @@ the new string to `templateIconCodes`, keep the old one), and one that adds
 another component using `dangerouslySetInnerHTML` to the runtime packages fails
 a tripwire in `packages/cli/src/organizeos-org-script.test.ts`, which reads its
 package list from `scripts/check-runtime-upstream.sh` (all fourteen) and knows
-three users, `html-embed.tsx`, `markdown-embed.tsx` and `json-ld.tsx`, each of
-which publishing leaves out: decide whether the new component joins the pause.
+three users, `html-embed.tsx`, `markdown-embed.tsx` and `json-ld.tsx`, each
+governed by `orgEmbedsMayShip()` and left out while it is off: decide whether
+the new component joins them. A merge that changes upstream's HTML Embed,
+Markdown renderer, JSON-LD or `htmlToJsx` fails the canvas components' tests,
+the facts' tripwire tests, the JSON-LD guard or the differential test of the
+custom code name check.
 The same file reads the runtime packages' generated props, one exported props
 object at a time (`dialog.props.ts` holds seven, so a `tag` prop on its
 Description would not change the list of files), and fails when a component

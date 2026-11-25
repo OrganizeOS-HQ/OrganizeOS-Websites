@@ -42,9 +42,13 @@ import {
  * either binding mode, and who holds the project's `admin` permit. The org is
  * the project owner's (resolveProjectOrganization), never the request's.
  *
- * The body is `{ targets, replacePages? }`: 1 to 20 distinct keys, each
- * `builtin` or a host, and `replacePages: true` once the admin confirmed
- * replacing the organization's old site.
+ * The body is `{ targets, replacePages?, embeds? }`: 1 to 20 distinct keys,
+ * each `builtin` or a host, `replacePages: true` once the admin confirmed
+ * replacing the organization's old site, and `embeds: true` when the dialog
+ * was built with orgEmbedsMayShip() on. Absent counts as false; a value that
+ * differs from this builder's own answers `409 reload` before anything is
+ * read or written, so a tab opened before a flip cannot publish (spec
+ * 2026-11-20-builder-code-embeds-design.md, 4.3, in the OrganizeOS repo).
  * Every key must be one of the org's own targets in OrganizeOS's addresses
  * read, made here at the moment of the publish; one that is not refuses the
  * whole publish before anything is written. The build row is written as
@@ -85,6 +89,8 @@ const bodySchema = z
       .refine((keys) => new Set(keys).size === keys.length),
     // The admin confirmed replacing the organization's old site
     replacePages: z.literal(true).optional(),
+    // The dialog's orgEmbedsMayShip(), sent only when true
+    embeds: z.literal(true).optional(),
   })
   .strict();
 
@@ -114,6 +120,8 @@ export type PublishRouteDeps = {
   getPublisher: () => OrganizeosPublisher | undefined;
   publisherHost: string;
   platformUrl: string;
+  /** This builder's orgEmbedsMayShip(). */
+  embedsMayShip: boolean;
   /** The build's instances, props and pages, or undefined when unreadable. */
   loadBuildForms: (
     buildId: string,
@@ -144,7 +152,8 @@ type LogCode =
   | "build_refused"
   | "organization_mismatch"
   | "dispatch_failed"
-  | "forms_refused";
+  | "forms_refused"
+  | "embeds_mismatch";
 
 const log = (code: LogCode, detail?: string) => {
   console.error(
@@ -418,6 +427,12 @@ export const handlePublishRequest = async (
   const parsed = bodySchema.safeParse(await readBody(request));
   if (parsed.success === false) {
     return answer({ ok: false, error: "invalid_request" }, 400);
+  }
+  // A tab built with another embed switch says what publishing leaves out
+  // wrongly: it reloads first
+  if ((parsed.data.embeds === true) !== deps.embedsMayShip) {
+    log("embeds_mismatch");
+    return answer({ ok: false, error: "reload" }, 409);
   }
 
   const owner = await deps.resolveOrganization(projectId, context);

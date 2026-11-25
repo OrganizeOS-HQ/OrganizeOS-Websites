@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { cleanStores } from "nanostores";
 import { createDefaultPages } from "@webstudio-is/project-build";
 import { setEnv } from "@webstudio-is/feature-flags";
@@ -49,6 +49,16 @@ import {
   withoutBuiltWithWebstudio,
 } from "./organizeos-org-script";
 import { checkAction } from "@organizeos/site-components/org-script";
+
+// OrganizeOS fork: the embed switch, held off unless a case turns it on. It
+// reaches the canvas module, which reads orgEmbedsMayShip() at render.
+const { embeds } = vi.hoisted(() => ({ embeds: { mayShip: false } }));
+vi.mock("@organizeos/site-components/org-script", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@organizeos/site-components/org-script")
+  >()),
+  orgEmbedsMayShip: () => embeds.mayShip,
+}));
 
 // The canvas copies every prop of an instance onto its component, so a prop
 // named dangerouslySetInnerHTML would put raw markup into the builder's own
@@ -2737,3 +2747,52 @@ describe.each(renderers)(
     });
   }
 );
+
+// OrganizeOS fork: an HTML Embed instance, through the library the canvas
+// registers, in both renderers, with the embed switch off and on and a saved
+// "Run scripts on canvas": no script reaches the document, and no handler
+// runs (docs/ORGANIZEOS-FORK.md section 10, "The builder never runs embed
+// code").
+describe.each(renderers)("the %s runs no HTML Embed code", (renderer) => {
+  afterEach(() => {
+    embeds.mayShip = false;
+    delete (window as { pwned?: number }).pwned;
+  });
+
+  test.each([false, true])(
+    "with embeds %s and Run scripts on canvas saved",
+    async (mayShip) => {
+      embeds.mayShip = mayShip;
+      const source = evilScriptSource(`embed-${renderer}-${mayShip}`);
+      const scriptsBefore = document.querySelectorAll("script").length;
+      const dom = await render({
+        renderer,
+        instances: [
+          instance({ id: "body", children: ids("embed") }),
+          instance({ id: "embed", component: "HtmlEmbed" }),
+        ],
+        props: [
+          prop(
+            "embed",
+            "code",
+            "string",
+            `<script>window.pwned=1</script><script async src="${source}"></script>${html}<p id="kept">kept</p>`
+          ),
+          prop("embed", "executeScriptOnCanvas", "boolean", true),
+        ],
+      });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(document.querySelectorAll("script").length).toBe(scriptsBefore);
+      expect(evilScripts().length).toBe(0);
+      expect(dom.querySelector("img[onerror]")).toBeNull();
+      expect((window as { pwned?: number }).pwned).toBeUndefined();
+      // the control: the embed rendered, paused or through the insertion path
+      if (mayShip) {
+        expect(dom.querySelector("p")?.textContent).toBe("kept");
+        expect(dom.querySelector("p")?.id).toBe("user-content-kept");
+      } else {
+        expect(dom.textContent).toContain("HTML Embed is paused");
+      }
+    }
+  );
+});

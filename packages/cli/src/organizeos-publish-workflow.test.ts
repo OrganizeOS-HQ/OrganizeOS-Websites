@@ -98,6 +98,8 @@ const probeOf = (script: string) =>
 
 const targetsStep = stepNamed("Read the targets");
 const replaceStep = stepNamed("Read the replace flag");
+const embedsStep = stepNamed("Read the embeds flag");
+const buildStep = stepNamed("Build site");
 const switchStep = stepNamed("Read the org script switch");
 const guardStep = stepNamed("Read the guard level");
 const installVercelStep = stepNamed("Install the Vercel CLI");
@@ -108,6 +110,7 @@ const failedStep = stepNamed("Report the build as failed");
 
 const targetsScript = runScriptOf(targetsStep);
 const replaceScript = runScriptOf(replaceStep);
+const embedsScript = runScriptOf(embedsStep);
 const switchScript = runScriptOf(switchStep);
 const guardScript = runScriptOf(guardStep);
 
@@ -160,7 +163,11 @@ type Call = { tool: string; args: string[]; token?: string | null };
  * Runs a script as the runner runs a step (`bash -e`), in packages/cli, with
  * the fake tools first on PATH.
  */
-const runStep = (script: string, env: Record<string, string> = {}) => {
+const runStep = (
+  script: string,
+  env: Record<string, string> = {},
+  cwd: string = cliDir
+) => {
   outputDir = mkdtempSync(join(tmpdir(), "publish-workflow-"));
   const output = join(outputDir, "output");
   const log = join(outputDir, "calls");
@@ -173,7 +180,7 @@ const runStep = (script: string, env: Record<string, string> = {}) => {
     chmodSync(join(bin, name), 0o755);
   }
   const result = spawnSync("bash", ["-e", "-c", script], {
-    cwd: cliDir,
+    cwd,
     env: {
       ...process.env,
       PATH: `${bin}:${process.env.PATH}`,
@@ -214,6 +221,8 @@ const substitutions: Record<string, string> = {
   "inputs.organization_id": "a6b33e8c-3f0e-4c21-9d4e-6b0c1f2e3d4a",
   "inputs.targets": "",
   "inputs.replace_pages": "",
+  // a builder that ships no embeds sends no embeds input
+  "inputs.embeds": "",
   "vars.BUILDER_ORIGIN": "https://builder.example",
   "secrets.WSTD_SERVICE_TOKEN": secrets.serviceToken,
   "secrets.PUBLISH_CALLBACK_URL": "https://app.example/publish-callback",
@@ -228,6 +237,7 @@ const substitutions: Record<string, string> = {
   "steps.targets.outputs.value": "",
   // and no replace
   "steps.replace-pages.outputs.value": "",
+  "steps.embeds.outputs.value": "false",
 };
 
 /** The step's env as the runner fills it, with some substitutions replaced. */
@@ -279,93 +289,272 @@ const withValue = (script: string, value: string) =>
     `$(printf '%s' '${value}')`
   );
 
-describe("the publish workflow's org script switch", () => {
-  test("reads the switch after the build, then the guard level, then deploys", () => {
-    const names = steps.map((item) => item.name);
-    const index = names.indexOf(switchStep.name);
-    expect(names[index - 1]).toBe("Build site");
-    expect(names[index + 1]).toBe("Read the guard level");
-    expect(names[index + 2]).toBe("Deploy to Vercel");
-    // after the build of the CLI it reads, at the same commit
-    expect(names.indexOf("Install and build CLI")).toBeLessThan(index);
-    // from the CLI's package, where it resolves the blocks package as the CLI
-    // does, and under an id later steps can read
-    expect(switchStep.text).toMatch(/^ {8}working-directory: packages\/cli$/m);
-    expect(switchStep.text).toMatch(/^ {8}id: org-script$/m);
-  });
+/** The built package's orgEmbedsMayShip(), as the step reads it. */
+const builtEmbeds = (): boolean => {
+  const node = spawnSync(
+    "node",
+    [
+      "--input-type=module",
+      "-e",
+      'import { orgEmbedsMayShip } from "@organizeos/site-components/org-script"; process.stdout.write(JSON.stringify(orgEmbedsMayShip()));',
+    ],
+    { cwd: cliDir, encoding: "utf8" }
+  );
+  return JSON.parse(node.stdout) as boolean;
+};
 
-  test("fails the run unless the switch reads false and the address rule is there", () => {
-    // the module the CLI loads, asked whether it has the address rule with
-    // the switch held off, and then for the switch itself
-    const probe = probeOf(switchScript);
-    expect(probe).toBeDefined();
-    expect(probe).toContain(
-      'import { orgScriptMayRun, urlMayRun } from "@organizeos/site-components/org-script";'
-    );
-    expect(probe).toContain(
-      'if (typeof urlMayRun !== "function" || urlMayRun("javascript:alert(1)", false) !== false) {'
-    );
-    expect(probe).toContain(
-      'throw new Error("this CLI does not check unsafe addresses");'
-    );
-    expect(probe).toContain(
-      "process.stdout.write(JSON.stringify(orgScriptMayRun()));"
-    );
-    // nothing but the CLI feeds the value
-    expect(switchStep.text).not.toMatch(/\$\{\{/);
-    expect(switchStep.text).not.toMatch(/^ {8}env:/m);
+/**
+ * A stand-in for the blocks package, so a case can hold a switch the real
+ * one does not: a directory whose node_modules resolves
+ * @organizeos/site-components/org-script to these values.
+ */
+const stubPackage = ({
+  mayRun = "false",
+  embeds = "false",
+  urlRule = true,
+}: {
+  mayRun?: string;
+  embeds?: string;
+  urlRule?: boolean;
+}) => {
+  const directory = mkdtempSync(join(tmpdir(), "publish-workflow-stub-"));
+  const packageDirectory = join(
+    directory,
+    "node_modules",
+    "@organizeos",
+    "site-components"
+  );
+  mkdirSync(packageDirectory, { recursive: true });
+  writeFileSync(
+    join(packageDirectory, "package.json"),
+    JSON.stringify({
+      name: "@organizeos/site-components",
+      type: "module",
+      exports: { "./org-script": "./org-script.js" },
+    })
+  );
+  writeFileSync(
+    join(packageDirectory, "org-script.js"),
+    [
+      `export const orgScriptMayRun = () => ${mayRun};`,
+      `export const orgEmbedsMayShip = () => ${embeds};`,
+      urlRule
+        ? "export const urlMayRun = (url) => /^javascript:/i.test(url) === false;"
+        : "",
+    ].join("\n")
+  );
+  return directory;
+};
 
-    // the shell around it: anything but false fails, an empty read too, and
-    // only false is written out
-    for (const value of ["true", "", "null", '"false"']) {
-      const run = runStep(withValue(switchScript, value));
-      expect(run.status, value).toBe(1);
-      expect(run.stdout, value).toContain(
-        `::error::orgScriptMayRun() is ${value === "" ? "unreadable" : value}.`
+/**
+ * "Read the org script switch" run as the runner runs it: in the built CLI
+ * (or a stub package), with $GITHUB_WORKSPACE holding the facts, if any, and
+ * the embeds step's output. By default the facts say false and the embeds
+ * value is the CLI's own.
+ */
+const runSwitch = ({
+  facts = '{"orgScript":false}',
+  embeds,
+  stub,
+}: {
+  /** null: no facts file */
+  facts?: string | null;
+  embeds?: string;
+  stub?: Parameters<typeof stubPackage>[0];
+}) => {
+  const workspace = mkdtempSync(join(tmpdir(), "publish-workflow-workspace-"));
+  const stubDirectory = stub === undefined ? undefined : stubPackage(stub);
+  try {
+    if (facts !== null) {
+      writeFileSync(join(workspace, "organizeos-publish-facts.json"), facts);
+    }
+    const value =
+      embeds ??
+      (stub === undefined ? String(builtEmbeds()) : (stub.embeds ?? "false"));
+    return runStep(
+      switchScript,
+      {
+        ...envFor(switchStep, { "steps.embeds.outputs.value": value }),
+        GITHUB_WORKSPACE: workspace,
+      },
+      stubDirectory ?? cliDir
+    );
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+    if (stubDirectory !== undefined) {
+      rmSync(stubDirectory, { recursive: true, force: true });
+    }
+  }
+};
+
+// each case runs node against the built package, about a second a run
+describe(
+  "the publish workflow's org script switch",
+  { timeout: 60_000 },
+  () => {
+    test("reads the switch after the build, then the guard level, then deploys", () => {
+      const names = steps.map((item) => item.name);
+      const index = names.indexOf(switchStep.name);
+      expect(names[index - 1]).toBe("Build site");
+      expect(names[index + 1]).toBe("Read the guard level");
+      expect(names[index + 2]).toBe("Deploy to Vercel");
+      // after the build of the CLI it reads, at the same commit
+      expect(names.indexOf("Install and build CLI")).toBeLessThan(index);
+      // from the CLI's package, where it resolves the blocks package as the CLI
+      // does, and under an id later steps can read
+      expect(switchStep.text).toMatch(
+        /^ {8}working-directory: packages\/cli$/m
       );
-      expect(run.output, value).toBe("");
-    }
-    const off = runStep(withValue(switchScript, "false"));
-    expect(off.status).toBe(0);
-    expect(off.output).toBe("value=false\n");
-    // a module without the rule fails the step before the switch is read
-    const withoutRule = runStep(
-      switchScript.replace(
-        /\$\(node --input-type=module -e '[^']*'\)/,
-        `$(node --input-type=module -e 'throw new Error("this CLI does not check unsafe addresses")')`
-      )
-    );
-    expect(withoutRule.status).not.toBe(0);
-    expect(withoutRule.output).toBe("");
-  });
+      expect(switchStep.text).toMatch(/^ {8}id: org-script$/m);
+    });
 
-  // CI builds the blocks package, with the workspace packages it imports,
-  // before the tests (.github/workflows/main.yml), as the publish workflow
-  // builds every package before this step
-  test("the step's command prints false from the built package", () => {
-    for (const built of [
-      "packages/sdk-components-organizeos/lib/org-script.js",
-      "packages/sdk/lib/index.js",
-    ]) {
-      expect(
-        existsSync(join(root, built)),
-        `${built} is missing: build the blocks package with its dependencies first (pnpm --filter "@organizeos/site-components..." build)`
-      ).toBe(true);
-    }
-    const node = spawnSync(
-      "node",
-      ["--input-type=module", "-e", probeOf(switchScript) ?? ""],
-      { cwd: cliDir, encoding: "utf8" }
-    );
-    expect(node.stderr).toBe("");
-    expect(node.stdout).toBe("false");
+    test("fails the run unless the switch reads false and the address rule is there", () => {
+      // the module the CLI loads, asked whether it has the address rule with
+      // the switch held off, and then for the switches
+      const probe = probeOf(switchScript);
+      expect(probe).toBeDefined();
+      expect(probe).toContain(
+        'import { orgEmbedsMayShip, orgScriptMayRun, urlMayRun } from "@organizeos/site-components/org-script";'
+      );
+      expect(probe).toContain(
+        'if (typeof urlMayRun !== "function" || urlMayRun("javascript:alert(1)", false) !== false) {'
+      );
+      expect(probe).toContain(
+        'throw new Error("this CLI does not check unsafe addresses");'
+      );
+      expect(probe).toContain("const mayRun = orgScriptMayRun();");
+      // nothing but the CLI, the embeds step and the facts file feeds it
+      expect(envOf(switchStep)).toEqual({
+        EMBEDS: "${{ steps.embeds.outputs.value }}",
+      });
+      expect(probe).not.toMatch(/process\.argv|require\(/);
 
-    const run = runStep(switchScript);
-    expect(run.stderr).toBe("");
-    expect(run.status).toBe(0);
-    expect(run.output).toBe("value=false\n");
-  });
-});
+      // anything but false fails, and nothing is written out
+      for (const mayRun of ["true", "null", '"false"']) {
+        const run = runSwitch({ stub: { mayRun } });
+        expect(run.status, mayRun).toBe(1);
+        expect(run.stdout, mayRun).toContain(
+          `::error::orgScriptMayRun() is ${mayRun}.`
+        );
+        expect(run.output, mayRun).toBe("");
+      }
+      expect(runSwitch({ stub: {} }).output).toBe("value=false\n");
+      // a module without the rule fails the step before the switch is read
+      const withoutRule = runSwitch({ stub: { urlRule: false } });
+      expect(withoutRule.status).not.toBe(0);
+      expect(withoutRule.output).toBe("");
+    });
+
+    // CI builds the blocks package, with the workspace packages it imports,
+    // before the tests (.github/workflows/main.yml), as the publish workflow
+    // builds every package before this step
+    test("the step's command prints false from the built package", () => {
+      for (const built of [
+        "packages/sdk-components-organizeos/lib/org-script.js",
+        "packages/sdk/lib/index.js",
+      ]) {
+        expect(
+          existsSync(join(root, built)),
+          `${built} is missing: build the blocks package with its dependencies first (pnpm --filter "@organizeos/site-components..." build)`
+        ).toBe(true);
+      }
+      // the built package's switches, read as the step reads them
+      const node = spawnSync(
+        "node",
+        [
+          "--input-type=module",
+          "-e",
+          'import { orgScriptMayRun, orgEmbedsMayShip } from "@organizeos/site-components/org-script"; process.stdout.write(JSON.stringify([orgScriptMayRun(), orgEmbedsMayShip()]));',
+        ],
+        { cwd: cliDir, encoding: "utf8" }
+      );
+      expect(node.stderr).toBe("");
+      const [mayRun] = JSON.parse(node.stdout);
+      expect(mayRun).toBe(false);
+
+      const run = runSwitch({});
+      expect(run.stderr).toBe("");
+      expect(run.status).toBe(0);
+      expect(run.output).toBe("value=false\n");
+
+      // and the step pins orgScriptMayRun() === false: a CLI whose switch is on
+      // fails it
+      const on = runSwitch({ stub: { mayRun: "true" } });
+      expect(on.status).toBe(1);
+      expect(on.stdout).toContain("::error::orgScriptMayRun() is true.");
+      expect(on.output).toBe("");
+    });
+
+    test("fails on a missing facts file", () => {
+      const run = runSwitch({ facts: null });
+      expect(run.status).toBe(1);
+      expect(run.stdout).toContain(
+        "::error::The publish facts are missing or malformed. Nothing was deployed."
+      );
+      expect(run.output).toBe("");
+    });
+
+    test("fails on a malformed one", () => {
+      for (const facts of [
+        "{",
+        "[]",
+        "null",
+        "true",
+        '{"orgScript":"false"}',
+        '{"orgScript":false,"x":1}',
+        "{}",
+      ]) {
+        const run = runSwitch({ facts });
+        expect(run.status, facts).toBe(1);
+        expect(run.stdout, facts).toContain(
+          "::error::The publish facts are missing or malformed. Nothing was deployed."
+        );
+        expect(run.output, facts).toBe("");
+      }
+    });
+
+    test("fails on orgScript true while embeds may not ship", () => {
+      const run = runSwitch({
+        facts: '{"orgScript":true}',
+        embeds: "false",
+        stub: { embeds: "false" },
+      });
+      expect(run.status).toBe(1);
+      expect(run.stdout).toContain(
+        "::error::The build carries org code while embeds may not ship. Nothing was deployed."
+      );
+      expect(run.output).toBe("");
+    });
+
+    test("writes true for a build with org code once embeds may ship", () => {
+      const run = runSwitch({
+        facts: '{"orgScript":true}',
+        embeds: "true",
+        stub: { embeds: "true" },
+      });
+      expect(run.status).toBe(0);
+      expect(run.output).toBe("value=true\n");
+    });
+
+    test("fails on an embeds input that differs from the CLI's", () => {
+      const built = builtEmbeds();
+      for (const embeds of [String(!built), "", "TRUE"]) {
+        const run = runSwitch({ embeds });
+        expect(run.status, embeds).toBe(1);
+        expect(run.stdout, embeds).toContain(
+          `::error::The embeds input (${embeds}) differs from this CLI's orgEmbedsMayShip(). Nothing was deployed.`
+        );
+        expect(run.output, embeds).toBe("");
+      }
+    });
+
+    test("writes the facts' boolean", () => {
+      const run = runSwitch({ facts: '{"orgScript":false}' });
+      expect(run.status).toBe(0);
+      expect(run.output).toBe("value=false\n");
+    });
+  }
+);
 
 describe("the publish workflow's guard level", () => {
   test("reads the level from the CLI's package after the switch, under an id", () => {
@@ -447,7 +636,7 @@ describe("the publish workflow's inputs", () => {
     const scripts = steps
       .filter((item) => /^ {8}run: \|$/m.test(item.text))
       .map(runScriptOf);
-    expect(scripts).toHaveLength(12);
+    expect(scripts).toHaveLength(13);
     for (const script of scripts) {
       expect(script).not.toContain("${{");
     }
@@ -494,6 +683,12 @@ describe("the publish workflow's inputs", () => {
         steps.filter((item) => item.text.includes(id)).map((item) => item.name)
       ).toEqual([callbackStep.name]);
     }
+    // the embeds flag is read by the switch step alone
+    expect(
+      steps
+        .filter((item) => item.text.includes("steps.embeds"))
+        .map((item) => item.name)
+    ).toEqual([switchStep.name]);
   });
 
   test("installs the Vercel CLI in a step of its own, with no secret in its environment, pinned and without install scripts", () => {
@@ -585,7 +780,9 @@ describe("the publish workflow's targets", () => {
     expect(steps[index - 1].text).toMatch(/^uses: actions\/setup-node@/);
     // then the replace flag, also before anything installs
     expect(steps[index + 1].name).toBe("Read the replace flag");
-    expect(steps[index + 2].name).toBe("Install and build CLI");
+    // OrganizeOS fork: then the embeds flag, also before anything installs
+    expect(steps[index + 2].name).toBe("Read the embeds flag");
+    expect(steps[index + 3].name).toBe("Install and build CLI");
     expect(targetsStep.text).toMatch(/^ {8}id: targets$/m);
     expect(envOf(targetsStep)).toEqual({ TARGETS: "${{ inputs.targets }}" });
   });
@@ -686,6 +883,92 @@ describe("the publish workflow's replace flag", () => {
       );
       expect(run.output, input).toBe("");
     }
+  });
+});
+
+/** "Read the embeds flag" run with the input as the runner fills it. */
+const readEmbeds = (input: string) =>
+  runStep(embedsScript, envFor(embedsStep, { "inputs.embeds": input }));
+
+// OrganizeOS fork: the builder sends embeds, true, only when it ships them
+// (spec 2026-11-20, 4.3)
+describe("the publish workflow's embeds flag", () => {
+  test("declares the embeds input, not required", () => {
+    expect(workflow).toMatch(
+      /^ {6}embeds:\n {8}description: "true when the builder that dispatched ships embeds"\n {8}required: false$/m
+    );
+  });
+
+  test("reads the flag before anything installs, under an id, from the input alone", () => {
+    const index = steps.indexOf(embedsStep);
+    expect(steps[index - 1].name).toBe("Read the replace flag");
+    expect(steps[index + 1].name).toBe("Install and build CLI");
+    expect(embedsStep.text).toMatch(/^ {8}id: embeds$/m);
+    expect(envOf(embedsStep)).toEqual({ EMBEDS: "${{ inputs.embeds }}" });
+  });
+
+  test("writes false without the input, and true for exactly true", () => {
+    const absent = readEmbeds("");
+    expect(absent.status).toBe(0);
+    expect(absent.output).toBe("value=false\n");
+    const given = readEmbeds("true");
+    expect(given.status).toBe(0);
+    expect(given.output).toBe("value=true\n");
+    expect(given.calls).toEqual([]);
+  });
+
+  test("fails the run, writing nothing, on anything else", () => {
+    for (const input of ["false", "TRUE", "1", " true", "true "]) {
+      const run = readEmbeds(input);
+      expect(run.status, input).toBe(1);
+      expect(run.stdout, input).toContain(
+        "::error::The embeds input is not true."
+      );
+      expect(run.output, input).toBe("");
+    }
+  });
+});
+
+// OrganizeOS fork: prebuild writes whether the build carries org code, last,
+// outside the directory vercel deploy uploads (organizeos-publish-facts.ts)
+describe("the publish facts", () => {
+  const factsPath = "$GITHUB_WORKSPACE/organizeos-publish-facts.json";
+
+  test("the build writes them outside the directory vercel deploy uploads, after removing any earlier file", () => {
+    const build = runScriptOf(buildStep);
+    const lines = build.split("\n");
+    const remove = lines.findIndex((line) => line === `rm -f "${factsPath}"`);
+    const run = lines.findIndex((line) =>
+      line.startsWith(
+        `ORGANIZEOS_PUBLISH_FACTS_FILE="${factsPath}" node "$GITHUB_WORKSPACE/packages/cli/bin.js" build`
+      )
+    );
+    expect(remove).toBe(0);
+    expect(run).toBeGreaterThan(remove);
+    // the switch step reads the same literal
+    expect(runScriptOf(switchStep)).toContain(
+      `export ORGANIZEOS_PUBLISH_FACTS="${factsPath}"`
+    );
+    expect(factsPath.startsWith("$GITHUB_WORKSPACE/")).toBe(true);
+    expect(workflow).not.toMatch(/runner\.temp[^\n]*organizeos-publish-facts/);
+    // the site is built and deployed in runner.temp, the fork's checkout is
+    // not under it
+    expect(buildStep.text).toMatch(
+      /^ {8}working-directory: \$\{\{ runner\.temp \}\}$/m
+    );
+    expect(deployStep.text).toMatch(
+      /^ {8}working-directory: \$\{\{ runner\.temp \}\}$/m
+    );
+  });
+
+  test("the switch step reads the facts after the build and before the deploy", () => {
+    const names = steps.map((item) => item.name);
+    expect(names.indexOf("Build site")).toBeLessThan(
+      names.indexOf(switchStep.name)
+    );
+    expect(names.indexOf(switchStep.name)).toBeLessThan(
+      names.indexOf("Deploy to Vercel")
+    );
   });
 });
 
@@ -840,11 +1123,23 @@ describe("the publish callback", () => {
     }
   });
 
-  test("sends nothing unless orgScript reads false and guardLevel is an integer from 0 to 32767", () => {
+  test("sends orgScript as the step's boolean and nothing else", () => {
+    for (const value of [true, false]) {
+      const run = runWithAnswer(callbackStep, {
+        replaced: { "steps.org-script.outputs.value": String(value) },
+      });
+      expect(run.status, String(value)).toBe(0);
+      const body = JSON.parse(argAfter(run.calls[0], "--data-binary"));
+      expect(body.orgScript, String(value)).toBe(value);
+    }
+  });
+
+  test("sends nothing unless orgScript is a JSON boolean and guardLevel is an integer from 0 to 32767", () => {
     const refused: Array<Record<string, string>> = [
-      { "steps.org-script.outputs.value": "true" },
       { "steps.org-script.outputs.value": "" },
+      { "steps.org-script.outputs.value": "null" },
       { "steps.org-script.outputs.value": '"false"' },
+      { "steps.org-script.outputs.value": "1" },
       { "steps.guard-level.outputs.value": "x" },
       { "steps.guard-level.outputs.value": "" },
       { "steps.guard-level.outputs.value": "01" },

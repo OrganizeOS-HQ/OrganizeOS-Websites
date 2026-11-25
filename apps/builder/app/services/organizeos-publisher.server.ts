@@ -4,6 +4,7 @@ import env from "~/env/env.server";
 import { platformName } from "~/shared/branding";
 import { loadBuildForms } from "~/shared/db/organizeos-build-forms.server";
 import { collectFormRoots } from "~/shared/organizeos-site-forms";
+import { orgEmbedsMayShip } from "@organizeos/site-components/org-script";
 import {
   markBuildPublishStatus,
   type BuildStatusClient,
@@ -66,6 +67,12 @@ export type OrganizeosPublisherDeps = {
   /** Fine-grained token with actions:write on that repo. Server-only. */
   githubToken: string;
   fetcher?: typeof fetch;
+  /**
+   * OrganizeOS fork: this builder's orgEmbedsMayShip(). The dispatch carries
+   * the `embeds` input only when it is true, so a workflow that does not
+   * declare it still accepts every dispatch while the switch is off.
+   */
+  embedsMayShip?: boolean;
 };
 
 /**
@@ -199,6 +206,7 @@ export const createOrganizeosPublisherClient = (
   deps: OrganizeosPublisherDeps
 ): OrganizeosPublisher => {
   const fetcher = deps.fetcher ?? fetch;
+  const embedsMayShip = deps.embedsMayShip ?? orgEmbedsMayShip();
 
   return {
     publish: {
@@ -264,6 +272,7 @@ export const createOrganizeosPublisherClient = (
                 ...(input.replacePages === true
                   ? { replace_pages: "true" }
                   : {}),
+                ...(embedsMayShip ? { embeds: "true" } : {}),
               },
             }),
           });

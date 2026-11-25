@@ -142,6 +142,11 @@ describe("the line for a failed publish", () => {
     expect(publishErrorLine({ ok: false, error: "build_refused" })).toBe(
       "This version can't be published."
     );
+    // OrganizeOS fork: a tab built with another embed switch (spec
+    // 2026-11-20, 4.3)
+    expect(publishErrorLine({ ok: false, error: "reload" })).toBe(
+      "Reload to publish."
+    );
     expect(
       publishErrorLine({
         ok: false,

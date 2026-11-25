@@ -1,6 +1,7 @@
 import type { PublishedProjectBundle } from "@webstudio-is/protocol";
 import type { Pages } from "@webstudio-is/sdk";
 import {
+  checkCustomCodeNames,
   findCodeCheckFailure,
   pagesToCheck,
   type CodeCheckFailure,
@@ -39,5 +40,21 @@ export const assertBuildCodeValid = (
   });
   if (failure !== undefined) {
     throw new Error(describeCodeCheckFailure(failure));
+  }
+};
+
+/**
+ * OrganizeOS fork: custom code is compiled into the home page's module by
+ * upstream's htmlToJsx, which writes tag and attribute names as code
+ * (custom-code-names.ts in @organizeos/site-components). Prebuild runs this on
+ * the exact string it is about to compile, and a refusal stops the build
+ * before anything is written.
+ */
+export const assertCustomCodeNamesValid = (code: string): void => {
+  const names = checkCustomCodeNames(code);
+  if (names.ok === false) {
+    throw new Error(
+      `Custom code cannot be published: "${names.name}" is not a tag or attribute name a page can hold. Nothing was published.`
+    );
   }
 };

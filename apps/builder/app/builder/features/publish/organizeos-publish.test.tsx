@@ -39,6 +39,14 @@ const { routeFetch } = vi.hoisted(() => ({ routeFetch: vi.fn() }));
 vi.mock("~/shared/fetch.client", () => ({
   fetch: (...args: unknown[]) => routeFetch(...args),
 }));
+// OrganizeOS fork: the embed switch, held off unless a test turns it on
+const { embeds } = vi.hoisted(() => ({ embeds: { mayShip: false } }));
+vi.mock("@organizeos/site-components/org-script", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@organizeos/site-components/org-script")
+  >()),
+  orgEmbedsMayShip: () => embeds.mayShip,
+}));
 // a publish that goes live reloads the Forms Resource (builder forms, Task 10)
 vi.mock("~/builder/features/organizeos-panel/insert-organizeos-block", {
   spy: true,
@@ -1106,6 +1114,33 @@ describe("the Publish dialog with a value that fails input validation", () => {
       expect(publishCalls()).toHaveLength(1);
     });
     await settle();
+  });
+
+  test("with embeds off, custom code is not checked, and the build publishes", async () => {
+    embeds.mayShip = false;
+    $projectSettings.set({ meta: { code: '<b @click="x">' }, compiler: {} });
+    await clickPublish();
+    await vi.waitFor(() => {
+      expect(publishCalls()).toHaveLength(1);
+    });
+    await settle();
+  });
+
+  test("with embeds on, custom code with a name JSX cannot hold does not dispatch, and is named", async () => {
+    embeds.mayShip = true;
+    try {
+      $projectSettings.set({
+        meta: { code: '<b @click="x">' },
+        compiler: {},
+      });
+      const host = await clickPublish();
+      expect(publishCalls()).toEqual([]);
+      expect(host.textContent).toContain(
+        `Can't publish: Custom code, "@click".`
+      );
+    } finally {
+      embeds.mayShip = false;
+    }
   });
 });
 
