@@ -8,3 +8,13 @@
 - The difference: only the `direction` field. Before the edit the `cms-line` and its `listitem` have `"direction":null`; after undo, `"direction":"ltr"`. Nothing else differs.
 - The other 33 pass: the other three carets for all nine edits, and this caret for the other six edits.
 - Not changed: the comparison (D7 would be a third ruled exception). Steps 3 to 5 not run. Step 3: T13.1's pin, none found (P19-5).
+
+## P24-2: T52.2 confirmations for the three cases (Enter, Shift+Enter, the Image button) at "the end of an item holding a quote, then a rule"
+
+Measured with a scratch test (not committed) on `<ul><li><blockquote><p>Z1</p></blockquote><hr /></li><li>t1</li></ul>`, caret placed by a click at the start of "t1" then Left.
+
+- a. A letter typed after the undo writes `<ul><li><blockquote><p>Z1</p></blockquote><hr />x</li><li>t1</li></ul>` for all three edits. The same letter typed at that caret in a fresh editor, with no edit and no undo, writes the identical HTML. Holds.
+- b. Redo (Ctrl+Shift+Z) after the undo writes the edit's own write, for all three (Enter: `...<hr /></li><li></li><li>t1</li>...`; Shift+Enter: `...<hr /><br /></li>...`; Image: `...<hr /><img ... /></li>...`). Holds.
+- c. After the undo the DOM carries `dir="ltr"` on the line (P) and the item (LI); a fresh editor carries the same two attributes. Removing them changes no element's bounding box (x, y, width, height of every element in the editable, rounded to 0.1 px). Holds, for all three.
+
+Result: the third ruled exception (T52.1) applies to the undo comparison of the 36 lined-caret cases only.
