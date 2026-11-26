@@ -683,3 +683,38 @@ describe("T23.1 by a paste: a range ending at a break-led line's start after a b
     });
   }
 });
+
+describe("D11: a range into a nested item, pasted over by a list whose last item a rule leads, joins the tail to that item (T59 defect 10)", () => {
+  // PR #116's tail join (Z13, "a range ending in the nested item") at depth
+  // 3: the rest of the item the range ends in joins the pasted last item
+  const D3 =
+    "<ul><li>a1q<ul><li>p1q<ul><li>s1q<ul><li>n1q</li></ul></li><li>t1q</li></ul></li><li>u1q</li></ul></li></ul>";
+  const TAIL =
+    "<ul><li><ul><li><ul><li>t1q</li></ul></li><li>u1q</li></ul></li></ul>";
+  const cases = [
+    [
+      "a numbered list",
+      "<ol><li>Aq</li><li><hr>T1q</li></ol>",
+      (item: string) => `<ol><li>Aq</li>${item}</ol>`,
+    ],
+    [
+      "a quote holding a bulleted list",
+      "<blockquote><ul><li>Aq</li><li><hr>T1q</li></ul></blockquote>",
+      (item: string) => `<blockquote><ul><li>Aq</li>${item}</ul></blockquote>`,
+    ],
+  ] as const;
+  for (const [name, html, pasted] of cases) {
+    test(`${name}, depth 3, p1q@2 to n1q@1`, async () => {
+      const head = "<ul><li>a1q<ul><li>p1</li></ul></li></ul>";
+      await expectEdit({
+        stored: D3,
+        place: range("p1q", 2, "n1q", 1),
+        action: pasteHtml(html, "x"),
+        write: `${head}${pasted("<li><hr />T1q1q</li>")}${TAIL}`,
+        typed: `${head}${pasted("<li><hr />T1qk1q</li>")}${TAIL}`,
+        source:
+          "D11 (PR #116, Z13); the base's write (acceptance check defect 10)",
+      });
+    });
+  }
+});
