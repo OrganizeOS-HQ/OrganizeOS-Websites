@@ -904,6 +904,13 @@ export const pointRules = (editor: LexicalEditor, tracker?: EditTracker) => {
         if (range !== null) {
           $setSelection(range);
         }
+        // 16.16: the caret the same press without Shift gives (T70.11)
+        if (target === root) {
+          $caretFromRootPress({
+            containers: new Set(),
+            onRoot: { x: event.clientX, y: event.clientY },
+          });
+        }
       },
       { discrete: true }
     );
@@ -957,8 +964,9 @@ export const pointRules = (editor: LexicalEditor, tracker?: EditTracker) => {
   // lined item gets, from Chrome, the block's start (an element point
   // before its first paragraph), where in ordinary content the same press
   // reaches the place the content's edge nearest it gives (a quote's text
-  // end, for a press to its right). The caret goes where a press at that
-  // nearest place inside the root's content box puts it.
+  // end, for a press to its right). Where that start is the caret, the
+  // caret goes to the text end a press 1 px inside the content box's right
+  // edge, on the same row, reaches.
   const $caretFromRootPress = (press: Press) => {
     const place = press.onRoot;
     const root = editor.getRootElement();
@@ -970,6 +978,8 @@ export const pointRules = (editor: LexicalEditor, tracker?: EditTracker) => {
       dom === null ||
       $isRangeSelection(selection) === false ||
       selection.isCollapsed() === false ||
+      // Chrome's guess there is a start; any other caret is the press's own
+      selection.anchor.offset !== 0 ||
       $findMatchingParent(selection.anchor.getNode(), isLinedContainer) === null
     ) {
       return;
@@ -988,13 +998,18 @@ export const pointRules = (editor: LexicalEditor, tracker?: EditTracker) => {
       root.clientTop +
       root.clientHeight -
       parseFloat(style.paddingBottom);
-    const x = Math.min(Math.max(place.x, left + 1), right - 1);
-    const y = Math.min(Math.max(place.y, top + 1), bottom - 1);
-    if (x === place.x && y === place.y) {
+    // a press in the right padding, on a row of the content
+    if (place.x < right || place.y < top || place.y > bottom || left >= right) {
       return;
     }
-    const clicked = caretAtPoint(x, y);
-    if (clicked === null || root.contains(clicked.node) === false) {
+    const clicked = caretAtPoint(right - 1, place.y);
+    // only the end of a text there: any other place is no line's end
+    if (
+      clicked === null ||
+      clicked.node.nodeType !== Node.TEXT_NODE ||
+      clicked.offset !== (clicked.node.textContent ?? "").length ||
+      root.contains(clicked.node) === false
+    ) {
       return;
     }
     dom.collapse(clicked.node, clicked.offset);
