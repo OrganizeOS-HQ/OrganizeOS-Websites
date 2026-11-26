@@ -719,8 +719,6 @@ const isFlattenedAtDepthLimit = (stored: string) =>
 
 const readOnlyMemo = new Map<string, RichTextReadOnlyReason | undefined>();
 const READ_ONLY_MEMO_SIZE = 8;
-/** SPIKE: a fresh read-only check. */
-export const clearRichTextReadOnlyMemo = () => readOnlyMemo.clear();
 
 /**
  * "lossy" for a value the editor would change on a load and save: the value

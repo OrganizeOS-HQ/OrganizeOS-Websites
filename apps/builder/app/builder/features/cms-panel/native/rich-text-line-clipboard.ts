@@ -35,12 +35,12 @@ import {
   richTextHtmlConfig,
 } from "./rich-text-html";
 import {
+  $atContentEdge,
   $isCmsLineNode,
   CmsLineNode,
   isLineBreak,
   isListItemOrQuote,
   isLinedContainer,
-  lineSpike,
   PLACE_ATTRIBUTE,
   PLACE_TYPES,
   placeNodes,
@@ -217,15 +217,8 @@ export const $mapLineEdges = (selection: BaseSelection): BaseSelection => {
     if (line === null || isListItemOrQuote(line.getParent()) === false) {
       continue;
     }
-    const first = line.getFirstDescendant();
-    const last = line.getLastDescendant();
-    const atStart =
-      point.offset === 0 && (line.is(node) || first === null || first.is(node));
-    const atEnd = line.is(node)
-      ? point.offset === line.getChildrenSize()
-      : last !== null &&
-        last.is(node) &&
-        point.offset === node.getTextContentSize();
+    const atStart = $atContentEdge(point, line, true);
+    const atEnd = $atContentEdge(point, line, false);
     if (atStart === false && atEnd === false) {
       continue;
     }
@@ -649,7 +642,6 @@ export const $writeCopyCut =
     $removalStart: () => void
   ): boolean => {
     if (
-      lineSpike.on === false ||
       event instanceof ClipboardEvent === false ||
       event.clipboardData === null
     ) {
@@ -685,7 +677,7 @@ export const $writeCopyCut =
       // ends
       plain = $plainTextOf($writerEnds(user).range);
       data = $headFormClipboard(editor, user, config);
-      if (data === null && import.meta.env.DEV) {
+      if (data === null && process.env.NODE_ENV !== "production") {
         console.error(
           "cms-line clipboard: the head-form copy could not be written"
         );
@@ -759,7 +751,7 @@ export const $dragStart =
       const data = $headFormClipboard($getEditor(), selection, config);
       // the writer failed: nothing is set and the browser's own drag data
       // stays; the development assertion is the copy's
-      if (data === null && import.meta.env.DEV) {
+      if (data === null && process.env.NODE_ENV !== "production") {
         console.error(
           "cms-line clipboard: the head-form copy could not be written"
         );

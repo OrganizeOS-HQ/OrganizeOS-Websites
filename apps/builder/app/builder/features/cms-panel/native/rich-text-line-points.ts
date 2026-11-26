@@ -35,7 +35,6 @@ import {
   isInlineContent,
   isLineBreak,
   isLinedContainer,
-  lineSpike,
 } from "./rich-text-line-node";
 import type { EditTracker } from "./rich-text-line-removal";
 
@@ -190,9 +189,6 @@ const $emptiedHoldingPoint = (line: CmsLineNode) => {
  * removed an empty line.
  */
 export const $resolveLinedPoints = (create: boolean, depth = 0): boolean => {
-  if (lineSpike.on === false) {
-    return false;
-  }
   const selection = $getSelection();
   if ($isRangeSelection(selection) === false) {
     return false;
@@ -374,7 +370,7 @@ export const focusEditor = (
   $before?: () => void,
   focusRoot = false
 ) => {
-  if (presses.has(editor) && lineSpike.focusGuardOff === false) {
+  if (presses.has(editor)) {
     return;
   }
   if ($before !== undefined) {
@@ -567,8 +563,7 @@ export const keepPageRange = <T>(editor: LexicalEditor, update: () => T): T => {
     dom.rangeCount === 0 &&
     saved.startContainer.isConnected &&
     saved.endContainer.isConnected &&
-    nodeSelected() &&
-    lineSpike.pageRangeKeepOff === false
+    nodeSelected()
   ) {
     dom.addRange(saved);
   }
@@ -1025,7 +1020,7 @@ export const pointRules = (editor: LexicalEditor, tracker?: EditTracker) => {
   // 15.12: the page's selection is read back where the page has moved
   // since Lexical last wrote or read it
   const pageMoved = () => {
-    if (editor.isComposing() || lineSpike.resyncOff) {
+    if (editor.isComposing()) {
       return false;
     }
     const now = pageSnapshot();
@@ -1262,7 +1257,7 @@ export const pointRules = (editor: LexicalEditor, tracker?: EditTracker) => {
   };
   // an arrow from a block's edge into a line that starts (going right) or
   // ends (going left) with a line break steps past the break: the point
-  // before or after it is the block's edge at the head (V10)
+  // before or after it is the block's edge at the head
   const arrowPastLineBreak = (
     event: KeyboardEvent,
     isLeftKey: boolean

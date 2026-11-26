@@ -37,7 +37,6 @@ import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext
 import { useLexicalEditable } from "@lexical/react/useLexicalEditable";
 import { useLexicalNodeSelection } from "@lexical/react/useLexicalNodeSelection";
 import { mergeRegister } from "@lexical/utils";
-import { lineSpike } from "./rich-text-line-node";
 import { focusEditor, removeKeptLines } from "./rich-text-line-points";
 import {
   Button,
@@ -338,11 +337,7 @@ const ImageView = ({ nodeKey, attributes, caption }: ImageViewProps) => {
           // leaves the caret to the press
           const byPress = closedByPressInEditor.current;
           closedByPressInEditor.current = false;
-          if (
-            byPress &&
-            byKey === false &&
-            lineSpike.closeFocusFixOff === false
-          ) {
+          if (byPress && byKey === false) {
             return;
           }
           focusEditor(

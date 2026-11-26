@@ -36,8 +36,6 @@ import {
   isInlineContent,
   isLineBreak,
   isListItemOrQuote,
-  linesOff,
-  lineSpike,
   setPoint,
 } from "./rich-text-line-node";
 import { $resolveLinedPoints } from "./rich-text-line-points";
@@ -64,7 +62,7 @@ const $paragraphToLine = (paragraph: ParagraphNode) => {
     );
     const line = $createCmsLineNode();
     paragraph.insertBefore(line, false);
-    // inline content directly before ends its own line first (D19)
+    // inline content directly before ends its own line first (D2)
     const prior = line.getPreviousSibling();
     const priorEnd = $isCmsLineNode(prior) ? prior.getLastChild() : prior;
     if (
@@ -279,16 +277,6 @@ const $caretBeforeRemovedNodes = (container: ElementNode) => {
 };
 
 /**
- * Two lines meet because a node-selected block between them went (a cut,
- * a delete): the caret goes to the join, as the head's caret lands between
- * the two texts it joins.
- */
-const $caretAtJoinOfRemovedNode = (line: CmsLineNode) => {
-  const last = line.getLastChild();
-  return $caretAfterRemovedNode(last ?? line, last === null);
-};
-
-/**
  * True when it set the caret: the element points the line rules carry
  * across their moves then stay as set here, since the removal already
  * turned the node selection into a point on the container.
@@ -373,7 +361,7 @@ const $emptyParagraphsToLines = (quote: ElementNode) => {
  * no point of the selection goes. In a quote that is lined after this,
  * D19's empty paragraphs become lines, and the runs are read again.
  */
-export const $normaliseLines = (container: ElementNode) => {
+const $normaliseLines = (container: ElementNode) => {
   $normaliseLineRuns(container);
   if ($emptyParagraphsToLines(container)) {
     $normaliseLineRuns(container);
@@ -461,7 +449,12 @@ const $normaliseLineRuns = (container: ElementNode) => {
           containerMap.push({ key: child.getKey(), offset: 0 });
           blockIndex += 1;
         } else {
-          caretSet = $caretAtJoinOfRemovedNode(line) || caretSet;
+          // two lines meet because a node-selected block between them went
+          // (a cut, a delete): the caret goes to the join, as the head's
+          // caret lands between the two texts it joins
+          const last = line.getLastChild();
+          caretSet =
+            $caretAfterRemovedNode(last ?? line, last === null) || caretSet;
           containerMap.push({
             key: line.getKey(),
             offset: line.getChildrenSize(),
@@ -587,9 +580,6 @@ export const $splitAroundBlocks = (line: CmsLineNode) => {
 };
 
 const $keepLineInPlace = (line: CmsLineNode) => {
-  if (lineSpike.on === false) {
-    return;
-  }
   const parent = line.getParent();
   if (isListItemOrQuote(parent)) {
     $splitAroundBlocks(line);
@@ -600,10 +590,7 @@ const $keepLineInPlace = (line: CmsLineNode) => {
   line.replace(paragraph, true);
 };
 
-const $keepContainer = (container: ElementNode) => {
-  if (lineSpike.on === false) {
-    return;
-  }
+const $normaliseContainer = (container: ElementNode) => {
   if ($dropEmptied(container)) {
     return;
   }
@@ -627,23 +614,19 @@ export const registerLineTransforms = (
   editor: LexicalEditor,
   liftItem?: (item: ListItemNode) => void
 ) =>
-  linesOff
-    ? liftItem === undefined
-      ? () => {}
-      : editor.registerNodeTransform(ListItemNode, liftItem)
-    : mergeRegister(
-        editor.registerNodeTransform(CmsLineNode, $keepLineInPlace),
-        editor.registerNodeTransform(ListItemNode, (item) => {
-          liftItem?.(item);
-          if (item.isAttached()) {
-            $keepContainer(item);
-          }
-        }),
-        editor.registerNodeTransform(QuoteNode, $keepContainer),
-        editor.registerNodeTransform(LinkNode, $linkGivesUpRules),
-        editor.registerNodeTransform(HeadingNode, $dropEmptiedBlockInContainer),
-        editor.registerNodeTransform(CodeNode, $dropEmptiedBlockInContainer)
-      );
+  mergeRegister(
+    editor.registerNodeTransform(CmsLineNode, $keepLineInPlace),
+    editor.registerNodeTransform(ListItemNode, (item) => {
+      liftItem?.(item);
+      if (item.isAttached()) {
+        $normaliseContainer(item);
+      }
+    }),
+    editor.registerNodeTransform(QuoteNode, $normaliseContainer),
+    editor.registerNodeTransform(LinkNode, $linkGivesUpRules),
+    editor.registerNodeTransform(HeadingNode, $dropEmptiedBlockInContainer),
+    editor.registerNodeTransform(CodeNode, $dropEmptiedBlockInContainer)
+  );
 
 /** A rule is never inside a link (D10): the link gives it up, split around it. */
 const $linkGivesUpRules = (link: LinkNode) => {
@@ -682,23 +665,19 @@ export const $unwrapLines = (nodes: LexicalNode[]): LexicalNode[] =>
       (point) => point.key === node.getKey()
     );
     const children = node.getChildren();
-    queueLinePoints.push(
-      ...onLine.map((point) => ({
-        which: point.which,
-        key: container?.getKey() ?? "",
-        offset: base + point.offset,
-      }))
-    );
+    const queueLinePoints: ElementPoint[] = onLine.map((point) => ({
+      which: point.which,
+      key: container?.getKey() ?? "",
+      offset: base + point.offset,
+    }));
     for (const child of children) {
       node.insertBefore(child);
     }
     node.remove();
-    for (const point of queueLinePoints.splice(0)) {
+    for (const point of queueLinePoints) {
       if (point.key !== "") {
         setPoint(point.which, point.key, point.offset);
       }
     }
     return children;
   });
-
-const queueLinePoints: ElementPoint[] = [];

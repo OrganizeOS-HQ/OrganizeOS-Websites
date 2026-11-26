@@ -22,7 +22,6 @@ import {
   $createCmsLineNode,
   $isCmsLineNode,
   isLinedContainer,
-  lineSpike,
 } from "./rich-text-line-node";
 import { $unwrapLines } from "./rich-text-line-normalise";
 import { $inlineEdgeOf } from "./rich-text-line-points";
@@ -232,7 +231,6 @@ export const $restoreLinesAfterBlockType = (lines: QuotedLines): void => {
   // inside it
   for (const { node } of $dfs()) {
     if (
-      lineSpike.on &&
       $isQuoteNode(node) &&
       before.has(node.getKey()) === false &&
       $isQuoteNode(node.getParent()) &&
@@ -244,7 +242,6 @@ export const $restoreLinesAfterBlockType = (lines: QuotedLines): void => {
   // a block made from a line takes no indent: the line reported its item's
   for (const { node } of $dfs()) {
     if (
-      lineSpike.on &&
       $isElementNode(node) &&
       before.has(node.getKey()) === false &&
       isLinedContainer(node.getParent()) &&
@@ -278,14 +275,14 @@ export const $unwrapListLinesAtCaret = (): void => {
 };
 
 /**
- * Divider (V1, A1, A2, A4, 15.8): the unwrap, round 9's move from a
+ * Divider (15.8): the unwrap, round 9's move from a
  * link's end, and the rule's place at the caret. The removal mark runs
  * before it on the same command.
  */
 export const $divider = (): boolean => {
   const selection = $getSelection();
   // Divider in a line splits as at the head: the container's
-  // lines give way to their text for this update (V1)
+  // lines give way to their text for this update
   // Divider over a range keeps the head's write: the lines of the
   // containers its ends stand in give way for this update (A4)
   if ($isRangeSelection(selection) && selection.isCollapsed() === false) {
