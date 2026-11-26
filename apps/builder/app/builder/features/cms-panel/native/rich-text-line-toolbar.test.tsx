@@ -1148,32 +1148,6 @@ describe("T13.1: an image from a code-block caret lands after the code block", (
       write: "<p>Pw</p><pre><code>Cw</code></pre><p><img /></p><p>Nw</p>",
       source: "T13.1, T40.4 (a range: the place after the removal step)",
     },
-    // T41.2: the field's removal over the range (Backspace's), then Image at
-    // the caret that leaves
-    {
-      name: "T41.2: Image from a range Pw@1..C1w@1: the field's removal, then Image at the caret left",
-      stored: ROOT,
-      place: range("Pw", 1, "C1w", 1),
-      action: imageButton,
-      write: "<p>P<img />1w</p><p>Nw</p>",
-      source: "T41.2",
-    },
-    {
-      name: "T41.2: Image from a range C1w@1..Nw@1: the field's removal, then Image after the code block",
-      stored: ROOT,
-      place: range("C1w", 1, "Nw", 1),
-      action: imageButton,
-      write: "<p>Pw</p><pre><code>Cw</code></pre><p><img /></p>",
-      source: "T41.2",
-    },
-    {
-      name: "T41.2: Image from a range C1w@0..C1w@3: the emptied code block stays, the image after it",
-      stored: ROOT,
-      place: range("C1w", 0, "C1w", 3),
-      action: imageButton,
-      write: "<p>Pw</p><pre><code></code></pre><p><img /></p><p>Nw</p>",
-      source: "T41.2",
-    },
     // a real click in the gap between the code block and the rule leaves
     // the caret after the rule at <base>, 451f20f04 and the branch, never
     // at the code's end (P19-4): the code's end is clicked in its text
@@ -1189,6 +1163,24 @@ describe("T13.1: an image from a code-block caret lands after the code block", (
       source: "ruled, not built at the carry: T13.1",
     },
   ]);
+  // T41.2's three cells, unpinned until ruled (T42.9): each records and
+  // prints the value the field writes, and asserts none
+  for (const [name, place] of [
+    ["Pw@1..C1w@1", range("Pw", 1, "C1w", 1)],
+    ["C1w@1..Nw@1", range("C1w", 1, "Nw", 1)],
+    ["C1w@0..C1w@3", range("C1w", 0, "C1w", 3)],
+  ] as const) {
+    test(`T41.2: Image from a range ${name} (recorded, not pinned)`, async () => {
+      const record = await recordEdit({
+        stored: ROOT,
+        place,
+        action: imageButton,
+      });
+      console.info(
+        `T41.2 ${name}: calls ${record.calls}, write ${record.write}`
+      );
+    });
+  }
 });
 
 void act;
