@@ -99,6 +99,18 @@ export const $emptyLine = (
     $emptyLineBeforeQuote(line, beside, command);
     return true;
   }
+  // T45.3 (D7, T14.14): the word and line forms with nothing in the
+  // key's direction and nothing after the container give the character
+  // form's write, which is none: no node is touched (first example: d7 TR
+  // el2 lineForward, where Lexical's own line delete dirties the line)
+  if (
+    command !== DELETE_CHARACTER_COMMAND &&
+    isBackward === false &&
+    beside === null &&
+    $nothingAfter(container)
+  ) {
+    return true;
+  }
   // no rule that way: Lexical's own delete runs from the line. The join
   // cells of 5.3 (TR@2 and RR@2 forward, RT@0 and RR@0 backward: a rule on
   // the line's other side, the item's edge that way and an item beyond)
@@ -119,6 +131,20 @@ export const $emptyLine = (
     return true;
   }
   return false;
+};
+
+/** Nothing follows `node` in the document: no sibling after it or after any ancestor. */
+const $nothingAfter = (node: LexicalNode) => {
+  for (
+    let current: LexicalNode | null = node;
+    current !== null && $isRootOrShadowRoot(current) === false;
+    current = current.getParent()
+  ) {
+    if (current.getNextSibling() !== null) {
+      return false;
+    }
+  }
+  return true;
 };
 
 /**

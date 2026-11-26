@@ -44,3 +44,17 @@ holding `T0w` (`containerPoint("T0w", 2)`).
   `beside`): `<p>Aw IMG</p>` at `element:paragraph@2` and `<p>IMG</p><hr>` at `element:paragraph@1` keep
   one onChange with the value unchanged and the caret where it was. Ordinary content has no `cms-line`, so
   the new branch never applies there.
+
+## P45-3 (T45.3, Task 14): the forward word and line forms at an empty caret line at the content's end
+
+- Fix: in `$emptyLine` (`rich-text-line-deletes.ts`), the word and line forms, forward, in an empty line
+  with nothing after it in its container and nothing after the container in the document (no sibling after
+  it or after any ancestor up to the root), return true without touching a node. With the fix taken out,
+  `lineForward` fails at depth 1 and depth 7 (one onChange with the value unchanged); Delete and Ctrl+Delete
+  already gave nothing and stand.
+- Read: "no item beyond" is read as nothing after the container anywhere in the document (Delete there
+  also gives nothing), for any lined container, not only a list item.
+- Not built: the backward forms. Backward at an empty first line of the first item (nothing before, no item
+  before) the character form is not a no-op (Backspace lifts the line with the item, T33.5), and the
+  existing tests there (`wordBack` writes nothing, `lineBack` leaves the value) are unchanged. If the ruling
+  meant both directions, it needs the backward cell named.

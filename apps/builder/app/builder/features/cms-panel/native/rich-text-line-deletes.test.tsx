@@ -14,6 +14,7 @@ import {
   backspace,
   beside,
   caretKey,
+  containerPoint,
   del,
   expectEdit,
   IMG,
@@ -1305,5 +1306,43 @@ describe("16.10: a key whose delete changes nothing writes nothing (T11.6, T15.8
         expect(base.write).toBe(expected.write);
       }
     });
+  }
+});
+
+/** Task 22's unreached shape `d7 TR`. */
+const D7_TR = [6, 5, 4, 3, 2, 1].reduce(
+  (inner, level) => `<ul><li>A${level}w${inner}</li></ul>`,
+  "<ul><li>T0w<hr></li></ul>"
+);
+
+describe("T45.3: an empty caret line after a rule at the content's end (D7, T14.14)", () => {
+  const SHAPES: ReadonlyArray<readonly [string, string]> = [
+    ["depth 1", WN("<li>T0w<hr></li>")],
+    ["depth 7", D7_TR],
+  ];
+  const FORMS: ReadonlyArray<readonly [string, Step]> = [
+    ["Delete", del],
+    ["Ctrl+Delete", wordForward],
+    ["lineForward", lineForward],
+  ];
+  for (const [depth, stored] of SHAPES) {
+    for (const [key, action] of FORMS) {
+      test(`an empty caret line after a rule at the content's end: Delete and its word and line forms change nothing (${depth}, ${key})`, async () => {
+        let depthBefore: ReturnType<typeof undoDepth> | undefined;
+        await expectEdit({
+          stored,
+          place: containerPoint("T0w", 2),
+          action: async () => {
+            depthBefore = undoDepth();
+            await action();
+            expect(undoDepth(), "no undo step").toEqual(depthBefore);
+          },
+          write: null,
+          caret: "element:listitem@2",
+          typed: short(stored.replace("<hr>", "<hr>k")),
+          source: "T45.3; D7; T14.14",
+        });
+      });
+    }
   }
 });
