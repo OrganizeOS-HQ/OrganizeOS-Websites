@@ -18,3 +18,10 @@ Measured in fresh editors at Lexical 0.21.0 (the branch at 39d3556 plus Task 21'
 - Measured: `@lexical/history` does not resolve from `apps/builder` (the builder depends on it only through `@lexical/react`). Loading it from `@lexical/react`'s own resolution in `core-server` gives a second copy of `lexical`: its `UNDO_COMMAND` is not the test's (`===` false), so the history never sees the test's undo. The vite resolve conditions (`development`) give the test `Lexical.dev.mjs` while Node's own resolution from the history package gives `Lexical.node.mjs`.
 - What was done: both tests run in `rich-text-line-lexical.test.tsx` (project `core-browser-builder-cms-rich-text-lines`) with `HistoryPlugin delay={0}` from `@lexical/react/LexicalHistoryPlugin` (the plugin the field uses, which calls `registerHistory`), asserting the same facts. Totals: 13 node tests, 7 browser tests, 20 in all.
 - Question for the coordinating session: accept the placement (A), or add `@lexical/history` to the builder's dependencies so the node file can import it (B; root or builder `package.json` is outside this task's files).
+
+## P21-3: T44.2, the single item's copy pinned beside the two-item shape (measurement)
+
+- Stored (built in an update): one list, one item holding a quote (`Q0w`) and a line with text `Aw` (`CmsLineNode` in the node file; the test's exported line, `div[data-cms-line]` with `excludeFromCopy`, in the browser file). Point: `$selectAll()`.
+- JSON (`$generateJSONFromSelectedNodes(...).nodes`, node file test 2): `[quote(text Q0w), text Aw]`: no `listitem`, no `list`, no `cms-line`. Pinned.
+- HTML (`$generateHtmlFromNodes`, browser file test 16): `<blockquote><span style="white-space: pre-wrap;">Q0w</span></blockquote><span style="white-space: pre-wrap;">Aw</span>`: no `li`, no `div`. Pinned.
+- The two-item shape (`Aw` a child of the copied item) stays pinned in both tests.

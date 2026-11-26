@@ -221,6 +221,30 @@ describe("Lexical 0.21.0 as the line rules read it (spec section 12)", () => {
         (child) => child.type === "text" && child.text === "Aw"
       )
     ).toBe(true);
+
+    // a single item: select-all copies the item's content, not the item
+    const single = fresh();
+    write(single, () => {
+      $list(() => [
+        $createQuoteNode().append($createTextNode("Q0w")),
+        $createCmsLineNode().append($createTextNode("Aw")),
+      ]);
+    });
+    let singleNodes: unknown[] = [];
+    write(single, () => {
+      $selectAll();
+      singleNodes = $generateJSONFromSelectedNodes(
+        single,
+        $getSelection()
+      ).nodes;
+    });
+    const shape = (list: unknown[]): unknown[] =>
+      (list as typeof all).map((node) =>
+        node.type === "text"
+          ? `text ${node.text}`
+          : { [node.type]: shape(node.children ?? []) }
+      );
+    expect(shape(singleNodes)).toEqual([{ quote: ["text Q0w"] }, "text Aw"]);
   });
 
   // 5.3, the caret-line tag: a transform's registration is a merged update

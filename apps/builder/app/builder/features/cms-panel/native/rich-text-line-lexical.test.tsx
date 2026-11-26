@@ -184,6 +184,21 @@ describe("Lexical 0.21.0 as the line rules read it, on a page (spec section 12)"
       (child) => child.nodeName !== "BLOCKQUOTE"
     );
     expect(direct.map((child) => child.textContent)).toEqual(["Aw"]);
+
+    // a single item: select-all copies the item's content, not the item
+    let single = "";
+    write(editor, () => {
+      $list(() => [
+        $createQuoteNode().append($createTextNode("Q0w")),
+        new ExportedLineNode().append($createTextNode("Aw")),
+      ]);
+      $selectAll();
+      single = $generateHtmlFromNodes(editor, $getSelection());
+    });
+    expect(single).toBe(
+      '<blockquote><span style="white-space: pre-wrap;">Q0w</span></blockquote>' +
+        '<span style="white-space: pre-wrap;">Aw</span>'
+    );
   });
 
   // 5.3
