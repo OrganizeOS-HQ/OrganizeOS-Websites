@@ -140,7 +140,8 @@ const $restrictedFeatures = computed(
     })
 );
 
-// OrganizeOS fork: what publishing leaves out while org script is paused
+// OrganizeOS fork: what publishing leaves out (docs/ORGANIZEOS-FORK.md
+// section 10)
 const $pausedScript = computed(
   [$pages, $projectSettings, $instances, $props, $dataSources, $resources],
   (pages, projectSettings, instances, props, dataSources, resources) =>
@@ -156,7 +157,7 @@ const $pausedScript = computed(
 );
 
 // OrganizeOS fork: the Content Blocks that make publishing refuse the build
-// while org script is paused (owner decision D7)
+// (owner decision D7)
 const $mdxBlocks = computed(
   [$pages, $instances, $props, $assets],
   (pages, instances, props, assets) =>
@@ -261,11 +262,12 @@ const RestrictedFeaturesBanner = () => {
 };
 
 /**
- * Lists the embeds, JSON-LD, animations, unsafe values and custom code that
- * this publish leaves out while an org's own script is paused
- * (docs/ORGANIZEOS-FORK.md section 10).
+ * Lists what this publish leaves out (docs/ORGANIZEOS-FORK.md section 10):
+ * unsupported tags, unknown components, unsafe values, raw markup, bindings
+ * that fail the checks and the like, and, with embeds on, an HTML Embed with
+ * no code (with embeds off, every embed, JSON-LD and the custom code).
  * Information only: Publish still runs, and drops them. What the org saved is
- * kept, so the list empties when the switch is turned on.
+ * kept.
  */
 export const PausedScriptBanner = () => {
   const pausedScript = useStore($pausedScript);
@@ -274,15 +276,15 @@ export const PausedScriptBanner = () => {
   }
   return (
     <PanelBanner variant="warning">
-      <Text variant="regularBold">Paused, not published</Text>
+      <Text variant="regularBold">Not published</Text>
       <PausedItemList items={pausedScript} />
     </PanelBanner>
   );
 };
 
 /**
- * The Content Blocks bound to Markdown or MDX, which publishing refuses while
- * org script is paused (findMdxBlocks). Publish stays enabled: publishing
+ * The Content Blocks bound to Markdown or MDX, which publishing refuses
+ * (findMdxBlocks). Publish stays enabled: publishing
  * decides, from more than the builder loads.
  */
 const MdxBlocksBanner = () => {

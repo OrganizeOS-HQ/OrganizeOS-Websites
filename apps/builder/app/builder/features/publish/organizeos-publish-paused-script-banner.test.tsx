@@ -15,6 +15,7 @@ import {
 } from "~/shared/sync/data-stores";
 import { $editingPageId, $selectedPageId } from "~/shared/nano-states";
 import { $openProjectSettings } from "~/shared/nano-states/project-settings";
+import { orgEmbedsMayShip } from "@organizeos/site-components/org-script";
 import { PausedScriptBanner } from "./organizeos-publish";
 
 // Which sidebar panel shows depends on the builder having loaded, so the
@@ -23,13 +24,19 @@ const { setActiveSidebarPanel } = vi.hoisted(() => ({
   setActiveSidebarPanel: vi.fn(),
 }));
 // OrganizeOS fork: the banner lists the pause's items while embeds may not
-// ship (orgEmbedsMayShip()), held off here so the flip changes no case
-vi.mock("@organizeos/site-components/org-script", async (importOriginal) => ({
-  ...(await importOriginal<
-    typeof import("@organizeos/site-components/org-script")
-  >()),
-  orgEmbedsMayShip: () => false,
-}));
+// ship (orgEmbedsMayShip()), held off here so the flip changes no case, but
+// for the one that reads the real switch (real)
+const embeds = vi.hoisted(() => ({ real: false }));
+vi.mock("@organizeos/site-components/org-script", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@organizeos/site-components/org-script")
+    >();
+  return {
+    ...actual,
+    orgEmbedsMayShip: () => (embeds.real ? actual.orgEmbedsMayShip() : false),
+  };
+});
 vi.mock("~/builder/shared/nano-states", async (importOriginal) => ({
   ...(await importOriginal<typeof import("~/builder/shared/nano-states")>()),
   setActiveSidebarPanel,
@@ -105,6 +112,7 @@ afterEach(() => {
   container?.remove();
   root = undefined;
   container = undefined;
+  embeds.real = false;
 });
 
 describe("PausedScriptBanner", () => {
@@ -265,11 +273,88 @@ describe("PausedScriptBanner", () => {
     expect(items).toEqual(["HTML Embed on Home", "Custom code"]);
     // the heading and the list: no explanation
     const list = host.querySelector("ul");
-    expect(list?.previousElementSibling?.textContent).toBe(
-      "Paused, not published"
-    );
+    expect(list?.previousElementSibling?.textContent).toBe("Not published");
     expect(list?.previousElementSibling?.previousElementSibling).toBeNull();
     expect(list?.nextElementSibling).toBeNull();
+  });
+
+  // the switch at its real default (spec 2026-11-20, PR C)
+  test("with the embed switch at its default, lists no embed and no custom code, and still lists the rest", () => {
+    embeds.real = true;
+    expect(orgEmbedsMayShip()).toBe(true);
+    setBuild({ code: "<script>1</script>", customCode: "<style>x{}</style>" });
+    const children = ["embed", "markdown", "json-ld", "custom"];
+    $instances.set(
+      new Map([
+        ...$instances.get(),
+        [
+          "root",
+          {
+            type: "instance",
+            id: "root",
+            component: "Body",
+            children: children.map((value) => ({ type: "id", value })),
+          },
+        ],
+        [
+          "markdown",
+          {
+            type: "instance",
+            id: "markdown",
+            component: "MarkdownEmbed",
+            children: [],
+          },
+        ],
+        [
+          "json-ld",
+          {
+            type: "instance",
+            id: "json-ld",
+            component: "JsonLd",
+            children: [],
+          },
+        ],
+        [
+          "custom",
+          {
+            type: "instance",
+            id: "custom",
+            component: "ws:element",
+            tag: "script",
+            children: [],
+          },
+        ],
+      ])
+    );
+    $props.set(
+      new Map([
+        ...$props.get(),
+        [
+          "markdown-code",
+          {
+            id: "markdown-code",
+            instanceId: "markdown",
+            name: "code",
+            type: "string",
+            value: "# Title",
+          },
+        ],
+        [
+          "json-ld-code",
+          {
+            id: "json-ld-code",
+            instanceId: "json-ld",
+            name: "code",
+            type: "string",
+            value: "{}",
+          },
+        ],
+      ])
+    );
+    const host = renderBanner();
+    expect(
+      Array.from(host.querySelectorAll("li"), (item) => item.textContent)
+    ).toEqual(["Element with an unsupported tag on Home"]);
   });
 
   test("names an element publishing drops for its tag, a script among them, as one with an unsupported tag", () => {

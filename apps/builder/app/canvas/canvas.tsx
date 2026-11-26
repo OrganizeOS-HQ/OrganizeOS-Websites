@@ -271,11 +271,12 @@ export const Canvas = () => {
 
   useMount(() => {
     for (const library of canvasComponentLibraries) {
-      // OrganizeOS fork: org script is paused (organizeos-org-script.tsx,
-      // docs/ORGANIZEOS-FORK.md section 10): the policy hides HTML Embed,
-      // Content Embed, Markdown Embed and JSON-LD and swaps in the canvas's
-      // stand-ins. And no "Built with Webstudio" badge, an upstream ad on the
-      // customer's published site (section 1).
+      // OrganizeOS fork: the builder never runs embed code
+      // (organizeos-org-script.tsx, docs/ORGANIZEOS-FORK.md section 10): the
+      // policy swaps in the canvas's own HTML Embed and Markdown Embed, and
+      // hides the embeds only while orgEmbedsMayShip() is off. And no "Built
+      // with Webstudio" badge, an upstream ad on the customer's published site
+      // (section 1).
       registerComponentLibrary(
         withOrgScriptPolicy(withoutBuiltWithWebstudio(library))
       );

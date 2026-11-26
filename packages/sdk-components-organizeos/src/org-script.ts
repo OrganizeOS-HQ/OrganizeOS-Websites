@@ -65,7 +65,8 @@ import {
  * redirect to an unsafe address), no component the published page does not
  * import, no instance stored with the global root's id, no data source the
  * page module cannot name as itself, no expression that fails the checks and
- * no MDX content. It returns false and stays false.
+ * no MDX content. It returns false and stays false for good: it is not a
+ * pause that will lift.
  *
  * Five things are named exceptions, governed by orgEmbedsMayShip() instead:
  * HTML Embed, Content Embed, Markdown Embed, JSON-LD and the site-wide custom
@@ -85,25 +86,28 @@ export const orgScriptMayRun = (): boolean => false;
  * else orgScriptMayRun() refuses follows it. The builder never runs embed
  * code whatever this says (apps/builder/app/shared/organizeos-untrusted-markup.tsx).
  *
- * It is off until the platform accepts a build that carries org code (spec
- * 2026-11-20-builder-code-embeds-design.md, PR C, in the OrganizeOS repo).
+ * It is on: embeds ship since the platform accepts a build that carries org
+ * code (spec 2026-11-20-builder-code-embeds-design.md, PR C, in the
+ * OrganizeOS repo), and each publish reports whether its build carries any.
  * It is a constant for the same reasons orgScriptMayRun() is: the builder,
  * the CLI and the publish workflow read it at one commit, and a missing or
- * mistyped value cannot fail open. Turning it on is a reviewed change that
- * also edits its test (org-script.test.ts).
+ * mistyped value cannot fail open. Turning it off again is a reviewed change
+ * that also edits its test (org-script.test.ts), and stops only new publishes
+ * from shipping embeds (docs/ORGANIZEOS-FORK.md section 10).
  */
-export const orgEmbedsMayShip = (): boolean => false;
+export const orgEmbedsMayShip = (): boolean => true;
 
 /**
  * Which of OrganizeOS's launch requirements the CLI built from this commit
  * meets. The publish workflow reads it beside orgScriptMayRun() and sends it
- * as guardLevel (docs/ORGANIZEOS-FORK.md section 5). Every level-1
- * requirement is in this repository, so the level is 1.
+ * as guardLevel (docs/ORGANIZEOS-FORK.md section 5). Every level-2
+ * requirement is in this repository, so the level is 2: a build at this level
+ * may carry org code (orgEmbedsMayShip()) and the platform may still serve it.
  * packages/cli/src/organizeos-guard-level.test.ts fails if a requirement stops
  * holding or loses its tests, and pins the level; changing the level is a
  * reviewed change that edits that test.
  */
-export const ORGANIZEOS_GUARD_LEVEL: number = 1;
+export const ORGANIZEOS_GUARD_LEVEL: number = 2;
 
 /**
  * The SVGs that upstream's own templates put in an HTML Embed (Accordion,
