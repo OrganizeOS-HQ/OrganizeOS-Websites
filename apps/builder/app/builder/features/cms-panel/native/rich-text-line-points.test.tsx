@@ -403,9 +403,9 @@ describe("D18: one letter at each kind of point", () => {
       action: ime("a"),
       write: W("<li><blockquote><p>Q0wa</p></blockquote><hr /></li>"),
       // the head's three (M31, M49) repeat a value (16.10; Task 20): the
-      // value as it stood at the composition's start, the first after
-      // mount (T42.1), then the composed one
-      calls: 2,
+      // composed one only, since the composition's start, which leaves the
+      // document as it was, hands out nothing (T67.2)
+      calls: 1,
       source: "spec 5.3 (the build once)",
     });
   });

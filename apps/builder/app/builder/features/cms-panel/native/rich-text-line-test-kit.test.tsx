@@ -639,14 +639,18 @@ describe("the net (kit-branch)", () => {
     expect(
       failures.filter((failure) => failure.includes("composition-start"))
     ).toHaveLength(1);
-    // the field hands out no value that holds the character (16.21): the
-    // value it handed out at the composition's start (the first after
-    // mount, T42.1) is then not the editor's export
+    // the field hands out no value that holds the character (16.21), and
+    // the composition's start, which left the document as it was, handed
+    // out nothing (T67.2): nothing handed out, while the document changed
     expect(
       failures.filter(
         (failure) => failure.includes("composition-start") === false
       )
-    ).toEqual([expect.stringContaining("is not the editor's export")]);
+    ).toEqual([
+      expect.stringContaining(
+        "no onChange, but the document changed since mount"
+      ),
+    ]);
   });
 
   test("the net does not flag a U+200B an edit brings", async () => {

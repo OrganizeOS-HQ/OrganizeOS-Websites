@@ -813,15 +813,16 @@ test("16.10: no onChange with an unchanged value at a composition's end", async 
   await imeCommit("abc");
   await quiet();
   const values = rawValues(onChange);
-  expect(values.length).toBeGreaterThan(1);
-  // nothing was handed out before: the first value after mount is handed
-  // out even where it equals the stored one (T42.1), here at the
-  // composition's start; no value repeats the one before it
-  expect(values[0], "value 1, the value as it stood").toBe(before);
-  values.slice(1).forEach((value, index) => {
-    expect(value, `value ${index + 2}`).not.toBe(values[index]);
-  });
-  expect(short(values.at(-1)!)).toBe("<p>Pw</p><p>Tabc0w</p>");
+  // T67.2: a composition hands out its composed values and nothing else:
+  // its start's commit, which leaves the document as it was, is not handed
+  // out, also as the first change since mount; no value repeats the one
+  // before it
+  expect(values, "not the value as it stood").not.toContain(before);
+  expect(values.map(short)).toEqual([
+    "<p>Pw</p><p>Ta0w</p>",
+    "<p>Pw</p><p>Tab0w</p>",
+    "<p>Pw</p><p>Tabc0w</p>",
+  ]);
 });
 
 // ---------------------------------------------------------------------------
@@ -1354,4 +1355,73 @@ describe("T59 defect 7: a composition over a range holding a stored start charac
       ]);
     }, 30_000);
   }
+});
+
+// T67.2 (T62.4's record g4|compose|ROOT|afterRule): at a text caret more
+// than 30 ms after the last key, Lexical's composition start inserts no
+// start character, and its commit (the update of its `compositionstart`
+// handler, which only sets the composition's key) leaves the document as
+// it was. That commit is not handed out, also as the first change since
+// mount: the composition hands out its composed values and nothing else,
+// whether or not the start character was inserted
+describe("T67.2: a composition's start hands out nothing", () => {
+  const STORED = "<p>T0w</p><hr><p>Nw</p>";
+  test("after the rule, as the first change since mount: one call for 'a'", async () => {
+    const onChange = await mount(STORED);
+    await at("Nw", 0)();
+    await quietly();
+    expect(onChange, "nothing handed out before").not.toHaveBeenCalled();
+    await imeSet("a");
+    expect(editorOf()!.isComposing(), "the editor composes").toBe(true);
+    expect(
+      rawValues(onChange).map(short),
+      "at the composition's start"
+    ).toEqual(["<p>T0w</p><hr /><p>aNw</p>"]);
+    await imeCommit("a");
+    await quiet();
+    expect(rawValues(onChange).map(short)).toEqual([
+      "<p>T0w</p><hr /><p>aNw</p>",
+    ]);
+  });
+  test("at a text caret, the composition's start alone hands out nothing", async () => {
+    const onChange = await mount("<p>Pw</p><p>T0w</p>");
+    await at("T0w", 1)();
+    await quietly();
+    const before = exportRichTextHtml(editorOf()!);
+    await act(async () => {
+      editable()!.dispatchEvent(
+        new CompositionEvent("compositionstart", { bubbles: true, data: "" })
+      );
+    });
+    await settle();
+    expect(editorOf()!.isComposing(), "the editor composes").toBe(true);
+    expect(zwCount(), "no start character inserted").toBe(0);
+    expect(exportRichTextHtml(editorOf()!)).toBe(before);
+    expect(
+      onChange,
+      "the start's commit is not handed out"
+    ).not.toHaveBeenCalled();
+  });
+  // tied to the start, not to every unchanged value: a cancel's commit that
+  // gives back the value as it stood is handed out (it changes the value
+  // handed out last); the next composition's start is not
+  test("a cancel's value as it stood is handed out; the next composition's start is not", async () => {
+    const onChange = await mount("<p>Pw</p><p>T0w</p>");
+    await at("T0w", 1)();
+    await quietly();
+    const before = exportRichTextHtml(editorOf()!);
+    await imeSet("a");
+    await imeSet("");
+    expect(editorOf()!.isComposing(), "the cancel ends the composition").toBe(
+      false
+    );
+    await imeSet("b");
+    await imeCommit("b");
+    await quiet();
+    expect(rawValues(onChange)).toEqual([
+      expect.stringContaining("Ta0w"),
+      before,
+      expect.stringContaining("Tb0w"),
+    ]);
+  });
 });
