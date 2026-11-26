@@ -142,7 +142,10 @@ import {
   type BlockType,
 } from "./rich-text-line-toolbar";
 import { watchField, type FieldValue } from "./rich-text-field-watch";
-import { INSERT_HORIZONTAL_RULE_COMMAND } from "@lexical/react/LexicalHorizontalRuleNode";
+import {
+  $isHorizontalRuleNode,
+  INSERT_HORIZONTAL_RULE_COMMAND,
+} from "@lexical/react/LexicalHorizontalRuleNode";
 import {
   Button,
   css,
@@ -1500,18 +1503,16 @@ const Toolbar = ({
         }
         for (const [index, point] of [next.anchor, next.focus].entries()) {
           const at = kept[index];
-          // T59 defect 2: a block the caret is kept by (a rule ending the
-          // item) leaves the paragraph the item became now, as the
-          // transform would at the commit; the caret then stays beside it,
-          // not in the paragraph the transform removes (5.7, V16)
-          const isBlock =
-            at !== undefined &&
-            ($isElementNode(at.node) || $isDecoratorNode(at.node)) &&
-            at.node.isInline() === false;
+          // T59 defect 2, T71.2: a rule the caret is kept by leaves the
+          // paragraph the item became now, as the transform would at the
+          // commit; the caret then stays beside it, not in the paragraph
+          // the transform removes (5.7, V16, D13). Beside a quote, a
+          // heading or a code block the head's result stands
+          const isRule = at !== undefined && $isHorizontalRuleNode(at.node);
           let holder = at?.node.getParent();
           while (
             at !== undefined &&
-            isBlock &&
+            isRule &&
             ($isParagraphNode(holder) || $isHeadingNode(holder))
           ) {
             $liftBlocksOutOfTextBlock(holder);
