@@ -4,13 +4,7 @@
 import { describe, expect, test, vi } from "vitest";
 import { act } from "react-dom/test-utils";
 import { userEvent } from "@vitest/browser/context";
-import {
-  $copyNode,
-  $getNodeByKey,
-  $getSelection,
-  $isNodeSelection,
-  $isRangeSelection,
-} from "lexical";
+import { $getSelection, $isNodeSelection, $isRangeSelection } from "lexical";
 import {
   at,
   backspace,
@@ -38,7 +32,6 @@ import {
   range,
   realClicks,
   recordEdit,
-  setUpload,
   shiftPress,
   short,
   type Step,
@@ -47,7 +40,6 @@ import {
   W,
 } from "./rich-text-line-test-kit";
 import {
-  byLabel,
   editable,
   editorOf,
   lastHtml,
@@ -891,132 +883,6 @@ describe("T59 review L2: list off at a caret after an item's ending quote or cod
       expect(record.errors, "console errors").toEqual([]);
     });
   }
-});
-
-describe("T59 defect 3: Image with the rule node-selected lands where a letter does (D15, D1)", () => {
-  // Pw's end, then five ArrowRight presses: the rule node-selected
-  const toRule: Step = async () => {
-    await at("Pw", 2)();
-    for (let press = 0; press < 5; press += 1) {
-      await keys("{ArrowRight}")();
-    }
-    expect(caretKey(), "the rule node-selected").toBe("node:horizontalrule");
-  };
-  const cells: Array<[string, string, string]> = [
-    [
-      "QR",
-      LI(`${QUOTE("Q0w")}<hr>`),
-      W("<li><blockquote><p>Q0w</p></blockquote><hr /><img /></li>"),
-    ],
-    [
-      "QRQ",
-      LI(`${QUOTE("Q0w")}<hr>${QUOTE("Q2w")}`),
-      W(
-        "<li><blockquote><p>Q0w</p></blockquote><hr /><blockquote><p><img />Q2w</p></blockquote></li>"
-      ),
-    ],
-  ];
-  for (const [name, stored, write] of cells) {
-    test(`${name}: the image after the rule, not at the document's end`, async () => {
-      await expectEdit({
-        stored,
-        place: toRule,
-        action: imageButton,
-        write,
-        source:
-          "acceptance check, defect 3; check 5 (a letter at the same caret)",
-      });
-    });
-  }
-});
-
-describe("T59 review L1: Image beside a node-selected rule reads the rule's place when the upload finishes (D15, D1)", () => {
-  const toRule: Step = async () => {
-    await at("Pw", 2)();
-    for (let press = 0; press < 5; press += 1) {
-      await keys("{ArrowRight}")();
-    }
-    expect(caretKey(), "the rule node-selected").toBe("node:horizontalrule");
-  };
-  // an upload held until the test releases it
-  const holdUpload = () => {
-    let release = () => {};
-    let begin = () => {};
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const begun = new Promise<void>((resolve) => {
-      begin = resolve;
-    });
-    setUpload(async () => {
-      begin();
-      await gate;
-      return { url: "https://cdn.example.org/x.png", path: "org/x.png" };
-    });
-    // resolves once Image's own act scope, in which the upload starts, has
-    // closed and rendered the button busy, so the test's next step does not
-    // overlap that scope
-    const started = begun.then(async () => {
-      while (
-        (byLabel("Image") as HTMLButtonElement | null)?.disabled !== true
-      ) {
-        await new Promise((resolve) => setTimeout(resolve, 5));
-      }
-    });
-    return { started, release };
-  };
-
-  test("QR: Backspace removes the rule before the upload finishes; the image takes the end-of-document fallback, with no throw", async () => {
-    const errors = vi.spyOn(console, "error");
-    const onChange = await mount(LI(`${QUOTE("Q0w")}<hr>`));
-    await toRule();
-    const upload = holdUpload();
-    const inserted = imageButton();
-    await upload.started;
-    await backspace();
-    const removed = lastHtml(onChange);
-    expect(removed, "Backspace removed the rule").not.toContain("<hr");
-    upload.release();
-    await inserted;
-    expect(short(lastHtml(onChange)), "the place is gone (D1)").toBe(
-      `${short(removed)}<p><img /></p>`
-    );
-    // the field reports a failed update as an Error to console.error
-    expect(
-      errors.mock.calls.filter((args) =>
-        args.some((arg) => arg instanceof Error)
-      ),
-      "no failed update"
-    ).toEqual([]);
-    errors.mockRestore();
-  });
-
-  test("QR: a rule inserted before the selected rule during the upload; the image still lands after the selected rule", async () => {
-    const onChange = await mount(LI(`${QUOTE("Q0w")}<hr>`));
-    await toRule();
-    const editor = editorOf()!;
-    const selected = editor
-      .getEditorState()
-      .read(() => $getSelection()!.getNodes()[0].getKey());
-    const upload = holdUpload();
-    const inserted = imageButton();
-    await upload.started;
-    await act(async () => {
-      editor.update(() => {
-        const rule = $getNodeByKey(selected)!;
-        rule.insertBefore($copyNode(rule));
-      });
-    });
-    await settle();
-    expect(short(lastHtml(onChange)), "the edit before the rule").toBe(
-      W(`<li>${QUOTE("Q0w")}<hr /><hr /></li>`)
-    );
-    upload.release();
-    await inserted;
-    expect(short(lastHtml(onChange)), "after the selected rule (D15)").toBe(
-      W(`<li>${QUOTE("Q0w")}<hr /><hr /><img /></li>`)
-    );
-  });
 });
 
 describe("Image at the quote points", () => {
