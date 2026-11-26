@@ -1333,6 +1333,33 @@ describe("T13.3: the join of a link-led line is its own undo step (16.27)", () =
   });
 });
 
+describe("T58.3: P26-1's ordinary twins, the join of a link-only paragraph is its own undo step", () => {
+  const link = `<a href="https://example.org/">Lw</a>`;
+  for (const [name, stored, write] of [
+    ["after a paragraph", `<p>Pw</p><p>${link}</p>`, "<p>Pw<a>Lw</a></p>"],
+    [
+      "after a root quote",
+      `<blockquote><p>Q0w</p></blockquote><p>${link}</p>`,
+      "<blockquote><p>Q0w<a>Lw</a></p></blockquote>",
+    ],
+  ] as const) {
+    for (const [kn, key] of [
+      ["Backspace", backspace],
+      ["the word form", wordBack],
+    ] as const) {
+      test(`T58.3: ${kn} at Lw@0 ${name}`, async () => {
+        await expectEdit({
+          stored,
+          place: at("Lw", 0),
+          action: key,
+          write,
+          source: "T58.3, P26-1",
+        });
+      });
+    }
+  }
+});
+
 type FixtureCell = {
   write: string | null;
   calls: number;
