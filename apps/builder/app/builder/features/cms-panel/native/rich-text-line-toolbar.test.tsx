@@ -8,6 +8,7 @@ import { $getSelection, $isNodeSelection, $isRangeSelection } from "lexical";
 import {
   at,
   backspace,
+  beside,
   button,
   caretKey,
   chooseBlockType,
@@ -18,6 +19,7 @@ import {
   hold,
   imageButton,
   IMG,
+  imageNode,
   itemEnd,
   itemPoint,
   keys,
@@ -44,6 +46,8 @@ import {
   unmountField,
 } from "./rich-text-test-harness";
 import { isLinedContainer } from "./rich-text-line-node";
+import { undoDepth } from "./rich-text-line-test-kit-branch";
+import { exportRichTextHtml } from "./rich-text-html";
 import { dividerA3A4Cells } from "./rich-text-line-cells-divider-a3a4";
 import { linkElementEndCells } from "./rich-text-line-cells-link-element-end";
 import dividerA3A4Json from "./__fixtures__/rich-text-line-base-divider-a3a4.json";
@@ -433,6 +437,106 @@ describe("Link (D10, V15)", () => {
       source: "from P14 (ruled against M46 and D10); check V15",
     },
   ]);
+});
+
+/**
+ * T45.2 (D10, P7-Link widened): Link at a collapsed caret in a line with
+ * no word at it writes nothing: no onChange, no undo step, the caret
+ * stays, and the next letter lands where it landed before Link.
+ */
+describe("T45.2: Link at a caret in a line with no word at it", () => {
+  const QI = LI(`<blockquote><p>Q0w</p></blockquote>${IMG}`);
+  const TQI = LI(`T0w<blockquote><p>Q1w</p></blockquote>X2w${IMG}`);
+  const CELLS: ReadonlyArray<{
+    name: string;
+    stored: string;
+    place: Step;
+    typed: string;
+  }> = [
+    {
+      name: "BQ el1",
+      stored: LI("<br><blockquote><p>Q1w</p></blockquote>"),
+      place: itemPoint(1, 1),
+      typed: W("<li><br />k<blockquote><p>Q1w</p></blockquote></li>"),
+    },
+    {
+      name: "QB el1",
+      stored: LI("<blockquote><p>Q0w</p></blockquote><br>"),
+      place: itemPoint(1, 1),
+      typed: W("<li><blockquote><p>Q0w</p></blockquote>k<br /></li>"),
+    },
+    {
+      name: "IR el1",
+      stored: LI(`${IMG}<hr>`),
+      place: itemPoint(1, 1),
+      typed: W("<li><img />k<hr /></li>"),
+    },
+    {
+      name: "image in QI for real",
+      stored: QI,
+      place: imageNode(),
+      typed: W("<li><blockquote><p>Q0w</p></blockquote><img />k</li>"),
+    },
+    {
+      name: "image in TQI for real",
+      stored: TQI,
+      place: imageNode(),
+      typed: W("<li>T0w<blockquote><p>Q1w</p></blockquote>X2w<img />k</li>"),
+    },
+  ];
+  for (const cell of CELLS) {
+    test(`Link at a caret in a line with no word at it writes nothing: ${cell.name}`, async () => {
+      const onChange = await mount(cell.stored);
+      await cell.place();
+      const caret = caretKey();
+      const value = exportRichTextHtml(editorOf()!);
+      const depth = undoDepth();
+      onChange.mockClear();
+      await link()();
+      expect(onChange, "no onChange").not.toHaveBeenCalled();
+      expect(exportRichTextHtml(editorOf()!), "the value").toBe(value);
+      expect(undoDepth(), "the history's length").toEqual(depth);
+      expect(caretKey(), "the caret").toBe(caret);
+      expect(
+        editable()!.querySelector("a hr"),
+        "no link holds a rule"
+      ).toBeNull();
+      await letter();
+      expect(short(lastHtml(onChange)), "the letter").toBe(cell.typed);
+    });
+  }
+
+  // M-d2 rows 3 and 4: ordinary content keeps <base>'s single onChange
+  // with the value unchanged (T42.1, D1)
+  const CONTROLS: ReadonlyArray<{
+    name: string;
+    stored: string;
+    caret: string;
+  }> = [
+    {
+      name: "directly after an image at a paragraph's end",
+      stored: `<p>Aw${IMG}</p>`,
+      caret: "element:paragraph@2",
+    },
+    {
+      name: "after the image of a paragraph holding only an image, a rule after it",
+      stored: `<p>${IMG}</p><hr>`,
+      caret: "element:paragraph@1",
+    },
+  ];
+  for (const control of CONTROLS) {
+    test(`control: Link in ordinary content ${control.name} hands out the value unchanged once`, async () => {
+      const onChange = await mount(control.stored);
+      await beside("cms-image", "after")();
+      expect(caretKey(), "the caret").toBe(control.caret);
+      const value = short(exportRichTextHtml(editorOf()!));
+      onChange.mockClear();
+      await link()();
+      expect(onChange, "one onChange").toHaveBeenCalledTimes(1);
+      expect(short(lastHtml(onChange)), "the value unchanged").toBe(value);
+      expect(caretKey(), "the caret").toBe(control.caret);
+    });
+  }
 });
 
 // T18.8: the cell where the kit's Link driver lost the focus at <base>

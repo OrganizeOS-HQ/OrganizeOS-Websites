@@ -28,3 +28,19 @@ holding `T0w` (`containerPoint("T0w", 2)`).
   assert the head's write. Not pinned: the caret after them (branch `text:Q0w@3` and `text:X2w@3`, head
   `element:listitem@1` for QI and `text:X2w@3` for TQI); the branch's QI caret is 5.7/5.8's by-code caret
   (T33.2), and the snapshot owns it.
+
+## P45-2 (T45.2, Task 19): Link at a caret in a line with no word at it
+
+- Fix: the field's TOGGLE_LINK_COMMAND handler (`rich-text-field.tsx`, the image-aware toggle at NORMAL)
+  returns true before anything is touched when the selection is collapsed and its anchor is an element
+  point on a `cms-line` (no text node at the caret). With the fix taken out, the five cells fail (one
+  onChange each).
+- Measured on the branch with the fix (no onChange, value and history length unchanged, caret unchanged,
+  no `<a>` holding an `<hr>`), letter after: BQ el1 `W(<li><br />k<blockquote><p>Q1w</p></blockquote></li>)`;
+  QB el1 `W(<li><blockquote><p>Q0w</p></blockquote>k<br /></li>)`; IR el1 `W(<li><img />k<hr /></li>)`;
+  image in QI for real `W(<li><blockquote><p>Q0w</p></blockquote><img />k</li>)`; image in TQI for real
+  `W(<li>T0w<blockquote><p>Q1w</p></blockquote>X2w<img />k</li>)`.
+- Controls (M-d2 rows 3 and 4, ordinary content, the caret set directly after the image with the kit's
+  `beside`): `<p>Aw IMG</p>` at `element:paragraph@2` and `<p>IMG</p><hr>` at `element:paragraph@1` keep
+  one onChange with the value unchanged and the caret where it was. Ordinary content has no `cms-line`, so
+  the new branch never applies there.
