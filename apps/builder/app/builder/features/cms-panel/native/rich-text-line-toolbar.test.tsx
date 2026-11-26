@@ -863,7 +863,7 @@ describe("T59 review L2: list off at a caret after an item's ending quote or cod
   ];
   for (const [name, stored, write, caret, typed] of cells) {
     test(`after ${name}: Bulleted list leaves the caret after it at the root`, async () => {
-      // undo's caret here is not ruled (P record P59d-2): not asserted
+      // undo brings back the caret in the emptied line (D7, T71.3)
       const record = await recordEdit(
         {
           stored,
@@ -878,10 +878,57 @@ describe("T59 review L2: list off at a caret after an item's ending quote or cod
       expect(record.calls, "calls").toBe(1);
       expect(record.write, "write").toBe(write);
       expect(record.caret, "caret").toBe(caret);
+      expect(record.undoRestores, "undo restores the state and caret").toBe(
+        true
+      );
       expect(record.redoEquals, "redo equals the write").toBe(true);
       expect(record.typed, "typed after redo").toBe(typed);
       expect(record.errors, "console errors").toEqual([]);
     });
+  }
+});
+
+describe("T71.3: undo from an emptied last line after a quote or a code block brings its caret back (D7)", () => {
+  // the item's last line emptied by Backspace keeps the caret (T24); an
+  // undo of the next action restores that caret, and a letter lands in the
+  // line as it did before the action
+  const blocks: Array<[string, string, string]> = [
+    ["a quote", QUOTE("Q0w"), "<blockquote><p>Q0w</p></blockquote>"],
+    [
+      "a code block",
+      "<pre><code>C0w</code></pre>",
+      "<pre><code>C0w</code></pre>",
+    ],
+  ];
+  const actions: Array<[string, Step]> = [
+    ["Bulleted list", button("Bulleted list")],
+    ["Heading 2", chooseBlockType("Heading 2")],
+    ["a typed letter", keys("x")],
+  ];
+  for (const [blockName, block, written] of blocks) {
+    for (const [actionName, action] of actions) {
+      test(`after ${blockName}: undo after ${actionName}`, async () => {
+        const onChange = await mount(LI(`${block}Xz`));
+        await then(at("Xz", 2), backspace, backspace)();
+        const editor = editorOf()!;
+        const before = caretKey(editor);
+        expect(before, "the caret in the emptied line").toBe(
+          "element:listitem@1"
+        );
+        const value = short(lastHtml(onChange));
+        await action();
+        expect(short(lastHtml(onChange)), "the action wrote").not.toBe(value);
+        await keys("{Control>}z{/Control}")();
+        expect(short(lastHtml(onChange)), "undo restores the value").toBe(
+          value
+        );
+        expect(caretKey(editor), "undo's caret").toBe(before);
+        await letter();
+        expect(short(lastHtml(onChange)), "the letter in the line").toBe(
+          W(`<li>${written}k</li>`)
+        );
+      });
+    }
   }
 });
 
