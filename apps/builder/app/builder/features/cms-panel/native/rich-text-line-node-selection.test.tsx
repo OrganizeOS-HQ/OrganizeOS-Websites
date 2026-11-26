@@ -4,10 +4,17 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { commands, userEvent } from "@vitest/browser/context";
 import { act } from "react-dom/test-utils";
-import { $getRoot, createEditor } from "lexical";
+import {
+  $getRoot,
+  $getSelection,
+  $isNodeSelection,
+  $isRangeSelection,
+  createEditor,
+} from "lexical";
 import {
   at,
   backspace,
+  beside,
   caretKey,
   clipboard,
   copy,
@@ -15,6 +22,7 @@ import {
   enter,
   expectEdit,
   IMG,
+  itemEnd,
   ime,
   imageNode,
   keys,
@@ -435,9 +443,72 @@ describe("T45.1: a word delete over a node selection in a lined item", () => {
 
 /**
  * T27, T28, T33.2: `LI(<blockquote><p>Q0w</p></blockquote>IMG)`. A click on
- * the image and Escape leave a caret directly after it; a node selection
- * of the image is a state only code makes.
+ * the image and Escape leave a caret directly after it. T70.6: a click on
+ * an image opens its popover and selects nothing; ArrowRight from the end
+ * of the text before an inline image node-selects it, at both builds, in
+ * ordinary content and in a lined item alike (the node selections below
+ * are set by code; ArrowRight reaches them too).
  */
+describe("T70.6 (measurement 12): ArrowRight from a quote's end node-selects the inline image after it", () => {
+  const IMG40 =
+    '<img src="https://cdn.example.org/x.png" alt="" width="40" height="20" />';
+  const cells: Array<
+    [name: string, stored: string, stops: string[], write: string]
+  > = [
+    [
+      "in a lined item (I4li-q-img)",
+      LI(`<blockquote><p>Q0w</p></blockquote>${IMG40}`),
+      ["element:cms-line@0", "node:cms-image", "element:cms-line@1"],
+      LI("<blockquote><p>Q0w</p></blockquote><img />k"),
+    ],
+    [
+      "its ordinary twin",
+      `<blockquote><p>Q0w</p></blockquote><p>${IMG40}</p>`,
+      ["element:paragraph@0", "node:cms-image", "element:paragraph@1"],
+      "<blockquote><p>Q0w</p></blockquote><p><img />k</p>",
+    ],
+  ];
+  // the stop as the measurement names it: the node the point is on
+  const rawStop = () =>
+    editorOf()!
+      .getEditorState()
+      .read(() => {
+        const selection = $getSelection();
+        if ($isNodeSelection(selection)) {
+          return `node:${selection.getNodes()[0].getType()}`;
+        }
+        if ($isRangeSelection(selection) === false) {
+          return "none";
+        }
+        const { anchor } = selection;
+        return `${anchor.type}:${anchor.getNode().getType()}@${anchor.offset}`;
+      });
+  for (const [name, stored, stops, write] of cells) {
+    test(`${name}: the walk from Q0w's end`, async () => {
+      await mount(stored);
+      await at("Q0w")();
+      expect(caretKey(), "the click").toBe("text:Q0w@3");
+      const walked: string[] = [];
+      for (const _stop of stops) {
+        await keys("{ArrowRight}")();
+        walked.push(rawStop());
+      }
+      expect(walked, "the stops").toEqual(stops);
+    });
+    test(`${name}: a letter at the node stop`, async () => {
+      const onChange = await mount(stored);
+      await at("Q0w")();
+      await keys("{ArrowRight}")();
+      await keys("{ArrowRight}")();
+      expect(caretKey(), "the image node-selected").toBe("node:cms-image");
+      onChange.mockClear();
+      await letter();
+      expect(onChange.mock.calls.length, "one onChange").toBe(1);
+      expect(short(lastHtml(onChange)), "write").toBe(write);
+    });
+  }
+});
+
 describe("an image after a quote in a lined item (5.7, T28)", () => {
   const AFTER = W("<li><blockquote><p>Q0w</p></blockquote></li>");
   const PASTED = W("<li><blockquote><p>Q0w</p></blockquote><img />Aq</li>");
@@ -497,7 +568,7 @@ describe("an image after a quote in a lined item (5.7, T28)", () => {
   });
 
   describe("a node selection (D15)", () => {
-    test("an image node-selected after a quote, Backspace: the caret goes to the quote's end (a state only code makes)", async () => {
+    test("an image node-selected after a quote, Backspace: the caret goes to the quote's end (set by code; ArrowRight reaches it too, T70.6)", async () => {
       await expectEdit({
         stored: QI,
         place: nodeSelect("cms-image"),
@@ -509,7 +580,7 @@ describe("an image after a quote in a lined item (5.7, T28)", () => {
       });
     });
 
-    test("an image node-selected after a quote, a cut: the image goes, the clipboard is the copy's, the caret at the quote's end (a state only code makes)", async () => {
+    test("an image node-selected after a quote, a cut: the image goes, the clipboard is the copy's, the caret at the quote's end (set by code; ArrowRight reaches it too, T70.6)", async () => {
       // the copy of the same node selection (measured equal at <base>)
       await mount(QI);
       await nodeSelect("cms-image")();
@@ -528,7 +599,7 @@ describe("an image after a quote in a lined item (5.7, T28)", () => {
       });
     });
 
-    test("an image node-selected after a quote, a paste lands after the image and the image stays (a state only code makes)", async () => {
+    test("an image node-selected after a quote, a paste lands after the image and the image stays (set by code; ArrowRight reaches it too, T70.6)", async () => {
       await expectEdit({
         stored: QI,
         place: nodeSelect("cms-image"),
@@ -538,6 +609,133 @@ describe("an image after a quote in a lined item (5.7, T28)", () => {
       });
     });
   });
+});
+
+/**
+ * T70.7 (measurement 20, hist-p PI-QIT): an image node-selected between a
+ * quote and the text after it in a lined item. D15 and T28.3: a letter and
+ * a paste land directly after the image, and the image stays.
+ */
+describe("T70.7: typed and pasted content lands after an image node-selected after a quote", () => {
+  const QIT = LI(`<blockquote><p>Q0w</p></blockquote>${IMG}T2w`);
+  const after = (inserted: string) =>
+    LI(`<blockquote><p>Q0w</p></blockquote><img />${inserted}T2w`);
+  const ways: Array<[how: string, select: Step]> = [
+    ["set by code", nodeSelect("cms-image")],
+    ["reached by ArrowRight", nodeAfter("Q0w")],
+  ];
+  const selected = (select: Step): Step =>
+    then(select, async () => {
+      expect(caretKey(), "the image node-selected before the key").toBe(
+        "node:cms-image"
+      );
+    });
+  for (const [how, select] of ways) {
+    // the caret one undo leaves (beside the image, equal at both builds)
+    // is not ruled: the write, the one onChange and the value one undo
+    // gives back are
+    test(`${how}: a letter`, async () => {
+      const onChange = await mount(QIT);
+      await selected(select)();
+      const valueBefore = exportRichTextHtml(editorOf()!);
+      onChange.mockClear();
+      await letter();
+      expect(onChange.mock.calls.length, "one onChange").toBe(1);
+      expect(short(lastHtml(onChange)), "write").toBe(after("k"));
+      await keys("{Control>}z{/Control}")();
+      expect(exportRichTextHtml(editorOf()!), "one undo").toBe(valueBefore);
+    });
+    test(`${how}: plain text`, async () => {
+      await expectEdit({
+        stored: QIT,
+        place: selected(select),
+        action: pasteText("Aq"),
+        write: after("Aq"),
+        source: "T70.7; T28.3",
+      });
+    });
+    test(`${how}: one paragraph`, async () => {
+      await expectEdit({
+        stored: QIT,
+        place: selected(select),
+        action: pasteHtml("<p>Aq</p>"),
+        write: after("Aq"),
+        source: "T70.7; T28.3",
+      });
+    });
+    test(`${how}: two paragraphs give the write of the same paste at the caret directly after the image`, async () => {
+      const p2 = pasteHtml("<p>Aq</p><p>Bq</p>", "Aq\nBq");
+      const atCaret = await recordEdit({
+        stored: QIT,
+        place: beside("cms-image", "after"),
+        action: p2,
+      });
+      expect(atCaret.write, "the paste at the caret writes").not.toBeNull();
+      await expectEdit({
+        stored: QIT,
+        place: selected(select),
+        action: p2,
+        write: atCaret.write,
+        source: "T70.7; T28.3",
+      });
+    });
+  }
+});
+
+/**
+ * T70.3 (measurement 13): a rule that leads an item whose nested list
+ * follows it, node-selected: a letter lands at the end of the rule's own
+ * item (D15's "directly after the node"; D13's empty line there), not at
+ * the nested list's start. Control: a letter at a caret set by code at the
+ * end of the rule's own item gives the same write (T65.4).
+ */
+describe("T70.3: a letter with the rule node-selected before a nested list", () => {
+  const RL = LI("<hr><ul><li>L1w</li></ul>");
+  const RL_D2 =
+    "<ul><li>Aw<ul><li>Pw</li><li><hr><ul><li>L1w</li></ul></li><li>Nw</li></ul></li><li>Zw</li></ul>";
+  const shapes: Array<
+    [name: string, stored: string, item: number, write: string]
+  > = [
+    ["depth 1", RL, 1, LI("<hr />k<ul><li>L1w</li></ul>")],
+    [
+      "depth 2",
+      RL_D2,
+      3,
+      "<ul><li>Aw<ul><li>Pw</li><li><hr />k<ul><li>L1w</li></ul></li><li>Nw</li></ul></li><li>Zw</li></ul>",
+    ],
+  ];
+  for (const [name, stored, item, write] of shapes) {
+    for (const [how, select] of [
+      ["set by code", nodeSelect("horizontalrule")],
+      ["reached by ArrowRight from Pw", nodeAfter("Pw")],
+    ] as const) {
+      test(`${name}, the rule ${how}`, async () => {
+        const onChange = await mount(stored);
+        await select();
+        expect(caretKey(), "the rule node-selected before the key").toBe(
+          "node:horizontalrule"
+        );
+        const valueBefore = exportRichTextHtml(editorOf()!);
+        onChange.mockClear();
+        await letter();
+        expect(onChange.mock.calls.length, "one onChange").toBe(1);
+        expect(short(lastHtml(onChange)), "write").toBe(write);
+        expect(caretKey(), "the caret").toBe("text:k@1");
+        await keys("{Control>}z{/Control}")();
+        expect(exportRichTextHtml(editorOf()!), "one undo").toBe(valueBefore);
+      });
+    }
+    test(`${name}, control: a letter at a caret set by code at the end of the rule's own item`, async () => {
+      const atEnd = await recordEdit({
+        stored,
+        place: itemEnd(item),
+        action: letter,
+      });
+      expect(atEnd.write, "the same write").toBe(write);
+      expect(atEnd.calls, "one onChange").toBe(1);
+      expect(atEnd.caret, "the caret").toBe("text:k@1");
+    });
+  }
 });
 
 describe("the input listeners follow the root (5.8)", () => {

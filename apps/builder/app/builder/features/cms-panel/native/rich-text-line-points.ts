@@ -360,7 +360,11 @@ export const $pointIntoAdjacentBlock = (point: PointType) => {
  * focuses an editor: during a press in it the field does not focus it (the
  * press does) and does not run what would place the caret after the focus.
  */
-type Press = { containers: Set<NodeKey> };
+type Press = {
+  containers: Set<NodeKey>;
+  /** A plain press on the root's own box (its padding): the press's place. */
+  onRoot?: { x: number; y: number };
+};
 const presses = new WeakMap<LexicalEditor, Press>();
 
 export const isPressing = (editor: LexicalEditor) => presses.has(editor);
@@ -900,6 +904,13 @@ export const pointRules = (editor: LexicalEditor, tracker?: EditTracker) => {
         if (range !== null) {
           $setSelection(range);
         }
+        // 16.16: the caret the same press without Shift gives (T70.11)
+        if (target === root) {
+          $caretFromRootPress({
+            containers: new Set(),
+            onRoot: { x: event.clientX, y: event.clientY },
+          });
+        }
       },
       { discrete: true }
     );
@@ -941,12 +952,74 @@ export const pointRules = (editor: LexicalEditor, tracker?: EditTracker) => {
     if ($emptyLinesIn(press.containers).length > 0) {
       $readBack();
     }
+    $caretFromRootPress(press);
     const made = $resolveLinedPoints(true);
     $keepEmptyLinesIn(press.containers);
     if (made && edited === false) {
       $addUpdateTag("history-merge");
     }
     $selectionBackOnPage();
+  };
+  // T70.11 (D1, T45.13): a press in the root's padding beside a block of a
+  // lined item gets, from Chrome, the block's start (an element point
+  // before its first paragraph), where in ordinary content the same press
+  // reaches the place the content's edge nearest it gives (a quote's text
+  // end, for a press to its right). Where that start is the caret, the
+  // caret goes to the text end a press 1 px inside the content box's right
+  // edge, on the same row, reaches.
+  const $caretFromRootPress = (press: Press) => {
+    const place = press.onRoot;
+    const root = editor.getRootElement();
+    const selection = $getSelection();
+    const dom = window.getSelection();
+    if (
+      place === undefined ||
+      root === null ||
+      dom === null ||
+      $isRangeSelection(selection) === false ||
+      selection.isCollapsed() === false ||
+      // Chrome's guess there is a start; any other caret is the press's own
+      selection.anchor.offset !== 0 ||
+      $findMatchingParent(selection.anchor.getNode(), isLinedContainer) === null
+    ) {
+      return;
+    }
+    const box = root.getBoundingClientRect();
+    const style = getComputedStyle(root);
+    const left = box.left + root.clientLeft + parseFloat(style.paddingLeft);
+    const top = box.top + root.clientTop + parseFloat(style.paddingTop);
+    const right =
+      box.left +
+      root.clientLeft +
+      root.clientWidth -
+      parseFloat(style.paddingRight);
+    const bottom =
+      box.top +
+      root.clientTop +
+      root.clientHeight -
+      parseFloat(style.paddingBottom);
+    // a press in the right padding, on a row of the content
+    if (place.x < right || place.y < top || place.y > bottom || left >= right) {
+      return;
+    }
+    const clicked = caretAtPoint(right - 1, place.y);
+    // only the end of a text there: any other place is no line's end
+    if (
+      clicked === null ||
+      clicked.node.nodeType !== Node.TEXT_NODE ||
+      clicked.offset !== (clicked.node.textContent ?? "").length ||
+      root.contains(clicked.node) === false
+    ) {
+      return;
+    }
+    dom.collapse(clicked.node, clicked.offset);
+    const range = $createRangeSelectionFromDom(dom, editor);
+    if (
+      range !== null &&
+      $findMatchingParent(range.anchor.getNode(), isLinedContainer) !== null
+    ) {
+      $setSelection(range);
+    }
   };
   // A: an end of the page's selection inside a decorator's DOM (an image's
   // own element, where Chrome takes no typed text) while Lexical holds a
@@ -999,6 +1072,12 @@ export const pointRules = (editor: LexicalEditor, tracker?: EditTracker) => {
         containers: new Set(
           editor.getEditorState().read(() => $containersOf($getSelection()))
         ),
+        onRoot:
+          event.target === editor.getRootElement() &&
+          event.shiftKey === false &&
+          event.detail <= 1
+            ? { x: event.clientX, y: event.clientY }
+            : undefined,
       });
     }
   };

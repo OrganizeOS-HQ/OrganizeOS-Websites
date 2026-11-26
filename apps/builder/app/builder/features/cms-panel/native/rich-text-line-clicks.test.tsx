@@ -22,23 +22,30 @@
 //   at its end (5.7's QBR and QTR row), with ordinary content as the
 //   control, equal at both builds (M-f2).
 import { describe, expect, test, vi } from "vitest";
+import { userEvent } from "@vitest/browser/context";
 import {
   ELEMENT_POINTS,
   type GridEntry,
   MEETING_POINTS,
 } from "./rich-text-line-cells-grids";
 import {
+  backspace,
   caretKey,
   clickAt,
+  del,
+  enter,
+  expectEdit,
   keys,
   LI,
   letter,
   mount,
+  range,
+  recordEdit,
   short,
   type Step,
 } from "./rich-text-line-test-kit";
 import { undoDepth } from "./rich-text-line-test-kit-branch";
-import { editable, lastHtml } from "./rich-text-test-harness";
+import { editable, lastHtml, settle } from "./rich-text-test-harness";
 import pointsJson from "./__snapshots__/rich-text-line-grid-points.json";
 import meetingJson from "./__snapshots__/rich-text-line-grid-meeting.json";
 
@@ -300,6 +307,136 @@ describe("T46.6: a click to the right of a line's text leaves the caret at its e
       const got = await clickThenLetter(stored, place);
       expect(got.caret, "the caret at the text's end").toBe("text:T0w@3");
       expect(got.write, "the letter there").toBe(write);
+    });
+  }
+});
+
+/** T70.11: a real click 2 px inside the first quote's bottom right corner. */
+const clickQuoteCorner: Step = async () => {
+  const quote = editable()!.querySelector<HTMLElement>("blockquote")!;
+  const box = quote.getBoundingClientRect();
+  await userEvent.click(quote, {
+    position: { x: box.width - 2, y: box.height - 2 },
+    force: true,
+  } as never);
+  await settle();
+};
+
+describe("T70.11: a click at a quote's bottom right leaves the caret at its text's end", () => {
+  const QBR = LI("<blockquote><p>Q0w</p></blockquote><br><hr>");
+  const QTR = LI("<blockquote><p>Q0w</p></blockquote>T1w<hr>");
+  const letters: Array<
+    [name: string, stored: string, caret: string, write: string]
+  > = [
+    [
+      "QBR",
+      QBR,
+      "text:Q0w@3",
+      LI("<blockquote><p>Q0wk</p></blockquote><br /><hr />"),
+    ],
+    [
+      "QTR",
+      QTR,
+      "text:Q0w@3",
+      LI("<blockquote><p>Q0wk</p></blockquote>T1w<hr />"),
+    ],
+    [
+      "control, equal at both builds: TQR",
+      LI("T0w<blockquote><p>Q1w</p></blockquote><hr>"),
+      "text:Q1w@3",
+      LI("T0w<blockquote><p>Q1wk</p></blockquote><hr />"),
+    ],
+    [
+      "control, equal at both builds: QBR's ordinary twin",
+      "<p>Pw</p><blockquote><p>Q0w</p></blockquote><p><br></p><hr><p>Nw</p>",
+      "text:Q0w@3",
+      "<p>Pw</p><blockquote><p>Q0wk</p></blockquote><p><br /></p><hr /><p>Nw</p>",
+    ],
+    [
+      "control, equal at both builds: QTR's ordinary twin",
+      "<p>Pw</p><blockquote><p>Q0w</p></blockquote><p>T1w</p><hr><p>Nw</p>",
+      "text:Q0w@3",
+      "<p>Pw</p><blockquote><p>Q0wk</p></blockquote><p>T1w</p><hr /><p>Nw</p>",
+    ],
+  ];
+  for (const [name, stored, caret, write] of letters) {
+    test(`${name}: the caret, then a letter`, async () => {
+      await expectEdit({
+        stored,
+        place: async () => {
+          await clickQuoteCorner();
+          expect(caretKey(), "the caret the click leaves").toBe(caret);
+        },
+        action: letter,
+        write,
+        caret: caret.replace("w@3", "wk@4"),
+      });
+    });
+  }
+  const edits: Array<
+    [name: string, stored: string, action: Step, write: string, caret: string]
+  > = [
+    [
+      "QBR Backspace",
+      QBR,
+      backspace,
+      LI("<blockquote><p>Q0</p></blockquote><br /><hr />"),
+      "text:Q0@2",
+    ],
+    [
+      "QTR Backspace",
+      QTR,
+      backspace,
+      LI("<blockquote><p>Q0</p></blockquote>T1w<hr />"),
+      "text:Q0@2",
+    ],
+    [
+      "QBR Delete (D3, fourth case)",
+      QBR,
+      del,
+      LI("<blockquote><p>Q0w</p></blockquote><hr />"),
+      "text:Q0w@3",
+    ],
+    [
+      "QTR Delete (D3, second case)",
+      QTR,
+      del,
+      LI("<blockquote><p>Q0wT1w</p></blockquote><hr />"),
+      "text:Q0wT1w@3",
+    ],
+  ];
+  for (const [name, stored, action, write, caret] of edits) {
+    test(name, async () => {
+      await expectEdit({
+        stored,
+        place: clickQuoteCorner,
+        action,
+        write,
+        caret,
+      });
+    });
+  }
+  for (const [name, stored] of [
+    ["QBR", QBR],
+    ["QTR", QTR],
+  ] as const) {
+    test(`${name} Enter: R1's own Enter at Q0w@3 set by code`, async () => {
+      const byCode = await recordEdit({
+        stored,
+        place: range("Q0w", 3, "Q0w", 3),
+        action: enter,
+      });
+      const byClick = await recordEdit({
+        stored,
+        place: clickQuoteCorner,
+        action: enter,
+      });
+      expect(byCode.write, "an Enter write").not.toBeNull();
+      expect(byClick.write, "the write").toBe(byCode.write);
+      expect(byClick.calls, "calls").toBe(byCode.calls);
+      expect(byClick.caret, "the caret").toBe(byCode.caret);
+      expect(byClick.undoRestores, "one undo restores").toBe(true);
+      expect(byClick.redoEquals, "redo").toBe(true);
     });
   }
 });

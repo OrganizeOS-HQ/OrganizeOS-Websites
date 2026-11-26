@@ -6,7 +6,9 @@ import {
   $addUpdateTag,
   $createTabNode,
   $createTextNode,
+  $getEditor,
   $getSelection,
+  DELETE_CHARACTER_COMMAND,
   $isDecoratorNode,
   $isElementNode,
   $isParagraphNode,
@@ -270,6 +272,41 @@ export const $pasteTextIntoItemLine = (
     }
   }
   return true;
+};
+
+/**
+ * D14 (T70.11): plain text pasted over a range that starts in a lined
+ * container: the range is removed first, and the paste then runs at the
+ * caret the removal leaves, as at a caret (Lexical's plain-text paste
+ * would type its first line over the range instead). Returns false: the
+ * paste goes on at that caret.
+ */
+export const $removeRangeBeforePlainText = (data: DataTransfer) => {
+  const selection = $getSelection();
+  if (
+    data.getData("text/plain") === "" ||
+    data.getData("text/html") !== "" ||
+    data.getData("application/x-lexical-editor") !== "" ||
+    $isRangeSelection(selection) === false ||
+    selection.isCollapsed() ||
+    inLined(endsOf(selection).start) === false
+  ) {
+    return false;
+  }
+  $getEditor().dispatchCommand(DELETE_CHARACTER_COMMAND, true);
+  // the caret's container as the line rules leave it once the removal is
+  // committed: one that holds lines only holds its text directly
+  const caret = $getSelection();
+  const container = $isRangeSelection(caret)
+    ? ($findMatchingParent(
+        caret.anchor.getNode(),
+        $isCmsLineNode
+      )?.getParent() ?? null)
+    : null;
+  if (container !== null && container.getChildren().every($isCmsLineNode)) {
+    $unwrapLines(container.getChildren());
+  }
+  return false;
 };
 
 /**
