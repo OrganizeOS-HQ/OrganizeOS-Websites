@@ -3,7 +3,15 @@ import "@webstudio-is/design-system/global.css";
 import { createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+} from "vitest";
 import { userEvent } from "@vitest/browser/context";
 import { TooltipProvider } from "@webstudio-is/design-system";
 import { CmsScreen, type CmsScreenProps } from "./cms-screen";
@@ -36,6 +44,11 @@ const NEW_ID = "44444444-4444-4444-8444-444444444444";
 let root: Root | undefined;
 let container: HTMLElement | undefined;
 let fake: FakeCmsSource;
+
+// The field loads the rich-text editor lazily; load it once before any test.
+beforeAll(async () => {
+  await import("./rich-text-field");
+});
 
 /** `width` is the overlay's box; the column takes 240 px of it. */
 const mount = (width = 1200, overrides: Partial<CmsScreenProps> = {}) => {
