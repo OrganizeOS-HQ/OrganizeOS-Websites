@@ -16,6 +16,7 @@ import {
   enter,
   expectEdit,
   IMG,
+  itemEnd,
   ime,
   imageNode,
   keys,
@@ -608,6 +609,62 @@ describe("T70.7: typed and pasted content lands after an image node-selected aft
         write: atCaret.write,
         source: "T70.7; T28.3",
       });
+    });
+  }
+});
+
+/**
+ * T70.3 (measurement 13): a rule that leads an item whose nested list
+ * follows it, node-selected: a letter lands at the end of the rule's own
+ * item (D15's "directly after the node"; D13's empty line there), not at
+ * the nested list's start. Control: a letter at a caret set by code at the
+ * end of the rule's own item gives the same write (T65.4).
+ */
+describe("T70.3: a letter with the rule node-selected before a nested list", () => {
+  const RL = LI("<hr><ul><li>L1w</li></ul>");
+  const RL_D2 =
+    "<ul><li>Aw<ul><li>Pw</li><li><hr><ul><li>L1w</li></ul></li><li>Nw</li></ul></li><li>Zw</li></ul>";
+  const shapes: Array<
+    [name: string, stored: string, item: number, write: string]
+  > = [
+    ["depth 1", RL, 1, LI("<hr />k<ul><li>L1w</li></ul>")],
+    [
+      "depth 2",
+      RL_D2,
+      3,
+      "<ul><li>Aw<ul><li>Pw</li><li><hr />k<ul><li>L1w</li></ul></li><li>Nw</li></ul></li><li>Zw</li></ul>",
+    ],
+  ];
+  for (const [name, stored, item, write] of shapes) {
+    for (const [how, select] of [
+      ["set by code", nodeSelect("horizontalrule")],
+      ["reached by ArrowRight from Pw", nodeAfter("Pw")],
+    ] as const) {
+      test(`${name}, the rule ${how}`, async () => {
+        const onChange = await mount(stored);
+        await select();
+        expect(caretKey(), "the rule node-selected before the key").toBe(
+          "node:horizontalrule"
+        );
+        const valueBefore = exportRichTextHtml(editorOf()!);
+        onChange.mockClear();
+        await letter();
+        expect(onChange.mock.calls.length, "one onChange").toBe(1);
+        expect(short(lastHtml(onChange)), "write").toBe(write);
+        expect(caretKey(), "the caret").toBe("text:k@1");
+        await keys("{Control>}z{/Control}")();
+        expect(exportRichTextHtml(editorOf()!), "one undo").toBe(valueBefore);
+      });
+    }
+    test(`${name}, control: a letter at a caret set by code at the end of the rule's own item`, async () => {
+      const atEnd = await recordEdit({
+        stored,
+        place: itemEnd(item),
+        action: letter,
+      });
+      expect(atEnd.write, "the same write").toBe(write);
+      expect(atEnd.calls, "one onChange").toBe(1);
+      expect(atEnd.caret, "the caret").toBe("text:k@1");
     });
   }
 });
