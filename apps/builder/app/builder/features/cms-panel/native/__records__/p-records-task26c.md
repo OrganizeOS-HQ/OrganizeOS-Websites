@@ -415,3 +415,111 @@ So the tests at `rich-text-line-clipboard.test.tsx:1537` and `:1544` (QR and Rla
 - No new `_`-prefixed or `__` reads, no `process.env` or `import.meta.env` switches, no `.skip` or `.only` in any added line.
 - The commits add tests only to `rich-text-line-*.test.tsx`, none of which exist on main. No test that exists on main was touched, and `rich-text-field.tsx`'s tests on main are untouched.
 - Each new test asserts the value the defect or ruling states. The one exception is N1's two backward cells, which pin the D6 reading.
+
+# Batch 3: defects 9 to 11
+
+Merged at 40e0ac1 (commits 1747f7a, 66fec00, 42d2883).
+
+Branch `t59-c` off `6c9ce85`, in a clone at
+`/tmp/claude-0/-home-user/bc675505-f97c-57df-a43d-5f6c94c5254a/scratchpad/t59c` (my assigned worktree was a checkout of
+the OrganizeOS repo, not the fork, and the worktree guard refused git on the fork's shared checkout, so the branch lives
+in a local `git clone --shared` of `/home/user/OrganizeOS-Websites`; fetch it from there). Not pushed.
+
+| Defect | Answer                            | Commit                                                                                                    |
+| ------ | --------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| 9      | Fix                               | `1747f7a` fix(cms): T59 defect 9 an empty line after a joined block stays                                 |
+| 10     | Fix                               | `66fec00` fix(cms): T59 defect 10 a range into a nested item keeps PR #116's tail join                    |
+| 11     | Measured at both builds, then fix | `42d2883` fix(cms): T59 defect 11 a range that holds an item's text but not its image copies no list item |
+
+No P record. No test on main rewritten; every change is under `N/`.
+
+## Defect 9 (keys-phase-1 k3 TCB/THB)
+
+- Rule read: D3 third case, the parenthesis: "the line break that is the whole of an empty line D19 keeps does not count
+  as standing at an edge"; T23.1: a line of one line break is the lined form of an empty paragraph (the same stored
+  shape `T0w<h3>H1w</h3><br>` is T23.1's own fixture in `rich-text-line-removal.test.tsx`). Not contested.
+- Cause: `rich-text-line-normalise.ts:142` (`$linesNeedingBreak`, at `6c9ce85` line 139): the second line got no D3
+  break when its first child was a line break, including when that break is the whole of an empty line. So the join's
+  separator was dropped and the empty line's break served as the separator: `T0wH1w<br />`, one visual line.
+- Fix: the break is skipped only for a line that starts with a break and holds more than that break.
+- Tests (`rich-text-line-normalise.test.tsx`, describe "... an empty line after the block stays (T59 defect 9)", 6
+  tests): heading and code block, each by Backspace at the block's start, Delete at T0w's end, and Backspace over
+  `T0w@1` to `X1w@2`.
+  - Before (at `6c9ce85` + tests): 6 failed. Received `T0wH1w<br />`, `T0wC1w<br />`, `Tw<br />`.
+  - After: 6 passed; the file 40 of 40.
+  - Writes now: `<li>T0wH1w<br /><br /></li>`, `<li>T0wC1w<br /><br /></li>`, `<li>Tw<br /><br /></li>`.
+- Not changed: `$removeRangeWithBreak` (`rich-text-line-removal.ts:247`, Enter or Shift+Enter over a range from a line
+  into a block) has the same `isLineBreak(next.getFirstChild())` test. Enter over such a range followed by an empty line
+  is not among the defect's records and no rule names its write, so it is left as is. It is a candidate for the second
+  comparison (T59.6).
+
+## Defect 10 (paste-sweeps B|d3 | p-n | ol HT, quote ul HT)
+
+- Main's nearest case: `rich-text-structure.test.tsx`, "the join leaves no nested list of the text after the caret
+  behind (Z9)", the Z13 range rows "paste of a range ending in the nested item (Z13)" and "drop of ..." (stored
+  `<ul><li>s1q<ul><li>n1q</li></ul></li><li>t1q</li></ul>`, range `s1q@2` to `n1q@1`, paste
+  `<ol><li>Aq</li><li><hr>T1q</li></ol>`). They pin the tail join at depth 1: `...<ol><li>Aq</li><li><hr />T1q1q</li></ol><ul><li>t1q</li></ul>`,
+  then a letter lands `T1qZ1q`. The sweep's `d3` is the same range one wrapper deeper (stored
+  `<ul><li>a1q<ul><li>p1q<ul><li>s1q<ul><li>n1q</li></ul></li><li>t1q</li></ul></li><li>u1q</li></ul></li></ul>`,
+  `p1q@2` to `n1q@1`, from the sweep's `zzr10-beh-w-cases.ts`).
+- Cause: `rich-text-line-paste.ts:35` (`inLined`; at `6c9ce85` line 29) climbed with `$findMatchingParent` past the
+  start's own item (text only, not lined) up to the outer wrapper item that holds only the nested list, which
+  `isLinedContainer` counts as lined (5.1: lined for a point on itself). So branch 1 of `$intoLine`
+  (`rich-text-line-paste.ts:67`) removed the range before the paste. `$insertIntoListItem`
+  (`rich-text-field.tsx:3511`, `keepsTailList`) then saw a caret in `p11q` with the nested list after it, kept the tail
+  list and joined nothing. At depth 1 and 2 there is no such wrapper above the start, which is why only d3 differed.
+- Fix: a lined item that holds only lists counts for a point on itself, not for a point in one of its nested items. The
+  range then takes the head's path, as at the base.
+- Test (`rich-text-line-paste.test.tsx`, describe "D11: ... (T59 defect 10)", 2 tests: the numbered list and the quote
+  holding a bulleted list; write and the typed letter):
+  - Before: 2 failed. Received `...<ol><li>Aq</li><li><hr />T1q</li></ol><ul><li><ul><li>1q<ul><li>t1q</li></ul></li><li>u1q</li></ul></li></ul>`.
+  - After: 2 passed; the file 74 of 74. Write `<li><hr />T1q1q</li>` with the tail
+    `<ul><li><ul><li><ul><li>t1q</li></ul></li><li>u1q</li></ul></li></ul>`, the base's; typed `T1qk1q`.
+  - Main's Z6, Z9 and Z13 tests (`-t "Z6|Z9|Z13"`, project core-browser-builder-cms-rich-text): 84 of 84.
+- The same climb is in `rich-text-line-toolbar.ts:176`. Not changed: no defect points there.
+
+## Defect 11 (clip-d zzv15-clip-rec-48, real05 item-startsImg Shift+Home at 3)
+
+Measured by a probe that runs on the shared harness at both builds (a real click at `U1w`@3, then Shift+Home, in
+`<ul><li>Pw</li><li><img>U1w</li><li>Nw</li></ul>`; copy; then a cut, the cut's data pasted back, undo, and its
+text/html and text/plain alone pasted). Base: `r1-base` (`2a96a45`), `timeout 600`. Probe source:
+`/tmp/claude-0/-home-user/bc675505-f97c-57df-a43d-5f6c94c5254a/scratchpad/t59c-probe/rich-text-zzt59c-probe.test.tsx`
+(removed from both trees after the run).
+
+|                          | base `2a96a45`                                                  | branch `6c9ce85`                                       |
+| ------------------------ | --------------------------------------------------------------- | ------------------------------------------------------ |
+| selection                | anchor text `U1w`@3, focus element listitem@1 (after the image) | anchor text `U1w`@3, focus text `U1w`@0                |
+| selection's nodes        | `text:U1w`                                                      | `text:U1w`                                             |
+| text/plain               | `U1w`                                                           | `U1w`                                                  |
+| text/html                | `<span ...>U1w</span>`                                          | `<ul ...><li value="2"><span ...>U1w</span></li></ul>` |
+| editor data shape        | `t("U1w")`                                                      | `list(listitem(t("U1w")))`                             |
+| cut's write              | `<li><img /></li>` (caret listitem@1)                           | `<li><img /></li>` (caret listitem@1)                  |
+| paste-back (editor data) | `<li><img />U1w</li>`                                           | `<li><img /></li><li>U1w</li>`                         |
+| paste-back (html only)   | `<li><img />U1w</li>`                                           | `<li><img /></li><li>U1w</li>`                         |
+
+- Rule read: D6, "the copied HTML holds a list item only where the selection holds the whole item"; the accepted shape
+  is for "a range that holds a whole list item". The image is not held, so the defect stands.
+- Cause: Lexical 0.21's `ListItemNode.extractWithChild` takes the item whole when it holds both ends and its text is as
+  long as the selection's text; an image has no text. At the base the focus is a point on the item, so the item does not
+  hold both ends and no wrapper is written. On the branch the one writer (`$headFormClipboard`,
+  `rich-text-line-clipboard.ts`) runs Lexical's function on text points (the focus is already text here, and
+  `$endsIntoText` makes any element end text), so the item was taken whole.
+- Fix: `$markItemsNotHeldWhole` (`rich-text-line-clipboard.ts:444`, called at `:626` before the copy mark): in the
+  scratch editor only, an item that holds both ends and has a leaf the range does not hold gets a made-up character
+  beside that leaf, outside the range. Lexical then leaves the item out, and the character is never in the clipboard.
+  An item the range holds whole is untouched: the test "a range that holds a whole list item copies with its list and
+  item" still passes, and rec-49 (Shift+End from `U0w`@0 over the trailing image, which holds the whole item) should
+  keep the accepted shape by the same reading (not re-measured here; the second comparison reads it).
+- Tests (`rich-text-line-clipboard.test.tsx`, in "Task 18: real empty blocks and whole items"):
+  "a range that holds an item's text but not the image leading it copies the text alone (D6; T59 defect 11)" (shape
+  `'U1w'`, html `U1w`, plain `U1w`, the copy changes nothing) and "that range cut and pasted back gives the item back
+  whole (D6; T59 defect 11)".
+  - Before: 2 failed (`list(listitem('U1w'))`; paste-back `<li><img /></li><li>U1w</li>`).
+  - After: 2 passed; the file 109 of 109; `rich-text-line-grid-clipboard.test.tsx` (grids-a) 273 of 273.
+
+## Runs at the head `42d2883`
+
+- lines (whole): 18 files, 1,500 of 1,500 passed, 481 s.
+- lines-b (whole): 3 files, 649 of 649 passed, 280 s.
+- grids-a, `rich-text-line-grid-clipboard.test.tsx` only (no grid file touched; the writer changed): 273 of 273.
+- `pnpm oxfmt --check`, `pnpm lint`, `pnpm exec tsc --noEmit -p apps/builder`, `pnpm check:runtime-upstream`: all pass.
