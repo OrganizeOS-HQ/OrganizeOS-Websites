@@ -20,7 +20,6 @@ import {
   $isCmsLineNode,
   isBlockDecorator,
   isLinedContainer,
-  linesOff,
 } from "./rich-text-line-node";
 import { $unwrapLines } from "./rich-text-line-normalise";
 import { rememberCompositionStart } from "./rich-text-line-history";
@@ -202,9 +201,6 @@ export const $headPathOnRemove = (
  * previous root, added to the new one, and removed at the cleanup.
  */
 export const registerLineInputListener = (editor: LexicalEditor) => {
-  if (linesOff) {
-    return () => {};
-  }
   // a composition at the start of a line that starts with a link lands
   // before the link, as a typed letter does: the caret stands on the
   // line's start before the composition begins

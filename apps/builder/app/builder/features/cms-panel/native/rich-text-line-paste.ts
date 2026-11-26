@@ -78,7 +78,7 @@ const $removeRangeBeforeBlockPaste = (
 };
 
 /**
- * V3: a range that starts outside every line and ends in one: the end's
+ * A range that starts outside every line and ends in one: the end's
  * container takes the head's path, its lines unwrapped (D14's third case;
  * undefined: not this branch).
  */
@@ -100,7 +100,7 @@ const $unwrapEndContainer = (
 };
 
 /**
- * V2, V4: a line in a quote, or a range from a line: the head's path over
+ * A line in a quote, or a range from a line: the head's path over
  * the containers' own text, their lines unwrapped (D4, D14; undefined: not
  * this branch). The range-from-a-line path is unreachable as routed:
  * branch 1 (`$removeRangeBeforeBlockPaste`) takes every range whose start

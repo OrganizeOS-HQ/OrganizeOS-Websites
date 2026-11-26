@@ -471,7 +471,7 @@ export const fieldHandlersOf = (
 const noProvider = (id: FieldHandlerId) =>
   new Error(`cms rich text: no provider for field handler ${id}`);
 
-/** The scratch editor's config, passed in by the field (no read of editor._config). */
+/** The scratch editor's config, passed in by the field (the editor's private config is not read). */
 export type ScratchConfig = {
   namespace: string;
   theme: EditorThemeClasses;

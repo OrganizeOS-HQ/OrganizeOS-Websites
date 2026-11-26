@@ -1,5 +1,5 @@
 /**
- * SPIKE. A line: each maximal run of inline content of a list item or quote
+ * A line: each maximal run of inline content of a list item or quote
  * that also holds a block. No list item and no quote holds inline content
  * beside a non-inline child. The stored HTML never shows a line: its export
  * writes its children only.
@@ -12,6 +12,7 @@ import {
 } from "@lexical/list";
 import { $isQuoteNode } from "@lexical/rich-text";
 import {
+  $applyNodeReplacement,
   $createLineBreakNode,
   $createParagraphNode,
   $getSelection,
@@ -32,35 +33,6 @@ import {
   type SerializedElementNode,
   TextNode,
 } from "lexical";
-
-/** SPIKE: VITE_LINES_OFF turns every line rule off (the head's behaviour). */
-export const linesOff =
-  String(
-    (import.meta as { env?: Record<string, string> }).env?.VITE_LINES_OFF ?? ""
-  ) !== "";
-
-export const lineSpike = {
-  /** The invariant's transforms run. */
-  on: linesOff === false,
-  /** An update leaves no item, quote or line it emptied. */
-  noEmptied: true,
-  /** Tests: the head-form clipboard's scratch write throws. */
-  scratchClipboardFails: false,
-  /** Tests: the per-cut check finds the clipboard not holding the selection. */
-  cutCheckFails: false,
-  /** Tests: the page's range is not put back after a node-changing commit (D off). */
-  pageRangeKeepOff: false,
-  /** Tests: the composition-start character is left where Lexical left it (R1 off). */
-  compositionStartCharKept: false,
-  /** Tests: the cut's removal is found not to take what its clipboard holds. */
-  cutTakesCheckFails: false,
-  /** Probes: a key does not take over a caret the page moved (15.12 off). */
-  resyncOff: false,
-  /** Tests (15.14): the focus guard off, to show the popovers' fix alone. */
-  focusGuardOff: false,
-  /** Tests (15.14): the popovers hand focus back after any close. */
-  closeFocusFixOff: false,
-};
 
 /**
  * 15.11: the nodes the clipboard writer's scratch editor makes to give an
@@ -332,7 +304,8 @@ export class CmsLineNode extends ElementNode {
   }
 }
 
-export const $createCmsLineNode = () => new CmsLineNode();
+export const $createCmsLineNode = () =>
+  $applyNodeReplacement(new CmsLineNode());
 
 export const $isCmsLineNode = (
   node: LexicalNode | null | undefined

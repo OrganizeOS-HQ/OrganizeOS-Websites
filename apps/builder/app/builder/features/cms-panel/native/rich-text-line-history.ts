@@ -24,7 +24,6 @@ import {
   type NodeKey,
 } from "lexical";
 import { createElement, useEffect, useState } from "react";
-import { linesOff } from "./rich-text-line-node";
 import { d7Document } from "./rich-text-line-points";
 
 /** The field's history (Lexical's HistoryPlugin state), per editor. */
@@ -320,9 +319,6 @@ const $removeStartChars = (
  * bookkeeping and `startCharRemovalListener`.
  */
 export const registerCompositionStep = (editor: LexicalEditor) => {
-  if (linesOff) {
-    return () => {};
-  }
   const onEnd = (event: CompositionEvent) => {
     compositionEndText.set(editor, event.data ?? "");
     // the voided composition ends here
@@ -568,9 +564,6 @@ export const registerCompositionStep = (editor: LexicalEditor) => {
  * longer composing.
  */
 export const registerCompositionEndOnKey = (editor: LexicalEditor) => {
-  if (linesOff) {
-    return () => {};
-  }
   const onKeyDown = (event: KeyboardEvent) => {
     if (
       event.isComposing ||

@@ -110,7 +110,7 @@ import {
   registerCompositionEndOnKey,
   registerCompositionStep,
 } from "./rich-text-line-history";
-import { $isCmsLineNode, lineSpike } from "./rich-text-line-node";
+import { $isCmsLineNode } from "./rich-text-line-node";
 import { registerLineInputListener } from "./rich-text-line-node-selection";
 import {
   $unwrapLines,
@@ -1026,7 +1026,7 @@ const LinkButton = ({
           event.preventDefault();
           const byPress = closedByPressInEditor.current;
           closedByPressInEditor.current = false;
-          if (byPress && lineSpike.closeFocusFixOff === false) {
+          if (byPress) {
             return;
           }
           focusEditor(editor);
@@ -1119,7 +1119,6 @@ const insertImage = (
     const $keepPress = () => {
       if (
         $isRangeSelection(kept) === false ||
-        lineSpike.focusGuardOff ||
         [kept.anchor, kept.focus].some((point) => {
           const node = $getNodeByKey(point.key);
           return (
@@ -2757,7 +2756,7 @@ const WatchPlugin = ({
 }) => {
   const [editor] = useLexicalComposerContext();
   useEffect(() => {
-    if (import.meta.env.DEV === false) {
+    if (process.env.NODE_ENV === "production") {
       return;
     }
     const watch = watchField(editor, () => fieldValueOf(editor));
@@ -3309,19 +3308,11 @@ const $placeAfterCode = (code: LexicalNode, images: LexicalNode[]) => {
  * The block that directly holds a point (a list item, a quote), when its
  * first child is a block: the editor's own edits read no such element as a
  * block. A list holds only items, and the root is not such a block.
+ * With lines (R1) still reached by a two-paragraph HTML paste in a
+ * block-led item, and by pastes at the end of an item that starts with a
+ * quote.
  */
-/** SPIKE: guards made no-ops, from VITE_GUARDS_OFF (comma separated). */
-const guardOff = (name: string) =>
-  String(
-    (import.meta as { env?: Record<string, string> }).env?.VITE_GUARDS_OFF ?? ""
-  )
-    .split(",")
-    .includes(name);
-
 const $blockLedItemAt = (point: PointType) => {
-  if (guardOff("blockLedItemAt")) {
-    return;
-  }
   let block: LexicalNode | null =
     point.type === "element" ? point.getNode() : point.getNode().getParent();
   while ($isElementNode(block) && block.isInline()) {
@@ -3346,12 +3337,11 @@ const $blockLedItemAt = (point: PointType) => {
  * image) with the block-led item or quote holding its start read as a block:
  * an empty text leads the item meanwhile, and a quote takes the edit in a
  * paragraph of its own at the caret, as in its other paragraphs.
+ * With lines (R1) still reached by a two-paragraph HTML paste in a
+ * block-led item, and by pastes at the end of an item that starts with a
+ * quote.
  */
 const $editInBlockLedItem = (selection: RangeSelection, edit: () => void) => {
-  if (guardOff("editInBlockLedItem")) {
-    edit();
-    return false;
-  }
   const start = selection.isBackward() ? selection.focus : selection.anchor;
   const item = $blockLedItemAt(start);
   if (item === undefined) {
@@ -3401,12 +3391,11 @@ const $editInBlockLedItem = (selection: RangeSelection, edit: () => void) => {
 
 /**
  * Runs an edit at the selection where its start is in a block-led item or
- * quote; false, with nothing done, anywhere else.
+ * quote; false, with nothing done, anywhere else. With lines still reached
+ * by a two-line plain-text paste or drop at the end of a quote that holds a
+ * paragraph and a rule and is not lined.
  */
 const $editAtBlockLed = (edit: (selection: RangeSelection) => void) => {
-  if (guardOff("editAtBlockLed")) {
-    return false;
-  }
   const selection = $getSelection();
   if ($isRangeSelection(selection) === false) {
     return false;
@@ -3421,13 +3410,13 @@ const $editAtBlockLed = (edit: (selection: RangeSelection) => void) => {
 /**
  * Plain text pasted or dropped where the selection starts in a block-led
  * item or quote, when the data holds no HTML and none of the field's own
- * nodes: its lines and tabs land as in any other item.
+ * nodes: its lines and tabs land as in any other item. With lines still
+ * reached by the same quote cases as `$editAtBlockLed`.
  */
 const $insertPlainTextAtBlockLed = (
   editor: LexicalEditor,
   data: DataTransfer
 ) =>
-  guardOff("insertPlainTextAtBlockLed") === false &&
   data.getData("text/plain") !== "" &&
   data.getData("text/html") === "" &&
   $ownClipboardNodes(editor, data) === undefined &&
@@ -3439,7 +3428,8 @@ const $insertPlainTextAtBlockLed = (
  * Nodes inserted in a list item: the item split at the selection leaves no
  * empty item when the last inserted item starts with a block (its content
  * cannot join the split-off rest). Items empty before, or inserted empty,
- * stay.
+ * stay. With lines still reached by a pasted last item that starts with a
+ * rule, by paste and drop, at depths 1 and 3.
  */
 const $insertIntoListItem = (
   nodes: LexicalNode[],
@@ -3492,7 +3482,6 @@ const $insertIntoListItem = (
       $isListNode(startList) === false ||
       lastList.getListType() !== startList.getListType());
   if (
-    guardOff("z6") === false &&
     keepsTailList === false &&
     $isListItemNode(lastItem) &&
     isBlock(lastItem.getFirstChild()) &&
@@ -3731,10 +3720,13 @@ const $pointOutOfInline = (point: PointType) => {
   }
 };
 
+/**
+ * A point on an inline element goes out to the place beside it, or into an
+ * adjacent block. With lines still reached by edits from an element point on
+ * a link, and in containers that are not lined (a lined container's points
+ * never rest on it: 5.3).
+ */
 const $selectionIntoAdjacentBlocks = () => {
-  if (guardOff("selectionIntoAdjacentBlocks")) {
-    return false;
-  }
   const selection = $getSelection();
   if ($isRangeSelection(selection)) {
     $pointOutOfInline(selection.anchor);

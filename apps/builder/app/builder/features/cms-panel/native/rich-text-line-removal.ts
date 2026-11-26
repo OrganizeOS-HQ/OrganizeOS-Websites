@@ -52,7 +52,6 @@ import {
   isLineBreak,
   isListItemOrQuote,
   isLinedContainer,
-  lineSpike,
 } from "./rich-text-line-node";
 import { $inlineEdgeOf, $noteRemovalLines } from "./rich-text-line-points";
 
@@ -91,7 +90,6 @@ export const $previousChildren = (key: string) =>
         : null;
     });
 
-/** An item or quote this update emptied goes, unless it holds the caret. */
 export const REMOVAL_TAG = "cms-removal";
 
 /** An update that runs the head's own path over unwrapped lines. */
@@ -143,10 +141,6 @@ export const $mark = (name: string) => {
   }
   marks.add(name);
 };
-
-/** Tests: the marks an editor holds now (none once its update is done). */
-export const lineMarkCount = (editor: LexicalEditor) =>
-  lineMarks.get(editor)?.size ?? 0;
 
 export const $hasMark = (name: string) =>
   lineMarks.get($getEditor())?.has(name) === true;
@@ -713,7 +707,7 @@ export const $lastPointToBlockEnd = (
   selection: RangeSelection,
   use: "removal" | "writer" = "removal"
 ) => {
-  if (lineSpike.on === false || selection.isCollapsed()) {
+  if (selection.isCollapsed()) {
     return false;
   }
   const noText = (holder: LexicalNode) =>
@@ -905,7 +899,7 @@ export const $prepareRemoval = (
   if ($lastPointToBlockEnd(selection) && selection.isCollapsed()) {
     return true;
   }
-  if (selection.isCollapsed() === false && lineSpike.on) {
+  if (selection.isCollapsed() === false) {
     $lastPointPastLoneBreak(selection);
     // 15.11 (3): the removal uses the ends the clipboard writer uses
     $endsIntoText(selection, false);
@@ -1022,9 +1016,9 @@ export const $tagRemoval = (isBackward?: boolean): boolean => {
   return false;
 };
 
+/** An item or quote this update emptied goes, unless it holds the caret. */
 export const $dropEmptied = (node: ElementNode) => {
   if (
-    lineSpike.noEmptied === false ||
     $hasMark(REMOVAL_TAG) === false ||
     $hasMark(`${REMOVAL_START_TAG}${node.getKey()}`) ||
     $wasEmptied(node) === false ||
@@ -1161,10 +1155,7 @@ export const $joinRestOfItem = (item: ElementNode) => {
  * detached goes, as an item or quote does (K12).
  */
 export const $dropEmptiedBlockInContainer = (block: ElementNode) => {
-  if (
-    lineSpike.on === false ||
-    isListItemOrQuote(block.getParent()) === false
-  ) {
+  if (isListItemOrQuote(block.getParent()) === false) {
     return;
   }
   $dropEmptied(block);
