@@ -4,7 +4,13 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { commands, userEvent } from "@vitest/browser/context";
 import { act } from "react-dom/test-utils";
-import { $getRoot, createEditor } from "lexical";
+import {
+  $getRoot,
+  $getSelection,
+  $isNodeSelection,
+  $isRangeSelection,
+  createEditor,
+} from "lexical";
 import {
   at,
   backspace,
@@ -437,9 +443,72 @@ describe("T45.1: a word delete over a node selection in a lined item", () => {
 
 /**
  * T27, T28, T33.2: `LI(<blockquote><p>Q0w</p></blockquote>IMG)`. A click on
- * the image and Escape leave a caret directly after it; a node selection
- * of the image is a state only code makes.
+ * the image and Escape leave a caret directly after it. T70.6: a click on
+ * an image opens its popover and selects nothing; ArrowRight from the end
+ * of the text before an inline image node-selects it, at both builds, in
+ * ordinary content and in a lined item alike (the node selections below
+ * are set by code; ArrowRight reaches them too).
  */
+describe("T70.6 (measurement 12): ArrowRight from a quote's end node-selects the inline image after it", () => {
+  const IMG40 =
+    '<img src="https://cdn.example.org/x.png" alt="" width="40" height="20" />';
+  const cells: Array<
+    [name: string, stored: string, stops: string[], write: string]
+  > = [
+    [
+      "in a lined item (I4li-q-img)",
+      LI(`<blockquote><p>Q0w</p></blockquote>${IMG40}`),
+      ["element:cms-line@0", "node:cms-image", "element:cms-line@1"],
+      LI("<blockquote><p>Q0w</p></blockquote><img />k"),
+    ],
+    [
+      "its ordinary twin",
+      `<blockquote><p>Q0w</p></blockquote><p>${IMG40}</p>`,
+      ["element:paragraph@0", "node:cms-image", "element:paragraph@1"],
+      "<blockquote><p>Q0w</p></blockquote><p><img />k</p>",
+    ],
+  ];
+  // the stop as the measurement names it: the node the point is on
+  const rawStop = () =>
+    editorOf()!
+      .getEditorState()
+      .read(() => {
+        const selection = $getSelection();
+        if ($isNodeSelection(selection)) {
+          return `node:${selection.getNodes()[0].getType()}`;
+        }
+        if ($isRangeSelection(selection) === false) {
+          return "none";
+        }
+        const { anchor } = selection;
+        return `${anchor.type}:${anchor.getNode().getType()}@${anchor.offset}`;
+      });
+  for (const [name, stored, stops, write] of cells) {
+    test(`${name}: the walk from Q0w's end`, async () => {
+      await mount(stored);
+      await at("Q0w")();
+      expect(caretKey(), "the click").toBe("text:Q0w@3");
+      const walked: string[] = [];
+      for (const _stop of stops) {
+        await keys("{ArrowRight}")();
+        walked.push(rawStop());
+      }
+      expect(walked, "the stops").toEqual(stops);
+    });
+    test(`${name}: a letter at the node stop`, async () => {
+      const onChange = await mount(stored);
+      await at("Q0w")();
+      await keys("{ArrowRight}")();
+      await keys("{ArrowRight}")();
+      expect(caretKey(), "the image node-selected").toBe("node:cms-image");
+      onChange.mockClear();
+      await letter();
+      expect(onChange.mock.calls.length, "one onChange").toBe(1);
+      expect(short(lastHtml(onChange)), "write").toBe(write);
+    });
+  }
+});
+
 describe("an image after a quote in a lined item (5.7, T28)", () => {
   const AFTER = W("<li><blockquote><p>Q0w</p></blockquote></li>");
   const PASTED = W("<li><blockquote><p>Q0w</p></blockquote><img />Aq</li>");
@@ -499,7 +568,7 @@ describe("an image after a quote in a lined item (5.7, T28)", () => {
   });
 
   describe("a node selection (D15)", () => {
-    test("an image node-selected after a quote, Backspace: the caret goes to the quote's end (a state only code makes)", async () => {
+    test("an image node-selected after a quote, Backspace: the caret goes to the quote's end (set by code; ArrowRight reaches it too, T70.6)", async () => {
       await expectEdit({
         stored: QI,
         place: nodeSelect("cms-image"),
@@ -511,7 +580,7 @@ describe("an image after a quote in a lined item (5.7, T28)", () => {
       });
     });
 
-    test("an image node-selected after a quote, a cut: the image goes, the clipboard is the copy's, the caret at the quote's end (a state only code makes)", async () => {
+    test("an image node-selected after a quote, a cut: the image goes, the clipboard is the copy's, the caret at the quote's end (set by code; ArrowRight reaches it too, T70.6)", async () => {
       // the copy of the same node selection (measured equal at <base>)
       await mount(QI);
       await nodeSelect("cms-image")();
@@ -530,7 +599,7 @@ describe("an image after a quote in a lined item (5.7, T28)", () => {
       });
     });
 
-    test("an image node-selected after a quote, a paste lands after the image and the image stays (a state only code makes)", async () => {
+    test("an image node-selected after a quote, a paste lands after the image and the image stays (set by code; ArrowRight reaches it too, T70.6)", async () => {
       await expectEdit({
         stored: QI,
         place: nodeSelect("cms-image"),

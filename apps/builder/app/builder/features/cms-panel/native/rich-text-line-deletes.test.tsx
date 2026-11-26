@@ -731,7 +731,7 @@ describe("an image at a lined item's end, Delete (M27, T27, T28)", () => {
     });
   });
   describe("a node selection (D15)", () => {
-    test("an image node-selected at a lined item's end, Backspace: the image goes (a state only code makes)", async () => {
+    test("an image node-selected at a lined item's end, Backspace: the image goes (set by code; ArrowRight reaches it too, T70.6)", async () => {
       await expectEdit({
         stored,
         place: nodeSelect("cms-image"),
@@ -741,7 +741,7 @@ describe("an image at a lined item's end, Delete (M27, T27, T28)", () => {
         source: "M21a (T28; the caret is Task 16's); D15",
       });
     });
-    test("an image node-selected at a lined item's end, Delete: the image goes, Nw stays its own item (a state only code makes)", async () => {
+    test("an image node-selected at a lined item's end, Delete: the image goes, Nw stays its own item (set by code; ArrowRight reaches it too, T70.6)", async () => {
       await expectEdit({
         stored,
         place: nodeSelect("cms-image"),
