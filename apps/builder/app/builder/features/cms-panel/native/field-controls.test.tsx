@@ -3,7 +3,15 @@ import "@webstudio-is/design-system/global.css";
 import { createElement, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+} from "vitest";
 import { userEvent } from "@vitest/browser/context";
 import { toast, TooltipProvider } from "@webstudio-is/design-system";
 import { FieldControl, FieldRow } from "./field-controls";
@@ -27,6 +35,11 @@ let container: HTMLElement | undefined;
 let fake: FakeCmsSource;
 
 const ID = "cms-field-f";
+
+// The field loads the rich-text editor lazily; load it once before any test.
+beforeAll(async () => {
+  await import("./rich-text-field");
+});
 
 type Spies = {
   onChange: ReturnType<typeof vi.fn<(value: unknown) => void>>;
