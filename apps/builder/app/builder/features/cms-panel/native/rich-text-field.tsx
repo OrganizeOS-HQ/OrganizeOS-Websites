@@ -107,6 +107,7 @@ import {
 import {
   CmsHistoryPlugin,
   compositionHoldsStartChar,
+  registerCompositionEndOnKey,
   registerCompositionStep,
 } from "./rich-text-line-history";
 import { lineSpike } from "./rich-text-line-node";
@@ -909,6 +910,8 @@ const TransformsPlugin = ({ namespace }: { namespace: string }) => {
   useEffect(
     () =>
       mergeRegister(
+        // first: the field's earliest keydown listener (T43.1)
+        registerCompositionEndOnKey(editor),
         registerRichTextTransforms(editor),
         // the live editor's alone: a stored value of these shapes reads lossy
         editor.registerNodeTransform(ListNode, $liftPastDepthLimit),

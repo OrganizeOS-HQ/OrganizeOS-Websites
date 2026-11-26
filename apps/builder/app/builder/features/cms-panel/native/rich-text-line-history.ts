@@ -13,6 +13,7 @@ import {
   $getSelection,
   $isRangeSelection,
   $isTextNode,
+  $setCompositionKey,
   CAN_REDO_COMMAND,
   CAN_UNDO_COMMAND,
   CLEAR_EDITOR_COMMAND,
@@ -552,6 +553,70 @@ export const registerCompositionStep = (editor: LexicalEditor) => {
     ),
     editor.registerUpdateListener(startCharRemovalListener)
   );
+};
+
+/**
+ * T43.1: a keydown that belongs to no composition (`isComposing` false, no
+ * key code 229, a key other than "Process" and "Unidentified") while the
+ * editor still composes: the browser has ended the composition without
+ * telling the editor (a cancel that fired no `compositionend`), so the
+ * editor's composition state is cleared, in an update of its own, before
+ * any other handler of the key, and the key acts. A capture listener on the
+ * root registered before every other keydown listener of the field (the
+ * field calls this first), so the line rules' steps before a key and
+ * Lexical's own keydown handler (on the root, bubbling) see the editor no
+ * longer composing.
+ */
+export const registerCompositionEndOnKey = (editor: LexicalEditor) => {
+  if (linesOff) {
+    return () => {};
+  }
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (
+      event.isComposing ||
+      event.keyCode === 229 ||
+      event.key === "Process" ||
+      event.key === "Unidentified" ||
+      editor.isComposing() === false
+    ) {
+      return;
+    }
+    // the clear's commit writes Lexical's selection to the page: the page's
+    // own selection, a step not yet read back (15.12), is put back after it
+    const root = editor.getRootElement();
+    const dom = window.getSelection();
+    const page =
+      dom !== null &&
+      root !== null &&
+      dom.anchorNode !== null &&
+      dom.focusNode !== null &&
+      root.contains(dom.anchorNode) &&
+      root.contains(dom.focusNode)
+        ? ([
+            dom.anchorNode,
+            dom.anchorOffset,
+            dom.focusNode,
+            dom.focusOffset,
+          ] as const)
+        : null;
+    editor.update(() => $setCompositionKey(null), { discrete: true });
+    if (
+      page !== null &&
+      dom !== null &&
+      page[0].isConnected &&
+      page[2].isConnected &&
+      (dom.anchorNode !== page[0] ||
+        dom.anchorOffset !== page[1] ||
+        dom.focusNode !== page[2] ||
+        dom.focusOffset !== page[3])
+    ) {
+      dom.setBaseAndExtent(...page);
+    }
+  };
+  return editor.registerRootListener((root, previous) => {
+    previous?.removeEventListener("keydown", onKeyDown, true);
+    root?.addEventListener("keydown", onKeyDown, true);
+  });
 };
 
 /** Lexical's history, held where the line rules can reach it (K). */

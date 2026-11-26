@@ -18,6 +18,7 @@ import {
 import {
   at,
   backspace,
+  caretKey,
   cutByKey,
   type ExtraField,
   itemEnd,
@@ -461,15 +462,158 @@ describe("16.1: a cancelled composition restores the redo stack that stood befor
         await compose(false);
         expect(valueOf(), "the value as it stood").toBe(before);
         expect(undoDepth(), "both stacks as before").toEqual(depth);
-        if (cell === "the start of a link-led line" && form === "ordinary") {
-          // Lexical stays composing after this cancel and takes no key, at
-          // the head too (P20-3)
-          return;
-        }
+        // the ordinary link-led cell: Lexical stays composing after this
+        // cancel (P20-3); Ctrl+Y ends it and acts (T43.1, P20-15)
         await redo();
         expect(valueOf(), "Ctrl+Y brings the entry back").toBe(typed);
       });
     }
+  }
+});
+
+// ---------------------------------------------------------------------------
+// T43.1: a key that belongs to no composition ends a composing state the
+// browser has ended (P20-3, P20-13, P20-15)
+
+const P203 = `<p>Pw</p><p>${LINK} T1w</p>`;
+
+/** P20-3's sequence: `Lw@0`, a letter, Ctrl+Z, a cancelled composition. */
+const cancelAtLinkStart = async () => {
+  const onChange = await mount(P203);
+  await at("Lw", 0)();
+  await letter();
+  await undo();
+  await compose(false);
+  expect(valueOf(), "the value as it stood").toBe(
+    "<p>Pw</p><p><a>Lw</a> T1w</p>"
+  );
+  expect(editorOf()!.isComposing(), "Lexical still composes").toBe(true);
+  onChange.mockClear();
+  return onChange;
+};
+
+/**
+ * The page's caret moved one character forward, then a Shift keydown
+ * (no edit) dispatched at once, before the page reports the move: the
+ * caret Lexical holds right after the key (15.12's read-back, a step the
+ * field holds while the editor composes).
+ */
+const readBackOnShift = (init: KeyboardEventInit = {}) => {
+  let caret = "";
+  act(() => {
+    (
+      window.getSelection() as unknown as {
+        modify: (a: string, b: string, c: string) => void;
+      }
+    ).modify("move", "forward", "character");
+    editable()!.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Shift",
+        code: "ShiftLeft",
+        shiftKey: true,
+        bubbles: true,
+        cancelable: true,
+        ...init,
+      })
+    );
+    caret = caretKey();
+  });
+  return caret;
+};
+
+/** A keydown that belongs to a composition, of each kind T43.1 names. */
+const COMPOSITION_KEYS: ReadonlyArray<
+  readonly [string, KeyboardEventInit & { keyCode?: number }]
+> = [
+  ["isComposing true", { key: "a", isComposing: true }],
+  ["key code 229", { key: "a", keyCode: 229 }],
+  ['key "Process"', { key: "Process" }],
+];
+
+const compositionKeydown = (init: KeyboardEventInit & { keyCode?: number }) => {
+  const { keyCode, ...rest } = init;
+  const event = new KeyboardEvent("keydown", {
+    bubbles: true,
+    cancelable: true,
+    ...rest,
+  });
+  if (keyCode !== undefined) {
+    Object.defineProperty(event, "keyCode", { value: keyCode });
+  }
+  act(() => {
+    editable()!.dispatchEvent(event);
+  });
+};
+
+describe("T43.1: a key after a cancel the editor did not see end", () => {
+  test("ordinary, link-led: the letter is written at the caret, ArrowRight moves, the held steps run", async () => {
+    const onChange = await cancelAtLinkStart();
+    await letter();
+    expect(rawValues(onChange).map(short), "one onChange").toEqual([
+      "<p>Pw</p><p>k<a>Lw</a> T1w</p>",
+    ]);
+    expect(caretKey(), "the caret after k").toBe("text:k@1");
+    expect(editorOf()!.isComposing(), "not composing after the key").toBe(
+      false
+    );
+    onChange.mockClear();
+    await keys("{ArrowRight}")();
+    expect(caretKey(), "ArrowRight moves the caret").toBe("text:Lw@1");
+    expect(editorOf()!.isComposing()).toBe(false);
+    expect(onChange).not.toHaveBeenCalled();
+    // the held steps run again: the page's step is read back at the next
+    // key (15.12), which the field holds while the editor composes
+    expect(readBackOnShift(), "the read-back").toBe("text: T1w@0");
+    await settle();
+  });
+
+  test("the first key after the cancel already runs the held steps (the clear runs before them)", async () => {
+    await cancelAtLinkStart();
+    expect(caretKey()).toBe("text:Lw@0");
+    expect(readBackOnShift(), "the read-back in the same key").toBe(
+      "text:Lw@1"
+    );
+    expect(editorOf()!.isComposing()).toBe(false);
+    await settle();
+  });
+
+  test("Ctrl+Z after the written k restores the value before it", async () => {
+    await cancelAtLinkStart();
+    await letter();
+    expect(valueOf()).toBe("<p>Pw</p><p>k<a>Lw</a> T1w</p>");
+    await undo();
+    expect(valueOf()).toBe("<p>Pw</p><p><a>Lw</a> T1w</p>");
+  });
+
+  test("control: a key of a composition, while it composes, holds the read-back", async () => {
+    await cancelAtLinkStart();
+    expect(readBackOnShift({ isComposing: true }), "no read-back").toBe(
+      "text:Lw@0"
+    );
+    expect(editorOf()!.isComposing()).toBe(true);
+    await settle();
+  });
+
+  for (const [name, init] of COMPOSITION_KEYS) {
+    test(`a key inside a real composition (${name}) does not end it`, async () => {
+      const onChange = await mount("<p>Pw</p><p>T0w</p>");
+      await at("T0w", 1)();
+      const depth = undoDepth().undo;
+      await quietly();
+      await imeSet("a");
+      expect(editorOf()!.isComposing()).toBe(true);
+      compositionKeydown(init);
+      await settle();
+      expect(editorOf()!.isComposing(), "still composing").toBe(true);
+      await imeSet("ab");
+      await imeCommit("ab");
+      await quiet();
+      expect(valueOf()).toBe("<p>Pw</p><p>Tab0w</p>");
+      expect(lastHtml(onChange)).toBe(exportRichTextHtml(editorOf()!));
+      expect(undoDepth().undo, "one step").toBe(depth + 1);
+      await undo();
+      expect(valueOf(), "one Ctrl+Z").toBe("<p>Pw</p><p>T0w</p>");
+    });
   }
 });
 
