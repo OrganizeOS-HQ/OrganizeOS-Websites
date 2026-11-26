@@ -54,6 +54,64 @@ export const $unwrapQuoteLinesForParagraph = (
 };
 
 /**
+ * At the head, Block type acts on the nearest ancestor that holds inline
+ * content first (Lexical's `$setBlocksType`). `node` holds it once the
+ * quote's lines have given way: a line counts as its first content.
+ */
+const $holdsInlineFirst = (node: LexicalNode) => {
+  if (
+    $isElementNode(node) === false ||
+    $isRootOrShadowRoot(node) ||
+    node.isInline()
+  ) {
+    return false;
+  }
+  let first = node.getFirstChild();
+  while ($isCmsLineNode(first)) {
+    first = first.getFirstChild() ?? first.getNextSibling();
+  }
+  return (
+    first === null ||
+    $isTextNode(first) ||
+    ($isElementNode(first) || $isDecoratorNode(first) ? first.isInline() : true)
+  );
+};
+
+/**
+ * T46.1 (D2, D19): Paragraph at a text caret on a line of a quote whose
+ * lines give way first finds no block to act on where the head finds none
+ * (the quote starts with a block, as `<blockquote><h3>H0w</h3>X1w
+ * </blockquote>` at X1w@0, and nothing around it holds inline content
+ * first): it changes nothing, decided before any node is touched. True
+ * when it is refused.
+ */
+export const $refuseParagraphInQuote = (): boolean => {
+  const selection = $getSelection();
+  if (
+    $isRangeSelection(selection) === false ||
+    selection.isCollapsed() === false ||
+    selection.anchor.type !== "text"
+  ) {
+    return false;
+  }
+  const line = lineOf(selection.anchor);
+  const quote = line?.getParent() ?? null;
+  if ($isQuoteNode(quote) === false) {
+    return false;
+  }
+  for (
+    let node: LexicalNode | null = quote;
+    node !== null;
+    node = node.getParent()
+  ) {
+    if ($holdsInlineFirst(node)) {
+      return false;
+    }
+  }
+  return true;
+};
+
+/**
  * A quote made in place of `line` would stand at the nesting the depth
  * limit's lift removes (the lift's own count, `nestingOf`, and its bound).
  * A quote after a nested list in its item leaves the lists around it, as

@@ -435,6 +435,54 @@ describe("T45.4: Quote at the depth limit", () => {
   });
 });
 
+/**
+ * T46.1 (D2, D19, T42.1): Paragraph at the start of the text after a
+ * heading in a lined quote writes nothing, in an item and at the root, as
+ * the head does at the root (M-e1).
+ */
+describe("Paragraph in a lined quote after a heading", () => {
+  const CELLS: ReadonlyArray<{ name: string; stored: string; typed: string }> =
+    [
+      {
+        name: "in an item (HQ in item el1)",
+        stored: LI("<blockquote><h3>H0w</h3>X1w</blockquote>T2w"),
+        typed: W("<li><blockquote><h3>H0w</h3>kX1w</blockquote>T2w</li>"),
+      },
+      {
+        name: "at the root",
+        stored: "<blockquote><h3>H0w</h3>X1w</blockquote>",
+        typed: "<blockquote><h3>H0w</h3>kX1w</blockquote>",
+      },
+    ];
+  for (const cell of CELLS) {
+    test(`Paragraph in a lined quote after a heading changes nothing: ${cell.name}`, async () => {
+      await expectEdit({
+        stored: cell.stored,
+        place: at("X1w", 0),
+        action: async () => {
+          const depth = undoDepth();
+          await chooseBlockType("Paragraph")();
+          expect(undoDepth(), "no undo step").toEqual(depth);
+        },
+        write: null,
+        caret: "text:X1w@0",
+        typed: cell.typed,
+        source: "T46.1; D2, D19",
+      });
+    });
+  }
+
+  test("control: Paragraph in a quote that starts with text still unwraps it", async () => {
+    await expectEdit({
+      stored: "<blockquote>X1w<p>X2w</p></blockquote>",
+      place: at("X1w", 1),
+      action: chooseBlockType("Paragraph"),
+      write: "<p>X1w</p><p>X2w</p>",
+      source: "D2's example; T46.1",
+    });
+  });
+});
+
 describe("Link (D10, V15)", () => {
   runRows([
     {

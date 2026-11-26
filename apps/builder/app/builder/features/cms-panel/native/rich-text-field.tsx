@@ -129,6 +129,7 @@ import { $rangeEndsIntoText } from "./rich-text-line-removal";
 import {
   $quotedLineContent,
   $refuseBlockTypeOnLine,
+  $refuseParagraphInQuote,
   $restoreLinesAfterBlockType,
   $unwrapListLinesAtCaret,
   $unwrapQuoteLinesForParagraph,
@@ -451,6 +452,9 @@ const setBlockType = (editor: LexicalEditor, block: BlockType) => {
       return;
     }
     if (block === "paragraph") {
+      if ($refuseParagraphInQuote()) {
+        return;
+      }
       $unwrapQuoteLinesForParagraph(selection);
     }
     if ($refuseBlockTypeOnLine(block, $nestingOf)) {

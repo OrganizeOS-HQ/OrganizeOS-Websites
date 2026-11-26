@@ -97,3 +97,21 @@ holding `T0w` (`containerPoint("T0w", 2)`).
 - Checked, not changed: an empty caret point after a quote or a heading in a nested item (d2 TQ el2, d2 TH
   el2) resolves into the block's text (`text:Q1w@3`, `text:H1w@3`) before the key, so Lexical's outdent
   is not reached there; Backspace removes a letter of the block, as at depth 1.
+
+## P45-6 (T46.1, Task 19): Paragraph in a lined quote after a heading
+
+- Cause, confirmed: `setBlockType` (`rich-text-field.tsx`) ran `$unwrapQuoteLinesForParagraph` before
+  `$refuseBlockTypeOnLine`. With the lines unwrapped, Lexical's `$setBlocksType` finds no block to act on
+  (the quote's first child is the heading, so the quote is not a block to it, and no ancestor is), and
+  `$restoreLinesAfterBlockType` wraps the lines again: one onChange with the value unchanged.
+- Fix: `$refuseParagraphInQuote` (`rich-text-line-toolbar.ts`), called in `setBlockType` for Paragraph
+  before the unwrap. It refuses at a collapsed text caret on a line of a quote when neither the quote nor
+  any ancestor holds inline content first once the quote's lines give way (a line counts as its first
+  content): the test Lexical's `$setBlocksType` makes with `INTERNAL_$isBlock`, so it refuses exactly where
+  that call would find nothing. Nothing is touched before the decision.
+- Result: HQ in item el1 (`LI(<blockquote><h3>H0w</h3>X1w</blockquote>T2w)`) and the root form
+  (`<blockquote><h3>H0w</h3>X1w</blockquote>`), caret by a click at `X1w@0`: no onChange, history length
+  unchanged, caret `text:X1w@0`, letters `W(<li><blockquote><h3>H0w</h3>kX1w</blockquote>T2w</li>)` and
+  `<blockquote><h3>H0w</h3>kX1w</blockquote>`. With the fix taken out, both fail (one onChange). Control:
+  `<blockquote>X1w<p>X2w</p></blockquote>` at `X1w@1` still writes `<p>X1w</p><p>X2w</p>`.
+- Not covered by the refusal (left as built, no ruled cell): a range, an element point, and an empty line.
