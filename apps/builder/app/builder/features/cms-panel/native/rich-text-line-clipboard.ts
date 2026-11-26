@@ -35,11 +35,8 @@ import {
   richTextHtmlConfig,
 } from "./rich-text-html";
 import {
-  $atContentEdge,
   $isCmsLineNode,
-  CmsLineNode,
   isLineBreak,
-  isListItemOrQuote,
   isLinedContainer,
   PLACE_ATTRIBUTE,
   PLACE_TYPES,
@@ -195,59 +192,6 @@ export const $plainTextOf = (selection: BaseSelection): string => {
     text += "\n";
   }
   return text;
-};
-
-/**
- * The selection a copy, a cut or a drag writes from: a point at the edge
- * of a line counts as the same point on the line's container (D6), so the
- * copied data holds the list item wherever the head's does.
- */
-export const $mapLineEdges = (selection: BaseSelection): BaseSelection => {
-  if ($isRangeSelection(selection) === false) {
-    return selection;
-  }
-  const mapped = selection.clone();
-  const endPoint = selection.isBackward() ? mapped.anchor : mapped.focus;
-  let endsAtLineStart: CmsLineNode | null = null;
-  for (const point of [mapped.anchor, mapped.focus]) {
-    const node = point.getNode();
-    const line = $isCmsLineNode(node)
-      ? node
-      : $findMatchingParent(node, $isCmsLineNode);
-    if (line === null || isListItemOrQuote(line.getParent()) === false) {
-      continue;
-    }
-    const atStart = $atContentEdge(point, line, true);
-    const atEnd = $atContentEdge(point, line, false);
-    if (atStart === false && atEnd === false) {
-      continue;
-    }
-    const container = line.getParentOrThrow();
-    if (atStart && point === endPoint && selection.isCollapsed() === false) {
-      endsAtLineStart = line;
-    }
-    point.set(
-      container.getKey(),
-      line.getIndexWithinParent() + (atStart ? 0 : 1),
-      "element"
-    );
-  }
-  // a selection that ends at a line's start holds nothing of that line: it
-  // ends at the container's point before the line, where the head's nodes
-  // step back to the child before it (D6)
-  const line = endsAtLineStart;
-  if (line !== null) {
-    const nodes = mapped.getNodes();
-    const kept = nodes.filter(
-      (node) => line.is(node) === false && line.isParentOf(node) === false
-    );
-    const before = line.getPreviousSibling();
-    if (before !== null && kept.some((node) => node.is(before)) === false) {
-      kept.push(before);
-    }
-    mapped.getNodes = () => kept;
-  }
-  return mapped;
 };
 
 /** The clipboard type of Lexical's own copy, whose nodes carry their links. */
@@ -683,11 +627,10 @@ export const $writeCopyCut =
         );
       }
     } else {
-      // a node selection: its line edges mapped (D6)
-      const mapped = $mapLineEdges(user);
-      markRichTextCopy(mapped, editor);
-      data = $getClipboardDataFromSelection(mapped);
-      plain = $plainTextOf(mapped);
+      // a node selection is copied as it is (D6)
+      markRichTextCopy(user, editor);
+      data = $getClipboardDataFromSelection(user);
+      plain = $plainTextOf(user);
     }
     if (data === null) {
       // the safe result: text/plain only, and a cut removes nothing
