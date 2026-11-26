@@ -841,6 +841,43 @@ describe("T59 defect 2: list off at a click after an item's final rule (5.7, V16
   }
 });
 
+describe("T59 defect 3: Image with the rule node-selected lands where a letter does (D15, D1)", () => {
+  // Pw's end, then five ArrowRight presses: the rule node-selected
+  const toRule: Step = async () => {
+    await at("Pw", 2)();
+    for (let press = 0; press < 5; press += 1) {
+      await keys("{ArrowRight}")();
+    }
+    expect(caretKey(), "the rule node-selected").toBe("node:horizontalrule");
+  };
+  const cells: Array<[string, string, string]> = [
+    [
+      "QR",
+      LI(`${QUOTE("Q0w")}<hr>`),
+      W("<li><blockquote><p>Q0w</p></blockquote><hr /><img /></li>"),
+    ],
+    [
+      "QRQ",
+      LI(`${QUOTE("Q0w")}<hr>${QUOTE("Q2w")}`),
+      W(
+        "<li><blockquote><p>Q0w</p></blockquote><hr /><blockquote><p><img />Q2w</p></blockquote></li>"
+      ),
+    ],
+  ];
+  for (const [name, stored, write] of cells) {
+    test(`${name}: the image after the rule, not at the document's end`, async () => {
+      await expectEdit({
+        stored,
+        place: toRule,
+        action: imageButton,
+        write,
+        source:
+          "acceptance check, defect 3; check 5 (a letter at the same caret)",
+      });
+    });
+  }
+});
+
 describe("Image at the quote points", () => {
   const QR = LI(`${QUOTE("Q0w")}<hr>`);
   const RQ = LI(`<hr>${QUOTE("Q1w")}`);

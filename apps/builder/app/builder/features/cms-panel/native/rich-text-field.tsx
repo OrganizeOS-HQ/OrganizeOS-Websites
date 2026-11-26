@@ -11,6 +11,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   $copyNode,
   $createNodeSelection,
+  $createRangeSelection,
   $createParagraphNode,
   $createTextNode,
   $getAdjacentNode,
@@ -110,7 +111,7 @@ import {
   registerCompositionEndOnKey,
   registerCompositionStep,
 } from "./rich-text-line-history";
-import { $isCmsLineNode } from "./rich-text-line-node";
+import { $isCmsLineNode, isLinedContainer } from "./rich-text-line-node";
 import { registerLineInputListener } from "./rich-text-line-node-selection";
 import {
   $unwrapLines,
@@ -1255,6 +1256,21 @@ const ImageButton = ({
         onClick={() => {
           caretRef.current = editor.getEditorState().read(() => {
             const selection = $getSelection();
+            if ($isNodeSelection(selection)) {
+              // T59 defect 3: a block node-selected in a lined container
+              // gives the caret a typed letter takes, directly after the
+              // node (D15); the insert resolves it as typing does
+              const last = selection.getNodes().at(-1);
+              const container = last?.getParent() ?? null;
+              if (last === undefined || isLinedContainer(container) === false) {
+                return null;
+              }
+              const caret = $createRangeSelection();
+              const index = last.getIndexWithinParent() + 1;
+              caret.anchor.set(container.getKey(), index, "element");
+              caret.focus.set(container.getKey(), index, "element");
+              return caret;
+            }
             return $isRangeSelection(selection) ? selection.clone() : null;
           });
           fileRef.current?.click();
