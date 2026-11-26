@@ -310,6 +310,33 @@ const $removeStartChars = (
 };
 
 /**
+ * T55.1: the history plugin's own merge of a commit whose only dirty leaf is
+ * a text node left unchanged (`@lexical/history` 0.21, `isTextNodeUnchanged`):
+ * the same parent and the same JSON in both states. The time-based merges
+ * (letters typed, characters deleted, one after another) leave a changed
+ * leaf and stay merged.
+ */
+const onlyLeafUnchanged = (
+  dirtyLeaves: Set<NodeKey>,
+  prevEditorState: EditorState,
+  editorState: EditorState
+) => {
+  if (dirtyLeaves.size !== 1) {
+    return false;
+  }
+  const [key] = dirtyLeaves;
+  const prev = prevEditorState._nodeMap.get(key);
+  const next = editorState._nodeMap.get(key);
+  return (
+    $isTextNode(prev) &&
+    $isTextNode(next) &&
+    prev.__parent === next.__parent &&
+    JSON.stringify(prevEditorState.read(() => prev.exportJSON())) ===
+      JSON.stringify(editorState.read(() => next.exportJSON()))
+  );
+};
+
+/**
  * F12 (K): a composition that changes the document is its own undo step,
  * decided at the composition's own end from state (check 3, 14.5, ruling
  * 4): no update at its start, no tag, no timer. Registers, per editor, the
@@ -319,6 +346,24 @@ const $removeStartChars = (
  * bookkeeping and `startCharRemovalListener`.
  */
 export const registerCompositionStep = (editor: LexicalEditor) => {
+  // T55.1, the mirror of 16.10's second contract: an edit outside a
+  // composition that changes the document under D7 is an undo step of its
+  // own even where the history plugin merged it into the entry before (its
+  // only dirty leaf a text node left unchanged, while element nodes moved:
+  // a link joined into the quote before, P26-1); the entry the history held
+  // after the previous commit is pushed, and the redo stack emptied
+  // (invariant: one undo restores the document before every such edit).
+  // `before` and `lengthBefore` are the history as it stood after the
+  // previous commit, every listener of it done (`refreshBefore`, registered
+  // last); the history plugin's own listener runs before this one
+  // (CmsHistoryPlugin mounts before the field's TransformsPlugin)
+  let before: HistoryEntry | null = null;
+  let lengthBefore = 0;
+  const refreshBefore = () => {
+    const history = cmsHistory.get(editor);
+    before = history?.current ?? null;
+    lengthBefore = history?.undoStack.length ?? 0;
+  };
   const onEnd = (event: CompositionEvent) => {
     compositionEndText.set(editor, event.data ?? "");
     // the voided composition ends here
@@ -346,6 +391,7 @@ export const registerCompositionStep = (editor: LexicalEditor) => {
   // 16.2: a cleared history voids what was remembered (Lexical's own clear
   // empties both stacks; this runs before the history plugin's handler)
   const voidOnClear = () => {
+    before = null;
     if (compositions.has(editor)) {
       compositions.delete(editor);
       if (editor.isComposing()) {
@@ -419,6 +465,38 @@ export const registerCompositionStep = (editor: LexicalEditor) => {
     }
     redoBefore = [...history.redoStack];
   };
+  const mergedEditListener = ({
+    editorState,
+    prevEditorState,
+    tags,
+    dirtyLeaves,
+  }: {
+    editorState: EditorState;
+    prevEditorState: EditorState;
+    tags: Set<string>;
+    dirtyLeaves: Set<NodeKey>;
+  }) => {
+    const history = cmsHistory.get(editor);
+    if (history === undefined) {
+      return;
+    }
+    if (
+      tags.has("historic") === false &&
+      tags.has("history-merge") === false &&
+      editor.isComposing() === false &&
+      compositions.has(editor) === false &&
+      before !== null &&
+      history.undoStack.length === lengthBefore &&
+      history.current?.editorState === editorState &&
+      onlyLeafUnchanged(dirtyLeaves, prevEditorState, editorState) &&
+      d7Document(prevEditorState) !== d7Document(editorState)
+    ) {
+      history.undoStack.push(before);
+      history.redoStack.length = 0;
+      announce(editor, history);
+    }
+    refreshBefore();
+  };
   return mergeRegister(
     () => {
       compositions.delete(editor);
@@ -444,6 +522,7 @@ export const registerCompositionStep = (editor: LexicalEditor) => {
       voidOnClear,
       COMMAND_PRIORITY_LOW
     ),
+    editor.registerUpdateListener(mergedEditListener),
     editor.registerUpdateListener(unchangedEditListener),
     editor.registerUpdateListener(
       ({ editorState, prevEditorState, tags, dirtyElements, dirtyLeaves }) => {
@@ -547,7 +626,8 @@ export const registerCompositionStep = (editor: LexicalEditor) => {
         settleCompositionEnd(editor, compositionEndText.get(editor) ?? "x");
       }
     ),
-    editor.registerUpdateListener(startCharRemovalListener)
+    editor.registerUpdateListener(startCharRemovalListener),
+    editor.registerUpdateListener(refreshBefore)
   );
 };
 

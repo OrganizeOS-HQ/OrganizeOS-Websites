@@ -1282,6 +1282,55 @@ describe("T13.3: the join of a link-led line is its own undo step (16.27)", () =
       source: "T13.3",
     });
   });
+  // T55.2 (P26-1): a link with no text after it on its line; Lexical's own
+  // delete leaves one dirty leaf unchanged, and the history plugin merges
+  // the commit into the entry before
+  {
+    const stored = LI(
+      `<blockquote><p>Q0w</p></blockquote><a href="https://example.org/">Lw</a>`
+    );
+    const write = W("<li><blockquote><p>Q0w<a>Lw</a></p></blockquote></li>");
+    for (const [pn, place] of [
+      ["Lw@0", at("Lw", 0)],
+      ["el1", itemPoint(1, 1)],
+    ] as const) {
+      for (const [kn, key] of [
+        ["Backspace", backspace],
+        ["the word form", wordBack],
+      ] as const) {
+        test(`T55: ${kn} at ${pn}`, async () => {
+          await expectEdit({
+            stored,
+            place,
+            action: key,
+            write,
+            source: "T13.3, P26-1",
+          });
+        });
+        test(`T55: ${kn} at ${pn}, after an earlier edit`, async () => {
+          const record = await expectEdit({
+            stored,
+            place: then(at("Pw"), letter, place),
+            action: key,
+            write: write.replace("<li>Pw</li>", "<li>Pwk</li>"),
+            source: "T13.3, P26-1",
+          });
+          expect(record.htmlBefore).toContain("<li>Pwk</li>");
+        });
+      }
+    }
+  }
+  test("T55: three letters typed are one undo step", async () => {
+    const onChange = await mount(stored);
+    await at("Pw")();
+    const valueBefore = short(exportRichTextHtml(editorOf()!));
+    const depth = undoDepth().undo;
+    await keys("abc")();
+    expect(short(lastHtml(onChange))).toContain("<li>Pwabc</li>");
+    expect(undoDepth().undo, "one undo step").toBe(depth + 1);
+    await keys("{Control>}z{/Control}")();
+    expect(short(lastHtml(onChange))).toBe(valueBefore);
+  });
 });
 
 type FixtureCell = {
