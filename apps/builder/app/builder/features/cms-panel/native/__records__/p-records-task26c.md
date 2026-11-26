@@ -1093,3 +1093,104 @@ inside the image's decorator span and the letter is lost, the branch's page end 
 letter replaces `U1w` with the image kept, as T10.7b says.
 Neither the rulings nor the spec name the second press. The branch's stop (candidate 1) against the base's
 extension over the image (candidate 2) is the open question for the owner; nothing is pinned in a test.
+
+# Batch 6: T70 fixes and pins
+
+Merged at 7ca9440 (commits 241d7f6, 377ec3b, e21c8ae, 0613657, 4f2c90f, f9a0d11, b12d50d); the merge resolved two additive conflicts in rich-text-line-clipboard.test.tsx and rich-text-line-paste.test.tsx.
+
+Worktree: `/home/user/OrganizeOS-Websites/.claude/worktrees/agent-acfca435544e1e71d`. Rulings: `SP/rulings-t70b.md` (T70.1 to T70.13). Not pushed, not merged.
+
+## Commits
+
+| #   | Item                                     | Commit           | Files                                                                                                                                                |
+| --- | ---------------------------------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | T70.11 rightQ (fix; narrowed in 377ec3b) | 241d7f6, 377ec3b | rich-text-line-points.ts, rich-text-line-clicks.test.tsx                                                                                             |
+| 2   | T70.11 R4b pt2 (fix)                     | e21c8ae          | rich-text-line-paste.ts (new export at the end; line 35 untouched), rich-text-field.tsx (one call in the PASTE chain), rich-text-line-paste.test.tsx |
+| 3   | T70.7 PI-QIT (pins + P record, no code)  | 0613657          | rich-text-line-node-selection.test.tsx                                                                                                               |
+| 4   | T70.2 c1 S3 (pins)                       | 4f2c90f          | rich-text-line-clipboard.test.tsx                                                                                                                    |
+| 5   | T70.3 RL ruleNode (pins + control)       | f9a0d11          | rich-text-line-node-selection.test.tsx                                                                                                               |
+| 6   | T70.6 image walk (renames + cells)       | b12d50d          | rich-text-line-node-selection.test.tsx, rich-text-line-deletes.test.tsx                                                                              |
+
+## 1. T70.11 rightQ (n2 QBR/QTR)
+
+Cause. The click lands 2 px inside the quote's bottom right; the viewport has scrolled, and the press point is the right edge of the root's content box, so its target is the editable root itself (its padding). Chrome's own hit point for that place is `blockquote@0` in the lined item (an element point before the quote's paragraph, read by Lexical as `Q0w@0`), while in ordinary content the same press gives `Q0w@3`; 1 px to the left both give `Q0w@3` (`caretRangeFromPoint`). Nothing of the field moved the caret; T45.13's click tests never pressed in the root's padding.
+
+Fix (`rich-text-line-points.ts`, 241d7f6 narrowed by 377ec3b). A plain press whose target is the root records its place. At the press's end, only when the collapsed caret is at an offset 0 (Chrome's start guess) in a lined container and the press lies in the root's right padding on a content row, the caret goes to `caretAtPoint(contentRight - 1, y)` if that is the end of a text node in a lined container. The Shift press (onShiftPress) applies the same step, so 16.16 (a Shift+press gives the caret the press without Shift gives) holds. The first version (any clamped hit) broke 16.16's lined right-padding control (`text:Aw@0` against `text:Lw@2`): Chrome's guess there is already a line end, and the clamped hit read an element point; hence the narrowing. Ordinary content is untouched.
+
+Tests (`rich-text-line-clicks.test.tsx`, "T70.11: …", project grids-c): QBR and QTR: the click leaves `text:Q0w@3`, k writes `Q0wk`; Backspace `Q0`; Delete on QBR `<li><blockquote><p>Q0w</p></blockquote><hr /></li>`; Delete on QTR `<li><blockquote><p>Q0wT1w</p></blockquote><hr /></li>`; Enter equals R1's Enter at `Q0w@3` set by code (write, calls, caret, undo, redo). Controls TQR and the two ordinary twins (equal at both builds). Before the fix 8 failed, 3 controls passed; after, 11 of 11. Whole clicks file 65 of 65.
+
+## 2. T70.11 R4b pt2 (measurement 11)
+
+Cause. A plain-text paste is not routed through `SELECTION_INSERT_CLIPBOARD_NODES_COMMAND`: Lexical's plain-text path types the first line over the range (its own `removeText`) and then splits inside the quote's line, so the second line becomes a paragraph inside the quote.
+
+Fix. `$removeRangeBeforePlainText` (paste.ts), called in the field's PASTE handler before `$pasteTextIntoItemLine`: plain text only (no HTML, no editor data), a range whose start is in a lined container: the field's removal (`DELETE_CHARACTER_COMMAND`, the oracle T36.1 names) runs in the paste's update, then a container left holding only lines has them unwrapped (as the line rules leave it once committed), and the paste goes on at that caret.
+
+Tests (`rich-text-line-paste.test.tsx`, "T70.11 …"): the write `<blockquote>pAq</blockquote><p>Bq1q</p><p>sepq</p>` with one onChange, undo and redo (expectEdit); and equal to the field's removal then the paste. Before: 2 failed (`<blockquote>pAq<p>Bq1q</p></blockquote>…`); after: 2 of 2; whole file 76 of 76.
+
+## 3. T70.7 PI-QIT: P record, no fix
+
+Set by code and reached by ArrowRight (the two ways T70.7 names), the branch already writes `…</blockquote><img />kT2w` for the letter and `…<img />AqT2w` for plain and p1, and p2 equals the paste at the caret directly after the image; pinned (8 tests, the node selection asserted before the key). The measured "before" comes only from an ArrowLeft-reached node selection (the probe's `clickWord(T2w, 0)`, `{ArrowLeft}`), where the field's existing image rule (the side the arrow moved toward) lands before the image, as the ordinary twin does at both builds. D15 cites that existing rule; so I read T28.3 (via D15) as the arrow side for that route and did not change it: `SP/p-records-t70.md` P-T70-1, both builds' values (`SP/t59m/out/{base,branch}-t70.json`). The letter's undo leaves the caret beside the image (equal at both builds and in ordinary content): not pinned; the tests pin one onChange and the value one undo gives back.
+
+## 4. T70.2 c1 S3 pins
+
+`rich-text-line-clipboard.test.tsx`, "T70.2 …": FS9's stored value, a click at Q0w's end and Shift+ArrowRight (asserted `text:Q0w@3|…`); Backspace, Delete and the cut each write `<ul><li><blockquote><p>Q0w</p></blockquote></li></ul>`, one onChange, undo and redo, caret `text:Q0w@3`; the cut's text/html is the quote's shell `<blockquote><p></p></blockquote>` and text/plain `"\n"`. 3 of 3 (the kit's `expectSameLines` was not asserted: it counts two lines in the shell's HTML, and T70.2 names only the two flavours' values).
+
+## 5. T70.3 pins
+
+`rich-text-line-node-selection.test.tsx`, "T70.3 …": `LI("<hr><ul><li>L1w</li></ul>")` and the d2 form, the rule node-selected by code and by ArrowRight from Pw: k writes `<li><hr />k<ul><li>L1w</li></ul></li>` (d2 in the inner item), caret `text:k@1`, one onChange, one undo gives the value back. Control: a letter at `itemEnd` of the rule's own item (code) gives the same write and caret, at both depths. 6 of 6; no P record.
+
+## 6. T70.6 pins
+
+Renamed the five tests labelled "(a state only code makes)" (node-selection 3, deletes 2) to "(set by code; ArrowRight reaches it too, T70.6)", and the describe's doc comment. New cells: `LI(<blockquote><p>Q0w</p></blockquote><img 40x20>)` and its ordinary twin, a real click at Q0w's end then ArrowRight x3: stops `element:cms-line@0`, `node:cms-image`, `element:cms-line@1` (twin: `paragraph@0`, node, `paragraph@1`), as measured; a letter at the node stop writes `…</blockquote><img />k` (twin `<p><img />k</p>`). 4 of 4. The readback test's comment "a state only code makes" is about a rule's element focus, not an image: left.
+
+## 7. T70.1 letters still owed (from SP/t59m data, branch 0d3d0f4, after Divider, undo, redo)
+
+- Qlist X1w@0: `kX1w` (in `<ul><li><blockquote><ul><li>kX1w</li><li>X2w</li></ul></blockquote></li>…`).
+- QL+T X1w@0: `kX1w`.
+- Qlist X2w@0: `kX2w` (in the item after the rule).
+  All equal the expected letters. Source: `SP/t59m/out/branch-m2.json`, records `O:toolbar::X::ul-d1|{Qlist,QL+T}|X{1,2}w@0|Dv`.
+
+## Runs
+
+Final code (377ec3b), one project at a time, whole projects (JSON in `SP/t70-run-<project>.json`):
+
+| Project   | Passed | Failed | Secs |
+| --------- | ------ | ------ | ---- |
+| lines     | 1531   | 0      | 431  |
+| lines-b   | 649    | 0      | 334  |
+| rich-text | 3110   | 0      | 174  |
+| grids-a   | 1620   | 0      | 332  |
+| grids-b   | 1750   | 3      | 387  |
+| grids-c   | 2254   | 1      | 337  |
+| grids-d   | 1432   | 1      | 339  |
+| grids-e   | 1086   | 1      | 398  |
+
+The six reds in grids-b..e are the six known snapshot tests (1510-list, 1510-other, grid-node, 1510-mirror, grid-points, 1510-quote "differ from the head's" / "the grid's writes"). Their runs with the default reporter at HEAD and with be06152's three source files put back (`SP/t70-red-{head,base}-{b,c,d,e}.log`) are identical once timings and ports are stripped: my changes alter no grid cell. Snapshots not updated.
+
+Also: `pnpm oxfmt --check` clean, `pnpm lint` clean, `tsc --noEmit -p apps/builder` clean, `check:runtime-upstream` OK.
+
+## P record
+
+Builds: base `<base>` 2a96a45 (SP/r1-base, `timeout 600`), branch `t70` (from be06152, after the T70.11 fixes). Measured 2026-11-26 with the t59m engine, batch `SP/t59m/batches/t70.json` (built by `SP/t59m/mk70.py`), outputs `SP/t59m/out/{base,branch}-t70.json`. Branch values also pinned or seen in `rich-text-line-node-selection.test.tsx`.
+
+## P-T70-1: T70.7 (PI-QIT): an image node-selected by ArrowLeft, a letter and the pastes land before the image (contests T70.7's reading of T28.3 for this route)
+
+- Stored: `<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><img src width=40 height=20>T2w</li><li>Nw</li></ul>` (QIT); ordinary twin `<p>A0w<img>B1w</p>` (ordI).
+- Placed: a real click at T2w@0 (ordI: B1w@0), then ArrowLeft until the image is node-selected (`node:cms-image` at both builds before the key). The probe hist-p PI-QIT (measurement 20) reached its node selection the same way (`clickWord(T2w, 0)`, `{ArrowLeft}`).
+- Actions and values (write; one onChange at both builds in every cell):
+
+| Cell                                       | Base                                                                      | Branch                        |
+| ------------------------------------------ | ------------------------------------------------------------------------- | ----------------------------- |
+| QIT, ArrowLeft, k                          | `…<blockquote><p>Q0wk</p></blockquote><img />T2w…`                        | `…</blockquote>k<img />T2w…`  |
+| QIT, ArrowLeft, plain "Aq"                 | `…<p>Q0w</p><p>Aq</p></blockquote><img />T2w…`                            | `…</blockquote>Aq<img />T2w…` |
+| QIT, ArrowLeft, `<p>Aq</p>`                | as plain                                                                  | as plain                      |
+| ordI, ArrowLeft, k                         | `<p>A0wk<img />B1w</p>`                                                   | `<p>A0wk<img />B1w</p>`       |
+| ordI, ArrowLeft, plain / p1                | `<p>A0wAq<img />B1w</p>`                                                  | `<p>A0wAq<img />B1w</p>`      |
+| QIT, set by code or ArrowRight, k          | code: `<img />kT2w`; ArrowRight: no node stop at the base (T2w@2, `T2kw`) | `<img />kT2w` (both)          |
+| QIT, set by code or ArrowRight, plain / p1 | code: `<img />AqT2w`                                                      | `<img />AqT2w` (both)         |
+| ordI, code / ArrowRight, k / plain / p1    | `<img />kB1w`, `<img />AqB1w`                                             | the same                      |
+
+- Reading. The field's existing image rule (`caretBesideImageOnKey`, `caretBesideSelectedImage` in rich-text-field.tsx: "on the side the arrow was moving toward (after it when no arrow selected it)") puts the caret before the image when ArrowLeft selected it, in ordinary content at both builds. D15 says typed text lands after the node "as the field already does for an image", and its paste bullet says "the content lands beside the image and the image stays, by the field's existing rule". T28.3 says "directly after the image ... with the node selected, D15", deferring to D15. T70.7 reads "after" for the probe, whose selection came by ArrowLeft.
+- Where the branch stands: set by code and reached by ArrowRight (the two ways T70.7 names for the tests), the letter, plain and p1 already land after the image and p2 gives the write at the caret after it: pinned in `rich-text-line-node-selection.test.tsx` ("T70.7: …"); no code change. Reached by ArrowLeft, R1 lands before the image (in the line), as the ordinary twin does at both builds.
+- Candidates: (a) D15/T28.3 as T70.7 reads them: in a lined container the content lands after the image whatever arrow selected it (R1 then departs from its ordinary twin for an ArrowLeft-reached image, `kQ0w`-side becomes `<img />k`); (b) the field's existing rule as D15 cites it: the side the arrow moved toward, so ArrowLeft lands before the image in lined and ordinary content alike, and T70.7's expected writes hold for the code and ArrowRight routes only.
+- The caret after one undo of the letter (set by code or ArrowRight) is the caret beside the image (`text:T2w@0`), not the node selection, at both builds and in the ordinary twin; the pastes' undo gives the node selection back. Not ruled; the tests pin the value one undo gives back, not that caret.
