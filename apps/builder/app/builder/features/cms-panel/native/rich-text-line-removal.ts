@@ -312,7 +312,6 @@ export const $caretBesideInlineEdge = (
     isBackward &&
     character &&
     $isHeadingNode(parent) &&
-    parent.isEmpty() === false &&
     $nothingBefore(inline)
   ) {
     return true;

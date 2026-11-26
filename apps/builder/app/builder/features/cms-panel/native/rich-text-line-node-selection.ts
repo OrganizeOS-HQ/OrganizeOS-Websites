@@ -237,8 +237,11 @@ export const registerLineInputListener = (editor: LexicalEditor) => {
         selection.isBackward()
       );
     };
-    // the text at the range's start, when the selection's format or style
-    // is not its own
+    // the text at the selection's anchor, when the selection's format or
+    // style is not its own. getStartEndPoints() gives [anchor, focus], so
+    // the anchor is the range's start only for a forward range: in the
+    // update below the backward swap runs first; in the read that gates
+    // the update a backward range runs the update whatever this returns
     const $startUnlikeSelection = () => {
       const selection = $getSelection();
       if ($isRangeSelection(selection) === false || selection.isCollapsed()) {
