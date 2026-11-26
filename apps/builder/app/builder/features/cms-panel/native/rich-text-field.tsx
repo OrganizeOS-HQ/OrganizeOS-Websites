@@ -2697,27 +2697,22 @@ const fieldValueOf = (editor: LexicalEditor): FieldValue => {
 };
 
 /**
- * The field's change handler (16.10, first contract; 16.21): it hands out
- * the value of each commit that changes the document, except one equal to
- * the value it handed out last, and one that holds a composition-start
- * character the composition under way added. Values are compared by their
- * HTML, and every "no value" is one value (its text follows from the HTML
- * but for the blank lines an empty line adds). Before the first, the value
- * handed out last is the stored one: no value when none was stored, else
- * the HTML the field opened with, even where it holds no text.
+ * The field's change handler (16.10, first contract; 16.21; T42.1): it
+ * hands out the value of each commit that changes the document, except one
+ * equal to the value it handed out last, and one that holds a
+ * composition-start character the composition under way added. Values are
+ * compared by their HTML, and every "no value" is one value (its text
+ * follows from the HTML but for the blank lines an empty line adds). Before
+ * the first onChange of this mounted field nothing has been handed out: the
+ * first value after mount is handed out even where it equals the stored
+ * one; only repeats of the value handed out last are withheld.
  */
 const ChangePlugin = ({
-  stored,
   onChange,
 }: {
-  stored: boolean;
   onChange: (value: FieldValue) => void;
 }) => {
-  const [editor] = useLexicalComposerContext();
-  const handedOut = useRef<string | null | undefined>(undefined);
-  useEffect(() => {
-    handedOut.current = stored ? exportRichTextHtml(editor) : null;
-  }, [editor, stored]);
+  const handedOut = useRef<{ key: string | null } | undefined>(undefined);
   return (
     <OnChangePlugin
       ignoreSelectionChange
@@ -2728,10 +2723,10 @@ const ChangePlugin = ({
         }
         const value = fieldValueOf(editor);
         const key = value === null ? null : value.html;
-        if (key === handedOut.current) {
+        if (handedOut.current !== undefined && key === handedOut.current.key) {
           return;
         }
-        handedOut.current = key;
+        handedOut.current = { key };
         onChange(value);
       }}
     />
@@ -3990,7 +3985,6 @@ export const RichTextField = ({
         <HorizontalRulePlugin />
         <TransformsPlugin namespace={namespace} />
         <ChangePlugin
-          stored={initial !== null}
           onChange={(value) => {
             watched.current?.(value);
             onChange(value);

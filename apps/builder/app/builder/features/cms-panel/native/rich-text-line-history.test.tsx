@@ -204,7 +204,10 @@ describe("D7: compositions at an element point and Block type at BQ el1", () => 
       }),
       action: ime("a"),
       write: "<p>Pw</p><p>Ta0w</p><p>Nw</p>",
-      source: "section 8 (F12); P16-2: one value for one composed letter",
+      // the value as it stood at the composition's start, the first after
+      // mount (T42.1), then the composed one; no repeat (16.10)
+      calls: 2,
+      source: "section 8 (F12); P16-2, T42.1",
     });
   });
   const BQ = LI("<br><blockquote><p>Q1w</p></blockquote>");

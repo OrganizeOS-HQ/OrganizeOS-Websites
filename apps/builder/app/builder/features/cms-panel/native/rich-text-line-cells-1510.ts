@@ -550,14 +550,6 @@ export const differenceOf = (
   ) {
     return "the head loses the rule and what follows (15.10)";
   }
-  if (
-    head !== null &&
-    built === null &&
-    record.calls === 0 &&
-    record.value === head
-  ) {
-    return "the head hands out the value as it stood (16.10)";
-  }
   // the Shift step past a rule moves the focus at the key (T29.7), and the
   // key reads the page's selection back (15.12), whichever the field's
   // selection shows when it is read. The field's selection after the

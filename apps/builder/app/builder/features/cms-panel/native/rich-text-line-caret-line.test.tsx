@@ -107,42 +107,67 @@ describe("the empty caret line", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  test("the sweep looks only where the caret was", async () => {
-    const onChange = await mount(
-      "<ul><li>T0w<hr></li><li>T1w<hr></li><li>T2w</li></ul>"
-    );
-    const editor = editorOf()!;
-    const mounted = editor.getEditorState().toJSON();
-    const json = structuredClone(mounted);
-    const list = json.root.children[0] as unknown as {
-      children: Array<{ children: unknown[] }>;
-    };
-    list.children[0].children.push({
-      type: "cms-line",
-      version: 1,
-      children: [],
-      direction: null,
-      format: "",
-      indent: 0,
+  // T26.2, T42.2: a state set by code that differs only by a stray empty
+  // line, as the first action after mount: one onChange with the value as
+  // it stood (nothing handed out before it, T42.1); after an equal value
+  // was handed out: none; either way no undo step
+  for (const form of ["first action", "after an equal value"] as const) {
+    test(`the sweep looks only where the caret was, ${form}`, async () => {
+      const onChange = await mount(
+        "<ul><li>T0w<hr></li><li>T1w<hr></li><li>T2w</li></ul>"
+      );
+      const editor = editorOf()!;
+      const stored = short(exportRichTextHtml(editor));
+      if (form === "after an equal value") {
+        // a commit that changes nothing hands out the value as it stood
+        await act(async () => {
+          editor.update(() => {
+            $getRoot().markDirty();
+          });
+        });
+        await settle();
+        expect(onChange, "the equal value handed out").toHaveBeenCalledTimes(1);
+        expect(short(lastHtml(onChange))).toBe(stored);
+        onChange.mockClear();
+      }
+      const depth = undoDepth();
+      const mounted = editor.getEditorState().toJSON();
+      const json = structuredClone(mounted);
+      const list = json.root.children[0] as unknown as {
+        children: Array<{ children: unknown[] }>;
+      };
+      list.children[0].children.push({
+        type: "cms-line",
+        version: 1,
+        children: [],
+        direction: null,
+        format: "",
+        indent: 0,
+      });
+      await act(async () => {
+        editor.setEditorState(editor.parseEditorState(JSON.stringify(json)));
+      });
+      await settle();
+      expect(endsInEmptyLine(0)).toBe(true);
+      if (form === "first action") {
+        expect(onChange, "one onChange").toHaveBeenCalledTimes(1);
+        expect(short(lastHtml(onChange)), "the value as it stood").toBe(stored);
+      } else {
+        expect(onChange, "no onChange").not.toHaveBeenCalled();
+      }
+      expect(undoDepth(), "no undo step").toEqual(depth);
+      onChange.mockClear();
+      await at("T2w", 1)();
+      await keys("{ArrowRight}")();
+      expect(endsInEmptyLine(0)).toBe(true);
+      expect(onChange).not.toHaveBeenCalled();
+      // the stray line goes, so the net finds none
+      await act(async () => {
+        editor.setEditorState(editor.parseEditorState(JSON.stringify(mounted)));
+      });
+      await settle();
     });
-    await act(async () => {
-      editor.setEditorState(editor.parseEditorState(JSON.stringify(json)));
-    });
-    await settle();
-    expect(endsInEmptyLine(0)).toBe(true);
-    // a state that differs only by a stray empty line hands out nothing
-    // (16.10; T26.2)
-    expect(onChange).not.toHaveBeenCalled();
-    await at("T2w", 1)();
-    await keys("{ArrowRight}")();
-    expect(endsInEmptyLine(0)).toBe(true);
-    expect(onChange).not.toHaveBeenCalled();
-    // the stray line goes, so the net finds none
-    await act(async () => {
-      editor.setEditorState(editor.parseEditorState(JSON.stringify(mounted)));
-    });
-    await settle();
-  });
+  }
 
   test("large values stay fast", async () => {
     const items = Array.from(

@@ -19,7 +19,6 @@ import {
   type TextNode,
 } from "lexical";
 import {
-  exportRichTextHtml,
   importRichTextHtml,
   registerRichTextTransforms,
   richTextHtmlConfig,
@@ -548,9 +547,10 @@ describe("the line tests' kit", () => {
     }
     expect(performance.now() - start).toBeLessThan(1000);
     expect(commits).toBeGreaterThan(0);
-    // the value as it stood: no onChange (16.10, T18.9)
-    expect(onChange).not.toHaveBeenCalled();
-    expect(plain(exportRichTextHtml(editorOf()!))).toBe("<p>Aw</p>");
+    // the first value after mount is handed out even where it equals the
+    // stored one (T42.1): the value as it stood
+    expect(lastHtml(onChange)).not.toContain("<img");
+    expect(plain(lastHtml(onChange))).toBe("<p>Aw</p>");
   });
 });
 
@@ -617,15 +617,14 @@ describe("the net (kit-branch)", () => {
     expect(
       failures.filter((failure) => failure.includes("composition-start"))
     ).toHaveLength(1);
-    // the field hands out no value that holds the character (16.21), so
-    // the watch also sees a document no onChange reported
+    // the field hands out no value that holds the character (16.21): the
+    // value it handed out at the composition's start (the first after
+    // mount, T42.1) is then not the editor's export
     expect(
       failures.filter(
         (failure) => failure.includes("composition-start") === false
       )
-    ).toEqual([
-      expect.stringContaining("no onChange, but the document changed"),
-    ]);
+    ).toEqual([expect.stringContaining("is not the editor's export")]);
   });
 
   test("the net does not flag a U+200B an edit brings", async () => {
