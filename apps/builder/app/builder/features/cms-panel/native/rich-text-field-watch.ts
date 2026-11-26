@@ -1,7 +1,7 @@
 // The field's development check: the harness invariant every browser test
 // and probe record is held to, per mounted editor.
 import { $getRoot, type EditorState, type LexicalEditor } from "lexical";
-import { d7Document, unkeptEmptyLines } from "./rich-text-line-points";
+import { unkeptEmptyLines } from "./rich-text-line-points";
 
 export type FieldValue = { html: string; text: string } | null;
 
@@ -46,7 +46,8 @@ const keep = (failures: string[]) => {
 /**
  * The harness invariant for one field: a field that reported a value last
  * reported the editor's HTML export as it stands; one that reported none
- * holds its document as mounted, under D7.
+ * holds its value as mounted (16.10: a change that leaves the value as it
+ * stood, such as a paragraph's text format alone, is reported to no one).
  */
 const failuresOf = (entry: Watched) => {
   const failures: string[] = [];
@@ -79,7 +80,7 @@ const failuresOf = (entry: Watched) => {
       );
     }
   } else if (entry.mounted !== undefined) {
-    const now = d7Document(entry.editor.getEditorState());
+    const now = JSON.stringify(entry.valueOf()?.html ?? null);
     if (now !== entry.mounted) {
       failures.push(
         `field invariant: no onChange, but the document changed since mount: ${entry.mounted} -> ${now}`
@@ -90,7 +91,7 @@ const failuresOf = (entry: Watched) => {
 };
 
 /**
- * Watches a mounted field: its document under D7 right after mount, once
+ * Watches a mounted field: its value right after mount, once
  * the updates the mount queued have committed, and each value it reports.
  * `changed` takes each value the field reports; `unwatch`, called at the
  * field's unmount, evaluates its invariant, keeps any failures and drops it.
@@ -135,7 +136,7 @@ export const watchField = (
     }
   );
   queueMicrotask(() => {
-    entry.mounted = d7Document(editor.getEditorState());
+    entry.mounted = JSON.stringify(valueOf()?.html ?? null);
   });
   return {
     changed: (value: FieldValue) => {
@@ -170,7 +171,7 @@ export const fieldInvariantFailures = (clear: boolean) => {
     for (const entry of watched) {
       entry.changes = 0;
       entry.last = undefined;
-      entry.mounted = d7Document(entry.editor.getEditorState());
+      entry.mounted = JSON.stringify(entry.valueOf()?.html ?? null);
       entry.startCharsLeft = [];
     }
   }

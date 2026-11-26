@@ -306,8 +306,9 @@ describe("D5: a range into a block-led item's text joins first", () => {
       place,
       action: ime("a"),
       write: WJ("<li>Paw</li>"),
-      // a composition hands out three values, at <proto> and <base> too
-      calls: 3,
+      // one value: the three at <proto> and <base> repeat it (16.10;
+      // Task 20)
+      calls: 1,
       source: "derived (D5); measured at <proto> and <base> (T12.9)",
     });
   });
@@ -641,8 +642,9 @@ describe("every Lexical path that removes a range dispatches a marked command", 
   for (const [name, action] of actions) {
     test(`${name}: the emptied quote goes`, async () => {
       const record = await recordEdit({ stored, place, action });
-      // a composition hands out three values (as at <base>)
-      expect(record.calls).toBe(name === "ime" ? 3 : 1);
+      // a composition hands out one value: the three at <base> repeat it
+      // (16.10; Task 20)
+      expect(record.calls).toBe(1);
       expect(record.write).not.toContain("blockquote");
       expect(record.errors).toEqual([]);
       expect(record.slowest).toBeLessThan(2000);

@@ -21,6 +21,7 @@ import {
   linesOff,
 } from "./rich-text-line-node";
 import { $unwrapLines } from "./rich-text-line-normalise";
+import { rememberCompositionStart } from "./rich-text-line-history";
 import {
   $notePasteHeldLine,
   $resolveLinedPoints,
@@ -184,7 +185,8 @@ export const $headPathOnRemove = (): boolean => {
  * directly after the node, which stays (D15); Lexical leaves text typed
  * over a node selection to the browser, so the field takes the
  * `beforeinput` first; and Safari's text replacement), and its
- * `compositionstart` handler (the move before a leading link). Each is
+ * `compositionstart` handler (the move before a leading link, then
+ * `rememberCompositionStart`, Task 20). Each is
  * created once per registration and follows the root: removed from the
  * previous root, added to the new one, and removed at the cleanup.
  */
@@ -196,6 +198,48 @@ export const registerLineInputListener = (editor: LexicalEditor) => {
   // before the link, as a typed letter does: the caret stands on the
   // line's start before the composition begins
   const onCompositionStart = () => {
+    // F12: what the composition's end needs, before Lexical's own
+    // compositionstart handler changes anything; the state before is the
+    // person's, before the two point moves below
+    const before = editor.getEditorState();
+    moveBeforeLeadingLink();
+    composeForward();
+    rememberCompositionStart(editor, before);
+  };
+  // 16.20: a composition over a backward range composes as over the
+  // forward range: the range's ends are swapped before Lexical's own
+  // compositionstart handler runs (a point move only: no tag)
+  const composeForward = () => {
+    const $backward = () => {
+      const selection = $getSelection();
+      return (
+        $isRangeSelection(selection) &&
+        selection.isCollapsed() === false &&
+        selection.isBackward()
+      );
+    };
+    if (editor.getEditorState().read($backward) === false) {
+      return;
+    }
+    editor.update(
+      () => {
+        const selection = $getSelection();
+        if ($isRangeSelection(selection) === false || $backward() === false) {
+          return;
+        }
+        const { anchor, focus } = selection;
+        const start = {
+          key: focus.key,
+          offset: focus.offset,
+          type: focus.type,
+        };
+        focus.set(anchor.key, anchor.offset, anchor.type);
+        anchor.set(start.key, start.offset, start.type);
+      },
+      { discrete: true }
+    );
+  };
+  const moveBeforeLeadingLink = () => {
     const $atLinkLedLineStart = () => {
       const selection = $getSelection();
       if (

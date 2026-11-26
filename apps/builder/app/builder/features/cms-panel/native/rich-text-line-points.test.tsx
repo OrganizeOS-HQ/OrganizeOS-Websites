@@ -359,7 +359,8 @@ describe("D18: one letter at each kind of point", () => {
       });
       onChange.mockClear();
       await timed(ime("a"));
-      expect(onChange, "calls").toHaveBeenCalledTimes(3);
+      // one value: the head's three repeat it (16.10; Task 20)
+      expect(onChange, "calls").toHaveBeenCalledTimes(1);
       const written = lastHtml(onChange);
       expect(short(written), "write").toBe(write);
       expect(short(written), "D19").not.toBe(short(valueBefore));
@@ -401,8 +402,8 @@ describe("D18: one letter at each kind of point", () => {
       place: itemPoint(1, 1),
       action: ime("a"),
       write: W("<li><blockquote><p>Q0wa</p></blockquote><hr /></li>"),
-      // a composition hands out three values at <base> too (M31, M49)
-      calls: 3,
+      // one value: the head's three (M31, M49) repeat it (16.10; Task 20)
+      calls: 1,
       source: "spec 5.3 (the build once)",
     });
   });
@@ -414,7 +415,8 @@ describe("D18: one letter at each kind of point", () => {
       action: ime("a"),
       // P7-ime, ruled (T21)
       write: W(`<li><br />a${QUOTE1}</li>`),
-      calls: 3,
+      // one value: the head's three repeat it (16.10; Task 20)
+      calls: 1,
       caret: "text:a@1",
       source: "spec section 14, D18, P7-ime",
     });
