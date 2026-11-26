@@ -659,6 +659,56 @@ describe("deletes at a resolved caret (D3 fourth case, D9, D5, V5, V6, V12, KS1 
   }
 });
 
+describe("T49.1: Backspace at the start of a later line of a nested item outdents the item, as at the head (M-g2)", () => {
+  const D2 = (middle: string) =>
+    `<ul><li>Aw<ul><li>Pw</li><li>${middle}</li><li>Nw</li></ul></li></ul>`;
+  const OUTDENTED = (middle: string) =>
+    `<ul><li>Aw<ul><li>Pw</li></ul></li><li>${middle}<ul><li>Nw</li></ul></li></ul>`;
+  const cells = [
+    [
+      "control: d2 TRT, Backspace at T2w@0",
+      "T0w<hr>T2w",
+      "T2w",
+      "T0w<hr />",
+      "T2w",
+    ],
+    [
+      "control: d2 TQT, Backspace at T2w@0",
+      "T0w<blockquote><p>Q1w</p></blockquote>T2w",
+      "T2w",
+      "T0w<blockquote><p>Q1w</p></blockquote>",
+      "T2w",
+    ],
+    [
+      "control: d2 T0w<br>T1w<hr>, Backspace at T1w@0",
+      "T0w<br>T1w<hr>",
+      "T1w",
+      "T0w<br />",
+      "T1w<hr />",
+    ],
+    [
+      "control, ordinary content: a nested plain item T0w<br>T1w, Backspace at T1w@0",
+      "T0w<br>T1w",
+      "T1w",
+      "T0w<br />",
+      "T1w",
+    ],
+  ] as const;
+  for (const [name, middle, word, before, after] of cells) {
+    test(name, async () => {
+      await expectEdit({
+        stored: D2(middle),
+        place: at(word, 0),
+        action: backspace,
+        write: OUTDENTED(`${before}${after}`),
+        caret: `text:${word}@0`,
+        typed: OUTDENTED(`${before}k${after}`),
+        source: "M-g2 at <base> (T49.1)",
+      });
+    });
+  }
+});
+
 describe("an image at a lined item's end, Delete (M27, T27, T28)", () => {
   const stored = LI(`<blockquote><p>Q0w</p></blockquote>${IMG}`);
   test("a caret directly after an image that ends a lined item: Delete joins the next item, the image stays", async () => {
