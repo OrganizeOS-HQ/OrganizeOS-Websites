@@ -5,9 +5,11 @@ import {
   setLexicalClipboardDataTransfer,
 } from "@lexical/clipboard";
 import { $isCodeNode } from "@lexical/code";
+import { $isListItemNode } from "@lexical/list";
 import { $dfs, $findMatchingParent } from "@lexical/utils";
 import {
   $createRangeSelection,
+  $createTextNode,
   $getEditor,
   $getRoot,
   $getSelection,
@@ -431,6 +433,55 @@ export const createScratchEditor = (config: ScratchConfig): LexicalEditor =>
   });
 
 /**
+ * D6: the copied HTML holds a list item only where the selection holds the
+ * whole item. Lexical's writer takes an item that holds both ends whole
+ * when the selection's text is as long as the item's, so an item whose
+ * content outside the range holds no text (an image beside the range) went
+ * whole into the clipboard (T59 defect 11). In the scratch editor such an
+ * item gets a made-up character beside that content, outside the range,
+ * which the clipboard never holds.
+ */
+const $markItemsNotHeldWhole = (selection: BaseSelection | null) => {
+  if (
+    $isRangeSelection(selection) === false ||
+    selection.anchor.type !== "text" ||
+    selection.focus.type !== "text"
+  ) {
+    return;
+  }
+  const held = new Set(selection.getNodes().map((node) => node.getKey()));
+  const anchor = selection.anchor.getNode();
+  const focus = selection.focus.getNode();
+  const start = selection.isBackward() ? focus : anchor;
+  for (
+    let item = $findMatchingParent(anchor, $isListItemNode);
+    item !== null;
+    item = $findMatchingParent(item.getParentOrThrow(), $isListItemNode)
+  ) {
+    if (item.isParentOf(focus) === false) {
+      continue;
+    }
+    const outside = $dfs(item)
+      .map(({ node }) => node)
+      .find(
+        (node) =>
+          node.is(item) === false &&
+          ($isElementNode(node) === false || node.getChildrenSize() === 0) &&
+          held.has(node.getKey()) === false
+      );
+    if (outside === undefined) {
+      continue;
+    }
+    const mark = $createTextNode("x");
+    if (outside.isBefore(start)) {
+      outside.insertBefore(mark);
+    } else {
+      outside.insertAfter(mark);
+    }
+  }
+};
+
+/**
  * The writer's two ends: the selection as the person made it, with the ends
  * the writer shares with the removal in place (15.10, and a first point
  * before a block), in document order.
@@ -572,6 +623,7 @@ export const $headFormClipboard = (
             $unwrapLines([node]);
           }
         }
+        $markItemsNotHeldWhole($getSelection());
         // the copy mark, once, on this editor's own selection: a code block
         // reached partway writes its selected text
         markRichTextCopy($getSelection(), $getEditor());
