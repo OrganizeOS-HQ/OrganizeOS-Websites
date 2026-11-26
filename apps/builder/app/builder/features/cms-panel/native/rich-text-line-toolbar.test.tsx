@@ -790,6 +790,57 @@ describe("the list buttons (V16)", () => {
   ]);
 });
 
+describe("T59 defect 2: list off at a click after an item's final rule (5.7, V16)", () => {
+  // the record sets' click at the item's end: 3 px inside its bottom right
+  const clickItemEnd =
+    (item: number): Step =>
+    async () => {
+      const li = editable()!.querySelectorAll("li")[item] as HTMLElement;
+      const box = li.getBoundingClientRect();
+      await userEvent.click(li, {
+        position: { x: box.width - 3, y: box.height - 3 },
+      } as never);
+      await settle();
+    };
+  const cells: Array<[string, string, number, string, string]> = [
+    [
+      "QBR",
+      LI(`${QUOTE("Q0w")}<br><hr>`),
+      1,
+      "<p>Pw</p><blockquote><p>Q0w</p></blockquote><p><br /></p><hr /><p>Nw</p>",
+      "<p>Pw</p><blockquote><p>Q0w</p></blockquote><p><br /></p><hr /><p>k</p><p>Nw</p>",
+    ],
+    [
+      "QTR",
+      LI(`${QUOTE("Q0w")}T1w<hr>`),
+      1,
+      "<p>Pw</p><blockquote><p>Q0w</p></blockquote><p>T1w</p><hr /><p>Nw</p>",
+      "<p>Pw</p><blockquote><p>Q0w</p></blockquote><p>T1w</p><hr /><p>k</p><p>Nw</p>",
+    ],
+    [
+      "d2 CR",
+      "<ul><li>Aw<ul><li>Pw</li><li><pre><code>C0w</code></pre><hr></li><li>Nw</li></ul></li><li>Zw</li></ul>",
+      // the nested list stands in an item of its own in the DOM
+      3,
+      "<p>Aw</p><p>Pw</p><pre><code>C0w</code></pre><hr /><p>Nw</p><p>Zw</p>",
+      "<p>Aw</p><p>Pw</p><pre><code>C0w</code></pre><hr /><p>k</p><p>Nw</p><p>Zw</p>",
+    ],
+  ];
+  for (const [name, stored, item, write, typed] of cells) {
+    test(`${name}: Bulleted list leaves the caret after the rule, and after redo`, async () => {
+      await expectEdit({
+        stored,
+        place: clickItemEnd(item),
+        action: button("Bulleted list"),
+        write,
+        caret: "element:root@4",
+        typed,
+        source: "acceptance check, defect 2; spec 5.7 (TR item@2), V16",
+      });
+    });
+  }
+});
+
 describe("Image at the quote points", () => {
   const QR = LI(`${QUOTE("Q0w")}<hr>`);
   const RQ = LI(`<hr>${QUOTE("Q1w")}`);

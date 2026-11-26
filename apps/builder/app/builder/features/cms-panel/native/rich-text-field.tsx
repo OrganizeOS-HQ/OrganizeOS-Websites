@@ -1494,6 +1494,23 @@ const Toolbar = ({
         }
         for (const [index, point] of [next.anchor, next.focus].entries()) {
           const at = kept[index];
+          // T59 defect 2: a block the caret is kept by (a rule ending the
+          // item) leaves the paragraph the item became now, as the
+          // transform would at the commit; the caret then stays beside it,
+          // not in the paragraph the transform removes (5.7, V16)
+          const isBlock =
+            at !== undefined &&
+            ($isElementNode(at.node) || $isDecoratorNode(at.node)) &&
+            at.node.isInline() === false;
+          let holder = at?.node.getParent();
+          while (
+            at !== undefined &&
+            isBlock &&
+            ($isParagraphNode(holder) || $isHeadingNode(holder))
+          ) {
+            $liftBlocksOutOfTextBlock(holder);
+            holder = at.node.getParent();
+          }
           const parent = at?.node.getParent();
           if (
             at === undefined ||
