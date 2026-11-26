@@ -57,6 +57,7 @@ import {
   UNLINED_CASES,
 } from "./rich-text-line-writer-cases";
 import fixture1511CopyJson from "./__fixtures__/rich-text-line-base-1511-copy.json";
+import { ITEM_NOT_WHOLE_MARK } from "./rich-text-line-clipboard";
 
 declare module "@vitest/browser/context" {
   interface BrowserCommands {
@@ -1089,6 +1090,15 @@ describe("Task 18: real empty blocks and whole items (check 4, 15.11)", () => {
     keys("{Shift>}{Home}{/Shift}")
   );
 
+  // T68.3: the writer's made-up character never reaches the clipboard
+  const expectNoMark = () => {
+    const held = clipboard();
+    for (const type of ["text/plain", "text/html", EDITOR_DATA]) {
+      expect(held[type], type).toBeDefined();
+      expect(held[type], type).not.toContain(ITEM_NOT_WHOLE_MARK);
+    }
+  };
+
   test("a range that holds an item's text but not the image leading it copies the text alone (D6; T59 defect 11)", async () => {
     const onChange = await mount(LI(`${IMG}U1w`));
     await shiftHomeAfterImage();
@@ -1096,6 +1106,7 @@ describe("Task 18: real empty blocks and whole items (check 4, 15.11)", () => {
     expect(shape(clipboard()[EDITOR_DATA])).toBe("'U1w'");
     expect(bare(clipboard()["text/html"])).toBe("U1w");
     expect(clipboard()["text/plain"]).toBe("U1w");
+    expectNoMark();
   });
 
   test("that range cut and pasted back gives the item back whole (D6; T59 defect 11)", async () => {
@@ -1103,12 +1114,48 @@ describe("Task 18: real empty blocks and whole items (check 4, 15.11)", () => {
     await shiftHomeAfterImage();
     await cut();
     await settle();
+    expectNoMark();
     expect(plain(lastHtml(onChange))).toBe(
       `<ul><li>Pw</li><li>${IMG}</li><li>Nw</li></ul>`
     );
     await pasteClip();
     await settle();
     expect(plain(lastHtml(onChange))).toBe(LI(`${IMG}U1w`));
+  });
+
+  // T69.4: an item the range holds whole, an image at its edge included,
+  // is copied whole as before (accepted; check 4, 15.11, ruled 5)
+  test("rec-49: Shift+End from U0w@0 over the trailing image copies the item whole (T69.4)", async () => {
+    const onChange = await mount(LI(`U0w${IMG}`));
+    await at("U0w", 0)();
+    await keys("{Shift>}{End}{/Shift}")();
+    await copyKeeps(onChange)();
+    expect(shape(clipboard()[EDITOR_DATA])).toBe(
+      "list(listitem('U0w',cms-image))"
+    );
+    expect(bare(clipboard()["text/html"])).toMatch(
+      /^<ul><li>U0w<img [^>]*><\/li><\/ul>$/
+    );
+    expectNoMark();
+  });
+
+  test("a range that starts before the image leading the item copies the item whole (T69.4)", async () => {
+    const onChange = await mount(LI(`${IMG}U1w`));
+    await setRange(
+      () => {
+        const item = $nodesOf("listitem")[1];
+        return { key: item.getKey(), offset: 0, type: "element" as const };
+      },
+      $textPoint("U1w", 3)
+    )();
+    await copyKeeps(onChange)();
+    expect(shape(clipboard()[EDITOR_DATA])).toBe(
+      "list(listitem(cms-image,'U1w'))"
+    );
+    expect(bare(clipboard()["text/html"])).toMatch(
+      /^<ul><li><img [^>]*>U1w<\/li><\/ul>$/
+    );
+    expectNoMark();
   });
 });
 
