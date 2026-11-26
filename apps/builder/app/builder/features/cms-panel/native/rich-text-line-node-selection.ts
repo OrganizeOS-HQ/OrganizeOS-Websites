@@ -7,6 +7,7 @@ import {
   $isElementNode,
   $isNodeSelection,
   $isRangeSelection,
+  $isTextNode,
   $setSelection,
   CONTROLLED_TEXT_INSERTION_COMMAND,
   DELETE_LINE_COMMAND,
@@ -215,7 +216,18 @@ export const registerLineInputListener = (editor: LexicalEditor) => {
   };
   // 16.20: a composition over a backward range composes as over the
   // forward range: the range's ends are swapped before Lexical's own
-  // compositionstart handler runs (a point move only: no tag)
+  // compositionstart handler runs (a point move only: no tag).
+  // T59 defect 6 (16.20, F12): and in the format of the text it starts
+  // in, as the forward range placed at that text does. A range the page
+  // makes (real keys, a drag) carries the format its texts share: none
+  // from plain into bold. Lexical's composition start then writes the
+  // start character in that format, and its input handler, finding the
+  // composed node's format unlike the selection's
+  // (`$shouldPreventDefaultAndInsertText`), ends the composition for the
+  // editor at the first composed text while the page composes on: the
+  // page's composition starts again, a second undo step. The selection
+  // takes its first point's text's format and style (a selection change
+  // only: no node is dirty, no tag)
   const composeForward = () => {
     const $backward = () => {
       const selection = $getSelection();
@@ -225,23 +237,50 @@ export const registerLineInputListener = (editor: LexicalEditor) => {
         selection.isBackward()
       );
     };
-    if (editor.getEditorState().read($backward) === false) {
+    // the text at the range's start, when the selection's format or style
+    // is not its own
+    const $startUnlikeSelection = () => {
+      const selection = $getSelection();
+      if ($isRangeSelection(selection) === false || selection.isCollapsed()) {
+        return null;
+      }
+      const [start] = selection.getStartEndPoints() ?? [];
+      const node = start?.type === "text" ? start.getNode() : null;
+      return $isTextNode(node) &&
+        (node.getFormat() !== selection.format ||
+          node.getStyle() !== selection.style)
+        ? node
+        : null;
+    };
+    if (
+      editor
+        .getEditorState()
+        .read(() => $backward() || $startUnlikeSelection() !== null) === false
+    ) {
       return;
     }
     editor.update(
       () => {
         const selection = $getSelection();
-        if ($isRangeSelection(selection) === false || $backward() === false) {
+        if ($isRangeSelection(selection) === false) {
           return;
         }
-        const { anchor, focus } = selection;
-        const start = {
-          key: focus.key,
-          offset: focus.offset,
-          type: focus.type,
-        };
-        focus.set(anchor.key, anchor.offset, anchor.type);
-        anchor.set(start.key, start.offset, start.type);
+        if ($backward()) {
+          const { anchor, focus } = selection;
+          const start = {
+            key: focus.key,
+            offset: focus.offset,
+            type: focus.type,
+          };
+          focus.set(anchor.key, anchor.offset, anchor.type);
+          anchor.set(start.key, start.offset, start.type);
+        }
+        const node = $startUnlikeSelection();
+        if (node !== null) {
+          // RangeSelection has no setter for its format in Lexical 0.21
+          selection.format = node.getFormat();
+          selection.setStyle(node.getStyle());
+        }
       },
       { discrete: true }
     );

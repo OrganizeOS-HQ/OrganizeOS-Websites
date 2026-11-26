@@ -1244,3 +1244,114 @@ test("16.20: a backward range from plain into bold by real keys composes as the 
   );
   expectAsForward(backward, forward);
 });
+
+// T59 defect 6 (16.20, F12): a composition over a range whose selection
+// format is not its first text's (a range from plain into bold, set by
+// real keys, or with other text before it) is one undo step, as the
+// forward range: one undo from the composed value to the stored one, and
+// one redo back
+describe("T59 defect 6: a composition over a range is one undo step", () => {
+  const NBSP = " ";
+  const CELLS: ReadonlyArray<readonly [string, string, Step, string]> = [
+    [
+      "a backward range from plain into bold, by Shift+ArrowLeft",
+      "<p><strong>A0w</strong>B1w</p>",
+      backwardBy("Shift+ArrowLeft"),
+      "<p><b><strong>Aab</strong></b>1w</p>",
+    ],
+    [
+      "a forward range from bold into plain, by Shift+ArrowRight",
+      "<p><strong>A0w</strong>B1w</p>",
+      async () => {
+        await at("A0w", 1)();
+        await keys("{Shift>}{ArrowRight}{ArrowRight}{ArrowRight}{/Shift}")();
+      },
+      "<p><b><strong>Aab</strong></b>1w</p>",
+    ],
+    [
+      "a backward range from a paragraph into a bold paragraph, by Shift+ArrowUp",
+      "<p><strong>A0w</strong></p><p>B1w</p>",
+      backwardBy("Shift+ArrowUp"),
+      "<p><b><strong>Aab</strong></b>1w</p>",
+    ],
+    [
+      "a forward range from bold into plain, with the start character elsewhere",
+      `<p>Z${ZW}Z <strong>A0w</strong>B1w</p>`,
+      range("A0w", 1, "B1w", 1),
+      `<p>Z${ZW}Z <b><strong>Aab</strong></b>1w</p>`,
+    ],
+    [
+      "a backward range from plain into bold, with the start character elsewhere",
+      `<p>Z${ZW}Z <strong>A0w</strong>B1w</p>`,
+      range("B1w", 1, "A0w", 1),
+      `<p>Z${ZW}Z <b><strong>Aab</strong></b>1w</p>`,
+    ],
+    [
+      "a forward range from bold into plain, with a no-break space elsewhere",
+      `<p>Z${NBSP}Z <strong>A0w</strong>B1w</p>`,
+      range("A0w", 1, "B1w", 1),
+      `<p>Z${NBSP}Z <b><strong>Aab</strong></b>1w</p>`,
+    ],
+  ];
+  for (const [name, stored, select, composed] of CELLS) {
+    test(
+      name,
+      async () => {
+        const onChange = await mount(stored);
+        const valueBefore = valueOf();
+        await select();
+        await quietly();
+        onChange.mockClear();
+        await imeSet("a");
+        await imeSet("ab");
+        await imeCommit("ab");
+        await quiet();
+        expect(valueOf(), "the composed value").toBe(composed);
+        expect(undoDepth().undo, "the composition is one undo step").toBe(1);
+        expect(await pressAll("undo"), "one undo to the stored value").toEqual([
+          valueBefore,
+        ]);
+        expect(
+          await pressAll("redo"),
+          "one redo to the composed value"
+        ).toEqual([composed]);
+      },
+      30_000
+    );
+  }
+});
+
+// T59 defect 7 (16.21, T48.5): a range that holds a composition-start
+// character the stored value held, and that the composition removes: no
+// value handed out holds the character Lexical writes at the start
+describe("T59 defect 7: a composition over a range holding a stored start character", () => {
+  const STORED = `<p>A0w<strong>B${ZW}1w</strong></p>`;
+  for (const [way, select] of [
+    ["forward", range("A0w", 1, `B${ZW}1w`, 3)],
+    ["backward", range(`B${ZW}1w`, 3, "A0w", 1)],
+  ] as const) {
+    test(`${way}: no value handed out holds the start character`, async () => {
+      const onChange = await mount(STORED);
+      const valueBefore = valueOf();
+      await select();
+      await quietly();
+      onChange.mockClear();
+      await imeSet("a");
+      await imeSet("ab");
+      await imeCommit("ab");
+      await quiet();
+      const values = rawValues(onChange);
+      expect(values.length, "values handed out").toBeGreaterThan(0);
+      for (const value of values) {
+        expect(value, "no value holds the start character").not.toContain(ZW);
+      }
+      expect(valueOf(), "the composed value").toBe(
+        "<p>Aab<b><strong>w</strong></b></p>"
+      );
+      expect(zwCount(), "no start character left").toBe(0);
+      expect(await pressAll("undo"), "one undo to the stored value").toEqual([
+        valueBefore,
+      ]);
+    }, 30_000);
+  }
+});
