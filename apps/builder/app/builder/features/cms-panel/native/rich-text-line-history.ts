@@ -41,7 +41,8 @@ const CHROME_START_CHAR = "​";
  *   own handler has made any change;
  * - `composing`: the editor composes;
  * - `ended`: the editor stopped composing with no text (a cancel); the
- *   commit that takes out its leftover belongs to it;
+ *   commit that takes out its leftover belongs to it, until the person's
+ *   next key or input that is no composition's;
  * - `removing`: the editor stopped composing and the composition-start
  *   character is being removed, in the update that follows the end.
  */
@@ -72,8 +73,11 @@ const startCharOf = new WeakMap<LexicalEditor, string>();
 const compositionEndText = new WeakMap<LexicalEditor, string>();
 
 /**
- * Per editor, a composition an undo or a redo voided while it ran: void
- * until it runs on and then ends.
+ * Per editor, a composition an undo, a redo or a clear of the history
+ * voided while it ran: void until it runs on and then ends, or until the
+ * page's composition ends, or until the person's next key or input that is
+ * no composition's (the voided composition is then over; the next
+ * composition is one of its own).
  */
 const compositionVoided = new WeakMap<LexicalEditor, "voided" | "resumed">();
 
@@ -320,6 +324,27 @@ export const registerCompositionStep = (editor: LexicalEditor) => {
   }
   const onEnd = (event: CompositionEvent) => {
     compositionEndText.set(editor, event.data ?? "");
+    // the voided composition ends here
+    compositionVoided.delete(editor);
+  };
+  // the person's key or input that belongs to no composition: a voided
+  // composition is over, and a cancel's wait for its leftover ends (an
+  // edit after it is the person's own, never the cancel's: its undo step
+  // stays, and no earlier step is cut)
+  const onPersonInput = (event: KeyboardEvent | InputEvent) => {
+    if (
+      event.isComposing ||
+      (event instanceof KeyboardEvent && event.keyCode === 229) ||
+      (event instanceof InputEvent &&
+        event.inputType.includes("Composition")) ||
+      editor.isComposing()
+    ) {
+      return;
+    }
+    compositionVoided.delete(editor);
+    if (compositions.get(editor)?.phase === "ended") {
+      compositions.delete(editor);
+    }
   };
   // 16.2: a cleared history voids what was remembered (Lexical's own clear
   // empties both stacks; this runs before the history plugin's handler)
@@ -401,10 +426,16 @@ export const registerCompositionStep = (editor: LexicalEditor) => {
     () => {
       compositions.delete(editor);
       startCharOf.delete(editor);
+      compositionVoided.delete(editor);
+      compositionEndText.delete(editor);
     },
     editor.registerRootListener((root, previous) => {
       previous?.removeEventListener("compositionend", onEnd, true);
+      previous?.removeEventListener("keydown", onPersonInput, true);
+      previous?.removeEventListener("beforeinput", onPersonInput, true);
       root?.addEventListener("compositionend", onEnd, true);
+      root?.addEventListener("keydown", onPersonInput, true);
+      root?.addEventListener("beforeinput", onPersonInput, true);
     }),
     editor.registerCommand(
       CLEAR_HISTORY_COMMAND,

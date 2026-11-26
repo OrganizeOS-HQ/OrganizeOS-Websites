@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { commands, userEvent } from "@vitest/browser/context";
 import { act } from "react-dom/test-utils";
-import { createEditor } from "lexical";
+import { $getRoot, createEditor } from "lexical";
 import {
   at,
   backspace,
@@ -235,22 +235,51 @@ describe("D15: a rule node-selected in a lined item", () => {
   }
 
   // the head's write is the value as it stood, with one onChange that
-  // repeats it (M14k): 16.10 and T33.4 give no onChange and no undo step
-  // (P16-1, T37.3)
-  test("FS0: the root reference", async () => {
-    const onChange = await mount("<p>xq</p><hr><p>yq</p>");
-    await RULE();
-    const depth = undoDepth();
-    onChange.mockClear();
-    const start = performance.now();
-    await pasteHtml("<hr>")();
-    expect(performance.now() - start, "the paste in ms").toBeLessThan(2000);
-    expect(short(exportRichTextHtml(editorOf()!)), "the value").toBe(
-      "<p>xq</p><hr /><p>yq</p>"
-    );
-    expect(onChange, "no onChange").not.toHaveBeenCalled();
-    expect(undoDepth(), "no undo step").toEqual(depth);
-  });
+  // repeats it (M14k). T42.2 (P16-1, T37.3): as the first action after
+  // mount, one onChange with the value as it stood (nothing handed out
+  // before it, T42.1); after an equal value was handed out, none; either
+  // way no undo step (P20-7)
+  for (const form of ["first action", "after an equal value"] as const) {
+    test(`FS0: the root reference, ${form}`, async () => {
+      const errors: string[] = [];
+      vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+        const text = args.map(String).join(" ");
+        if (text.includes("not wrapped in act") === false) {
+          errors.push(text.slice(0, 300));
+        }
+      });
+      const onChange = await mount("<p>xq</p><hr><p>yq</p>");
+      const stored = short(exportRichTextHtml(editorOf()!));
+      if (form === "after an equal value") {
+        // a commit that changes nothing hands out the value as it stood
+        await act(async () => {
+          editorOf()!.update(() => {
+            $getRoot().markDirty();
+          });
+        });
+        await settle();
+        expect(onChange, "the equal value handed out").toHaveBeenCalledTimes(1);
+        expect(short(lastHtml(onChange))).toBe(stored);
+      }
+      await RULE();
+      const depth = undoDepth();
+      onChange.mockClear();
+      const start = performance.now();
+      await pasteHtml("<hr>")();
+      expect(performance.now() - start, "the paste in ms").toBeLessThan(2000);
+      expect(short(exportRichTextHtml(editorOf()!)), "the value").toBe(
+        "<p>xq</p><hr /><p>yq</p>"
+      );
+      if (form === "first action") {
+        expect(onChange, "one onChange").toHaveBeenCalledTimes(1);
+        expect(short(lastHtml(onChange)), "the value as it stood").toBe(stored);
+      } else {
+        expect(onChange, "no onChange").not.toHaveBeenCalled();
+      }
+      expect(undoDepth(), "no undo step").toEqual(depth);
+      expect(errors, "console errors").toEqual([]);
+    });
+  }
 
   // two edits: one undo takes back the paste only (M16's record, c2)
   test("CS6: a cut of the rule, then a paste", async () => {
@@ -497,7 +526,10 @@ describe("the input listeners follow the root (5.8)", () => {
     expect(short(exportRichTextHtml(editorOf()!))).toBe("<p>Pw</p><p>T0w</p>");
   });
 
-  test("the line code's root listeners: one of each, after a root change, none after cleanup", async () => {
+  // per module: the line input listener's beforeinput and
+  // compositionstart; the composition step's compositionend, and its
+  // beforeinput and keydown (the person's input after a composition)
+  test("the line code's root listeners: one of each per module, after a root change, none after cleanup", async () => {
     const root = document.createElement("div");
     root.contentEditable = "true";
     document.body.appendChild(root);
@@ -533,10 +565,9 @@ describe("the input listeners follow the root (5.8)", () => {
     }) as typeof root.removeEventListener;
     const counts = () =>
       Object.fromEntries(
-        ["beforeinput", "compositionstart", "compositionend"].map((type) => [
-          type,
-          active.get(type)?.size ?? 0,
-        ])
+        ["beforeinput", "compositionstart", "compositionend", "keydown"].map(
+          (type) => [type, active.get(type)?.size ?? 0]
+        )
       );
     const editor = createEditor({
       onError: (error) => {
@@ -549,13 +580,19 @@ describe("the input listeners follow the root (5.8)", () => {
         registerLineInputListener(editor),
         registerCompositionStep(editor),
       ];
-      const one = { beforeinput: 1, compositionstart: 1, compositionend: 1 };
+      const one = {
+        beforeinput: 2,
+        compositionstart: 1,
+        compositionend: 1,
+        keydown: 1,
+      };
       expect(counts(), "registered").toEqual(one);
       editor.setRootElement(null);
       expect(counts(), "no root").toEqual({
         beforeinput: 0,
         compositionstart: 0,
         compositionend: 0,
+        keydown: 0,
       });
       editor.setRootElement(root);
       expect(counts(), "after a root change").toEqual(one);
@@ -566,6 +603,7 @@ describe("the input listeners follow the root (5.8)", () => {
         beforeinput: 0,
         compositionstart: 0,
         compositionend: 0,
+        keydown: 0,
       });
     } finally {
       editor.setRootElement(null);

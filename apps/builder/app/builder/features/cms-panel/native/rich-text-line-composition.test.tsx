@@ -310,10 +310,11 @@ describe("a pause of more than one second (14.5, ruling 5)", () => {
 describe("15.1: undo or redo during a composition gives the head's values", () => {
   // the head's values press for press (recorded at <base>: four undo
   // presses, then four redo presses); redo during a written composition
-  // differs from the head after the composition (P20-2): its value at the
-  // end only
+  // differs from the head after the composition (P20-2) and is pinned as
+  // the branch's, press for press (T42.3: candidate (a), check 4, 15.1):
+  // an undo after the composition takes it back
   const CELLS_151: ReadonlyArray<
-    readonly ["undo" | "redo", boolean, string, string[] | undefined]
+    readonly ["undo" | "redo", boolean, string, string[]]
   > = [
     [
       "undo",
@@ -327,7 +328,12 @@ describe("15.1: undo or redo during a composition gives the head's values", () =
       T("T2w"),
       [...Array(4).fill(T("T2w")), ...Array(4).fill(T("T2wkxa"))],
     ],
-    ["redo", true, T("T2wab"), undefined],
+    [
+      "redo",
+      true,
+      T("T2wab"),
+      [...Array(4).fill(T("T2w")), ...Array(4).fill(T("T2wab"))],
+    ],
     [
       "redo",
       false,
@@ -356,9 +362,6 @@ describe("15.1: undo or redo during a composition gives the head's values", () =
       }
       await quiet();
       expect(valueOf()).toBe(after);
-      if (presses === undefined) {
-        return;
-      }
       const values: string[] = [];
       for (const press of [undo, undo, undo, undo, redo, redo, redo, redo]) {
         await press();
@@ -493,6 +496,46 @@ test("16.2: a history cleared during a composition voids what was remembered", a
   );
 });
 
+// a void is its own composition's: after a composition voided by a clear
+// of the history (16.2) or by an undo during it (15.1), the next written
+// composition is one undo step of its own
+describe("16.2, 15.1: the next composition after a voided one", () => {
+  for (const during of ["a clear of the history", "an undo"] as const) {
+    test(`voided by ${during}: a second written composition at a caret is one undo step`, async () => {
+      await mount("<p>A0w</p><p>B1w</p>");
+      await at("B1w", 1)();
+      await keys("{Shift>}{ArrowLeft}{ArrowLeft}{ArrowLeft}{/Shift}")();
+      await quietly();
+      await imeSet("a");
+      if (during === "an undo") {
+        await undo();
+      } else {
+        await act(async () => {
+          editorOf()!.dispatchCommand(CLEAR_HISTORY_COMMAND, undefined);
+        });
+        await settle();
+      }
+      await imeCommit("a");
+      await quiet();
+      await keys("{Control>}{End}{/Control}")();
+      await keys("k")();
+      const withK = valueOf();
+      expect(withK).toMatch(/k<\/p>$/);
+      const depth = undoDepth().undo;
+      await quietly();
+      await imeSet("b");
+      await imeSet("bc");
+      await imeCommit("bc");
+      await quiet();
+      expect(valueOf()).toMatch(/kbc<\/p>$/);
+      expect(zwCount(), "no start character").toBe(0);
+      expect(undoDepth().undo, "one undo step of its own").toBe(depth + 1);
+      await undo();
+      expect(valueOf(), "one Ctrl+Z gives back the value with k").toBe(withK);
+    });
+  }
+});
+
 describe("a composition written and then taken back: one undo step per edit", () => {
   test("a cancel at a link-led line's start leaves the history as it was", async () => {
     const stored = LI(`<blockquote><p>Q0w</p></blockquote>${LINK}`);
@@ -589,6 +632,31 @@ describe("16.22: a cancelled composition over a range is the range's removal", (
   }
 });
 
+// a cancel over a range is the range's removal (16.22); a later edit by the
+// person that makes the document what it was before the composition is
+// the person's own step: no earlier step is lost
+test("16.22: a letter after a cancel over a range that restores the stored text is a step of its own", async () => {
+  await mount("<p>Pw</p><p>A0w</p>");
+  await at("Pw")();
+  await keys("q")();
+  await at("A0w", 1)();
+  await keys("{Shift>}{ArrowRight}{/Shift}")();
+  await compose(false);
+  expect(valueOf(), "the range's removal").toBe("<p>Pwq</p><p>Aw</p>");
+  await keys("0")();
+  expect(valueOf()).toBe("<p>Pwq</p><p>A0w</p>");
+  const values: string[] = [];
+  for (let press = 0; press < 3; press += 1) {
+    await undo();
+    values.push(valueOf());
+  }
+  expect(values).toEqual([
+    "<p>Pwq</p><p>Aw</p>",
+    "<p>Pwq</p><p>A0w</p>",
+    "<p>Pw</p><p>A0w</p>",
+  ]);
+});
+
 test("16.10: no onChange with an unchanged value at a composition's end", async () => {
   const onChange = await mount("<p>Pw</p><p>T0w</p>");
   await at("T0w", 1)();
@@ -601,11 +669,13 @@ test("16.10: no onChange with an unchanged value at a composition's end", async 
   await imeCommit("abc");
   await quiet();
   const values = rawValues(onChange);
-  expect(values.length).toBeGreaterThan(0);
-  values.forEach((value, index) => {
-    expect(value, `value ${index + 1}`).not.toBe(
-      index === 0 ? before : values[index - 1]
-    );
+  expect(values.length).toBeGreaterThan(1);
+  // nothing was handed out before: the first value after mount is handed
+  // out even where it equals the stored one (T42.1), here at the
+  // composition's start; no value repeats the one before it
+  expect(values[0], "value 1, the value as it stood").toBe(before);
+  values.slice(1).forEach((value, index) => {
+    expect(value, `value ${index + 2}`).not.toBe(values[index]);
   });
   expect(short(values.at(-1)!)).toBe("<p>Pw</p><p>Tabc0w</p>");
 });
