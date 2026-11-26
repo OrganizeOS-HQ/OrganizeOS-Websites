@@ -30,7 +30,7 @@ const isBlock = (node: LexicalNode) =>
  * Whether a point is in a lined container. An item that holds only nested
  * lists is lined for a point on itself (5.1), not for a point in an item
  * of those lists, which is in that item's own text (D11: a range there
- * keeps PR #116's tail join, Z13).
+ * keeps PR 116's tail join, Z13).
  */
 const inLined = (point: PointType) =>
   $findMatchingParent(
