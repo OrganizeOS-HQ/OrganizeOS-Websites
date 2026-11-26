@@ -652,6 +652,23 @@ const $linkGivesUpRules = (link: LinkNode) => {
 };
 
 /**
+ * A container that holds lines only gives way to their text within the
+ * update, as the line rules leave it once committed: a line that meets the
+ * line before over a block whose text joined that line (D3) takes the
+ * join's break first, as the rules give it (T69.2, T70.11).
+ */
+export const $unwrapLinedContainer = (container: ElementNode) => {
+  const children = container.getChildren();
+  const breakBefore = $linesNeedingBreak(container, children);
+  for (const child of children) {
+    if ($isCmsLineNode(child) && breakBefore.has(child.getKey())) {
+      child.splice(0, 0, [$createLineBreakNode()]);
+    }
+  }
+  return $unwrapLines(container.getChildren());
+};
+
+/**
  * The lines among `nodes` give way to their children, in place, and the
  * nodes come back with each line replaced by its children: a lift that
  * reads inline content reads it as the head's tree held it. The line rules

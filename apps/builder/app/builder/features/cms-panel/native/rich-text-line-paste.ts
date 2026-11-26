@@ -22,7 +22,10 @@ import {
   $isCmsLineNode,
   isLinedContainer,
 } from "./rich-text-line-node";
-import { $unwrapLines } from "./rich-text-line-normalise";
+import {
+  $unwrapLinedContainer,
+  $unwrapLines,
+} from "./rich-text-line-normalise";
 import { $removeRangeWithBreak } from "./rich-text-line-removal";
 
 const isBlock = (node: LexicalNode) =>
@@ -304,7 +307,7 @@ export const $removeRangeBeforePlainText = (data: DataTransfer) => {
       )?.getParent() ?? null)
     : null;
   if (container !== null && container.getChildren().every($isCmsLineNode)) {
-    $unwrapLines(container.getChildren());
+    $unwrapLinedContainer(container);
   }
   return false;
 };
