@@ -40,6 +40,7 @@ import {
   lastHtml,
   settle,
 } from "./rich-text-test-harness";
+import { exportRichTextHtml } from "./rich-text-html";
 import {
   $documentTokens,
   $tokenPosition,
@@ -293,6 +294,8 @@ export type Record1510 = {
   before: string;
   /** The value handed out last, short, or null with no onChange. */
   write: string | null;
+  /** The value as it stands after the action, short (live runs only). */
+  value?: string;
   calls: number;
   /** The selection after the action. */
   caret: string;
@@ -394,6 +397,7 @@ export const runCell1510 = async (
       before,
       page,
       write: calls > 0 ? short(lastHtml(onChange)) : null,
+      value: short(exportRichTextHtml(editorOf()!)),
       calls,
       caret: caretKey(),
       errors,
@@ -545,6 +549,14 @@ export const differenceOf = (
     !/<hr/.test(head)
   ) {
     return "the head loses the rule and what follows (15.10)";
+  }
+  if (
+    head !== null &&
+    built === null &&
+    record.calls === 0 &&
+    record.value === head
+  ) {
+    return "the head hands out the value as it stood (16.10)";
   }
   // the Shift step past a rule moves the focus at the key (T29.7), and the
   // key reads the page's selection back (15.12), whichever the field's

@@ -1,4 +1,5 @@
-// The history plugin's external state and the composition's step.
+// The history plugin's external state and the composition's step: the
+// only module that writes the history's undo and redo stacks (T10.10).
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import {
   createEmptyHistoryState,
@@ -8,61 +9,64 @@ import {
 import { mergeRegister } from "@lexical/utils";
 import {
   $getNodeByKey,
+  $getRoot,
   $getSelection,
   $isRangeSelection,
   $isTextNode,
   CAN_REDO_COMMAND,
   CAN_UNDO_COMMAND,
+  CLEAR_EDITOR_COMMAND,
+  CLEAR_HISTORY_COMMAND,
+  COMMAND_PRIORITY_LOW,
   type EditorState,
   type LexicalEditor,
-  TextNode,
+  type NodeKey,
 } from "lexical";
 import { createElement, useEffect, useState } from "react";
-import { linesOff, lineSpike } from "./rich-text-line-node";
+import { linesOff } from "./rich-text-line-node";
 import { d7Document } from "./rich-text-line-points";
 
-/** The field's history (Lexical's HistoryPlugin state), for K. */
+/** The field's history (Lexical's HistoryPlugin state), per editor. */
 const cmsHistory = new WeakMap<LexicalEditor, HistoryState>();
 
-/** Per editor, the composition under way: the state before it, the undo stack's length then, the entry below it and the redo stack. */
 type HistoryEntry = HistoryState["undoStack"][number];
 
-const compositionStarts = new WeakMap<
-  LexicalEditor,
-  {
-    before: EditorState;
-    index: number;
-    below: HistoryEntry | undefined;
-    redo: HistoryEntry[];
-    ended: boolean;
-  }
->();
+/** Chrome's composition-start character; Firefox and Safari insert U+00A0. */
+const CHROME_START_CHAR = "​";
 
 /**
- * Per editor, the composition's start until its first commit: "" from the
- * page's compositionstart, then the composition-start character its
- * controlled text insertion carried, if any.
+ * Per editor, the composition under way, from its start until it is
+ * settled:
+ * - `armed`: remembered at the page's `compositionstart`, before Lexical's
+ *   own handler has made any change;
+ * - `composing`: the editor composes;
+ * - `ended`: the editor stopped composing with no text (a cancel); the
+ *   commit that takes out its leftover belongs to it;
+ * - `removing`: the editor stopped composing and the composition-start
+ *   character is being removed, in the update that follows the end.
  */
-const compositionStarting = new WeakMap<LexicalEditor, string | null>();
-
-/**
- * R1: the composition-start character Lexical inserts at a composition's
- * start reaches the field as a controlled text insertion; that character
- * is the one kept (the table's `history.compositionStartChar`).
- */
-export const compositionStartChar = (
-  editor: LexicalEditor,
-  payload: unknown
-): boolean => {
-  if (
-    compositionStarting.get(editor) === "" &&
-    editor.isComposing() &&
-    (payload === "\u200b" || payload === "\u00a0")
-  ) {
-    compositionStarting.set(editor, payload);
-  }
-  return false;
+type Composition = {
+  phase: "armed" | "composing" | "ended" | "removing";
+  /** The state before the composition's first change. */
+  before: EditorState;
+  /** The undo stack's length then, and the entry below that length. */
+  index: number;
+  below: HistoryEntry | undefined;
+  /** The redo stack as it stood before the composition's first change (16.1). */
+  redo: HistoryEntry[];
+  /** The text node the composition wrote in, as last seen while composing. */
+  composedKey: NodeKey | null;
+  /** The removal found no character to remove in the composed node. */
+  unremovable: boolean;
 };
+
+const compositions = new WeakMap<LexicalEditor, Composition>();
+
+/**
+ * Per editor, the composition-start character Lexical inserted for the
+ * composition under way (a controlled text insertion while composing).
+ */
+const startCharOf = new WeakMap<LexicalEditor, string>();
 
 /** Per editor, the text the page's last composition ended with. */
 const compositionEndText = new WeakMap<LexicalEditor, string>();
@@ -73,253 +77,449 @@ const compositionEndText = new WeakMap<LexicalEditor, string>();
  */
 const compositionVoided = new WeakMap<LexicalEditor, "voided" | "resumed">();
 
+const countOf = (state: EditorState, char: string) =>
+  state.read(() => $getRoot().getTextContent().split(char).length - 1);
+
+const startCharsOf = (editor: LexicalEditor) => {
+  const recorded = startCharOf.get(editor);
+  return recorded === undefined || recorded === CHROME_START_CHAR
+    ? [CHROME_START_CHAR]
+    : [CHROME_START_CHAR, recorded];
+};
+
+/**
+ * How many composition-start characters the editor's document holds beyond
+ * the count it held before the composition under way: 0 when none is.
+ */
+const startCharsLeft = (editor: LexicalEditor, state: EditorState) => {
+  const composition = compositions.get(editor);
+  if (composition === undefined || composition.unremovable) {
+    return 0;
+  }
+  let left = 0;
+  for (const char of startCharsOf(editor)) {
+    left += Math.max(
+      0,
+      countOf(state, char) - countOf(composition.before, char)
+    );
+  }
+  return left;
+};
+
+/**
+ * 16.21: whether the editor's document holds a composition-start character
+ * the composition under way added. The field hands out no such value.
+ */
+export const compositionHoldsStartChar = (editor: LexicalEditor) =>
+  startCharsLeft(editor, editor.getEditorState()) > 0;
+
+/**
+ * R1: the composition-start character Lexical inserts at a composition's
+ * start reaches the field as a controlled text insertion while composing;
+ * the character is kept per editor (the table's
+ * `history.compositionStartChar`). Never handles the command.
+ */
+export const compositionStartChar = (
+  editor: LexicalEditor,
+  payload: unknown
+): boolean => {
+  if (
+    editor.isComposing() &&
+    startCharOf.has(editor) === false &&
+    (payload === CHROME_START_CHAR || payload === " ")
+  ) {
+    startCharOf.set(editor, payload);
+  }
+  return false;
+};
+
+/**
+ * Remembers, per editor, what the composition about to start needs at its
+ * end: the state before it, the undo stack's length with the entry below
+ * it, and the redo stack, taken before Lexical's own `compositionstart`
+ * handler can change the document and the history plugin empty the redo
+ * stack (16.1). Called at the page's `compositionstart`, before Lexical's
+ * listener runs. Makes no update.
+ */
+export const rememberCompositionStart = (
+  editor: LexicalEditor,
+  before: EditorState = editor.getEditorState()
+) => {
+  const history = cmsHistory.get(editor);
+  if (history === undefined || editor.isComposing()) {
+    return;
+  }
+  const index = history.undoStack.length;
+  compositionEndText.delete(editor);
+  startCharOf.delete(editor);
+  compositions.set(editor, {
+    phase: "armed",
+    before,
+    index,
+    below: index > 0 ? history.undoStack[index - 1] : undefined,
+    redo: [...history.redoStack],
+    composedKey: null,
+    unremovable: false,
+  });
+};
+
+const announce = (editor: LexicalEditor, history: HistoryState) => {
+  editor.dispatchCommand(CAN_UNDO_COMMAND, history.undoStack.length > 0);
+  editor.dispatchCommand(CAN_REDO_COMMAND, history.redoStack.length > 0);
+};
+
+/**
+ * F12 (K) and 15.2, decided once the composition has ended, from state:
+ * - a document equal under D7 to the one before (a cancelled composition):
+ *   the undo stack is cut back to the remembered length and the redo stack
+ *   is the one remembered (invariant: both stacks as they stood before the
+ *   composition's first change);
+ * - a different document: the undo stack holds, from the remembered
+ *   length on, one step with the remembered state, and the redo stack is
+ *   emptied
+ *   (invariant: the composition is one step, and one undo restores the
+ *   document before it);
+ * - a history that moved since the start (a stack shorter than the
+ *   remembered length, or another entry below it) voids what was
+ *   remembered (15.1), as an undo, a redo or a clear during the
+ *   composition does (16.2): the history stays as Lexical left it.
+ * A composition that ended with no text waits for the commit that takes out
+ * its leftover. Returns whether the composition is settled.
+ */
+export const settleCompositionEnd = (
+  editor: LexicalEditor,
+  endText: string
+): boolean => {
+  const composition = compositions.get(editor);
+  const history = cmsHistory.get(editor);
+  if (composition === undefined || history === undefined) {
+    return true;
+  }
+  const editorState = editor.getEditorState();
+  // invariant: what was remembered still describes this history (15.1)
+  if (
+    history.undoStack.length < composition.index ||
+    (composition.index > 0 &&
+      history.undoStack[composition.index - 1] !== composition.below)
+  ) {
+    compositions.delete(editor);
+    return true;
+  }
+  const before = d7Document(composition.before);
+  // a cancelled composition: both stacks exactly as before it
+  if (d7Document(editorState) === before) {
+    compositions.delete(editor);
+    history.undoStack.length = composition.index;
+    history.redoStack.length = 0;
+    history.redoStack.push(...composition.redo);
+    announce(editor, history);
+    return true;
+  }
+  if (composition.phase === "ended") {
+    // the leftover's commit was not this one: the next edit is the person's
+    return false;
+  }
+  if (endText === "") {
+    // ended with no text: the commit that takes out its leftover decides
+    composition.phase = "ended";
+  } else {
+    compositions.delete(editor);
+  }
+  // a written composition: exactly one step of its own, holding the state
+  // before it, the person's selection included; the composing states the
+  // history plugin pushed while it ran (a half-composed text, the
+  // composition-start character) are no steps
+  history.undoStack.length = composition.index;
+  history.undoStack.push({ editor, editorState: composition.before });
+  history.redoStack.length = 0;
+  announce(editor, history);
+  return composition.phase !== "ended";
+};
+
+/**
+ * 16.19: removes, in an update of its own right after the commit that ends
+ * a composition, the composition-start characters the composition left
+ * beyond the count the document held before it, from the composed node
+ * only, nearest the caret first (a character the value held before stays).
+ * The caret is corrected. Exact by count: it depends on no dirty node, on
+ * no commit of the start being seen, and on no place of the character.
+ */
+const $removeStartChars = (
+  editor: LexicalEditor,
+  composedKey: NodeKey | null,
+  count: number
+) => {
+  const selection = $getSelection();
+  const caret =
+    $isRangeSelection(selection) && selection.anchor.type === "text"
+      ? selection.anchor
+      : null;
+  const keys = [caret?.key ?? null, composedKey].filter(
+    (key, index, all): key is NodeKey =>
+      key !== null && all.indexOf(key) === index
+  );
+  let left = count;
+  for (const key of keys) {
+    const node = $getNodeByKey(key);
+    if (
+      left === 0 ||
+      $isTextNode(node) === false ||
+      node.isAttached() === false
+    ) {
+      continue;
+    }
+    let text = node.getTextContent();
+    const from = caret?.key === key ? caret.offset : text.length;
+    const removed: number[] = [];
+    // nearest the caret first, before it, then after it
+    const order = [
+      ...Array.from({ length: from }, (_, index) => from - 1 - index),
+      ...Array.from({ length: text.length - from }, (_, index) => from + index),
+    ];
+    for (const index of order) {
+      if (left === 0) {
+        break;
+      }
+      if (startCharsOf(editor).includes(text[index])) {
+        removed.push(index);
+        left -= 1;
+      }
+    }
+    if (removed.length === 0) {
+      continue;
+    }
+    removed.sort((a, b) => b - a);
+    for (const index of removed) {
+      text = text.slice(0, index) + text.slice(index + 1);
+    }
+    node.setTextContent(text);
+    if ($isRangeSelection(selection)) {
+      for (const point of [selection.anchor, selection.focus]) {
+        if (point.type === "text" && point.key === key) {
+          const shift = removed.filter((index) => index < point.offset).length;
+          point.set(key, point.offset - shift, "text");
+        }
+      }
+    }
+  }
+  return count - left;
+};
+
 /**
  * F12 (K): a composition that changes the document is its own undo step,
- * decided at the composition's own end from state. At the commit in which
- * the editor starts composing, the state before it (S0), the undo stack's
- * length (n0), the entry below that length and the redo stack are kept per
- * editor. At the commit in which it stops:
- * - a document equal to S0's (a cancelled composition) puts the history
- *   back exactly: the undo stack is cut back to n0 and the redo stack is
- *   the one kept (15.2);
- * - a changed one gets S0 as a step at n0, unless the history already
- *   holds it there.
- * Only the composition's own end counts (15.1): a commit from the history
- * (an undo or a redo) during the composition, or a history that moved
- * since the start (a stack shorter than n0, or another entry below it),
- * voids what was kept, and the history stays as Lexical left it.
+ * decided at the composition's own end from state (check 3, 14.5, ruling
+ * 4): no update at its start, no tag, no timer. Registers, per editor, the
+ * `compositionend` listener on the root (the text the composition ended
+ * with: none is a cancel), the clear of the history voiding what was
+ * remembered (16.2), and the two update listeners: the composition's
+ * bookkeeping and `startCharRemovalListener`.
  */
 export const registerCompositionStep = (editor: LexicalEditor) => {
   if (linesOff) {
     return () => {};
   }
-  // the text the page's composition ended with: none is a cancel
   const onEnd = (event: CompositionEvent) => {
     compositionEndText.set(editor, event.data ?? "");
   };
-  // R1 (the composition-start character): Lexical 0.21 starts a
-  // composition over a range, or at an element point, by inserting
-  // COMPOSITION_START_CHAR (U+200B on Chrome and other Blink browsers,
-  // U+00A0 on Firefox, Safari and iOS) at the caret. At the commit in which
-  // the editor starts composing, the composed node holds it just before
-  // the caret: that place is kept, and at the composition's end the
-  // character is removed in the same update when it is still there. Never
-  // a strip: no other character is touched
-  let startPlace: { key: string; offset: number; char: string } | null = null;
-  let removedAtEnd = false;
-  // on the window, in the capture phase: before Lexical's own listener on
-  // the root
-  const onStart = (event: CompositionEvent) => {
-    const root = editor.getRootElement();
+  // 16.2: a cleared history voids what was remembered (Lexical's own clear
+  // empties both stacks; this runs before the history plugin's handler)
+  const voidOnClear = () => {
+    if (compositions.has(editor)) {
+      compositions.delete(editor);
+      if (editor.isComposing()) {
+        compositionVoided.set(editor, "voided");
+      }
+    }
+    return false;
+  };
+  // 16.19: at the commit where the editor stops composing, the
+  // composition-start characters it left are removed, by count, from the
+  // composed node, in an update of their own; the composition's bookkeeping
+  // pops the composing state that update makes a step of
+  const startCharRemovalListener = ({
+    editorState,
+  }: {
+    editorState: EditorState;
+  }) => {
+    const composition = compositions.get(editor);
     if (
-      root === null ||
-      event.target instanceof Node === false ||
-      root.contains(event.target) === false
+      composition === undefined ||
+      composition.phase === "armed" ||
+      composition.phase === "removing" ||
+      editor.isComposing()
     ) {
       return;
     }
-    // until the next commit: the start's own (Lexical's listener runs
-    // after a microtask checkpoint, so a microtask would end it too soon)
-    compositionStarting.set(editor, "");
+    const left = startCharsLeft(editor, editorState);
+    if (left === 0) {
+      return;
+    }
+    composition.phase = "removing";
+    editor.update(() => {
+      // none found where the composition wrote: the composition settles
+      // at the next commit, with what it left (the watch reports it)
+      if ($removeStartChars(editor, composition.composedKey, left) === 0) {
+        composition.phase = "composing";
+        composition.unremovable = true;
+      }
+    });
+  };
+  // 16.10, second contract (T33.4, T37.3): an edit outside a composition
+  // that leaves the document unchanged under D7 makes no undo step: the
+  // step the history plugin pushed for it is taken back, and the redo stack
+  // its push emptied is put back (invariant: every undo step changes the
+  // document)
+  let redoBefore: HistoryEntry[] = [];
+  const unchangedEditListener = ({
+    editorState,
+    prevEditorState,
+    tags,
+  }: {
+    editorState: EditorState;
+    prevEditorState: EditorState;
+    tags: Set<string>;
+  }) => {
+    const history = cmsHistory.get(editor);
+    if (history === undefined) {
+      return;
+    }
+    if (
+      tags.has("historic") === false &&
+      editor.isComposing() === false &&
+      compositions.has(editor) === false &&
+      history.undoStack.at(-1)?.editorState === prevEditorState &&
+      d7Document(prevEditorState) === d7Document(editorState)
+    ) {
+      history.undoStack.pop();
+      history.redoStack.length = 0;
+      history.redoStack.push(...redoBefore);
+      announce(editor, history);
+    }
+    redoBefore = [...history.redoStack];
   };
   return mergeRegister(
     () => {
-      compositionStarting.delete(editor);
+      compositions.delete(editor);
+      startCharOf.delete(editor);
     },
     editor.registerRootListener((root, previous) => {
       previous?.removeEventListener("compositionend", onEnd, true);
       root?.addEventListener("compositionend", onEnd, true);
-      previous?.ownerDocument.defaultView?.removeEventListener(
-        "compositionstart",
-        onStart,
-        true
-      );
-      root?.ownerDocument.defaultView?.addEventListener(
-        "compositionstart",
-        onStart,
-        true
-      );
     }),
-    // the composition's end dirties the text node the page's caret is
-    // in, which need not be the composed one
-    editor.registerNodeTransform(TextNode, () => {
-      const place = startPlace;
-      if (
-        place === null ||
-        editor.isComposing() ||
-        lineSpike.compositionStartCharKept
-      ) {
-        return;
-      }
-      startPlace = null;
-      const node = $getNodeByKey(place.key);
-      if ($isTextNode(node) === false || node.isAttached() === false) {
-        return;
-      }
-      const text = node.getTextContent();
-      if (text[place.offset] !== place.char) {
-        return;
-      }
-      node.setTextContent(
-        text.slice(0, place.offset) + text.slice(place.offset + 1)
-      );
-      removedAtEnd = true;
-      const selection = $getSelection();
-      if ($isRangeSelection(selection)) {
-        for (const point of [selection.anchor, selection.focus]) {
-          if (
-            point.type === "text" &&
-            point.key === place.key &&
-            point.offset > place.offset
-          ) {
-            point.set(point.key, point.offset - 1, "text");
-          }
-        }
-      }
-    }),
+    editor.registerCommand(
+      CLEAR_HISTORY_COMMAND,
+      voidOnClear,
+      COMMAND_PRIORITY_LOW
+    ),
+    editor.registerCommand(
+      CLEAR_EDITOR_COMMAND,
+      voidOnClear,
+      COMMAND_PRIORITY_LOW
+    ),
+    editor.registerUpdateListener(unchangedEditListener),
     editor.registerUpdateListener(
       ({ editorState, prevEditorState, tags, dirtyElements, dirtyLeaves }) => {
-        // R1: the place of the start character, read at the commit that
-        // inserted it; gone once the composition is over
-        const starting = compositionStarting.get(editor) ?? null;
-        if (
-          editor.isComposing() &&
-          typeof starting === "string" &&
-          starting !== ""
-        ) {
-          const char = starting;
-          compositionStarting.set(editor, null);
-          startPlace = editorState.read(() => {
-            const selection = $getSelection();
-            if (
-              $isRangeSelection(selection) === false ||
-              selection.anchor.type !== "text"
-            ) {
-              return null;
-            }
-            const { key, offset } = selection.anchor;
-            const node = $getNodeByKey(key);
-            return $isTextNode(node) &&
-              offset > 0 &&
-              node.getTextContent()[offset - 1] === char
-              ? { key, offset: offset - 1, char }
-              : null;
-          });
-        } else if (editor.isComposing() === false || tags.has("historic")) {
-          startPlace = null;
-        }
-        // a start that inserted no character is over at its commit (a
-        // commit before it, made while not composing, leaves it)
-        if (editor.isComposing()) {
-          compositionStarting.set(editor, null);
-        }
         const history = cmsHistory.get(editor);
         if (history === undefined) {
           return;
         }
-        // R1: the end that removed the start character is the
-        // composition's own commit: the state it replaced (the composing
-        // one, which held the character) is no step of its own
-        if (removedAtEnd) {
-          removedAtEnd = false;
-          if (history.undoStack.at(-1)?.editorState === prevEditorState) {
-            history.undoStack.pop();
-          }
-        }
-        const start = compositionStarts.get(editor);
+        let composition = compositions.get(editor);
+        const composing = editor.isComposing();
+        // an undo or a redo during the composition voids it (15.1)
         if (tags.has("historic")) {
-          if (start !== undefined) {
-            compositionStarts.delete(editor);
-            if (start.ended === false) {
+          if (composition !== undefined) {
+            compositions.delete(editor);
+            if (composition.phase !== "ended") {
               compositionVoided.set(editor, "voided");
             }
           }
           return;
         }
-        if (editor.isComposing()) {
+        if (composing) {
           // the voided composition runs on (an undo can end the page's
           // composition, and the input method starts it again)
           if (compositionVoided.get(editor) === "voided") {
             compositionVoided.set(editor, "resumed");
           }
-          if (start === undefined && compositionVoided.has(editor) === false) {
-            // the history may already have taken this commit's step: its
-            // newest entry is then the state before this commit
+          if (compositionVoided.has(editor)) {
+            // a start remembered again while it runs on is void too
+            compositions.delete(editor);
+            return;
+          }
+          if (composition === undefined || composition.phase === "ended") {
+            // no compositionstart seen: the last commit before composing,
+            // whose step the history may already have taken
             const length = history.undoStack.length;
             const pushedHere =
               history.undoStack.at(-1)?.editorState === prevEditorState;
             const index = pushedHere ? length - 1 : length;
             compositionEndText.delete(editor);
-            compositionStarts.set(editor, {
+            composition = {
+              phase: "composing",
               before: prevEditorState,
               index,
               below: index > 0 ? history.undoStack[index - 1] : undefined,
               redo: [...history.redoStack],
-              ended: false,
-            });
+              composedKey: null,
+              unremovable: false,
+            };
+            compositions.set(editor, composition);
           }
+          composition.phase = "composing";
+          composition.composedKey = editorState.read(() => {
+            const selection = $getSelection();
+            return $isRangeSelection(selection) &&
+              selection.anchor.type === "text"
+              ? selection.anchor.key
+              : composition!.composedKey;
+          });
           return;
         }
-        if (start === undefined) {
+        if (composition === undefined) {
           // the voided composition's own end
           if (compositionVoided.get(editor) === "resumed") {
             compositionVoided.delete(editor);
           }
           return;
         }
+        if (composition.phase === "armed") {
+          // a start that never composed: remembered again from this commit,
+          // unless the composition ended in it (its start's commit unseen)
+          if (compositionEndText.has(editor) === false) {
+            rememberCompositionStart(editor);
+            return;
+          }
+          composition.phase = "composing";
+        }
+        if (composition.phase === "removing") {
+          // the removal's commit: the composing state it replaced, which held
+          // the character, is no step of its own
+          if (history.undoStack.at(-1)?.editorState === prevEditorState) {
+            history.undoStack.pop();
+          }
+          composition.phase = "composing";
+        } else if (startCharsLeft(editor, editorState) > 0) {
+          // startCharRemovalListener removes them in the next update
+          return;
+        }
         if (
-          history.undoStack.length < start.index ||
-          (start.index > 0 &&
-            history.undoStack[start.index - 1] !== start.below)
+          composition.phase === "ended" &&
+          dirtyElements.size === 0 &&
+          dirtyLeaves.size === 0
         ) {
-          compositionStarts.delete(editor);
+          // a commit that changes no node is not the leftover's
           return;
         }
-        const before = d7Document(start.before);
-        // a cancelled composition: the history exactly as before it. A
-        // composition that ended with no text is a cancel, and the commit
-        // that takes out its leftover belongs to it; one that ended with
-        // text is decided at its end, and the next edit is the person's
-        if (d7Document(editorState) === before) {
-          compositionStarts.delete(editor);
-          history.undoStack.length = start.index;
-          history.redoStack.length = 0;
-          history.redoStack.push(...start.redo);
-          editor.dispatchCommand(
-            CAN_UNDO_COMMAND,
-            history.undoStack.length > 0
-          );
-          editor.dispatchCommand(
-            CAN_REDO_COMMAND,
-            history.redoStack.length > 0
-          );
-          return;
-        }
-        if (start.ended) {
-          // a commit that changes no node is not the one read after the end
-          if (dirtyElements.size > 0 || dirtyLeaves.size > 0) {
-            compositionStarts.delete(editor);
+        if (composition.phase === "ended") {
+          if (settleCompositionEnd(editor, "") === false) {
+            compositions.delete(editor);
           }
           return;
         }
-        if (compositionEndText.get(editor) === "") {
-          start.ended = true;
-        } else {
-          compositionStarts.delete(editor);
-        }
-        const entry = history.undoStack[start.index];
-        if (entry !== undefined && d7Document(entry.editorState) === before) {
-          return;
-        }
-        history.undoStack.splice(start.index, 0, {
-          editor,
-          editorState: start.before,
-        });
-        history.redoStack.length = 0;
-        editor.dispatchCommand(CAN_UNDO_COMMAND, true);
-        editor.dispatchCommand(CAN_REDO_COMMAND, false);
+        settleCompositionEnd(editor, compositionEndText.get(editor) ?? "x");
       }
-    )
+    ),
+    editor.registerUpdateListener(startCharRemovalListener)
   );
 };
 

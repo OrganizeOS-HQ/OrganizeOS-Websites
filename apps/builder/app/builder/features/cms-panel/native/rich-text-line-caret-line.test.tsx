@@ -130,8 +130,9 @@ describe("the empty caret line", () => {
     });
     await settle();
     expect(endsInEmptyLine(0)).toBe(true);
-    // the onChange that setting a state makes is not this test's
-    onChange.mockClear();
+    // a state that differs only by a stray empty line hands out nothing
+    // (16.10; T26.2)
+    expect(onChange).not.toHaveBeenCalled();
     await at("T2w", 1)();
     await keys("{ArrowRight}")();
     expect(endsInEmptyLine(0)).toBe(true);

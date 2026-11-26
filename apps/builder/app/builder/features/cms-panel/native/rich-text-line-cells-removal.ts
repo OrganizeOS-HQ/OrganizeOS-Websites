@@ -7,7 +7,9 @@
 // what the removal took equals `$rangeOracle` of the range (H), with no
 // console error and the step under 2,000 ms. Divider over a range takes the
 // head's path and removes nothing (check 2, A4). A composition over a
-// backward range is left to Task 20's table (16.19 to 16.21).
+// backward range removes the range, writes its text once and leaves no
+// composition-start character, as the forward range does (P13-4, T30.5;
+// Task 20, 16.19 to 16.21).
 import { expect, vi } from "vitest";
 import { act } from "react-dom/test-utils";
 import { userEvent } from "@vitest/browser/context";
@@ -127,12 +129,6 @@ export const removalCells = (): RemovalCell[] => {
           : `<p>${first}</p><p>${second}</p>`;
         for (const backward of [false, true]) {
           for (const entry of ENTRY_POINTS) {
-            // a composition over a backward range is Task 20's table
-            // (16.19 to 16.21): the head and the build leave its start
-            // character or type its letter twice there (P13-4)
-            if (backward && entry[0] === "ime") {
-              continue;
-            }
             cells.push({
               id: `${edge}|${place}|${lined ? "lined" : "ordinary"}|${backward ? "backward" : "forward"}|${entry[0]}`,
               edge,

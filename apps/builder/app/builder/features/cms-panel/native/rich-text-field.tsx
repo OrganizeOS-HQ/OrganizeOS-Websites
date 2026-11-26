@@ -106,6 +106,7 @@ import {
 } from "./rich-text-line-commands";
 import {
   CmsHistoryPlugin,
+  compositionHoldsStartChar,
   registerCompositionStep,
 } from "./rich-text-line-history";
 import { lineSpike } from "./rich-text-line-node";
@@ -2695,6 +2696,48 @@ const fieldValueOf = (editor: LexicalEditor): FieldValue => {
     : { html, text };
 };
 
+/**
+ * The field's change handler (16.10, first contract; 16.21): it hands out
+ * the value of each commit that changes the document, except one equal to
+ * the value it handed out last, and one that holds a composition-start
+ * character the composition under way added. Values are compared by their
+ * HTML, and every "no value" is one value (its text follows from the HTML
+ * but for the blank lines an empty line adds). Before the first, the value
+ * handed out last is the stored one: no value when none was stored, else
+ * the HTML the field opened with, even where it holds no text.
+ */
+const ChangePlugin = ({
+  stored,
+  onChange,
+}: {
+  stored: boolean;
+  onChange: (value: FieldValue) => void;
+}) => {
+  const [editor] = useLexicalComposerContext();
+  const handedOut = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    handedOut.current = stored ? exportRichTextHtml(editor) : null;
+  }, [editor, stored]);
+  return (
+    <OnChangePlugin
+      ignoreSelectionChange
+      ignoreHistoryMergeTagChange
+      onChange={(_editorState, editor) => {
+        if (compositionHoldsStartChar(editor)) {
+          return;
+        }
+        const value = fieldValueOf(editor);
+        const key = value === null ? null : value.html;
+        if (key === handedOut.current) {
+          return;
+        }
+        handedOut.current = key;
+        onChange(value);
+      }}
+    />
+  );
+};
+
 /** Development only: the field's harness watch, dropped at unmount. */
 const WatchPlugin = ({
   watched,
@@ -3946,11 +3989,9 @@ export const RichTextField = ({
         <ImageEditingPlugin />
         <HorizontalRulePlugin />
         <TransformsPlugin namespace={namespace} />
-        <OnChangePlugin
-          ignoreSelectionChange
-          ignoreHistoryMergeTagChange
-          onChange={(_editorState, editor) => {
-            const value = fieldValueOf(editor);
+        <ChangePlugin
+          stored={initial !== null}
+          onChange={(value) => {
             watched.current?.(value);
             onChange(value);
           }}

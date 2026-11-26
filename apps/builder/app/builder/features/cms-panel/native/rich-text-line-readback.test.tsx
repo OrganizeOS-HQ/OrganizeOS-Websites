@@ -668,7 +668,25 @@ describe("T10.7b: Shift+Home or Shift+End to an image's side", () => {
       const expected = cell.stored.replace("T1w", DECORATOR_WRITES[name]);
       expect(short(expected)).not.toBe(short(cell.stored));
       if (name === "ime") {
-        // a composition hands out more than one value (P11-1)
+        // a composition's values (P11-1, T29.6): none repeats the one
+        // before it (16.10), none holds the start character (16.21), and
+        // the last is the write
+        const onChange = await mount(cell.stored);
+        await cell.place?.();
+        const before = exportRichTextHtml(editorOf()!);
+        onChange.mockClear();
+        await cell.action();
+        const values = onChange.mock.calls.map(
+          ([value]) => (value as { html: string }).html
+        );
+        expect(values.length, "an onChange").toBeGreaterThan(0);
+        values.forEach((value, index) => {
+          expect(value, `value ${index + 1}`).not.toBe(
+            index === 0 ? before : values[index - 1]
+          );
+          expect(value, `value ${index + 1}`).not.toContain("​");
+        });
+        expect(short(values.at(-1)!)).toBe(short(expected));
         const record = await recordEdit(cell);
         expect(record.write).toBe(short(expected));
         expect(record.undoRestores).toBe(true);
@@ -686,8 +704,11 @@ describe("T10.7b: Shift+Home or Shift+End to an image's side", () => {
       const { write, calls, caret, typed } = await recordEdit(cell, {
         short: true,
       });
+      const head = DECORATOR_FIXTURE[cell.id];
+      // the head's composition hands out three values that repeat one
+      // another: one value (16.10; Task 20)
       expect({ write, calls, caret, typed }).toEqual(
-        DECORATOR_FIXTURE[cell.id]
+        cell.id.endsWith("-ime") ? { ...head, calls: 1 } : head
       );
     }
   );

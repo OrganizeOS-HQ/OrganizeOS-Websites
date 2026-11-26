@@ -234,20 +234,22 @@ describe("D15: a rule node-selected in a lined item", () => {
     });
   }
 
-  // the head's write is the value as it stood: M14k counts one onChange
-  // that repeats it, which 16.10 takes out (Task 20's change handler); the
-  // value and the bound are pinned here (P16-1)
+  // the head's write is the value as it stood, with one onChange that
+  // repeats it (M14k): 16.10 and T33.4 give no onChange and no undo step
+  // (P16-1, T37.3)
   test("FS0: the root reference", async () => {
-    const record = await recordEdit({
-      stored: "<p>xq</p><hr><p>yq</p>",
-      place: RULE,
-      action: pasteHtml("<hr>"),
-    });
+    const onChange = await mount("<p>xq</p><hr><p>yq</p>");
+    await RULE();
+    const depth = undoDepth();
+    onChange.mockClear();
+    const start = performance.now();
+    await pasteHtml("<hr>")();
+    expect(performance.now() - start, "the paste in ms").toBeLessThan(2000);
     expect(short(exportRichTextHtml(editorOf()!)), "the value").toBe(
       "<p>xq</p><hr /><p>yq</p>"
     );
-    expect(record.errors, "console errors").toEqual([]);
-    expect(record.slowest, "slowest step in ms").toBeLessThan(2000);
+    expect(onChange, "no onChange").not.toHaveBeenCalled();
+    expect(undoDepth(), "no undo step").toEqual(depth);
   });
 
   // two edits: one undo takes back the paste only (M16's record, c2)
@@ -482,8 +484,8 @@ describe("the input listeners follow the root (5.8)", () => {
     await at("T0w", 1)();
     onChange.mockClear();
     await ime("a")();
-    // the composition's onChange count is Task 20's (16.10, 16.21; P16-2)
-    expect(onChange.mock.calls.length, "an onChange").toBeGreaterThan(0);
+    // one value for one composed letter: no repeat (16.10, T29.6; P16-2)
+    expect(onChange.mock.calls.length, "one onChange").toBe(1);
     expect(short(lastHtml(onChange))).toBe("<p>Pwk</p><p>Ta0w</p>");
     await keys("{Control>}z{/Control}")();
     expect(

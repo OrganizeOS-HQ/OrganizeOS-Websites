@@ -77,7 +77,10 @@ const holdUpdateListener = (name: string): Restore => {
 };
 
 const install: Record<
-  "scratch-write" | "cut-removal-differs" | "check-after-commit-off",
+  | "scratch-write"
+  | "cut-removal-differs"
+  | "check-after-commit-off"
+  | "start-char-kept",
   () => Restore
 > = {
   // the scratch editor the clipboard writer makes has no root element; a
@@ -113,6 +116,9 @@ const install: Record<
   },
   // the check after a commit (Task 12 names its listener so)
   "check-after-commit-off": () => holdUpdateListener("pointCheckListener"),
+  // the removal of the composition-start character (Task 20 names its
+  // listener so): a composition leaves the character where Lexical put it
+  "start-char-kept": () => holdUpdateListener("startCharRemovalListener"),
 };
 
 /**
@@ -130,9 +136,11 @@ export const forcedFailure = (kind: keyof typeof install) => {
   return restore;
 };
 
-/** The lengths of the undo and redo stacks of the mounted editor's history. */
-export const undoDepth = (): { undo: number; redo: number } => {
-  const state = historyStateOf(editorOf()!);
+/** The lengths of the undo and redo stacks of a field's history (the harness's by default). */
+export const undoDepth = (
+  editor: LexicalEditor = editorOf()!
+): { undo: number; redo: number } => {
+  const state = historyStateOf(editor);
   return { undo: state.undoStack.length, redo: state.redoStack.length };
 };
 

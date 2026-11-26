@@ -103,8 +103,10 @@ const expectKeyOverRange = async (
   }
   const after = await runCell1510(cell, { first: keys("{Backspace}") });
   expectClean(after);
-  expect(record.write, "the key after Backspace over the range").toBe(
-    after.write
+  // the values both leave: a key that leaves the value as it stood
+  // hands out nothing (16.10)
+  expect(record.value, "the key after Backspace over the range").toBe(
+    after.value
   );
 };
 

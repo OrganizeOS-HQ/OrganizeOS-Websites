@@ -19,6 +19,7 @@ import {
   type TextNode,
 } from "lexical";
 import {
+  exportRichTextHtml,
   importRichTextHtml,
   registerRichTextTransforms,
   richTextHtmlConfig,
@@ -71,7 +72,7 @@ import {
   twinOf,
   backspace,
 } from "./rich-text-line-test-kit";
-import { net } from "./rich-text-line-test-kit-branch";
+import { forcedFailure, net } from "./rich-text-line-test-kit-branch";
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -547,8 +548,9 @@ describe("the line tests' kit", () => {
     }
     expect(performance.now() - start).toBeLessThan(1000);
     expect(commits).toBeGreaterThan(0);
-    expect(lastHtml(onChange)).not.toContain("<img");
-    expect(plain(lastHtml(onChange))).toBe("<p>Aw</p>");
+    // the value as it stood: no onChange (16.10, T18.9)
+    expect(onChange).not.toHaveBeenCalled();
+    expect(plain(exportRichTextHtml(editorOf()!))).toBe("<p>Aw</p>");
   });
 });
 
@@ -584,6 +586,9 @@ describe("the net (kit-branch)", () => {
   });
 
   test("the net fails on a composition-start character a composition left", async () => {
+    // the field removes the character a composition left (Task 20): its
+    // removal is held from the test's side
+    forcedFailure("start-char-kept");
     await mount("<p>Aw</p>");
     await at("Aw", 1)();
     const editor = editorOf()!;
@@ -609,8 +614,18 @@ describe("the net (kit-branch)", () => {
     await settle();
     expect(editor.isComposing()).toBe(false);
     const failures = net();
-    expect(failures).toHaveLength(1);
-    expect(failures[0]).toContain("composition-start");
+    expect(
+      failures.filter((failure) => failure.includes("composition-start"))
+    ).toHaveLength(1);
+    // the field hands out no value that holds the character (16.21), so
+    // the watch also sees a document no onChange reported
+    expect(
+      failures.filter(
+        (failure) => failure.includes("composition-start") === false
+      )
+    ).toEqual([
+      expect.stringContaining("no onChange, but the document changed"),
+    ]);
   });
 
   test("the net does not flag a U+200B an edit brings", async () => {
