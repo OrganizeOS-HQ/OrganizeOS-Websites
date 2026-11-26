@@ -48,6 +48,7 @@ import {
   containerPoint,
   copy,
   expectEdit,
+  expectSameLines,
   forceOrder,
   htmlLines,
   hold,
@@ -574,6 +575,38 @@ test("htmlLines: a block that holds no block, an inline run and <br> (T65)", () 
     "w",
   ]);
   expect(htmlLines("<span>Aw</span>")).toEqual(["Aw"]);
+});
+
+test("expectSameLines: the lines that hold text, in order (T65, T71.4)", () => {
+  // FS9: a boundary at a range's end is a new line in text/plain only
+  expectSameLines({
+    "text/html": "<blockquote><p></p></blockquote>",
+    "text/plain": "\n",
+  });
+  // a rule is its own new line and a boundary beside it
+  expectSameLines({ "text/html": "<hr><p>B</p>", "text/plain": "\n\nB" });
+  expectSameLines({
+    "text/html": "<p>0w</p><blockquote><p>Q1w</p></blockquote>",
+    "text/plain": "0w\nQ1w\n",
+  });
+  // two blocks' texts on one line of text/plain
+  expect(() =>
+    expectSameLines({
+      "text/html": "<p>0w</p><p>Q1w</p>",
+      "text/plain": "0wQ1w",
+    })
+  ).toThrow();
+  // text one flavour lacks
+  expect(() =>
+    expectSameLines({ "text/html": "<p>0w</p>", "text/plain": "0w\nk" })
+  ).toThrow();
+  // out of order
+  expect(() =>
+    expectSameLines({
+      "text/html": "<p>A</p><p>B</p>",
+      "text/plain": "B\nA",
+    })
+  ).toThrow();
 });
 
 describe("the net (kit-branch)", () => {

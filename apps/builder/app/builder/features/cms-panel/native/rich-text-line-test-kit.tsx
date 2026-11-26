@@ -881,12 +881,17 @@ export const htmlLines = (html: string) => {
   return lines(body).join("\n").split("\n");
 };
 
-/** T65: text/plain has exactly the lines of the same clipboard's text/html. */
+/**
+ * T65 as T71.4 restates it: the lines of text/plain that hold text are, in
+ * order, the texts of text/html's blocks and lines (`htmlLines`), and
+ * neither flavour holds text the other lacks; the number of new lines is
+ * pinned by each test's own literal, not here.
+ */
 export const expectSameLines = (data: Record<string, string>) =>
   expect(
-    (data["text/plain"] ?? "").split("\n"),
-    `T65: text/plain has the lines of text/html ${data["text/html"]}`
-  ).toEqual(htmlLines(data["text/html"] ?? ""));
+    (data["text/plain"] ?? "").split("\n").filter((line) => line !== ""),
+    `T65: text/plain holds the texts of text/html ${data["text/html"]}`
+  ).toEqual(htmlLines(data["text/html"] ?? "").filter((line) => line !== ""));
 
 export const pasteClip: Step = () => pasteData(transfer(clipboard()));
 

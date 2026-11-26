@@ -598,6 +598,7 @@ describe("Task 18: the one writer (D6, V13, F7, FS9)", () => {
         "<blockquote><p></p></blockquote>"
       );
       expect(held["text/plain"]).toBe("\n");
+      expectSameLines(held);
     });
   }
 
