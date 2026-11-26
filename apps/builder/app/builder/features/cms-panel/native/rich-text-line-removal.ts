@@ -244,7 +244,9 @@ export const $removeRangeWithBreak = (selection: RangeSelection) => {
     line.isAttached() &&
     line.getNextSibling()?.is(next) === true &&
     isLineBreak(line.getLastChild()) === false &&
-    isLineBreak(next.getFirstChild()) === false
+    // the break that is the whole of an empty line does not stand at the
+    // edge (D3; T59 defect 9, T69.2)
+    (isLineBreak(next.getFirstChild()) && next.getChildrenSize() > 1) === false
   ) {
     line.append($createLineBreakNode());
   }

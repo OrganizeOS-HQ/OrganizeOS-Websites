@@ -30,8 +30,10 @@ import {
   IMG,
   LI,
   pasteHtml,
+  pasteText,
   range,
   sameUpdate,
+  shiftEnter,
   W,
 } from "./rich-text-line-test-kit";
 import {
@@ -716,5 +718,45 @@ describe("D3 case 3: a block's text joins the line before, and an empty line aft
         source: "D3 case 3; acceptance check defect 9",
       });
     });
+  }
+});
+
+describe("D3 case 3 over a range before a key: the empty line after the block stays (T69.2)", () => {
+  // T35.1, T36.1: Enter, Shift+Enter and a paste over the range give the
+  // field's removal (Backspace over the range: `Tw<br /><br />`, the caret
+  // at Tw@1) and then the key at the caret it leaves; measured both ways
+  const keyed = [
+    ["Enter", enter, W("<li>T</li><li>w<br /><br /></li>"), "text:w@0"],
+    ["Shift+Enter", shiftEnter, W("<li>T<br />w<br /><br /></li>"), "text:w@0"],
+    [
+      "a text paste",
+      pasteText("Aq"),
+      W("<li>TAqw<br /><br /></li>"),
+      "text:TAqw@3",
+    ],
+    [
+      "an HTML paste",
+      pasteHtml("<p>Aq</p><p>Bq</p>"),
+      "<ul><li>Pw</li><li>TAq</li></ul><p>Bqw<br /><br /></p><ul><li>Nw</li></ul>",
+      "text:Bqw@2",
+    ],
+  ] as const;
+  const cells = [
+    ["a heading", LI("T0w<h3>H1w</h3><br>"), "H1w"],
+    ["a code block", LI("T0w<pre><code>C1w</code></pre><br>"), "C1w"],
+  ] as const;
+  for (const [name, stored, word] of cells) {
+    for (const [key, action, write, caret] of keyed) {
+      test(`${name}, ${key} over T0w@1 to ${word}@2`, async () => {
+        await expectEdit({
+          stored,
+          place: range("T0w", 1, word, 2),
+          action,
+          write,
+          caret,
+          source: "D3 case 3; T35.1, T36.1 (the removal, then the key)",
+        });
+      });
+    }
   }
 });
