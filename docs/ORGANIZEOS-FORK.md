@@ -352,13 +352,14 @@ can be merged with minimal conflict.
   nano-staged's `oxfmt --no-error-on-unmatched-pattern`, so a commit that stages
   only files the formatter ignores (this doc, under `docs/**`) passes the hook.
   `.github/workflows/main.yml`: one workflow, a `checks` job and a `tests` job
-  of eighteen legs (the packages, the CLI, and one per builder Vitest project;
-  the CMS panels have nine: `core-browser-builder-cms`,
+  of nineteen legs (the packages, the CLI, and one per builder Vitest project;
+  the CMS panels have ten: `core-browser-builder-cms`,
   `core-browser-builder-cms-rich-text` for the rich-text field's tests,
   `core-browser-builder-cms-rich-text-sweeps` for its three generated sweeps,
   the two toolbar-over-corpus files and the fuzz file;
   `core-browser-builder-cms-rich-text-lines` for the line rules' assertion
-  tests; and `core-browser-builder-cms-rich-text-grids-a` to
+  tests, `core-browser-builder-cms-rich-text-lines-b` for the slowest of those
+  files (press, readback, walks), split off so each leg stays under 400 s; and `core-browser-builder-cms-rich-text-grids-a` to
   `core-browser-builder-cms-rich-text-grids-e` for their grids, click test,
   mount sweep and layout test, split by file so each leg stays under 400 s),
   with no secret, environment or checkout ref, and checkouts that keep no

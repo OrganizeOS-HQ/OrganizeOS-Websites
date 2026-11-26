@@ -91,6 +91,12 @@ const richTextLineGrids = [
   "app/builder/features/cms-panel/native/rich-text-line-mount.{test,spec}.{ts,tsx}",
   "app/builder/features/cms-panel/native/rich-text-line-layout.{test,spec}.{ts,tsx}",
 ];
+// The slowest line assertion files run as the lines-b project; the lines
+// project excludes them, so no file is in two projects (Task 25).
+const richTextLineTestsB = ["press", "readback", "walks"].map(
+  (name) =>
+    `app/builder/features/cms-panel/native/rich-text-line-${name}.{test,spec}.{ts,tsx}`
+);
 // The grids run as five projects by file, each leg under its 400 s bound on
 // CI by the files' measured times (Task 22).
 const lineGrid = (names: string[]) =>
@@ -177,7 +183,14 @@ const projects = [
     "core",
     "builder-cms-rich-text-lines",
     [richTextLineTests],
-    richTextLineGrids,
+    [...richTextLineGrids, ...richTextLineTestsB],
+    [richTextNet]
+  ),
+  browserProject(
+    "core",
+    "builder-cms-rich-text-lines-b",
+    richTextLineTestsB,
+    [],
     [richTextNet]
   ),
   ...richTextLineGridLegs.map(([leg, include]) =>

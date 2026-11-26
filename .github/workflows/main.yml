@@ -142,6 +142,9 @@ jobs:
           - leg: builder core-browser-builder-cms-rich-text-lines
             project: core-browser-builder-cms-rich-text-lines
             browser: true
+          - leg: builder core-browser-builder-cms-rich-text-lines-b
+            project: core-browser-builder-cms-rich-text-lines-b
+            browser: true
           - leg: builder core-browser-builder-cms-rich-text-grids-a
             project: core-browser-builder-cms-rich-text-grids-a
             browser: true
