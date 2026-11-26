@@ -1006,3 +1006,90 @@ Measured by the harness-only probe `SP/t68-probe/rich-text-zzt68-probe.test.tsx`
   the placeholder only where the content the range does not hold stands before the range).
 - Pinned now: only what both builds share for this shape (the cut pasted back gives the stored value). The copy's shape
   for this shape is not pinned.
+
+# P74-3 (T74.3)
+
+Measured by the harness-only probe `SP/t74/probe.test.tsx` (copied as a scratch `rich-text-zzt74-probe.test.tsx` into
+`apps/builder/app/builder/features/cms-panel/native/`, project `core-browser-builder-cms-rich-text`, deleted
+afterwards at both builds; nothing committed). Builds: the branch at `0d02dce` (detached; worktree
+`.claude/worktrees/agent-a7eedd8ca0bf64ade`) and `<base>` `2a96a45` (`SP/r1-base`, `timeout 600`, left clean).
+Raw outputs: `SP/t74/branch.txt`, `SP/t74/base.txt` (and the `.json` and `.log` files). Each cell was run 3 times at
+each build; all three runs agree on every value below.
+
+## Stored HTML
+
+Image markup of the t68 probe: `<img src="https://cdn.example.org/x.png" alt="" width="40" height="20" />`
+(`<img />` below).
+
+- Cell (a), in an item: `<ul><li>Pw</li><li><img />U1w</li><li>Nw</li></ul>`
+- Cell (b), in a paragraph: `<p>Pw</p><p><img />U1w</p><p>Nw</p>`
+
+## How the point was placed
+
+A real click (`userEvent.click` at a position computed from a DOM range) at the end of the text span `U1w`. Both
+builds, both cells, page and Lexical: page `text("U1w")@3 -> text("U1w")@3`; Lexical `text:U1w@3 -> text:U1w@3`.
+
+## Actions
+
+1. Real Shift+Home (`{Shift>}{Home}{/Shift}`) once; read. Shift+Home a second time; read. No onChange call at
+   either press, at either build (calls 0).
+2. From a fresh mount for each (click as above): press once, then the letter `k`; and press twice, then `k`.
+   Recorded the field's onChange value and the selection after.
+
+Notation: page = `window.getSelection()` anchor -> focus; a text node is `text("..")@offset`, an element is
+`tag#index-in-parent[children]@offset` (`span` = a Lexical text span or the image's decorator span, `img` = the
+image). Lexical = `type:node@offset`, anchor -> focus; a range selection in every case (no node selection arose).
+
+## Values
+
+The anchor is the click's `U1w@3` in every row (page and Lexical); the table gives the focus.
+
+| Cell          | Step    | Build  | Page focus                                                           | Lexical focus            |
+| ------------- | ------- | ------ | -------------------------------------------------------------------- | ------------------------ |
+| (a) item      | press 1 | branch | `li#1[span,span]@1` (between the image's span and the text span)     | `text:U1w@0`             |
+| (a) item      | press 1 | base   | `span#0[img]@1` (inside the image's decorator span, after the image) | `listitem@1`             |
+| (a) item      | press 2 | branch | `li#1[span,span]@1` (unchanged)                                      | `text:U1w@0` (unchanged) |
+| (a) item      | press 2 | base   | `li#1[span,span]@0` (before the image)                               | `listitem@0`             |
+| (b) paragraph | press 1 | branch | `p#1[span,span]@1`                                                   | `text:U1w@0`             |
+| (b) paragraph | press 1 | base   | `span#0[img]@1`                                                      | `paragraph@1`            |
+| (b) paragraph | press 2 | branch | `p#1[span,span]@1` (unchanged)                                       | `text:U1w@0` (unchanged) |
+| (b) paragraph | press 2 | base   | `p#1[span,span]@0` (before the image)                                | `paragraph@0`            |
+
+Letter `k` typed from a fresh mount. The caret after is, page and Lexical, a collapsed `text("k")@1` in every row that
+wrote; the base's press-once rows wrote nothing and left the range as it was.
+
+| Cell          | Presses before `k` | Build  | Stored value written                                     | onChange calls | Selection after                                                                     |
+| ------------- | ------------------ | ------ | -------------------------------------------------------- | -------------- | ----------------------------------------------------------------------------------- |
+| (a) item      | 1                  | branch | `<ul><li>Pw</li><li><img />k</li><li>Nw</li></ul>`       | 1              | collapsed in `k`@1                                                                  |
+| (a) item      | 1                  | base   | none (letter lost)                                       | 0              | unchanged: page `text(U1w)@3 -> span#0[img]@1`, Lexical `text:U1w@3 -> listitem@1`  |
+| (a) item      | 2                  | branch | `<ul><li>Pw</li><li><img />k</li><li>Nw</li></ul>`       | 1              | collapsed in `k`@1                                                                  |
+| (a) item      | 2                  | base   | `<ul><li>Pw</li><li>k</li><li>Nw</li></ul>` (image gone) | 1              | collapsed in `k`@1                                                                  |
+| (b) paragraph | 1                  | branch | `<p>Pw</p><p><img />k</p><p>Nw</p>`                      | 1              | collapsed in `k`@1                                                                  |
+| (b) paragraph | 1                  | base   | none (letter lost)                                       | 0              | unchanged: page `text(U1w)@3 -> span#0[img]@1`, Lexical `text:U1w@3 -> paragraph@1` |
+| (b) paragraph | 2                  | branch | `<p>Pw</p><p><img />k</p><p>Nw</p>`                      | 1              | collapsed in `k`@1                                                                  |
+| (b) paragraph | 2                  | base   | `<p>Pw</p><p>k</p><p>Nw</p>` (image gone)                | 1              | collapsed in `k`@1                                                                  |
+
+The item and paragraph cells give the same results at each build.
+
+## The question: the two candidate results for the second press
+
+- Candidate 1, stop at the line's start without the image (the branch). The first press ends at the start of the
+  text (Lexical `text:U1w@0`, the page at the boundary between the image's span and the text span); the second press
+  changes nothing; a letter after either press replaces `U1w` and keeps the image: `<li><img />k</li>`.
+- Candidate 2, take the image into the range (the base). The first press ends after the image (Lexical
+  `listitem@1` or `paragraph@1`, the page inside the image's decorator span); a letter there is lost (no write, no
+  onChange). The second press extends over the image (`listitem@0` or `paragraph@0`); a letter then replaces the
+  image and `U1w`: `<li>k</li>`.
+
+What the texts rule, for the first press: D1's T10.7b entry (rulings T10.7b: "when Lexical holds a range and the
+page holds an end of it inside a decorator's own DOM (Shift+Home in a paragraph, an item or a line that starts with
+an image), the field puts Lexical's selection back on the page ... Tests: Shift+Home there, then a letter (it
+replaces what the range holds, the image stays) ... At `<base>` the letter is lost (pin the record)") and spec 5.3
+(the same rule: "the field puts Lexical's selection back on the page in a selection-only update ... so the letter
+replaces what the range holds"; the spec's list of differences from the head names "a range made by Shift+Home in a
+paragraph that starts with an image removes the text after the caret instead of the text before it").
+Measured, the first press agrees at both builds on the range (it holds `U1w`); the base leaves the page's end
+inside the image's decorator span and the letter is lost, the branch's page end sits at the boundary and the
+letter replaces `U1w` with the image kept, as T10.7b says.
+Neither the rulings nor the spec name the second press. The branch's stop (candidate 1) against the base's
+extension over the image (candidate 2) is the open question for the owner; nothing is pinned in a test.
