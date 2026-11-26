@@ -850,6 +850,50 @@ describe("T59 defect 2: list off at a click after an item's final rule (5.7, V16
   }
 });
 
+describe("T59 review L2: list off at a caret after an item's ending quote or code block (5.7, D1)", () => {
+  // the item's last line emptied by Backspace keeps the caret (T24);
+  // list off then starts from the element caret after the block, which
+  // the head at that same point leaves after the block at the root
+  const cells: Array<[string, string, string, string, string]> = [
+    [
+      "a quote",
+      LI(`${QUOTE("Q0w")}Xz`),
+      "<p>Pw</p><blockquote><p>Q0w</p></blockquote><p>Nw</p>",
+      "element:root@2",
+      "<p>Pw</p><blockquote><p>Q0w</p></blockquote><p>k</p><p>Nw</p>",
+    ],
+    [
+      "a code block",
+      LI("<pre><code>C0w</code></pre>Xz"),
+      "<p>Pw</p><pre><code>C0w</code></pre><p>Nw</p>",
+      "element:root@2",
+      "<p>Pw</p><pre><code>C0w</code></pre><p>k</p><p>Nw</p>",
+    ],
+  ];
+  for (const [name, stored, write, caret, typed] of cells) {
+    test(`after ${name}: Bulleted list leaves the caret after it at the root`, async () => {
+      // undo's caret here is not ruled (P record P59d-2): not asserted
+      const record = await recordEdit(
+        {
+          stored,
+          place: then(at("Xz", 2), backspace, backspace),
+          action: button("Bulleted list"),
+        },
+        { typeAfter: true }
+      );
+      expect(record.caretBefore, "the caret after the block").toBe(
+        "element:listitem@1"
+      );
+      expect(record.calls, "calls").toBe(1);
+      expect(record.write, "write").toBe(write);
+      expect(record.caret, "caret").toBe(caret);
+      expect(record.redoEquals, "redo equals the write").toBe(true);
+      expect(record.typed, "typed after redo").toBe(typed);
+      expect(record.errors, "console errors").toEqual([]);
+    });
+  }
+});
+
 describe("T59 defect 3: Image with the rule node-selected lands where a letter does (D15, D1)", () => {
   // Pw's end, then five ArrowRight presses: the rule node-selected
   const toRule: Step = async () => {
