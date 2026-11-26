@@ -1320,3 +1320,38 @@ describe("T59 defect 6: a composition over a range is one undo step", () => {
     );
   }
 });
+
+// T59 defect 7 (16.21, T48.5): a range that holds a composition-start
+// character the stored value held, and that the composition removes: no
+// value handed out holds the character Lexical writes at the start
+describe("T59 defect 7: a composition over a range holding a stored start character", () => {
+  const STORED = `<p>A0w<strong>B${ZW}1w</strong></p>`;
+  for (const [way, select] of [
+    ["forward", range("A0w", 1, `B${ZW}1w`, 3)],
+    ["backward", range(`B${ZW}1w`, 3, "A0w", 1)],
+  ] as const) {
+    test(`${way}: no value handed out holds the start character`, async () => {
+      const onChange = await mount(STORED);
+      const valueBefore = valueOf();
+      await select();
+      await quietly();
+      onChange.mockClear();
+      await imeSet("a");
+      await imeSet("ab");
+      await imeCommit("ab");
+      await quiet();
+      const values = rawValues(onChange);
+      expect(values.length, "values handed out").toBeGreaterThan(0);
+      for (const value of values) {
+        expect(value, "no value holds the start character").not.toContain(ZW);
+      }
+      expect(valueOf(), "the composed value").toBe(
+        "<p>Aab<b><strong>w</strong></b></p>"
+      );
+      expect(zwCount(), "no start character left").toBe(0);
+      expect(await pressAll("undo"), "one undo to the stored value").toEqual([
+        valueBefore,
+      ]);
+    }, 30_000);
+  }
+});

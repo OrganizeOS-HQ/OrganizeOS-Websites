@@ -55,6 +55,11 @@ type Composition = {
   below: HistoryEntry | undefined;
   /** The redo stack as it stood before the composition's first change (16.1). */
   redo: HistoryEntry[];
+  /**
+   * The text the selection held then: what the composition replaces
+   * (T59 defect 7).
+   */
+  held: string;
   /** The text node the composition wrote in, as last seen while composing. */
   composedKey: NodeKey | null;
   /** The removal found no character to remove in the composed node. */
@@ -81,8 +86,19 @@ const compositionEndText = new WeakMap<LexicalEditor, string>();
  */
 const compositionVoided = new WeakMap<LexicalEditor, "voided" | "resumed">();
 
+const countIn = (text: string, char: string) => text.split(char).length - 1;
+
 const countOf = (state: EditorState, char: string) =>
-  state.read(() => $getRoot().getTextContent().split(char).length - 1);
+  state.read(() => countIn($getRoot().getTextContent(), char));
+
+/** The text a range selection holds in `state`; none for a caret. */
+const heldIn = (state: EditorState) =>
+  state.read(() => {
+    const selection = $getSelection();
+    return $isRangeSelection(selection) && selection.isCollapsed() === false
+      ? selection.getTextContent()
+      : "";
+  });
 
 const startCharsOf = (editor: LexicalEditor) => {
   const recorded = startCharOf.get(editor);
@@ -93,7 +109,10 @@ const startCharsOf = (editor: LexicalEditor) => {
 
 /**
  * How many composition-start characters the editor's document holds beyond
- * the count it held before the composition under way: 0 when none is.
+ * the count it held before the composition under way, less those the
+ * range it composes over held (the composition replaces them; T59 defect
+ * 7, first example: a range over `B<U+200B>1w` in `<p>A0w<strong>B<U+200B>1w
+ * </strong></p>`): 0 when none is.
  */
 const startCharsLeft = (editor: LexicalEditor, state: EditorState) => {
   const composition = compositions.get(editor);
@@ -104,7 +123,8 @@ const startCharsLeft = (editor: LexicalEditor, state: EditorState) => {
   for (const char of startCharsOf(editor)) {
     left += Math.max(
       0,
-      countOf(state, char) - countOf(composition.before, char)
+      countOf(state, char) -
+        (countOf(composition.before, char) - countIn(composition.held, char))
     );
   }
   return left;
@@ -162,6 +182,7 @@ export const rememberCompositionStart = (
     index,
     below: index > 0 ? history.undoStack[index - 1] : undefined,
     redo: [...history.redoStack],
+    held: heldIn(before),
     composedKey: null,
     unremovable: false,
   });
@@ -567,6 +588,7 @@ export const registerCompositionStep = (editor: LexicalEditor) => {
               index,
               below: index > 0 ? history.undoStack[index - 1] : undefined,
               redo: [...history.redoStack],
+              held: heldIn(prevEditorState),
               composedKey: null,
               unremovable: false,
             };
