@@ -19,6 +19,7 @@ import {
   fontsLoaded,
   settle,
 } from "./rich-text-test-harness";
+import { parseHtml } from "./rich-text-html";
 
 export const IMG = `<img src="https://cdn.example.org/x.png" alt="" width="40" height="20" />`;
 export const LI = (x: string) => `<ul><li>Pw</li><li>${x}</li><li>Nw</li></ul>`;
@@ -185,7 +186,7 @@ export const htmlSeq = (html: string | undefined) => {
   if (html === undefined || html === "") {
     return null;
   }
-  const doc = new DOMParser().parseFromString(html, "text/html");
+  const doc = parseHtml(html);
   const tokens: string[] = [];
   const walk = (n: Node) => {
     if (n.nodeType === 3) {

@@ -29,7 +29,11 @@ import {
   type SerializedEditorState,
   type SerializedLexicalNode,
 } from "lexical";
-import { markRichTextCopy, richTextHtmlConfig } from "./rich-text-html";
+import {
+  markRichTextCopy,
+  parseHtml,
+  richTextHtmlConfig,
+} from "./rich-text-html";
 import {
   $isCmsLineNode,
   CmsLineNode,
@@ -422,7 +426,7 @@ const dropPlaces = (
   }
   const html = data["text/html"];
   if (html !== undefined && html.includes(PLACE_ATTRIBUTE)) {
-    const doc = new DOMParser().parseFromString(html, "text/html");
+    const doc = parseHtml(html);
     for (const element of [
       ...doc.body.querySelectorAll(`[${PLACE_ATTRIBUTE}]`),
     ]) {

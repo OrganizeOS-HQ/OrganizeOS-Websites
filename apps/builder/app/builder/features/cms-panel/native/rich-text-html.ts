@@ -83,7 +83,7 @@ export const richTextNodes: ReadonlyArray<Klass<LexicalNode>> = [
   CmsLineNode,
 ];
 
-const parseHtml = (html: string) =>
+export const parseHtml = (html: string) =>
   // An inert document: never inserted into the live page.
   new DOMParser().parseFromString(html, "text/html");
 
