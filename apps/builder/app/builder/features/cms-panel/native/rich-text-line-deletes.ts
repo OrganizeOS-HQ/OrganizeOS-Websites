@@ -574,8 +574,8 @@ const $formBesideRootRule = (
 /**
  * 16.13 (check 5; T14.7): a backward delete just before a child the code
  * block cannot hold (an image, a link: its address would be lost) that
- * starts a quote's first paragraph, a paragraph or a line, with a code
- * block directly before, joins nothing and writes nothing, in lined and
+ * starts a quote's first paragraph, a paragraph, a heading (T59.2) or a
+ * line, with a code block directly before, joins nothing and writes nothing, in lined and
  * ordinary content (first example: `LI(<pre><code>C0w</code></pre>
  * <blockquote><p>IMGQ1w</p></blockquote>)`, Backspace before the image).
  * A leading line break joins as a new line in the code.
@@ -603,7 +603,10 @@ export const $noReorderingJoin = (
         );
   if (
     $isElementNode(holder) === false ||
-    ($isCmsLineNode(holder) === false && $isParagraphNode(holder) === false) ||
+    ($isCmsLineNode(holder) === false &&
+      $isParagraphNode(holder) === false &&
+      // T59.2: T33.3's refusal excepts no heading
+      $isHeadingNode(holder) === false) ||
     $atContentEdge(anchor, holder, true) === false
   ) {
     return false;

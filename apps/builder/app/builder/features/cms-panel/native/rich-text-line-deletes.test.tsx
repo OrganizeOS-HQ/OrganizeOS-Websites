@@ -1067,6 +1067,70 @@ describe("F2 in R1, and check 5's delete rules (Step 1b)", () => {
     });
   });
 
+  // T59.2 (acceptance check, defect 4): T33.3's "Where that child leads,
+  // nothing joins (16.13)" excepts no heading: Backspace and its word and
+  // line forms at the start of a heading led by an image or a link, after
+  // a code block, join nothing, write nothing and fire no onChange
+  const HEADING_REFUSED: ReadonlyArray<readonly [string, string, Step]> = [
+    [
+      "an image leads a heading that starts an item",
+      LI(`${CODE}<h3>${IMG}X0w</h3>T8w`),
+      beside("cms-image", "before"),
+    ],
+    [
+      "an image leads a heading after a line",
+      LI(`T9w${CODE}<h3>${IMG}X0w</h3>T8w`),
+      beside("cms-image", "before"),
+    ],
+    [
+      "a link leads a heading in an item, the caret before it",
+      LI(`${CODE}<h3>${LINK}X0w</h3>T8w`),
+      beside("link", "before"),
+    ],
+    [
+      "a link leads a heading in an item, the caret at its text's start",
+      LI(`${CODE}<h3>${LINK}X0w</h3>T8w`),
+      at("L1w", 0),
+    ],
+    [
+      "a link leads a heading after a line, the caret before it",
+      LI(`T9w${CODE}<h3>${LINK}X0w</h3>T8w`),
+      beside("link", "before"),
+    ],
+    [
+      "ordinary content, an image leads a heading",
+      `${CODE}<h3>${IMG}X0w</h3><p>E9w</p>`,
+      beside("cms-image", "before"),
+    ],
+    [
+      "ordinary content, a link leads a heading, the caret before it",
+      `${CODE}<h3>${LINK}X0w</h3><p>E9w</p>`,
+      beside("link", "before"),
+    ],
+    [
+      "ordinary content, a link leads a heading, the caret at its text's start",
+      `${CODE}<h3>${LINK}X0w</h3><p>E9w</p>`,
+      at("L1w", 0),
+    ],
+  ];
+  for (const [name, stored, place] of HEADING_REFUSED) {
+    for (const [key, action] of [
+      ["Backspace", backspace],
+      ["Ctrl+Backspace", wordBack],
+      ["lineBack", lineBack],
+    ] as const) {
+      test(`T59.2: ${name}, after a code block, ${key} joins nothing`, async () => {
+        await expectEdit({
+          stored,
+          place,
+          action,
+          write: null,
+          source: "T59.2, T33.3, 16.13; T14.7",
+        });
+      });
+    }
+  }
+
   // T33.3 (P14-2): a join into a code block carries what the block can
   // hold up to the first child it cannot hold; from that child on, the
   // rest stays behind (a paragraph after the code block at the root, a
