@@ -819,6 +819,124 @@ describe("T10.7b: Shift+Home or Shift+End to an image's side", () => {
   });
 });
 
+// T75: a second Shift+Home from a text's end after a leading image takes
+// the image into the range, as at the head; the first press stays T10.7b's
+// (the range holds the text, the image stays). Shift+End beside a trailing
+// image (T75.2, measured): the first press already takes the image at both
+// builds, and further presses change nothing
+const IMAGE40 =
+  '<img src="https://cdn.example.org/x.png" alt="" width="40" height="20" />';
+/** The page's focus: a text's word or an element's tag, and the offset. */
+const pageFocus = () => {
+  const page = window.getSelection()!;
+  const node = page.focusNode!;
+  return `${
+    node.nodeType === Node.TEXT_NODE
+      ? `text:${node.textContent}`
+      : (node as Element).tagName.toLowerCase()
+  }@${page.focusOffset}`;
+};
+const SHIFT_PRESSES: ReadonlyArray<{
+  name: string;
+  stored: string;
+  key: "Home" | "End";
+  from: number;
+  // the committed selection and the page's focus after each of three presses
+  steps: Array<[string, string]>;
+  // the write after a letter typed after one, two and three presses
+  writes: string[];
+}> = [
+  {
+    name: "Shift+Home, an item led by an image",
+    stored: LI(`${IMAGE40}U1w`),
+    key: "Home",
+    from: 3,
+    steps: [
+      ["text:U1w@3|text:U1w@0", "li@1"],
+      ["text:U1w@3|element:listitem@0", "li@0"],
+      ["text:U1w@3|element:listitem@0", "li@0"],
+    ],
+    writes: [LI("<img />k"), LI("k"), LI("k")],
+  },
+  {
+    name: "Shift+Home, a paragraph led by an image",
+    stored: `<p>Pw</p><p>${IMAGE40}U1w</p><p>Nw</p>`,
+    key: "Home",
+    from: 3,
+    steps: [
+      ["text:U1w@3|text:U1w@0", "p@1"],
+      ["text:U1w@3|element:paragraph@0", "p@0"],
+      ["text:U1w@3|element:paragraph@0", "p@0"],
+    ],
+    writes: [
+      "<p>Pw</p><p><img />k</p><p>Nw</p>",
+      "<p>Pw</p><p>k</p><p>Nw</p>",
+      "<p>Pw</p><p>k</p><p>Nw</p>",
+    ],
+  },
+  {
+    name: "Shift+End, an item ended by an image",
+    stored: LI(`U1w${IMAGE40}`),
+    key: "End",
+    from: 0,
+    steps: [
+      ["text:U1w@0|element:listitem@2", "li@2"],
+      ["text:U1w@0|element:listitem@2", "li@2"],
+      ["text:U1w@0|element:listitem@2", "li@2"],
+    ],
+    writes: [LI("k"), LI("k"), LI("k")],
+  },
+  {
+    name: "Shift+End, a paragraph ended by an image",
+    stored: `<p>Pw</p><p>U1w${IMAGE40}</p><p>Nw</p>`,
+    key: "End",
+    from: 0,
+    steps: [
+      ["text:U1w@0|element:paragraph@2", "p@2"],
+      ["text:U1w@0|element:paragraph@2", "p@2"],
+      ["text:U1w@0|element:paragraph@2", "p@2"],
+    ],
+    writes: [
+      "<p>Pw</p><p>k</p><p>Nw</p>",
+      "<p>Pw</p><p>k</p><p>Nw</p>",
+      "<p>Pw</p><p>k</p><p>Nw</p>",
+    ],
+  },
+];
+
+describe("T75: repeated Shift+Home or Shift+End beside an image", () => {
+  for (const cell of SHIFT_PRESSES) {
+    const press = keys(`{Shift>}{${cell.key}}{/Shift}`);
+    test(`${cell.name}: the selection after each of three presses`, async () => {
+      const onChange = await mount(cell.stored);
+      await at("U1w", cell.from)();
+      expect(caretKey(), "the click").toBe(`text:U1w@${cell.from}`);
+      const seen: Array<[string, string]> = [];
+      for (let index = 0; index < 3; index += 1) {
+        await press();
+        seen.push([caretKey(), pageFocus()]);
+      }
+      expect(seen).toEqual(cell.steps);
+      expect(onChange).not.toHaveBeenCalled();
+    });
+
+    cell.writes.forEach((write, index) => {
+      test(`${cell.name}: a letter after ${index + 1} press(es)`, async () => {
+        const onChange = await mount(cell.stored);
+        await at("U1w", cell.from)();
+        for (let step = 0; step <= index; step += 1) {
+          await press();
+        }
+        await letter();
+        expect(onChange).toHaveBeenCalledTimes(1);
+        expect(short(lastHtml(onChange))).toBe(write);
+        expect(caretKey()).toBe("text:k@1");
+        expect(pageFocus()).toBe("text:k@1");
+      });
+    });
+  }
+});
+
 // a real drag from text that ends on an image: on release the field puts
 // Lexical's selection back on the page, and a letter types over it
 const send = (method: string, params: Record<string, unknown>) =>

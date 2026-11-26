@@ -9,8 +9,11 @@ import {
   $createNodeSelection,
   $createRangeSelectionFromDom,
   $getEditor,
+  $getNearestNodeFromDOMNode,
   $getNodeByKey,
+  $getPreviousSelection,
   $getSelection,
+  $isDecoratorNode,
   $isElementNode,
   $isNodeSelection,
   $isRangeSelection,
@@ -1026,27 +1029,103 @@ export const pointRules = (editor: LexicalEditor, tracker?: EditTracker) => {
   // range: Lexical's own selection goes back on the page, which then types
   // over the range. Selection-only; the page's next selection change reads
   // a place outside the decorator, so it does not repeat
-  const pageEndInDecorator = () => {
+  const decoratorOf = (node: Node | null) => {
     const root = editor.getRootElement();
+    const element =
+      node instanceof Element ? node : (node?.parentElement ?? null);
+    const decorator = element?.closest("[data-lexical-decorator]") ?? null;
+    return decorator !== null && root?.contains(decorator) === true
+      ? decorator
+      : null;
+  };
+  const pageEndInDecorator = () => {
     const page = window.getSelection();
-    if (root === null || page === null || page.rangeCount === 0) {
+    if (page === null || page.rangeCount === 0) {
       return false;
     }
-    return [page.anchorNode, page.focusNode].some((node) => {
-      const element =
-        node instanceof Element ? node : (node?.parentElement ?? null);
-      const decorator = element?.closest("[data-lexical-decorator]") ?? null;
-      return decorator !== null && root.contains(decorator);
-    });
+    return [page.anchorNode, page.focusNode].some(
+      (node) => decoratorOf(node) !== null
+    );
   };
-  const $selectionBackOnPage = () => {
+  // a point as a place between two children: a text point at either end of
+  // its text is the place before or after that text; a point inside a text
+  // is no such place
+  const $placeOf = (point: PointType) => {
+    if (point.type === "element") {
+      return `${point.key}@${point.offset}`;
+    }
+    const node = point.getNode();
+    const parent = node.getParent();
+    if (parent === null) {
+      return undefined;
+    }
+    const index = node.getIndexWithinParent();
+    if (point.offset === 0) {
+      return `${parent.getKey()}@${index}`;
+    }
+    if (point.offset === node.getTextContentSize()) {
+      return `${parent.getKey()}@${index + 1}`;
+    }
+    return undefined;
+  };
+  // whether the last key pressed in the field held Shift (a pointer press
+  // is no key step)
+  let shiftStep = false;
+  const onStepKey = (event: KeyboardEvent) => {
+    shiftStep = event.shiftKey;
+  };
+  const onStepPointer = () => {
+    shiftStep = false;
+  };
+  // T75: a Shift step whose page end lands in a decorator at the place the
+  // focus already held has not moved (Chrome's Home from beside a leading
+  // image lands in the image's own DOM again once the range is back on the
+  // page). With Shift held no press leaves the focus where it was (5.3), so
+  // the focus goes on to the decorator's other side
+  const $focusPastDecorator = (selection: RangeSelection) => {
+    const previous = $getPreviousSelection();
+    const decorator = decoratorOf(window.getSelection()?.focusNode ?? null);
+    if (
+      shiftStep === false ||
+      $isRangeSelection(previous) === false ||
+      decorator === null
+    ) {
+      return;
+    }
+    const node = $getNearestNodeFromDOMNode(decorator);
+    const parent = node?.getParent() ?? null;
+    const place = $placeOf(selection.focus);
+    if (
+      node === null ||
+      parent === null ||
+      $isDecoratorNode(node) === false ||
+      place === undefined ||
+      place !== $placeOf(previous.focus)
+    ) {
+      return;
+    }
+    const index = node.getIndexWithinParent();
+    const key = parent.getKey();
+    if (place === `${key}@${index + 1}`) {
+      selection.focus.set(key, index, "element");
+    } else if (place === `${key}@${index}`) {
+      selection.focus.set(key, index + 1, "element");
+    }
+  };
+  // `step`: at the page's selection change, where a key step can have left
+  // the focus where it was
+  const $selectionBackOnPage = (step = false) => {
     const selection = $getSelection();
     if (
       $isRangeSelection(selection) &&
       selection.isCollapsed() === false &&
       pageEndInDecorator()
     ) {
-      $setSelection(selection.clone());
+      const back = selection.clone();
+      if (step) {
+        $focusPastDecorator(back);
+      }
+      $setSelection(back);
     }
   };
   const endPress = () => {
@@ -1237,7 +1316,7 @@ export const pointRules = (editor: LexicalEditor, tracker?: EditTracker) => {
     const press = presses.get(editor);
     if (press === undefined) {
       $resolvePoint();
-      $selectionBackOnPage();
+      $selectionBackOnPage(true);
     } else {
       // held: the press's end looks where the caret was during it too
       for (const key of $previousContainers()) {
@@ -1510,6 +1589,10 @@ export const pointRules = (editor: LexicalEditor, tracker?: EditTracker) => {
         editor.registerRootListener((root, previous) => {
           previous?.removeEventListener("pointerdown", onPressStart, true);
           root?.addEventListener("pointerdown", onPressStart, true);
+          previous?.removeEventListener("keydown", onStepKey, true);
+          root?.addEventListener("keydown", onStepKey, true);
+          previous?.removeEventListener("pointerdown", onStepPointer, true);
+          root?.addEventListener("pointerdown", onStepPointer, true);
           previous?.removeEventListener(
             "compositionstart",
             onCompositionStart,
