@@ -13,17 +13,17 @@ caret, acts, then types a letter. "Values" is every value the action passed to o
 
 `<p>Aw</p><p></p>`, the caret in the empty paragraph (`element:paragraph@0`):
 
-| | Calls | Values in order | Caret | Letter |
-|---|---|---|---|---|
-| Head | 3 | `<p>Aw</p><p>​</p>` (holds U+200B); `<p>Aw</p><p>a</p>`; `<p>Aw</p><p>a</p>` | text:a@1 | `<p>Aw</p><p>ak</p>` |
-| Branch | 1 | `<p>Aw</p><p>a</p>` | text:a@1 | `<p>Aw</p><p>ak</p>` |
+|        | Calls | Values in order                                                              | Caret    | Letter               |
+| ------ | ----- | ---------------------------------------------------------------------------- | -------- | -------------------- |
+| Head   | 3     | `<p>Aw</p><p>​</p>` (holds U+200B); `<p>Aw</p><p>a</p>`; `<p>Aw</p><p>a</p>` | text:a@1 | `<p>Aw</p><p>ak</p>` |
+| Branch | 1     | `<p>Aw</p><p>a</p>`                                                          | text:a@1 | `<p>Aw</p><p>ak</p>` |
 
 `<p>Aw<img …/></p>`, the caret after the image (`element:paragraph@2`):
 
-| | Calls | Values in order | Caret | Letter |
-|---|---|---|---|---|
-| Head | 3 | `<p>Aw<img …/>​</p>` (holds U+200B); `<p>Aw<img …/>a</p>`; `<p>Aw<img …/>a</p>` | text:a@1 | `<p>Aw<img …/>ak</p>` |
-| Branch | 1 | `<p>Aw<img …/>a</p>` | text:a@1 | `<p>Aw<img …/>ak</p>` |
+|        | Calls | Values in order                                                                 | Caret    | Letter                |
+| ------ | ----- | ------------------------------------------------------------------------------- | -------- | --------------------- |
+| Head   | 3     | `<p>Aw<img …/>​</p>` (holds U+200B); `<p>Aw<img …/>a</p>`; `<p>Aw<img …/>a</p>` | text:a@1 | `<p>Aw<img …/>ak</p>` |
+| Branch | 1     | `<p>Aw<img …/>a</p>`                                                            | text:a@1 | `<p>Aw<img …/>ak</p>` |
 
 In ordinary content too, the head's first value holds U+200B, and its third repeats the second. The branch
 hands out the composed value once.
@@ -33,10 +33,10 @@ hands out the composed value once.
 The place is 20, 150 and 300 px right of the end of `T0w`, at the text's vertical middle. Every place is
 inside the editable (`elementFromPoint`), and no click fires onChange.
 
-| Stored | Place (relative to the editable) | Head: caret; letter | Branch: caret; letter |
-|---|---|---|---|
-| `<ul><li>Pw</li><li>T0w</li><li>Nw</li></ul>` | 69,32 / 199,32 / 349,32 | text:T0w@3; `<ul><li>Pw</li><li>T0wk</li><li>Nw</li></ul>` (all three) | the same (all three) |
-| `<p>T0w</p>` | 53,16 / 183,16 / 333,16 | text:T0w@3; `<p>T0wk</p>` (all three) | the same (all three) |
+| Stored                                        | Place (relative to the editable) | Head: caret; letter                                                    | Branch: caret; letter |
+| --------------------------------------------- | -------------------------------- | ---------------------------------------------------------------------- | --------------------- |
+| `<ul><li>Pw</li><li>T0w</li><li>Nw</li></ul>` | 69,32 / 199,32 / 349,32          | text:T0w@3; `<ul><li>Pw</li><li>T0wk</li><li>Nw</li></ul>` (all three) | the same (all three)  |
+| `<p>T0w</p>`                                  | 53,16 / 183,16 / 333,16          | text:T0w@3; `<p>T0wk</p>` (all three)                                  | the same (all three)  |
 
 In ordinary content the head leaves the caret at the text's end. The controls are equal at both builds
 and are pinned in the click test. The branch's controls equal its lined result (text:T0w@3, the letter at
@@ -44,10 +44,16 @@ the end).
 
 ## M-f3 (not blocking): Paragraph at text:X1w@1 in the root `<blockquote><h3>H0w</h3>X1w</blockquote>`
 
-| | Calls | Values | Caret | Letter |
-|---|---|---|---|---|
-| Head | 0 | none | text:X1w@1 | `<blockquote><h3>H0w</h3>Xk1w</blockquote>` |
-| Branch | 1 | `<blockquote><h3>H0w</h3>X1w</blockquote>` (unchanged) | text:X1w@1 | `<blockquote><h3>H0w</h3>Xk1w</blockquote>` |
+|        | Calls | Values                                                 | Caret      | Letter                                      |
+| ------ | ----- | ------------------------------------------------------ | ---------- | ------------------------------------------- |
+| Head   | 0     | none                                                   | text:X1w@1 | `<blockquote><h3>H0w</h3>Xk1w</blockquote>` |
+| Branch | 1     | `<blockquote><h3>H0w</h3>X1w</blockquote>` (unchanged) | text:X1w@1 | `<blockquote><h3>H0w</h3>Xk1w</blockquote>` |
 
 The head does nothing at X1w@1 as at X1w@0 (M-e1): Paragraph's result there does not depend on the
 offset. The branch's unchanged onChange is T46.1's defect at this offset too.
+
+## P22-8: QB el1 Link after T45.2 (T46.10 dry run on dae1f44; a question)
+
+- Before the fix: one onChange with the value unchanged, caret `element:listitem@2`, letter `[<blockquote><p>Q0w</p></blockquote><br />k]` (after the break).
+- Now: no write, 0 calls, caret `element:listitem@1` (the grid's `placed`, the line's start), letter `[<blockquote><p>Q0w</p></blockquote>k<br />]` (before the break).
+- T45.2 says the caret stays and the letter lands where the branch puts it now; literals are given only for BQ el1 and IR el1. Which stands for QB el1: the caret as placed (letter before the break), or the letter after the break?
