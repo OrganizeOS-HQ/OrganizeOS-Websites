@@ -1163,24 +1163,31 @@ describe("T13.1: an image from a code-block caret lands after the code block", (
       source: "ruled, not built at the carry: T13.1",
     },
   ]);
-  // T41.2's three cells, unpinned until ruled (T42.9): each records and
-  // prints the value the field writes, and asserts none
-  for (const [name, place] of [
-    ["Pw@1..C1w@1", range("Pw", 1, "C1w", 1)],
-    ["C1w@1..Nw@1", range("C1w", 1, "Nw", 1)],
-    ["C1w@0..C1w@3", range("C1w", 0, "C1w", 3)],
-  ] as const) {
-    test(`T41.2: Image from a range ${name} (recorded, not pinned)`, async () => {
-      const record = await recordEdit({
-        stored: ROOT,
-        place,
-        action: imageButton,
-      });
-      console.info(
-        `T41.2 ${name}: calls ${record.calls}, write ${record.write}`
-      );
-    });
-  }
+  // T41.2's three cells, pinned as they print (T43.2; P20-14)
+  runRows(
+    (
+      [
+        ["Pw@1..C1w@1", range("Pw", 1, "C1w", 1), "<p>P<img />1w</p><p>Nw</p>"],
+        [
+          "C1w@1..Nw@1",
+          range("C1w", 1, "Nw", 1),
+          "<p>Pw</p><pre><code>Cw</code></pre><p><img /></p>",
+        ],
+        [
+          "C1w@0..C1w@3",
+          range("C1w", 0, "C1w", 3),
+          "<p>Pw</p><pre><code></code></pre><p><img /></p><p>Nw</p>",
+        ],
+      ] as const
+    ).map(([name, place, write]) => ({
+      name: `T41.2: Image from a range ${name}`,
+      stored: ROOT,
+      place,
+      action: imageButton,
+      write,
+      source: "T43.2 (as printed, P20-14)",
+    }))
+  );
 });
 
 void act;
