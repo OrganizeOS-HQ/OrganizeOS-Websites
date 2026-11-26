@@ -1474,6 +1474,15 @@ export type EditRecord = {
   caret: string;
   typed?: string;
   htmlBefore: string;
+  /**
+   * The value as it stood after `place` and the value the action handed
+   * out last (the value before when it handed out none), as the field
+   * wrote them: what D19 compares, links' addresses and images included.
+   */
+  valueBefore: string;
+  written: string;
+  /** Every value the action handed out, in order, as the field wrote them. */
+  values: string[];
   caretBefore: string;
   undoRestores?: boolean;
   redoEquals?: boolean;
@@ -1533,6 +1542,11 @@ export const recordEdit = async (
     calls,
     caret,
     htmlBefore,
+    valueBefore,
+    written: writtenHtml,
+    values: onChange.mock.calls
+      .slice(0, calls)
+      .map((call) => (call[0] as { html: string } | null)?.html ?? ""),
     caretBefore,
     errors,
     slowest: 0,

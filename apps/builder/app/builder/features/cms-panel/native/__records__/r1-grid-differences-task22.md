@@ -1,6 +1,6 @@
-# Task 22: the grid differences, branch (B) against the head (H, `<base>` 2a96a45), relabelled under T45
+# Task 22: the grid differences, branch (B) against the head (H, `<base>` 2a96a45), relabelled under T45 and T46
 
-One line per cell whose `{ write, calls, caret, typed }` (or `<point> placed`) differs. In values, `[` stands for `<ul><li>Pw</li><li>` and `]` for `</li><li>Nw</li></ul>`. The values are those of db4ed16; only the labels changed (T45.6, T45.8, T45.12, and the T45 items that rule a cell). Cells ruled a defect (T45.1 to T45.5, T45.7) keep the as-built values until the fixes land.
+One line per cell whose `{ write, calls, caret, typed }` (or `<point> placed`) differs. In values, `[` stands for `<ul><li>Pw</li><li>` and `]` for `</li><li>Nw</li></ul>`. The values are those of db4ed16; only the labels changed (T45.6, T45.8, T45.12, and the T45 items that rule a cell). Labels after T46 to T49. The lines marked "fixed" show the values before the fixes (T45.1 to T45.4, T45.7, T46.1, merged at dae1f44 and bd3fbf6); the committed snapshots hold the fixed values, 24 cells in all (meeting 2, node 14, unreached 8). QB el1 Link, equal at both builds before the fix and so not listed, now writes nothing and keeps the caret as placed, the letter before the break (P22-8, as ruled). Composition counts and the cells of T46.2, T46.4 and T46.7 are pinned in `rich-text-line-cells-grids.ts`.
 The unreached grid (T45.6): each line names its rule, its twin (the same command at the same kind of point in the points or meeting grid) or "no twin", "differs from twin" where the twin is equal at both builds, and any head flag beside the rule.
 
 ## points (277 differences)
@@ -8,7 +8,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - 121: D18
 - 46: 5.3 deletes
 - 24: D2, with D18 at a resolved point
-- 21: D7, composition counts unpinned (T45.10)
+- 21: D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B)
 - 21: D13
 - 18: 5.7: Block type and Link at a point beside a quote (D18)
 - 8: 5.7: Image at a point beside a quote (D18)
@@ -69,7 +69,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `QR@0 Underline` — D18  
   B w=null c=0 @text:Q0w@0 t=[<blockquote><p><u>k</u>Q0w</p></blockquote><hr />]  
   H w=null c=0 @element:listitem@0 t=[<blockquote><p><u>k</u>Q0w</p></blockquote><hr />]
-- `QR@0 ime` — D7, composition counts unpinned (T45.10)  
+- `QR@0 ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B)  
   B w=[<blockquote><p>aQ0w</p></blockquote><hr />] c=2 @text:aQ0w@1 t=[<blockquote><p>akQ0w</p></blockquote><hr />]  
   H w=[<blockquote><p>aQ0w</p></blockquote><hr />] c=3 @text:aQ0w@1 t=[<blockquote><p>akQ0w</p></blockquote><hr />]
 - `QR@0 lineBack` — 5.3 deletes  
@@ -168,7 +168,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `QR@2 Quote` — D13  
   B w=[<blockquote><p>Q0w</p></blockquote><hr /><blockquote></blockquote>] c=1 @element:quote@0 t=[<blockquote><p>Q0w</p></blockquote><hr /><blockquote>k</blockquote>]  
   H w=null c=0 @element:listitem@2 t=[<blockquote><p>Q0w</p></blockquote><hr />k]
-- `QR@2 ime` — D7, composition counts unpinned (T45.10)  
+- `QR@2 ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B)  
   B w=[<blockquote><p>Q0w</p></blockquote><hr />a] c=1 @text:a@1 t=[<blockquote><p>Q0w</p></blockquote><hr />ak]  
   H w=[<blockquote><p>Q0w</p></blockquote><hr />a] c=3 @text:a@1 t=[<blockquote><p>Q0w</p></blockquote><hr />ak]
 - `QR@2 lineBack` — 5.3 deletes  
@@ -228,7 +228,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `QRQ@0 Underline` — D18  
   B w=null c=0 @text:Q0w@0 t=[<blockquote><p><u>k</u>Q0w</p></blockquote><hr /><blockquote><p>Q2w</p></blockquote>]  
   H w=null c=0 @element:listitem@0 t=[<blockquote><p><u>k</u>Q0w</p></blockquote><hr /><blockquote><p>Q2w</p></blockquote>]
-- `QRQ@0 ime` — D7, composition counts unpinned (T45.10)  
+- `QRQ@0 ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B)  
   B w=[<blockquote><p>aQ0w</p></blockquote><hr /><blockquote><p>Q2w</p></blockquote>] c=2 @text:aQ0w@1 t=[<blockquote><p>akQ0w</p></blockquote><hr /><blockquote><p>Q2w</p></blockquote>]  
   H w=[<blockquote><p>aQ0w</p></blockquote><hr /><blockquote><p>Q2w</p></blockquote>] c=3 @text:aQ0w@1 t=[<blockquote><p>akQ0w</p></blockquote><hr /><blockquote><p>Q2w</p></blockquote>]
 - `QRQ@0 lineBack` — 5.3 deletes  
@@ -351,7 +351,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `QRQ@2 Underline` — D18  
   B w=null c=0 @text:Q2w@0 t=[<blockquote><p>Q0w</p></blockquote><hr /><blockquote><p><u>k</u>Q2w</p></blockquote>]  
   H w=null c=0 @element:listitem@2 t=[<blockquote><p>Q0w</p></blockquote><hr /><blockquote><p><u>k</u>Q2w</p></blockquote>]
-- `QRQ@2 ime` — D7, composition counts unpinned (T45.10)  
+- `QRQ@2 ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B)  
   B w=[<blockquote><p>Q0w</p></blockquote><hr /><blockquote><p>aQ2w</p></blockquote>] c=2 @text:aQ2w@1 t=[<blockquote><p>Q0w</p></blockquote><hr /><blockquote><p>akQ2w</p></blockquote>]  
   H w=[<blockquote><p>Q0w</p></blockquote><hr /><blockquote><p>aQ2w</p></blockquote>] c=3 @text:aQ2w@1 t=[<blockquote><p>Q0w</p></blockquote><hr /><blockquote><p>akQ2w</p></blockquote>]
 - `QRQ@2 lineBack` — 5.3 deletes  
@@ -405,7 +405,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `QRQ@3 Underline` — D18  
   B w=null c=0 @text:Q2w@3 t=[<blockquote><p>Q0w</p></blockquote><hr /><blockquote><p>Q2w<u>k</u></p></blockquote>]  
   H w=null c=0 @element:listitem@3 t=[<blockquote><p>Q0w</p></blockquote><hr /><blockquote><p>Q2w<u>k</u></p></blockquote>]
-- `QRQ@3 ime` — D7, composition counts unpinned (T45.10)  
+- `QRQ@3 ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B)  
   B w=[<blockquote><p>Q0w</p></blockquote><hr /><blockquote><p>Q2wa</p></blockquote>] c=2 @text:Q2wa@4 t=[<blockquote><p>Q0w</p></blockquote><hr /><blockquote><p>Q2wak</p></blockquote>]  
   H w=[<blockquote><p>Q0w</p></blockquote><hr /><blockquote><p>Q2wa</p></blockquote>] c=3 @text:Q2wa@4 t=[<blockquote><p>Q0w</p></blockquote><hr /><blockquote><p>Q2wak</p></blockquote>]
 - `QRQ@3 placed` — D18  
@@ -435,7 +435,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `RQ@0 Quote` — D13  
   B w=[<blockquote></blockquote><hr /><blockquote><p>Q1w</p></blockquote>] c=1 @element:quote@0 t=[<blockquote>k</blockquote><hr /><blockquote><p>Q1w</p></blockquote>]  
   H w=null c=0 @element:listitem@0 t=[k<hr /><blockquote><p>Q1w</p></blockquote>]
-- `RQ@0 ime` — D7, composition counts unpinned (T45.10)  
+- `RQ@0 ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B)  
   B w=[a<hr /><blockquote><p>Q1w</p></blockquote>] c=1 @text:a@1 t=[ak<hr /><blockquote><p>Q1w</p></blockquote>]  
   H w=[a<hr /><blockquote><p>Q1w</p></blockquote>] c=3 @text:a@1 t=[ak<hr /><blockquote><p>Q1w</p></blockquote>]
 - `RQ@0 lineForward` — 5.3 deletes  
@@ -489,7 +489,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `RQ@1 Underline` — D18  
   B w=null c=0 @text:Q1w@0 t=[<hr /><blockquote><p><u>k</u>Q1w</p></blockquote>]  
   H w=null c=0 @element:listitem@1 t=[<hr /><blockquote><p><u>k</u>Q1w</p></blockquote>]
-- `RQ@1 ime` — D7, composition counts unpinned (T45.10)  
+- `RQ@1 ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B)  
   B w=[<hr /><blockquote><p>aQ1w</p></blockquote>] c=2 @text:aQ1w@1 t=[<hr /><blockquote><p>akQ1w</p></blockquote>]  
   H w=[<hr /><blockquote><p>aQ1w</p></blockquote>] c=3 @text:aQ1w@1 t=[<hr /><blockquote><p>akQ1w</p></blockquote>]
 - `RQ@1 lineBack` — 5.3 deletes  
@@ -543,7 +543,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `RQ@2 Underline` — D18  
   B w=null c=0 @text:Q1w@3 t=[<hr /><blockquote><p>Q1w<u>k</u></p></blockquote>]  
   H w=null c=0 @element:listitem@2 t=[<hr /><blockquote><p>Q1w<u>k</u></p></blockquote>]
-- `RQ@2 ime` — D7, composition counts unpinned (T45.10)  
+- `RQ@2 ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B)  
   B w=[<hr /><blockquote><p>Q1wa</p></blockquote>] c=2 @text:Q1wa@4 t=[<hr /><blockquote><p>Q1wak</p></blockquote>]  
   H w=[<hr /><blockquote><p>Q1wa</p></blockquote>] c=3 @text:Q1wa@4 t=[<hr /><blockquote><p>Q1wak</p></blockquote>]
 - `RQ@2 placed` — D18  
@@ -567,7 +567,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `RR@0 Quote` — D13  
   B w=[<blockquote></blockquote><hr /><hr />] c=1 @element:quote@0 t=[<blockquote>k</blockquote><hr /><hr />]  
   H w=null c=0 @element:listitem@0 t=[k<hr /><hr />]
-- `RR@0 ime` — D7, composition counts unpinned (T45.10)  
+- `RR@0 ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B)  
   B w=[a<hr /><hr />] c=1 @text:a@1 t=[ak<hr /><hr />]  
   H w=[a<hr /><hr />] c=3 @text:a@1 t=[ak<hr /><hr />]
 - `RR@0 lineForward` — 5.3 deletes  
@@ -585,7 +585,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `RR@1 Quote` — D13  
   B w=[<hr /><blockquote></blockquote><hr />] c=1 @element:quote@0 t=[<hr /><blockquote>k</blockquote><hr />]  
   H w=null c=0 @element:listitem@1 t=[<hr />k<hr />]
-- `RR@1 ime` — D7, composition counts unpinned (T45.10)  
+- `RR@1 ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B)  
   B w=[<hr />a<hr />] c=1 @text:a@1 t=[<hr />ak<hr />]  
   H w=[<hr />a<hr />] c=3 @text:a@1 t=[<hr />ak<hr />]
 - `RR@1 lineForward` — 5.3 deletes  
@@ -609,7 +609,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `RR@2 Quote` — D13  
   B w=[<hr /><hr /><blockquote></blockquote>] c=1 @element:quote@0 t=[<hr /><hr /><blockquote>k</blockquote>]  
   H w=null c=0 @element:listitem@2 t=[<hr /><hr />k]
-- `RR@2 ime` — D7, composition counts unpinned (T45.10)  
+- `RR@2 ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B)  
   B w=[<hr /><hr />a] c=1 @text:a@1 t=[<hr /><hr />ak]  
   H w=[<hr /><hr />a] c=3 @text:a@1 t=[<hr /><hr />ak]
 - `RR@2 lineForward` — 5.3 deletes and T14.14 (T45.8): the character form's join  
@@ -639,7 +639,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `RT@0 Quote` — D13  
   B w=[<blockquote></blockquote><hr />T1w] c=1 @element:quote@0 t=[<blockquote>k</blockquote><hr />T1w]  
   H w=null c=0 @element:listitem@0 t=[k<hr />T1w]
-- `RT@0 ime` — D7, composition counts unpinned (T45.10)  
+- `RT@0 ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B)  
   B w=[a<hr />T1w] c=1 @text:a@1 t=[ak<hr />T1w]  
   H w=[a<hr />T1w] c=3 @text:a@1 t=[ak<hr />T1w]
 - `RT@0 lineForward` — 5.3 deletes  
@@ -654,7 +654,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `RT@1 Quote` — D2, with D18 at a resolved point  
   B w=[<hr /><blockquote>T1w</blockquote>] c=1 @text:T1w@0 t=[<hr /><blockquote>kT1w</blockquote>]  
   H w=null c=0 @text:T1w@0 t=[<hr />kT1w]
-- `RT@1 ime` — D7, composition counts unpinned (T45.10)  
+- `RT@1 ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B)  
   B w=[<hr />aT1w] c=2 @text:aT1w@1 t=[<hr />akT1w]  
   H w=[<hr />aT1w] c=3 @text:aT1w@1 t=[<hr />akT1w]
 - `RT@2 Code` — D2, with D18 at a resolved point  
@@ -672,7 +672,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `RT@2 Quote` — D2, with D18 at a resolved point  
   B w=[<hr /><blockquote>T1w</blockquote>] c=1 @text:T1w@3 t=[<hr /><blockquote>T1wk</blockquote>]  
   H w=null c=0 @text:T1w@3 t=[<hr />T1wk]
-- `RT@2 ime` — D7, composition counts unpinned (T45.10)  
+- `RT@2 ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B)  
   B w=[<hr />T1wa] c=2 @text:T1wa@4 t=[<hr />T1wak]  
   H w=[<hr />T1wa] c=3 @text:T1wa@4 t=[<hr />T1wak]
 - `TR@0 Code` — D2, with D18 at a resolved point  
@@ -684,7 +684,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `TR@0 Quote` — D2, with D18 at a resolved point  
   B w=[<blockquote>T0w</blockquote><hr />] c=1 @text:T0w@0 t=[<blockquote>kT0w</blockquote><hr />]  
   H w=<ul><li>Pw</li></ul><blockquote>T0w<hr /></blockquote><ul><li>Nw</li></ul> c=1 @text:T0w@0 t=<ul><li>Pw</li></ul><blockquote>kT0w<hr /></blockquote><ul><li>Nw</li></ul>
-- `TR@0 ime` — D7, composition counts unpinned (T45.10)  
+- `TR@0 ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B)  
   B w=[aT0w<hr />] c=2 @text:aT0w@1 t=[akT0w<hr />]  
   H w=[aT0w<hr />] c=3 @text:aT0w@1 t=[akT0w<hr />]
 - `TR@1 Bold` — D18  
@@ -726,7 +726,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `TR@1 cut` — D18  
   B w=null c=0 @text:T0w@3 t=[T0wk<hr />]  
   H w=null c=0 @element:listitem@1 t=[T0wk<hr />]
-- `TR@1 ime` — D7, composition counts unpinned (T45.10)  
+- `TR@1 ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B)  
   B w=[T0wa<hr />] c=2 @text:T0wa@4 t=[T0wak<hr />]  
   H w=[T0wa<hr />] c=3 @text:T0wa@4 t=[T0wak<hr />]
 - `TR@1 lineBack` — 5.3 deletes  
@@ -756,7 +756,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `TR@2 Quote` — D13  
   B w=[T0w<hr /><blockquote></blockquote>] c=1 @element:quote@0 t=[T0w<hr /><blockquote>k</blockquote>]  
   H w=<ul><li>Pw</li></ul><blockquote>T0w<hr /></blockquote><ul><li>Nw</li></ul> c=1 @text:Pw@2 t=<ul><li>Pwk</li></ul><blockquote>T0w<hr /></blockquote><ul><li>Nw</li></ul>
-- `TR@2 ime` — D7, composition counts unpinned (T45.10)  
+- `TR@2 ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B)  
   B w=[T0w<hr />a] c=1 @text:a@1 t=[T0w<hr />ak]  
   H w=[T0w<hr />a] c=3 @text:a@1 t=[T0w<hr />ak]
 - `TR@2 lineForward` — 5.3 deletes and T14.14 (T45.8): the character form's join  
@@ -771,7 +771,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `TRT@0 Quote` — D2, with D18 at a resolved point  
   B w=[<blockquote>T0w</blockquote><hr />T2w] c=1 @text:T0w@0 t=[<blockquote>kT0w</blockquote><hr />T2w]  
   H w=<ul><li>Pw</li></ul><blockquote>T0w<hr />T2w</blockquote><ul><li>Nw</li></ul> c=1 @text:T0w@0 t=<ul><li>Pw</li></ul><blockquote>kT0w<hr />T2w</blockquote><ul><li>Nw</li></ul>
-- `TRT@0 ime` — D7, composition counts unpinned (T45.10)  
+- `TRT@0 ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B)  
   B w=[aT0w<hr />T2w] c=2 @text:aT0w@1 t=[akT0w<hr />T2w]  
   H w=[aT0w<hr />T2w] c=3 @text:aT0w@1 t=[akT0w<hr />T2w]
 - `TRT@1 Bold` — D18  
@@ -813,7 +813,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `TRT@1 cut` — D18  
   B w=null c=0 @text:T0w@3 t=[T0wk<hr />T2w]  
   H w=null c=0 @element:listitem@1 t=[T0wk<hr />T2w]
-- `TRT@1 ime` — D7, composition counts unpinned (T45.10)  
+- `TRT@1 ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B)  
   B w=[T0wa<hr />T2w] c=2 @text:T0wa@4 t=[T0wak<hr />T2w]  
   H w=[T0wa<hr />T2w] c=3 @text:T0wa@4 t=[T0wak<hr />T2w]
 - `TRT@1 lineBack` — 5.3 deletes  
@@ -834,7 +834,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `TRT@2 Quote` — D2, with D18 at a resolved point  
   B w=[T0w<hr /><blockquote>T2w</blockquote>] c=1 @text:T2w@0 t=[T0w<hr /><blockquote>kT2w</blockquote>]  
   H w=<ul><li>Pw</li></ul><blockquote>T0w<hr />T2w</blockquote><ul><li>Nw</li></ul> c=1 @text:T2w@0 t=<ul><li>Pw</li></ul><blockquote>T0w<hr />kT2w</blockquote><ul><li>Nw</li></ul>
-- `TRT@2 ime` — D7, composition counts unpinned (T45.10)  
+- `TRT@2 ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B)  
   B w=[T0w<hr />aT2w] c=2 @text:aT2w@1 t=[T0w<hr />akT2w]  
   H w=[T0w<hr />aT2w] c=3 @text:aT2w@1 t=[T0w<hr />akT2w]
 - `TRT@3 Code` — D2, with D18 at a resolved point  
@@ -846,7 +846,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `TRT@3 Quote` — D2, with D18 at a resolved point  
   B w=[T0w<hr /><blockquote>T2w</blockquote>] c=1 @text:T2w@3 t=[T0w<hr /><blockquote>T2wk</blockquote>]  
   H w=<ul><li>Pw</li></ul><blockquote>T0w<hr />T2w</blockquote><ul><li>Nw</li></ul> c=1 @text:T2w@3 t=<ul><li>Pw</li></ul><blockquote>T0w<hr />T2wk</blockquote><ul><li>Nw</li></ul>
-- `TRT@3 ime` — D7, composition counts unpinned (T45.10)  
+- `TRT@3 ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B)  
   B w=[T0w<hr />T2wa] c=2 @text:T2wa@4 t=[T0w<hr />T2wak]  
   H w=[T0w<hr />T2wa] c=3 @text:T2wa@4 t=[T0w<hr />T2wak]
 
@@ -860,12 +860,12 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - 9: D6 and T15.7 (a cut at a collapsed caret)
 - 6: D3 (the line joins the quote before it); head flag: D19 (the head hands out the value unchanged)
 - 3: D3's TQT literal (the head hangs, T45.14)
-- 2: T45.11: decided by M-e7 (the address lost)
-- 2: T45.11: decided by M-e8 (the address changed)
+- 2: equal to the head in ordinary content: Code drops the address (T46.4, M-e7)
+- 2: equal at both builds at the text caret, the address included (T46.4, M-e8)
 - 2: 5.3's composition sentence; head flag: console errors (the head writes the composition twice)
-- 2: D7, composition counts unpinned (T45.10)
-- 1: T45.9: stands as built (M-e10)
-- 1: defect, T45.2 (Task 19): Link with no word at the caret writes nothing
+- 2: D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B)
+- 1: pinned as built: the composed text joins the link, as in ordinary content (T46.2, M-e10)
+- 1: fixed, T45.2 (Task 19): Link with no word at the caret writes nothing
 - 1: D18 step 1; head flag: the D18 step 1 literal
 - 1: D18: every command starts from the one caret; head flag: D19 (the head hands out the value unchanged)
 
@@ -875,7 +875,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `AQ el1 Bulleted list` — D18: every command starts from the one caret  
   B w=<p>Pw</p><p><a>Aw</a></p><blockquote><p>Q1w</p></blockquote><p>Nw</p> c=1 @text:Aw@2 t=<p>Pw</p><p><a>Aw</a>k</p><blockquote><p>Q1w</p></blockquote><p>Nw</p>  
   H w=<p>Pw</p><p><a>Aw</a></p><blockquote><p>Q1w</p></blockquote><p>Nw</p> c=1 @element:paragraph@1 t=<p>Pw</p><p><a>Aw</a>k</p><blockquote><p>Q1w</p></blockquote><p>Nw</p>
-- `AQ el1 Code` — T45.11: decided by M-e7 (the address lost)  
+- `AQ el1 Code` — equal to the head in ordinary content: Code drops the address (T46.4, M-e7)  
   B w=[<pre><code>Aw</code></pre><blockquote><p>Q1w</p></blockquote>] c=1 @text:Aw@2 t=[<pre><code>Awk</code></pre><blockquote><p>Q1w</p></blockquote>]  
   H w=<ul><li>Pw</li></ul><pre><code>Aw
   Q1w</code></pre><ul><li>Nw</li></ul> c=1 @text:Pw@2 t=<ul><li>Pwk</li></ul><pre><code>Aw
@@ -901,7 +901,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `AQ el1 Italic` — D18  
   B w=null c=0 @text:Aw@2 t=[<a>Aw</a><i><em>k</em></i><blockquote><p>Q1w</p></blockquote>]  
   H w=null c=0 @element:listitem@1 t=[<a>Aw</a><i><em>k</em></i><blockquote><p>Q1w</p></blockquote>]
-- `AQ el1 Link` — T45.11: decided by M-e8 (the address changed)  
+- `AQ el1 Link` — equal at both builds at the text caret, the address included (T46.4, M-e8)  
   B w=[<a>Aw</a><blockquote><p>Q1w</p></blockquote>] c=1 @text:Aw@2 t=[<a>Aw</a>k<blockquote><p>Q1w</p></blockquote>]  
   H w=[<a>Aw</a><blockquote><p><a>Q1w</a></p></blockquote>] c=1 @element:listitem@1 t=[<a>Aw</a>k<blockquote><p><a>Q1w</a></p></blockquote>]
 - `AQ el1 Numbered list` — D18  
@@ -934,7 +934,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `AQ el1 drop` — D18: every command starts from the one caret  
   B w=[<a>Aw</a>Dq<blockquote><p>Q1w</p></blockquote>] c=1 @text:Dq@2 t=[<a>Aw</a>Dqk<blockquote><p>Q1w</p></blockquote>]  
   H w=[<a>Aw</a><blockquote><p>DqQ1w</p></blockquote>] c=1 @text:DqQ1w@2 t=[<a>Aw</a><blockquote><p>DqkQ1w</p></blockquote>]
-- `AQ el1 ime` — T45.9: stands as built (M-e10)  
+- `AQ el1 ime` — pinned as built: the composed text joins the link, as in ordinary content (T46.2, M-e10)  
   B w=[<a>Awa</a><blockquote><p>Q1w</p></blockquote>] c=2 @text:Awa@3 t=[<a>Awa</a>k<blockquote><p>Q1w</p></blockquote>]  
   H w=[<a>Aw</a><blockquote><p>aQ1w</p></blockquote>] c=3 @text:aQ1w@1 t=[<a>Aw</a><blockquote><p>akQ1w</p></blockquote>]
 - `AQ el1 lineBack` — T24.1 and T33.1 (T45.8): the emptied line keeps the caret  
@@ -983,7 +983,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `BQ el1 Image` — D18: every command starts from the one caret  
   B w=[<br /><img /><blockquote><p>Q1w</p></blockquote>] c=1 @element:listitem@2 t=[<br /><img />k<blockquote><p>Q1w</p></blockquote>]  
   H w=[<br /><img /><blockquote><p>Q1w</p></blockquote>] c=1 @element:quote@0 t=[<br /><img /><blockquote><p>kQ1w</p></blockquote>]
-- `BQ el1 Link` — defect, T45.2 (Task 19): Link with no word at the caret writes nothing  
+- `BQ el1 Link` — fixed, T45.2 (Task 19): Link with no word at the caret writes nothing  
   B w=[<br /><blockquote><p>Q1w</p></blockquote>] c=1 @element:listitem@1 t=[<br />k<blockquote><p>Q1w</p></blockquote>]  
   H w=[<br /><blockquote><p><a>Q1w</a></p></blockquote>] c=1 @element:listitem@1 t=[<br />k<blockquote><p><a>Q1w</a></p></blockquote>]
 - `BQ el1 Quote` — D2, with D18 at a resolved point  
@@ -1025,7 +1025,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `QA el1 Bulleted list` — D18: every command starts from the one caret  
   B w=<p>Pw</p><blockquote><p>Q0w</p></blockquote><p><a>Lw</a></p><p>Nw</p> c=1 @text:Lw@0 t=<p>Pw</p><blockquote><p>Q0w</p></blockquote><p>k<a>Lw</a></p><p>Nw</p>  
   H w=<p>Pw</p><blockquote><p>Q0w</p></blockquote><p><a>Lw</a></p><p>Nw</p> c=1 @element:root@3 t=<p>Pw</p><blockquote><p>Q0w</p></blockquote><p><a>Lw</a></p><p>k</p><p>Nw</p>
-- `QA el1 Code` — T45.11: decided by M-e7 (the address lost)  
+- `QA el1 Code` — equal to the head in ordinary content: Code drops the address (T46.4, M-e7)  
   B w=[<blockquote><p>Q0w</p></blockquote><pre><code>Lw</code></pre>] c=1 @text:Lw@0 t=[<blockquote><p>Q0w</p></blockquote><pre><code>kLw</code></pre>]  
   H w=null c=0 @element:listitem@1 t=[<blockquote><p>Q0w</p></blockquote>k<a>Lw</a>]
 - `QA el1 Ctrl+Backspace` — D3 (the line joins the quote before it); head flag: D19 (the head hands out the value unchanged)  
@@ -1043,7 +1043,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `QA el1 Italic` — D18  
   B w=null c=0 @text:Lw@0 t=[<blockquote><p>Q0w</p></blockquote><i><em>k</em></i><a>Lw</a>]  
   H w=null c=0 @element:listitem@1 t=[<blockquote><p>Q0w</p></blockquote><i><em>k</em></i><a>Lw</a>]
-- `QA el1 Link` — T45.11: decided by M-e8 (the address changed)  
+- `QA el1 Link` — equal at both builds at the text caret, the address included (T46.4, M-e8)  
   B w=[<blockquote><p>Q0w</p></blockquote><a>Lw</a>] c=1 @text:Lw@0 t=[<blockquote><p>Q0w</p></blockquote>k<a>Lw</a>]  
   H w=[<blockquote><p>Q0w</p></blockquote><a>Lw</a>] c=1 @element:listitem@1 t=[<blockquote><p>Q0w</p></blockquote>k<a>Lw</a>]
 - `QA el1 Numbered list` — D18  
@@ -1189,7 +1189,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `QT@1 Quote` — D2, with D18 at a resolved point  
   B w=[<blockquote><p>Q0w</p></blockquote><blockquote>T1w</blockquote>] c=1 @text:T1w@0 t=[<blockquote><p>Q0w</p></blockquote><blockquote>kT1w</blockquote>]  
   H w=null c=0 @text:T1w@0 t=[<blockquote><p>Q0w</p></blockquote>kT1w]
-- `QT@1 ime` — D7, composition counts unpinned (T45.10)  
+- `QT@1 ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B)  
   B w=[<blockquote><p>Q0w</p></blockquote>aT1w] c=2 @text:aT1w@1 t=[<blockquote><p>Q0w</p></blockquote>akT1w]  
   H w=[<blockquote><p>Q0w</p></blockquote>aT1w] c=3 @text:aT1w@1 t=[<blockquote><p>Q0w</p></blockquote>akT1w]
 - `QT@1 lineBack` — D3 (the line joins the quote before it); head flag: D19 (the head hands out the value unchanged)  
@@ -1536,7 +1536,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `TQT el2 Quote` — D2, with D18 at a resolved point  
   B w=[T0w<blockquote><p>Q1w</p></blockquote><blockquote>T2w</blockquote>] c=1 @text:T2w@0 t=[T0w<blockquote><p>Q1w</p></blockquote><blockquote>kT2w</blockquote>]  
   H w=<ul><li>Pw</li></ul><blockquote>T0w<blockquote><p>Q1w</p></blockquote>T2w</blockquote><ul><li>Nw</li></ul> c=1 @text:T2w@0 t=<ul><li>Pw</li></ul><blockquote>T0w<blockquote><p>Q1w</p></blockquote>kT2w</blockquote><ul><li>Nw</li></ul>
-- `TQT el2 ime` — D7, composition counts unpinned (T45.10)  
+- `TQT el2 ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B)  
   B w=[T0w<blockquote><p>Q1w</p></blockquote>aT2w] c=2 @text:aT2w@1 t=[T0w<blockquote><p>Q1w</p></blockquote>akT2w]  
   H w=[T0w<blockquote><p>Q1w</p></blockquote>aT2w] c=3 @text:aT2w@1 t=[T0w<blockquote><p>Q1w</p></blockquote>akT2w]
 - `TQT el2 lineBack` — D3's TQT literal (the head hangs, T45.14)  
@@ -1626,22 +1626,22 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 ## node (104 differences)
 
 - 64: section 9: K8, the letter after a node-selected rule lands after it (D15)
-- 12: defect, T45.1 (Task 16): changes nothing
+- 12: fixed, T45.1 (Task 16): changes nothing
 - 6: section 9: F2, a delete at a caret after an image ending its line (5.8)
 - 5: D18
-- 4: D7, composition counts unpinned (T45.10)
+- 4: D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B)
 - 4: T33.1 and T33.2
 - 4: D2
 - 4: D15's paste bullet and T37.1
-- 1: T45.11: write by M7a; the caret by M-e3
+- 1: M7a; the caret at the code text's end, as in ordinary content (T46.4, M-e3)
 
 - `image in QI by code Backspace` — D18  
   B w=[<blockquote><p>Q0w</p></blockquote>] c=1 @text:Q0w@3 t=[<blockquote><p>Q0wk</p></blockquote>]  
   H w=[<blockquote><p>Q0w</p></blockquote>] c=1 @element:quote@1 t=[<blockquote><p>Q0wk</p></blockquote>]
-- `image in QI by code Ctrl+Backspace` — defect, T45.1 (Task 16): changes nothing  
+- `image in QI by code Ctrl+Backspace` — fixed, T45.1 (Task 16): changes nothing  
   B w=[<blockquote><p>Q0w</p></blockquote><img />] c=1 @node:cms-image t=[<blockquote><p>Q0w</p></blockquote><img />k]  
   H w=null c=0 @node:cms-image t=[<blockquote><p>Q0w</p></blockquote><img />k]
-- `image in QI by code Ctrl+Delete` — defect, T45.1 (Task 16): changes nothing  
+- `image in QI by code Ctrl+Delete` — fixed, T45.1 (Task 16): changes nothing  
   B w=[<blockquote><p>Q0w</p></blockquote><img />] c=1 @node:cms-image t=[<blockquote><p>Q0w</p></blockquote><img />k]  
   H w=null c=0 @node:cms-image t=[<blockquote><p>Q0w</p></blockquote><img />k]
 - `image in QI by code Delete` — D18  
@@ -1650,7 +1650,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `image in QI by code cut` — D18  
   B w=[<blockquote><p>Q0w</p></blockquote>] c=1 @text:Q0w@3 t=[<blockquote><p>Q0wk</p></blockquote>]  
   H w=[<blockquote><p>Q0w</p></blockquote>] c=1 @element:quote@1 t=[<blockquote><p>Q0wk</p></blockquote>]
-- `image in QI by code ime` — D7, composition counts unpinned (T45.10)  
+- `image in QI by code ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B)  
   B w=[<blockquote><p>Q0w</p></blockquote><img />a] c=1 @text:a@1 t=[<blockquote><p>Q0w</p></blockquote><img />ak]  
   H w=[<blockquote><p>Q0w</p></blockquote><img />a] c=3 @text:a@1 t=[<blockquote><p>Q0w</p></blockquote><img />ak]
 - `image in QI by code lineBack` — D18  
@@ -1677,7 +1677,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `image in QI for real Quote` — D2  
   B w=[<blockquote><p>Q0w</p></blockquote><blockquote><img /></blockquote>] c=1 @element:quote@1 t=[<blockquote><p>Q0w</p></blockquote><blockquote><img />k</blockquote>]  
   H w=null c=0 @element:listitem@2 t=[<blockquote><p>Q0w</p></blockquote><img />k]
-- `image in QI for real ime` — D7, composition counts unpinned (T45.10)  
+- `image in QI for real ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B)  
   B w=[<blockquote><p>Q0w</p></blockquote><img />a] c=1 @text:a@1 t=[<blockquote><p>Q0w</p></blockquote><img />ak]  
   H w=[<blockquote><p>Q0w</p></blockquote><img />a] c=3 @text:a@1 t=[<blockquote><p>Q0w</p></blockquote><img />ak]
 - `image in QI for real lineBack` — T33.1 and T33.2  
@@ -1686,16 +1686,16 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `image in QI for real lineForward` — section 9: F2, a delete at a caret after an image ending its line (5.8)  
   B w=null c=0 @element:listitem@2 t=[<blockquote><p>Q0w</p></blockquote><img />k]  
   H w=[<blockquote><p>Q0w</p></blockquote><img /></li><li>w</li></ul> c=1 @text:w@0 t=[<blockquote><p>Q0w</p></blockquote><img /></li><li>kw</li></ul>
-- `image in TQI by code Ctrl+Backspace` — defect, T45.1 (Task 16): changes nothing  
+- `image in TQI by code Ctrl+Backspace` — fixed, T45.1 (Task 16): changes nothing  
   B w=[T0w<blockquote><p>Q1w</p></blockquote>X2w<img />] c=1 @node:cms-image t=[T0w<blockquote><p>Q1w</p></blockquote>X2w<img />k]  
   H w=null c=0 @node:cms-image t=[T0w<blockquote><p>Q1w</p></blockquote>X2w<img />k]
-- `image in TQI by code Ctrl+Delete` — defect, T45.1 (Task 16): changes nothing  
+- `image in TQI by code Ctrl+Delete` — fixed, T45.1 (Task 16): changes nothing  
   B w=[T0w<blockquote><p>Q1w</p></blockquote>X2w<img />] c=1 @node:cms-image t=[T0w<blockquote><p>Q1w</p></blockquote>X2w<img />k]  
   H w=null c=0 @node:cms-image t=[T0w<blockquote><p>Q1w</p></blockquote>X2w<img />k]
-- `image in TQI by code ime` — D7, composition counts unpinned (T45.10)  
+- `image in TQI by code ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B)  
   B w=[T0w<blockquote><p>Q1w</p></blockquote>X2w<img />a] c=1 @text:a@1 t=[T0w<blockquote><p>Q1w</p></blockquote>X2w<img />ak]  
   H w=[T0w<blockquote><p>Q1w</p></blockquote>X2w<img />a] c=3 @text:a@1 t=[T0w<blockquote><p>Q1w</p></blockquote>X2w<img />ak]
-- `image in TQI for real Code` — T45.11: write by M7a; the caret by M-e3  
+- `image in TQI for real Code` — M7a; the caret at the code text's end, as in ordinary content (T46.4, M-e3)  
   B w=[T0w<blockquote><p>Q1w</p></blockquote><pre><code>X2w</code></pre><img />] c=1 @text:X2w@3 t=[T0w<blockquote><p>Q1w</p></blockquote><pre><code>X2wk</code></pre><img />]  
   H w=<ul><li>Pw</li></ul><pre><code>T0w
   Q1w
@@ -1714,7 +1714,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `image in TQI for real Quote` — D2  
   B w=[T0w<blockquote><p>Q1w</p></blockquote><blockquote>X2w<img /></blockquote>] c=1 @element:quote@2 t=[T0w<blockquote><p>Q1w</p></blockquote><blockquote>X2w<img />k</blockquote>]  
   H w=<ul><li>Pw</li></ul><blockquote>T0w<blockquote><p>Q1w</p></blockquote>X2w<img /></blockquote><ul><li>Nw</li></ul> c=1 @text:Pw@2 t=<ul><li>Pwk</li></ul><blockquote>T0w<blockquote><p>Q1w</p></blockquote>X2w<img /></blockquote><ul><li>Nw</li></ul>
-- `image in TQI for real ime` — D7, composition counts unpinned (T45.10)  
+- `image in TQI for real ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B)  
   B w=[T0w<blockquote><p>Q1w</p></blockquote>X2w<img />a] c=1 @text:a@1 t=[T0w<blockquote><p>Q1w</p></blockquote>X2w<img />ak]  
   H w=[T0w<blockquote><p>Q1w</p></blockquote>X2w<img />a] c=3 @text:a@1 t=[T0w<blockquote><p>Q1w</p></blockquote>X2w<img />ak]
 - `image in TQI for real lineBack` — T33.1 and T33.2  
@@ -1729,10 +1729,10 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `rule in TR by code Bulleted list` — section 9: K8, the letter after a node-selected rule lands after it (D15)  
   B w=null c=0 @node:horizontalrule t=[T0w<hr />k]  
   H w=null c=0 @node:horizontalrule t=<ul><li>kPw</li><li>T0w<hr />]
-- `rule in TR by code Ctrl+Backspace` — defect, T45.1 (Task 16): changes nothing  
+- `rule in TR by code Ctrl+Backspace` — fixed, T45.1 (Task 16): changes nothing  
   B w=[T0w<hr />] c=1 @node:horizontalrule t=[T0w<hr />k]  
   H w=null c=0 @node:horizontalrule t=<ul><li>kPw</li><li>T0w<hr />]
-- `rule in TR by code Ctrl+Delete` — defect, T45.1 (Task 16): changes nothing  
+- `rule in TR by code Ctrl+Delete` — fixed, T45.1 (Task 16): changes nothing  
   B w=[T0w<hr />] c=1 @node:horizontalrule t=[T0w<hr />k]  
   H w=null c=0 @node:horizontalrule t=<ul><li>kPw</li><li>T0w<hr />]
 - `rule in TR by code Divider` — section 9: K8, the letter after a node-selected rule lands after it (D15)  
@@ -1786,10 +1786,10 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `rule in TR for real Bulleted list` — section 9: K8, the letter after a node-selected rule lands after it (D15)  
   B w=null c=0 @node:horizontalrule t=[T0w<hr />k]  
   H w=null c=0 @node:horizontalrule t=<ul><li>kPw</li><li>T0w<hr />]
-- `rule in TR for real Ctrl+Backspace` — defect, T45.1 (Task 16): changes nothing  
+- `rule in TR for real Ctrl+Backspace` — fixed, T45.1 (Task 16): changes nothing  
   B w=[T0w<hr />] c=1 @node:horizontalrule t=[T0w<hr />k]  
   H w=null c=0 @node:horizontalrule t=<ul><li>kPw</li><li>T0w<hr />]
-- `rule in TR for real Ctrl+Delete` — defect, T45.1 (Task 16): changes nothing  
+- `rule in TR for real Ctrl+Delete` — fixed, T45.1 (Task 16): changes nothing  
   B w=[T0w<hr />] c=1 @node:horizontalrule t=[T0w<hr />k]  
   H w=null c=0 @node:horizontalrule t=<ul><li>kPw</li><li>T0w<hr />]
 - `rule in TR for real Divider` — section 9: K8, the letter after a node-selected rule lands after it (D15)  
@@ -1843,10 +1843,10 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `rule in TRT by code Bulleted list` — section 9: K8, the letter after a node-selected rule lands after it (D15)  
   B w=null c=0 @node:horizontalrule t=[T0w<hr />kT2w]  
   H w=null c=0 @node:horizontalrule t=<ul><li>kPw</li><li>T0w<hr />T2w]
-- `rule in TRT by code Ctrl+Backspace` — defect, T45.1 (Task 16): changes nothing  
+- `rule in TRT by code Ctrl+Backspace` — fixed, T45.1 (Task 16): changes nothing  
   B w=[T0w<hr />T2w] c=1 @node:horizontalrule t=[T0w<hr />kT2w]  
   H w=null c=0 @node:horizontalrule t=<ul><li>kPw</li><li>T0w<hr />T2w]
-- `rule in TRT by code Ctrl+Delete` — defect, T45.1 (Task 16): changes nothing  
+- `rule in TRT by code Ctrl+Delete` — fixed, T45.1 (Task 16): changes nothing  
   B w=[T0w<hr />T2w] c=1 @node:horizontalrule t=[T0w<hr />kT2w]  
   H w=null c=0 @node:horizontalrule t=<ul><li>kPw</li><li>T0w<hr />T2w]
 - `rule in TRT by code Divider` — section 9: K8, the letter after a node-selected rule lands after it (D15)  
@@ -1900,10 +1900,10 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `rule in TRT for real Bulleted list` — section 9: K8, the letter after a node-selected rule lands after it (D15)  
   B w=null c=0 @node:horizontalrule t=[T0w<hr />kT2w]  
   H w=null c=0 @node:horizontalrule t=<ul><li>kPw</li><li>T0w<hr />T2w]
-- `rule in TRT for real Ctrl+Backspace` — defect, T45.1 (Task 16): changes nothing  
+- `rule in TRT for real Ctrl+Backspace` — fixed, T45.1 (Task 16): changes nothing  
   B w=[T0w<hr />T2w] c=1 @node:horizontalrule t=[T0w<hr />kT2w]  
   H w=null c=0 @node:horizontalrule t=<ul><li>kPw</li><li>T0w<hr />T2w]
-- `rule in TRT for real Ctrl+Delete` — defect, T45.1 (Task 16): changes nothing  
+- `rule in TRT for real Ctrl+Delete` — fixed, T45.1 (Task 16): changes nothing  
   B w=[T0w<hr />T2w] c=1 @node:horizontalrule t=[T0w<hr />kT2w]  
   H w=null c=0 @node:horizontalrule t=<ul><li>kPw</li><li>T0w<hr />T2w]
 - `rule in TRT for real Divider` — section 9: K8, the letter after a node-selected rule lands after it (D15)  
@@ -1958,32 +1958,32 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - 26: D18
 - 24: D13
 - 24: D2, with D18 at a resolved point
-- 17: D7, composition counts unpinned (T45.10)
+- 17: D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B)
 - 15: 5.3 deletes
 - 7: D18: every command starts from the one caret
-- 6: 5.5: the pasted paragraph left in the item is a line (the head's `<p>` in the item) [builder's reading]
+- 6: 5.5: the pasted paragraph left in the item is a line (the head's `<p>` in the item) (T46.7)
 - 5: D10 with M-d2 row 2
 - 4: 5.3 deletes and T14.14 (T45.8): the character form's join
 - 4: T24.1 and T33.1 (T45.8): the emptied line keeps the caret
-- 2: 5.3 deletes and T14.14: the rule goes and nothing else (the head empties the item, the link with it) [builder's reading]
-- 2: T45.11: decided by M-e5
+- 2: 5.3 deletes and T14.14: the rule goes and nothing else (the head empties the item, the link with it) (T46.7)
+- 2: D2 and D3's second case, the root twin (T46.4, M-e5)
 - 2: D10
-- 2: defect, T45.7 (Task 14): removes the rule, keeps the depth
-- 2: T45.11: decided by M-e6
+- 2: fixed, T45.7 (Task 14): removes the rule, keeps the depth
+- 2: the head's paste at T0w@3, C7 until R3 (T46.4, M-e6)
 - 2: 5.3 (nothing at the content's end)
-- 1: T45.11: decided by M-e7 (the address lost)
+- 1: equal to the head in ordinary content: Code drops the address (T46.4, M-e7)
 - 1: D3 (the line joins the quote before it)
-- 1: 5.7 row "Enter at the start of a line in a quote" (D2, D19) [builder's reading]
-- 1: T45.5 (Task 19): no unchanged onChange; the write follows M-e1
-- 1: defect, T45.2 (Task 19): Link with no word at the caret writes nothing
-- 1: D2 and D19: in a lined quote the new paragraph stays a paragraph; the head lifts it out of the quote [builder's reading]
+- 1: 5.7 row "Enter at the start of a line in a quote" (D2, D19) (T46.7)
+- 1: fixed, T46.1 (Task 19): writes nothing, no onChange
+- 1: fixed, T45.2 (Task 19): Link with no word at the caret writes nothing
+- 1: D2 and D19: in a lined quote the new paragraph stays a paragraph; the head lifts it out of the quote (T46.7)
 - 1: D18 (the write equals the head's; the caret is resolved)
-- 1: D19 and D2 with D18: Enter at the end of a line in a lined quote gives a paragraph holding the caret (K12); the head moves the rule out of the quote [builder's reading]
+- 1: D19 and D2 with D18: Enter at the end of a line in a lined quote gives a paragraph holding the caret (K12); the head moves the rule out of the quote (T46.7)
 - 1: D6 and D18
-- 1: T45.4 (Task 19): refused, changes nothing (as built: D2 with the depth lift, T45.12)
-- 1: defect, T45.4 (Task 19): Quote at the depth limit changes nothing
+- 1: fixed, T45.4 (Task 19): refused, changes nothing
+- 1: fixed, T45.4 (Task 19): Quote at the depth limit changes nothing
 
-- `AR Lw@1 Code` — T45.11: decided by M-e7 (the address lost) — no twin: a text caret inside a word; the points and meeting grids hold element points only, and none of them resolves to a caret inside a word  
+- `AR Lw@1 Code` — equal to the head in ordinary content: Code drops the address (T46.4, M-e7) — no twin: a text caret inside a word; the points and meeting grids hold element points only, and none of them resolves to a caret inside a word  
   B w=[<pre><code>Lw</code></pre><hr />] c=1 @text:Lw@1 t=[<pre><code>Lkw</code></pre><hr />]  
   H w=<ul><li>Pw</li></ul><pre><code>Lw</code></pre><hr /><ul><li>Nw</li></ul> c=1 @text:Lw@1 t=<ul><li>Pw</li></ul><pre><code>Lkw</code></pre><hr /><ul><li>Nw</li></ul>
 - `AR Lw@1 Heading 2` — D2 — no twin: a text caret inside a word; the points and meeting grids hold element points only, and none of them resolves to a caret inside a word  
@@ -1998,13 +1998,13 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `AR Lw@1 Quote` — D2 — no twin: a text caret inside a word; the points and meeting grids hold element points only, and none of them resolves to a caret inside a word  
   B w=[<blockquote><a>Lw</a></blockquote><hr />] c=1 @text:Lw@1 t=[<blockquote><a>Lkw</a></blockquote><hr />]  
   H w=<ul><li>Pw</li></ul><blockquote><a>Lw</a><hr /></blockquote><ul><li>Nw</li></ul> c=1 @text:Lw@1 t=<ul><li>Pw</li></ul><blockquote><a>Lkw</a><hr /></blockquote><ul><li>Nw</li></ul>
-- `AR Lw@1 ime` — D7, composition counts unpinned (T45.10) — no twin: a text caret inside a word; the points and meeting grids hold element points only, and none of them resolves to a caret inside a word — head flag: undo does not restore  
+- `AR Lw@1 ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B) — no twin: a text caret inside a word; the points and meeting grids hold element points only, and none of them resolves to a caret inside a word — head flag: undo does not restore  
   B w=[<a>Law</a><hr />] c=2 @text:Law@2 t=[<a>Lakw</a><hr />]  
   H w=[<a>Law</a><hr />] c=3 @text:Law@2 t=[<a>Lakw</a><hr />]
 - `AR el2 Code` — D13 — twin `TR@2 Code` (points): D13  
   B w=[<a>Lw</a><hr /><pre><code></code></pre>] c=1 @element:code@0 t=[<a>Lw</a><hr /><pre><code>k</code></pre>]  
   H w=<ul><li>Pw</li></ul><pre><code>Lw</code></pre><hr /><ul><li>Nw</li></ul> c=1 @text:Pw@2 t=<ul><li>Pwk</li></ul><pre><code>Lw</code></pre><hr /><ul><li>Nw</li></ul>
-- `AR el2 Ctrl+Backspace` — 5.3 deletes and T14.14: the rule goes and nothing else (the head empties the item, the link with it) [builder's reading] — twin `TR@2 Ctrl+Backspace` (points): equal at both builds, so this cell differs from twin  
+- `AR el2 Ctrl+Backspace` — 5.3 deletes and T14.14: the rule goes and nothing else (the head empties the item, the link with it) (T46.7) — twin `TR@2 Ctrl+Backspace` (points): equal at both builds, so this cell differs from twin  
   B w=[<a>Lw</a>] c=1 @element:listitem@1 t=[<a>Lw</a>k]  
   H w=[] c=1 @element:listitem@0 t=[k]
 - `AR el2 Ctrl+Delete` — 5.3 deletes — twin `TR@2 Ctrl+Delete` (points): 5.3 deletes  
@@ -2028,16 +2028,16 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `AR el2 Quote` — D13 — twin `TR@2 Quote` (points): D13  
   B w=[<a>Lw</a><hr /><blockquote></blockquote>] c=1 @element:quote@0 t=[<a>Lw</a><hr /><blockquote>k</blockquote>]  
   H w=<ul><li>Pw</li></ul><blockquote><a>Lw</a><hr /></blockquote><ul><li>Nw</li></ul> c=1 @text:Pw@2 t=<ul><li>Pwk</li></ul><blockquote><a>Lw</a><hr /></blockquote><ul><li>Nw</li></ul>
-- `AR el2 ime` — D7, composition counts unpinned (T45.10) — twin `TR@2 ime` (points): D7, composition counts unpinned (T45.10)  
+- `AR el2 ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B) — twin `TR@2 ime` (points): D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B)  
   B w=[<a>Lw</a><hr />a] c=1 @text:a@1 t=[<a>Lw</a><hr />ak]  
   H w=[<a>Lw</a><hr />a] c=3 @text:a@1 t=[<a>Lw</a><hr />ak]
-- `AR el2 lineBack` — 5.3 deletes and T14.14: the rule goes and nothing else (the head empties the item, the link with it) [builder's reading] — twin `TR@2 lineBack` (points): equal at both builds, so this cell differs from twin  
+- `AR el2 lineBack` — 5.3 deletes and T14.14: the rule goes and nothing else (the head empties the item, the link with it) (T46.7) — twin `TR@2 lineBack` (points): equal at both builds, so this cell differs from twin  
   B w=[<a>Lw</a>] c=1 @element:listitem@1 t=[<a>Lw</a>k]  
   H w=[] c=1 @element:listitem@0 t=[k]
 - `AR el2 lineForward` — 5.3 deletes and T14.14 (T45.8): the character form's join — twin `TR@2 lineForward` (points): 5.3 deletes and T14.14 (T45.8): the character form's join — head flag: short: D19  
   B w=[<a>Lw</a><hr />Nw</li></ul> c=1 @text:Nw@0 t=[<a>Lw</a><hr />kNw</li></ul>  
   H w=[<a>Lw</a><hr />] c=1 @element:listitem@2 t=[<a>Lw</a><hr />k]
-- `HQ in item H0w@1 ime` — D7, composition counts unpinned (T45.10) — no twin: a text caret inside a word; the points and meeting grids hold element points only, and none of them resolves to a caret inside a word — head flag: undo does not restore  
+- `HQ in item H0w@1 ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B) — no twin: a text caret inside a word; the points and meeting grids hold element points only, and none of them resolves to a caret inside a word — head flag: undo does not restore  
   B w=[<blockquote><h3>Ha0w</h3>X1w</blockquote>T2w] c=2 @text:Ha0w@2 t=[<blockquote><h3>Hak0w</h3>X1w</blockquote>T2w]  
   H w=[<blockquote><h3>Ha0w</h3>X1w</blockquote>T2w] c=3 @text:Ha0w@2 t=[<blockquote><h3>Hak0w</h3>X1w</blockquote>T2w]
 - `HQ in item el1 Backspace` — D3 (the line joins the quote before it) — twin `QT@1 Backspace` (meeting): D3 (the line joins the quote before it); head flag: D19 (the head hands out the value unchanged) — head flag: short: D19  
@@ -2046,13 +2046,13 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `HQ in item el1 Code` — D2, with D18 at a resolved point — twin `QT@1 Code` (meeting): D2, with D18 at a resolved point  
   B w=[<blockquote><h3>H0w</h3><pre><code>X1w</code></pre></blockquote>T2w] c=1 @text:X1w@0 t=[<blockquote><h3>H0w</h3><pre><code>kX1w</code></pre></blockquote>T2w]  
   H w=null c=0 @text:X1w@0 t=[<blockquote><h3>H0w</h3>kX1w</blockquote>T2w]
-- `HQ in item el1 Ctrl+Backspace` — T45.11: decided by M-e5 — twin `QT@1 Ctrl+Backspace` (meeting): D3 (the line joins the quote before it); head flag: D19 (the head hands out the value unchanged) — head flag: short: D19  
+- `HQ in item el1 Ctrl+Backspace` — D2 and D3's second case, the root twin (T46.4, M-e5) — twin `QT@1 Ctrl+Backspace` (meeting): D3 (the line joins the quote before it); head flag: D19 (the head hands out the value unchanged) — head flag: short: D19  
   B w=[<blockquote><h3>H0wX1w</h3></blockquote>T2w] c=1 @text:H0wX1w@3 t=[<blockquote><h3>H0wkX1w</h3></blockquote>T2w]  
   H w=[<blockquote><h3>H0w</h3>X1w</blockquote>T2w] c=1 @text:H0w@3 t=[<blockquote><h3>H0wk</h3>X1w</blockquote>T2w]
 - `HQ in item el1 Ctrl+Delete` — T24.1 and T33.1 (T45.8): the emptied line keeps the caret — twin `QT@1 Ctrl+Delete` (meeting): T24.1 and T33.1 (T45.8): the emptied line keeps the caret  
   B w=[<blockquote><h3>H0w</h3></blockquote>T2w] c=1 @element:quote@1 t=[<blockquote><h3>H0w</h3>k</blockquote>T2w]  
   H w=[<blockquote><h3>H0w</h3></blockquote>T2w] c=1 @text:H0w@3 t=[<blockquote><h3>H0wk</h3></blockquote>T2w]
-- `HQ in item el1 Enter` — 5.7 row "Enter at the start of a line in a quote" (D2, D19) [builder's reading] — twin `QT@1 Enter` (meeting): equal at both builds, so this cell differs from twin — head flag: not a fixed point  
+- `HQ in item el1 Enter` — 5.7 row "Enter at the start of a line in a quote" (D2, D19) (T46.7) — twin `QT@1 Enter` (meeting): equal at both builds, so this cell differs from twin — head flag: not a fixed point  
   B w=[<blockquote><h3>H0w</h3><br />X1w</blockquote>T2w] c=1 @text:X1w@0 t=[<blockquote><h3>H0w</h3><br />kX1w</blockquote>T2w]  
   H w=[<blockquote><h3>H0w</h3></blockquote><p>X1w</p>T2w] c=1 @text:X1w@0 t=[<blockquote><h3>H0w</h3></blockquote><p>kX1w</p>T2w]
 - `HQ in item el1 Heading 2` — D2, with D18 at a resolved point — twin `QT@1 Heading 2` (meeting): D2, with D18 at a resolved point  
@@ -2064,22 +2064,22 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `HQ in item el1 Heading 4` — D2, with D18 at a resolved point — twin `QT@1 Heading 2` (meeting): D2, with D18 at a resolved point  
   B w=[<blockquote><h3>H0w</h3><h4>X1w</h4></blockquote>T2w] c=1 @text:X1w@0 t=[<blockquote><h3>H0w</h3><h4>kX1w</h4></blockquote>T2w]  
   H w=null c=0 @text:X1w@0 t=[<blockquote><h3>H0w</h3>kX1w</blockquote>T2w]
-- `HQ in item el1 Paragraph` — T45.5 (Task 19): no unchanged onChange; the write follows M-e1 — twin `QT@1 Paragraph` (meeting): equal at both builds, so this cell differs from twin  
+- `HQ in item el1 Paragraph` — fixed, T46.1 (Task 19): writes nothing, no onChange — twin `QT@1 Paragraph` (meeting): equal at both builds, so this cell differs from twin  
   B w=[<blockquote><h3>H0w</h3>X1w</blockquote>T2w] c=1 @text:X1w@0 t=[<blockquote><h3>H0w</h3>kX1w</blockquote>T2w]  
   H w=null c=0 @text:X1w@0 t=[<blockquote><h3>H0w</h3>kX1w</blockquote>T2w]
-- `HQ in item el1 ime` — D7, composition counts unpinned (T45.10) — twin `QT@1 ime` (meeting): D7, composition counts unpinned (T45.10) — head flag: undo does not restore  
+- `HQ in item el1 ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B) — twin `QT@1 ime` (meeting): D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B) — head flag: undo does not restore  
   B w=[<blockquote><h3>H0w</h3>aX1w</blockquote>T2w] c=2 @text:aX1w@1 t=[<blockquote><h3>H0w</h3>akX1w</blockquote>T2w]  
   H w=[<blockquote><h3>H0w</h3>aX1w</blockquote>T2w] c=3 @text:aX1w@1 t=[<blockquote><h3>H0w</h3>akX1w</blockquote>T2w]
-- `HQ in item el1 lineBack` — T45.11: decided by M-e5 — twin `QT@1 lineBack` (meeting): D3 (the line joins the quote before it); head flag: D19 (the head hands out the value unchanged) — head flag: short: D19  
+- `HQ in item el1 lineBack` — D2 and D3's second case, the root twin (T46.4, M-e5) — twin `QT@1 lineBack` (meeting): D3 (the line joins the quote before it); head flag: D19 (the head hands out the value unchanged) — head flag: short: D19  
   B w=[<blockquote><h3>H0wX1w</h3></blockquote>T2w] c=1 @text:H0wX1w@3 t=[<blockquote><h3>H0wkX1w</h3></blockquote>T2w]  
   H w=[<blockquote><h3>H0w</h3>X1w</blockquote>T2w] c=1 @text:H0w@3 t=[<blockquote><h3>H0wk</h3>X1w</blockquote>T2w]
 - `HQ in item el1 lineForward` — T24.1 and T33.1 (T45.8): the emptied line keeps the caret — twin `QT@1 lineForward` (meeting): T24.1 and T33.1 (T45.8): the emptied line keeps the caret  
   B w=[<blockquote><h3>H0w</h3></blockquote>T2w] c=1 @element:quote@1 t=[<blockquote><h3>H0w</h3>k</blockquote>T2w]  
   H w=[<blockquote><h3>H0w</h3></blockquote>T2w] c=1 @text:H0w@3 t=[<blockquote><h3>H0wk</h3></blockquote>T2w]
-- `HQ in item el1 paste HTML` — 5.5: the pasted paragraph left in the item is a line (the head's `<p>` in the item) [builder's reading] — twin `QT@1 paste HTML` (meeting): equal at both builds, so this cell differs from twin — head flag: not a fixed point  
+- `HQ in item el1 paste HTML` — 5.5: the pasted paragraph left in the item is a line (the head's `<p>` in the item) (T46.7) — twin `QT@1 paste HTML` (meeting): equal at both builds, so this cell differs from twin — head flag: not a fixed point  
   B w=[<blockquote><h3>H0w</h3>Aq</blockquote>BqX1w<br />T2w] c=1 @text:BqX1w@2 t=[<blockquote><h3>H0w</h3>Aq</blockquote>BqkX1w<br />T2w]  
   H w=[<blockquote><h3>H0w</h3>Aq</blockquote><p>BqX1w</p>T2w] c=1 @text:BqX1w@2 t=[<blockquote><h3>H0w</h3>Aq</blockquote><p>BqkX1w</p>T2w]
-- `HQ in item el1 paste own` — 5.5: the pasted paragraph left in the item is a line (the head's `<p>` in the item) [builder's reading] — twin `QT@1 paste own` (meeting): equal at both builds, so this cell differs from twin — head flag: not a fixed point  
+- `HQ in item el1 paste own` — 5.5: the pasted paragraph left in the item is a line (the head's `<p>` in the item) (T46.7) — twin `QT@1 paste own` (meeting): equal at both builds, so this cell differs from twin — head flag: not a fixed point  
   B w=[<blockquote><h3>H0w</h3>Aq</blockquote>BqX1w<br />T2w] c=1 @text:BqX1w@2 t=[<blockquote><h3>H0w</h3>Aq</blockquote>BqkX1w<br />T2w]  
   H w=[<blockquote><h3>H0w</h3>Aq</blockquote><p>BqX1w</p>T2w] c=1 @text:BqX1w@2 t=[<blockquote><h3>H0w</h3>Aq</blockquote><p>BqkX1w</p>T2w]
 - `IR el1 Code` — D2, with D18 at a resolved point — twin `TR@1 Code` (points): D2, with D18 at a resolved point  
@@ -2094,13 +2094,13 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `IR el1 Heading 4` — D2, with D18 at a resolved point — twin `TR@1 Heading 2` (points): D2, with D18 at a resolved point  
   B w=[<h4><img /></h4><hr />] c=1 @element:heading@1 t=[<h4><img />k</h4><hr />]  
   H w=<ul><li>Pw</li></ul><h4><img /></h4><hr /><ul><li>Nw</li></ul> c=1 @text:Pw@2 t=<ul><li>Pwk</li></ul><h4><img /></h4><hr /><ul><li>Nw</li></ul>
-- `IR el1 Link` — defect, T45.2 (Task 19): Link with no word at the caret writes nothing — twin `TR@1 Link` (points): D10 — head flag: not a fixed point  
+- `IR el1 Link` — fixed, T45.2 (Task 19): Link with no word at the caret writes nothing — twin `TR@1 Link` (points): D10 — head flag: not a fixed point  
   B w=[<img /><hr />] c=1 @element:listitem@1 t=[<img />k<hr />]  
   H w=[<img /><a><hr /></a>] c=1 @element:listitem@2 t=[<img /><a><hr /></a>k]
 - `IR el1 Quote` — D2, with D18 at a resolved point — twin `TR@1 Quote` (points): D2, with D18 at a resolved point  
   B w=[<blockquote><img /></blockquote><hr />] c=1 @element:quote@1 t=[<blockquote><img />k</blockquote><hr />]  
   H w=<ul><li>Pw</li></ul><blockquote><img /><hr /></blockquote><ul><li>Nw</li></ul> c=1 @text:Pw@2 t=<ul><li>Pwk</li></ul><blockquote><img /><hr /></blockquote><ul><li>Nw</li></ul>
-- `IR el1 ime` — D7, composition counts unpinned (T45.10) — twin `TR@1 ime` (points): D7, composition counts unpinned (T45.10)  
+- `IR el1 ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B) — twin `TR@1 ime` (points): D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B)  
   B w=[<img />a<hr />] c=1 @text:a@1 t=[<img />ak<hr />]  
   H w=[<img />a<hr />] c=3 @text:a@1 t=[<img />ak<hr />]
 - `IR el1 lineForward` — 5.3 deletes — twin `TR@1 lineForward` (points): 5.3 deletes — head flag: not a fixed point  
@@ -2130,7 +2130,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `IR el2 Quote` — D13 — twin `TR@2 Quote` (points): D13  
   B w=[<img /><hr /><blockquote></blockquote>] c=1 @element:quote@0 t=[<img /><hr /><blockquote>k</blockquote>]  
   H w=<ul><li>Pw</li></ul><blockquote><img /><hr /></blockquote><ul><li>Nw</li></ul> c=1 @text:Pw@2 t=<ul><li>Pwk</li></ul><blockquote><img /><hr /></blockquote><ul><li>Nw</li></ul>
-- `IR el2 ime` — D7, composition counts unpinned (T45.10) — twin `TR@2 ime` (points): D7, composition counts unpinned (T45.10)  
+- `IR el2 ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B) — twin `TR@2 ime` (points): D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B)  
   B w=[<img /><hr />a] c=1 @text:a@1 t=[<img /><hr />ak]  
   H w=[<img /><hr />a] c=3 @text:a@1 t=[<img /><hr />ak]
 - `IR el2 lineForward` — 5.3 deletes and T14.14 (T45.8): the character form's join — twin `TR@2 lineForward` (points): 5.3 deletes and T14.14 (T45.8): the character form's join — head flag: short: D19  
@@ -2139,7 +2139,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `TQT in item X1w@1 Code` — D2 — no twin: a text caret inside a word; the points and meeting grids hold element points only, and none of them resolves to a caret inside a word  
   B w=[T0w<blockquote><pre><code>X1w</code></pre><hr /></blockquote>T2w] c=1 @text:X1w@1 t=[T0w<blockquote><pre><code>Xk1w</code></pre><hr /></blockquote>T2w]  
   H w=[T0w<pre><code>X1w</code></pre><hr />T2w] c=1 @text:X1w@1 t=[T0w<pre><code>Xk1w</code></pre><hr />T2w]
-- `TQT in item X1w@1 Enter` — D2 and D19: in a lined quote the new paragraph stays a paragraph; the head lifts it out of the quote [builder's reading] — no twin: a text caret inside a word; the points and meeting grids hold element points only, and none of them resolves to a caret inside a word — head flag: not a fixed point  
+- `TQT in item X1w@1 Enter` — D2 and D19: in a lined quote the new paragraph stays a paragraph; the head lifts it out of the quote (T46.7) — no twin: a text caret inside a word; the points and meeting grids hold element points only, and none of them resolves to a caret inside a word — head flag: not a fixed point  
   B w=[T0w<blockquote>X<p>1w</p><hr /></blockquote>T2w] c=1 @text:1w@0 t=[T0w<blockquote>X<p>k1w</p><hr /></blockquote>T2w]  
   H w=[T0w<blockquote>X</blockquote><p>1w</p><hr />T2w] c=1 @text:1w@0 t=[T0w<blockquote>X</blockquote><p>k1w</p><hr />T2w]
 - `TQT in item X1w@1 Heading 2` — D2 — no twin: a text caret inside a word; the points and meeting grids hold element points only, and none of them resolves to a caret inside a word  
@@ -2154,13 +2154,13 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `TQT in item X1w@1 Paragraph` — D2 — no twin: a text caret inside a word; the points and meeting grids hold element points only, and none of them resolves to a caret inside a word — head flag: not a fixed point  
   B w=[T0w<br />X1w<hr />T2w] c=1 @text:X1w@1 t=[T0w<br />Xk1w<hr />T2w]  
   H w=[T0w<p>X1w</p><hr />T2w] c=1 @text:X1w@1 t=[T0w<p>Xk1w</p><hr />T2w]
-- `TQT in item X1w@1 ime` — D7, composition counts unpinned (T45.10) — no twin: a text caret inside a word; the points and meeting grids hold element points only, and none of them resolves to a caret inside a word — head flag: undo does not restore  
+- `TQT in item X1w@1 ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B) — no twin: a text caret inside a word; the points and meeting grids hold element points only, and none of them resolves to a caret inside a word — head flag: undo does not restore  
   B w=[T0w<blockquote>Xa1w<hr /></blockquote>T2w] c=2 @text:Xa1w@2 t=[T0w<blockquote>Xak1w<hr /></blockquote>T2w]  
   H w=[T0w<blockquote>Xa1w<hr /></blockquote>T2w] c=3 @text:Xa1w@2 t=[T0w<blockquote>Xak1w<hr /></blockquote>T2w]
-- `TQT in item X1w@1 paste HTML` — 5.5: the pasted paragraph left in the item is a line (the head's `<p>` in the item) [builder's reading] — no twin: a text caret inside a word; the points and meeting grids hold element points only, and none of them resolves to a caret inside a word — head flag: not a fixed point  
+- `TQT in item X1w@1 paste HTML` — 5.5: the pasted paragraph left in the item is a line (the head's `<p>` in the item) (T46.7) — no twin: a text caret inside a word; the points and meeting grids hold element points only, and none of them resolves to a caret inside a word — head flag: not a fixed point  
   B w=[T0w<blockquote>XAq</blockquote>Bq1w<hr />T2w] c=1 @text:Bq1w@2 t=[T0w<blockquote>XAq</blockquote>Bqk1w<hr />T2w]  
   H w=[T0w<blockquote>XAq</blockquote><p>Bq1w</p><hr />T2w] c=1 @text:Bq1w@2 t=[T0w<blockquote>XAq</blockquote><p>Bqk1w</p><hr />T2w]
-- `TQT in item X1w@1 paste own` — 5.5: the pasted paragraph left in the item is a line (the head's `<p>` in the item) [builder's reading] — no twin: a text caret inside a word; the points and meeting grids hold element points only, and none of them resolves to a caret inside a word — head flag: not a fixed point  
+- `TQT in item X1w@1 paste own` — 5.5: the pasted paragraph left in the item is a line (the head's `<p>` in the item) (T46.7) — no twin: a text caret inside a word; the points and meeting grids hold element points only, and none of them resolves to a caret inside a word — head flag: not a fixed point  
   B w=[T0w<blockquote>XAq</blockquote>Bq1w<hr />T2w] c=1 @text:Bq1w@2 t=[T0w<blockquote>XAq</blockquote>Bqk1w<hr />T2w]  
   H w=[T0w<blockquote>XAq</blockquote><p>Bq1w</p><hr />T2w] c=1 @text:Bq1w@2 t=[T0w<blockquote>XAq</blockquote><p>Bqk1w</p><hr />T2w]
 - `TQT in item el1 Bold` — D18 — twin `TR@1 Bold` (points): D18  
@@ -2172,7 +2172,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `TQT in item el1 Code` — D2, with D18 at a resolved point — twin `TR@1 Code` (points): D2, with D18 at a resolved point  
   B w=[T0w<blockquote><pre><code>X1w</code></pre><hr /></blockquote>T2w] c=1 @text:X1w@3 t=[T0w<blockquote><pre><code>X1wk</code></pre><hr /></blockquote>T2w]  
   H w=[T0w<pre><code>X1w</code></pre><hr />T2w] c=1 @text:X1w@0 t=[T0w<pre><code>kX1w</code></pre><hr />T2w]
-- `TQT in item el1 Enter` — D19 and D2 with D18: Enter at the end of a line in a lined quote gives a paragraph holding the caret (K12); the head moves the rule out of the quote [builder's reading] — twin `TR@1 Enter` (points): equal at both builds, so this cell differs from twin  
+- `TQT in item el1 Enter` — D19 and D2 with D18: Enter at the end of a line in a lined quote gives a paragraph holding the caret (K12); the head moves the rule out of the quote (T46.7) — twin `TR@1 Enter` (points): equal at both builds, so this cell differs from twin  
   B w=[T0w<blockquote>X1w<p></p><hr /></blockquote>T2w] c=1 @element:paragraph@0 t=[T0w<blockquote>X1w<p>k</p><hr /></blockquote>T2w]  
   H w=[T0w<blockquote>X1w</blockquote><hr />T2w] c=1 @element:quote@1 t=[T0w<blockquote>X1wk</blockquote><hr />T2w]
 - `TQT in item el1 Heading 2` — D2, with D18 at a resolved point — twin `TR@1 Heading 2` (points): D2, with D18 at a resolved point  
@@ -2214,7 +2214,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `TQT in item el1 cut` — D18 — twin `TR@1 cut` (points): D18  
   B w=null c=0 @text:X1w@3 t=[T0w<blockquote>X1wk<hr /></blockquote>T2w]  
   H w=null c=0 @element:quote@1 t=[T0w<blockquote>X1wk<hr /></blockquote>T2w]
-- `TQT in item el1 ime` — D7, composition counts unpinned (T45.10) — twin `TR@1 ime` (points): D7, composition counts unpinned (T45.10)  
+- `TQT in item el1 ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B) — twin `TR@1 ime` (points): D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B)  
   B w=[T0w<blockquote>X1wa<hr /></blockquote>T2w] c=2 @text:X1wa@4 t=[T0w<blockquote>X1wak<hr /></blockquote>T2w]  
   H w=[T0w<blockquote>X1wa<hr /></blockquote>T2w] c=3 @text:X1wa@4 t=[T0w<blockquote>X1wak<hr /></blockquote>T2w]
 - `TQT in item el1 lineBack` — 5.3 deletes — twin `TR@1 lineBack` (points): 5.3 deletes — head flag: not a fixed point  
@@ -2223,10 +2223,10 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `TQT in item el1 lineForward` — 5.3 deletes — twin `TR@1 lineForward` (points): 5.3 deletes  
   B w=[T0w<blockquote>X1w</blockquote>T2w] c=1 @text:X1w@3 t=[T0w<blockquote>X1wk</blockquote>T2w]  
   H w=[T0w<blockquote>X1w </blockquote>T2w] c=1 @text:X1w @4 t=[T0w<blockquote>X1w k</blockquote>T2w]
-- `TQT in item el1 paste HTML` — 5.5: the pasted paragraph left in the item is a line (the head's `<p>` in the item) [builder's reading] — twin `TR@1 paste HTML` (points): equal at both builds, so this cell differs from twin — head flag: not a fixed point  
+- `TQT in item el1 paste HTML` — 5.5: the pasted paragraph left in the item is a line (the head's `<p>` in the item) (T46.7) — twin `TR@1 paste HTML` (points): equal at both builds, so this cell differs from twin — head flag: not a fixed point  
   B w=[T0w<blockquote>X1wAq</blockquote>Bq<hr />T2w] c=1 @text:Bq@2 t=[T0w<blockquote>X1wAq</blockquote>Bqk<hr />T2w]  
   H w=[T0w<blockquote>X1wAq</blockquote><p>Bq</p><hr />T2w] c=1 @text:Bq@2 t=[T0w<blockquote>X1wAq</blockquote><p>Bqk</p><hr />T2w]
-- `TQT in item el1 paste own` — 5.5: the pasted paragraph left in the item is a line (the head's `<p>` in the item) [builder's reading] — twin `TR@1 paste own` (points): equal at both builds, so this cell differs from twin — head flag: not a fixed point  
+- `TQT in item el1 paste own` — 5.5: the pasted paragraph left in the item is a line (the head's `<p>` in the item) (T46.7) — twin `TR@1 paste own` (points): equal at both builds, so this cell differs from twin — head flag: not a fixed point  
   B w=[T0w<blockquote>X1wAq</blockquote>Bq<hr />T2w] c=1 @text:Bq@2 t=[T0w<blockquote>X1wAq</blockquote>Bqk<hr />T2w]  
   H w=[T0w<blockquote>X1wAq</blockquote><p>Bq</p><hr />T2w] c=1 @text:Bq@2 t=[T0w<blockquote>X1wAq</blockquote><p>Bqk</p><hr />T2w]
 - `TRT in quote T1w@1 Code` — D2 — no twin: a text caret inside a word; the points and meeting grids hold element points only, and none of them resolves to a caret inside a word  
@@ -2244,7 +2244,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `TRT in quote T1w@1 Paragraph` — D2 — no twin: a text caret inside a word; the points and meeting grids hold element points only, and none of them resolves to a caret inside a word  
   B w=null c=0 @text:T1w@1 t=<blockquote>X0w<ul><li>Tk1w<hr />T2w</li></ul>X3w</blockquote>  
   H w=<blockquote>X0w<p>T1w</p><hr /><p>T2w</p>X3w</blockquote> c=1 @text:T1w@1 t=<blockquote>X0w<p>Tk1w</p><hr /><p>T2w</p>X3w</blockquote>
-- `TRT in quote T1w@1 ime` — D7, composition counts unpinned (T45.10) — no twin: a text caret inside a word; the points and meeting grids hold element points only, and none of them resolves to a caret inside a word — head flag: undo does not restore  
+- `TRT in quote T1w@1 ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B) — no twin: a text caret inside a word; the points and meeting grids hold element points only, and none of them resolves to a caret inside a word — head flag: undo does not restore  
   B w=<blockquote>X0w<ul><li>Ta1w<hr />T2w</li></ul>X3w</blockquote> c=2 @text:Ta1w@2 t=<blockquote>X0w<ul><li>Tak1w<hr />T2w</li></ul>X3w</blockquote>  
   H w=<blockquote>X0w<ul><li>Ta1w<hr />T2w</li></ul>X3w</blockquote> c=3 @text:Ta1w@2 t=<blockquote>X0w<ul><li>Tak1w<hr />T2w</li></ul>X3w</blockquote>
 - `TRT in quote el1 Bold` — D18 — twin `TRT@1 Bold` (points): D18  
@@ -2292,7 +2292,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `TRT in quote el1 cut` — D18 — twin `TRT@1 cut` (points): D18  
   B w=null c=0 @text:T1w@3 t=<blockquote>X0w<ul><li>T1wk<hr />T2w</li></ul>X3w</blockquote>  
   H w=null c=0 @element:listitem@1 t=<blockquote>X0w<ul><li>T1wk<hr />T2w</li></ul>X3w</blockquote>
-- `TRT in quote el1 ime` — D7, composition counts unpinned (T45.10) — twin `TRT@1 ime` (points): D7, composition counts unpinned (T45.10)  
+- `TRT in quote el1 ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B) — twin `TRT@1 ime` (points): D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B)  
   B w=<blockquote>X0w<ul><li>T1wa<hr />T2w</li></ul>X3w</blockquote> c=2 @text:T1wa@4 t=<blockquote>X0w<ul><li>T1wak<hr />T2w</li></ul>X3w</blockquote>  
   H w=<blockquote>X0w<ul><li>T1wa<hr />T2w</li></ul>X3w</blockquote> c=3 @text:T1wa@4 t=<blockquote>X0w<ul><li>T1wak<hr />T2w</li></ul>X3w</blockquote>
 - `TRT in quote el1 lineBack` — 5.3 deletes — twin `TRT@1 lineBack` (points): 5.3 deletes — head flag: not a fixed point  
@@ -2316,10 +2316,10 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `d2 TR T0w@1 Quote` — D2 — no twin: a text caret inside a word; the points and meeting grids hold element points only, and none of them resolves to a caret inside a word  
   B w=<ul><li>Aw[<blockquote>T0w</blockquote><hr />]</li></ul> c=1 @text:T0w@1 t=<ul><li>Aw[<blockquote>Tk0w</blockquote><hr />]</li></ul>  
   H w=<ul><li>Aw<ul><li>Pw</li></ul></li></ul><blockquote>T0w<hr /></blockquote><ul><li><ul><li>Nw</li></ul></li></ul> c=1 @text:T0w@1 t=<ul><li>Aw<ul><li>Pw</li></ul></li></ul><blockquote>Tk0w<hr /></blockquote><ul><li><ul><li>Nw</li></ul></li></ul>
-- `d2 TR T0w@1 ime` — D7, composition counts unpinned (T45.10) — no twin: a text caret inside a word; the points and meeting grids hold element points only, and none of them resolves to a caret inside a word — head flag: undo does not restore  
+- `d2 TR T0w@1 ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B) — no twin: a text caret inside a word; the points and meeting grids hold element points only, and none of them resolves to a caret inside a word — head flag: undo does not restore  
   B w=<ul><li>Aw[Ta0w<hr />]</li></ul> c=2 @text:Ta0w@2 t=<ul><li>Aw[Tak0w<hr />]</li></ul>  
   H w=<ul><li>Aw[Ta0w<hr />]</li></ul> c=3 @text:Ta0w@2 t=<ul><li>Aw[Tak0w<hr />]</li></ul>
-- `d2 TR el2 Backspace` — defect, T45.7 (Task 14): removes the rule, keeps the depth — twin `TR@2 Backspace` (points): equal at both builds, so this cell differs from twin  
+- `d2 TR el2 Backspace` — fixed, T45.7 (Task 14): removes the rule, keeps the depth — twin `TR@2 Backspace` (points): equal at both builds, so this cell differs from twin  
   B w=<ul><li>Aw<ul><li>Pw</li></ul></li><li>T0w<hr /><ul><li>Nw</li></ul></li></ul> c=1 @element:listitem@2 t=<ul><li>Aw<ul><li>Pw</li></ul></li><li>T0w<hr />k<ul><li>Nw</li></ul></li></ul>  
   H w=<ul><li>Aw[T0w]</li></ul> c=1 @text:T0w@3 t=<ul><li>Aw[T0wk]</li></ul>
 - `d2 TR el2 Code` — D13 — twin `TR@2 Code` (points): D13  
@@ -2346,7 +2346,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `d2 TR el2 Quote` — D13 — twin `TR@2 Quote` (points): D13  
   B w=<ul><li>Aw[T0w<hr /><blockquote></blockquote>]</li></ul> c=1 @element:quote@0 t=<ul><li>Aw[T0w<hr /><blockquote>k</blockquote>]</li></ul>  
   H w=<ul><li>Aw<ul><li>Pw</li></ul></li></ul><blockquote>T0w<hr /></blockquote><ul><li><ul><li>Nw</li></ul></li></ul> c=1 @text:Pw@2 t=<ul><li>Aw<ul><li>Pwk</li></ul></li></ul><blockquote>T0w<hr /></blockquote><ul><li><ul><li>Nw</li></ul></li></ul>
-- `d2 TR el2 ime` — D7, composition counts unpinned (T45.10) — twin `TR@2 ime` (points): D7, composition counts unpinned (T45.10)  
+- `d2 TR el2 ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B) — twin `TR@2 ime` (points): D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B)  
   B w=<ul><li>Aw[T0w<hr />a]</li></ul> c=1 @text:a@1 t=<ul><li>Aw[T0w<hr />ak]</li></ul>  
   H w=<ul><li>Aw[T0w<hr />a]</li></ul> c=3 @text:a@1 t=<ul><li>Aw[T0w<hr />ak]</li></ul>
 - `d2 TR el2 lineForward` — 5.3 deletes and T14.14 (T45.8): the character form's join — twin `TR@2 lineForward` (points): 5.3 deletes and T14.14 (T45.8): the character form's join — head flag: short: D19  
@@ -2371,7 +2371,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `d6 TQT T0w@1 Quote` — D2 — no twin: a text caret inside a word; the points and meeting grids hold element points only, and none of them resolves to a caret inside a word  
   B w=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li><blockquote>T0w</blockquote><blockquote><p>Q1w</p></blockquote>T2w</li></ul></li></ul></li></ul></li></ul></li></ul></li></ul> c=1 @text:T0w@1 t=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li><blockquote>Tk0w</blockquote><blockquote><p>Q1w</p></blockquote>T2w</li></ul></li></ul></li></ul></li></ul></li></ul></li></ul>  
   H w=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w</li></ul></li></ul></li></ul></li></ul></li></ul><blockquote>T0w<blockquote><p>Q1w</p></blockquote>T2w</blockquote> c=1 @text:T0w@1 t=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w</li></ul></li></ul></li></ul></li></ul></li></ul><blockquote>Tk0w<blockquote><p>Q1w</p></blockquote>T2w</blockquote>
-- `d6 TQT T0w@1 ime` — D7, composition counts unpinned (T45.10) — no twin: a text caret inside a word; the points and meeting grids hold element points only, and none of them resolves to a caret inside a word — head flag: undo does not restore  
+- `d6 TQT T0w@1 ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B) — no twin: a text caret inside a word; the points and meeting grids hold element points only, and none of them resolves to a caret inside a word — head flag: undo does not restore  
   B w=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>Ta0w<blockquote><p>Q1w</p></blockquote>T2w</li></ul></li></ul></li></ul></li></ul></li></ul></li></ul> c=2 @text:Ta0w@2 t=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>Tak0w<blockquote><p>Q1w</p></blockquote>T2w</li></ul></li></ul></li></ul></li></ul></li></ul></li></ul>  
   H w=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>Ta0w<blockquote><p>Q1w</p></blockquote>T2w</li></ul></li></ul></li></ul></li></ul></li></ul></li></ul> c=3 @text:Ta0w@2 t=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>Tak0w<blockquote><p>Q1w</p></blockquote>T2w</li></ul></li></ul></li></ul></li></ul></li></ul></li></ul>
 - `d6 TQT el1 Bold` — D18 — twin `TQT el1 Bold` (meeting): D18  
@@ -2450,10 +2450,10 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `d6 TQT el1 lineBack` — T24.1 and T33.1 (T45.8): the emptied line keeps the caret — twin `TQT el1 lineBack` (meeting): T24.1 and T33.1 (T45.8): the emptied line keeps the caret  
   B w=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li><blockquote><p>Q1w</p></blockquote>T2w</li></ul></li></ul></li></ul></li></ul></li></ul></li></ul> c=1 @element:listitem@0 t=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>k<blockquote><p>Q1w</p></blockquote>T2w</li></ul></li></ul></li></ul></li></ul></li></ul></li></ul>  
   H w=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li><blockquote><p>Q1w</p></blockquote>T2w</li></ul></li></ul></li></ul></li></ul></li></ul></li></ul> c=1 @element:quote@0 t=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li><blockquote><p>kQ1w</p></blockquote>T2w</li></ul></li></ul></li></ul></li></ul></li></ul></li></ul>
-- `d6 TQT el1 paste HTML` — T45.11: decided by M-e6 — twin `TQT el1 paste HTML` (meeting): D18: every command starts from the one caret  
+- `d6 TQT el1 paste HTML` — the head's paste at T0w@3, C7 until R3 (T46.4, M-e6) — twin `TQT el1 paste HTML` (meeting): D18: every command starts from the one caret  
   B w=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>T0wAq</li></ul></li><li>Bq</li></ul></li></ul></li></ul></li></ul></li></ul><blockquote><p>Q1w</p></blockquote><p>T2w</p> c=1 @text:Bq@2 t=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>T0wAq</li></ul></li><li>Bqk</li></ul></li></ul></li></ul></li></ul></li></ul><blockquote><p>Q1w</p></blockquote><p>T2w</p>  
   H w=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>T0w<blockquote><p>Aq</p><p>BqQ1w</p></blockquote>T2w</li></ul></li></ul></li></ul></li></ul></li></ul></li></ul> c=1 @text:BqQ1w@2 t=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>T0w<blockquote><p>Aq</p><p>BqkQ1w</p></blockquote>T2w</li></ul></li></ul></li></ul></li></ul></li></ul></li></ul>
-- `d6 TQT el1 paste own` — T45.11: decided by M-e6 — twin `TQT el1 paste own` (meeting): D18: every command starts from the one caret  
+- `d6 TQT el1 paste own` — the head's paste at T0w@3, C7 until R3 (T46.4, M-e6) — twin `TQT el1 paste own` (meeting): D18: every command starts from the one caret  
   B w=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>T0wAq</li></ul></li><li>Bq</li></ul></li></ul></li></ul></li></ul></li></ul><blockquote><p>Q1w</p></blockquote><p>T2w</p> c=1 @text:Bq@2 t=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>T0wAq</li></ul></li><li>Bqk</li></ul></li></ul></li></ul></li></ul></li></ul><blockquote><p>Q1w</p></blockquote><p>T2w</p>  
   H w=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>T0w<blockquote><p>Aq</p><p>BqQ1w</p></blockquote>T2w</li></ul></li></ul></li></ul></li></ul></li></ul></li></ul> c=1 @text:BqQ1w@2 t=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>T0w<blockquote><p>Aq</p><p>BqkQ1w</p></blockquote>T2w</li></ul></li></ul></li></ul></li></ul></li></ul></li></ul>
 - `d6 TQT el1 paste text` — D18: every command starts from the one caret — twin `TQT el1 paste text` (meeting): D18: every command starts from the one caret  
@@ -2471,13 +2471,13 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `d7 TR T0w@1 Heading 4` — D2 — no twin: a text caret inside a word; the points and meeting grids hold element points only, and none of them resolves to a caret inside a word  
   B w=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>A6w<ul><li><h4>T0w</h4><hr /></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul> c=1 @text:T0w@1 t=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>A6w<ul><li><h4>Tk0w</h4><hr /></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul>  
   H w=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>A6w</li></ul></li></ul></li></ul></li></ul></li></ul></li></ul><h4>T0w</h4><hr /> c=1 @text:T0w@1 t=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>A6w</li></ul></li></ul></li></ul></li></ul></li></ul></li></ul><h4>Tk0w</h4><hr />
-- `d7 TR T0w@1 Quote` — T45.4 (Task 19): refused, changes nothing (as built: D2 with the depth lift, T45.12) — no twin: a text caret inside a word; the points and meeting grids hold element points only, and none of them resolves to a caret inside a word  
+- `d7 TR T0w@1 Quote` — fixed, T45.4 (Task 19): refused, changes nothing — no twin: a text caret inside a word; the points and meeting grids hold element points only, and none of them resolves to a caret inside a word  
   B w=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>A6w<ul><li>T0w</li><li><hr /></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul> c=1 @text:T0w@1 t=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>A6w<ul><li>Tk0w</li><li><hr /></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul>  
   H w=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>A6w</li></ul></li></ul></li></ul></li></ul></li></ul></li></ul><blockquote>T0w<hr /></blockquote> c=1 @text:T0w@1 t=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>A6w</li></ul></li></ul></li></ul></li></ul></li></ul></li></ul><blockquote>Tk0w<hr /></blockquote>
-- `d7 TR T0w@1 ime` — D7, composition counts unpinned (T45.10) — no twin: a text caret inside a word; the points and meeting grids hold element points only, and none of them resolves to a caret inside a word — head flag: undo does not restore  
+- `d7 TR T0w@1 ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B) — no twin: a text caret inside a word; the points and meeting grids hold element points only, and none of them resolves to a caret inside a word — head flag: undo does not restore  
   B w=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>A6w<ul><li>Ta0w<hr /></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul> c=2 @text:Ta0w@2 t=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>A6w<ul><li>Tak0w<hr /></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul>  
   H w=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>A6w<ul><li>Ta0w<hr /></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul> c=3 @text:Ta0w@2 t=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>A6w<ul><li>Tak0w<hr /></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul>
-- `d7 TR el2 Backspace` — defect, T45.7 (Task 14): removes the rule, keeps the depth — twin `TR@2 Backspace` (points): equal at both builds, so this cell differs from twin  
+- `d7 TR el2 Backspace` — fixed, T45.7 (Task 14): removes the rule, keeps the depth — twin `TR@2 Backspace` (points): equal at both builds, so this cell differs from twin  
   B w=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>A6w</li><li>T0w<hr /></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul> c=1 @element:listitem@2 t=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>A6w</li><li>T0w<hr />k</li></ul></li></ul></li></ul></li></ul></li></ul></li></ul>  
   H w=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>A6w<ul><li>T0w</li></ul></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul> c=1 @text:T0w@3 t=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>A6w<ul><li>T0wk</li></ul></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul>
 - `d7 TR el2 Code` — D13 — twin `TR@2 Code` (points): D13  
@@ -2501,10 +2501,10 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `d7 TR el2 Link` — D10 with M-d2 row 2 — twin `TR@2 Link` (points): D10 with M-d2 row 2 — head flag: undo does not restore; not a fixed point  
   B w=null c=0 @element:listitem@2 t=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>A6w<ul><li>T0w<hr />k</li></ul></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul>  
   H w=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>A6w<ul><li>T0w<a><hr /></a></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul> c=1 @element:listitem@3 t=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>A6w<ul><li>T0w<a><hr /></a></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul>
-- `d7 TR el2 Quote` — defect, T45.4 (Task 19): Quote at the depth limit changes nothing — twin `TR@2 Quote` (points): D13  
+- `d7 TR el2 Quote` — fixed, T45.4 (Task 19): Quote at the depth limit changes nothing — twin `TR@2 Quote` (points): D13  
   B w=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>A6w<ul><li>T0w<hr /></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul> c=1 @element:listitem@2 t=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>A6w<ul><li>T0w<hr />k</li></ul></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul>  
   H w=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>A6w</li></ul></li></ul></li></ul></li></ul></li></ul></li></ul><blockquote>T0w<hr /></blockquote> c=1 @text:A6w@3 t=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>A6wk</li></ul></li></ul></li></ul></li></ul></li></ul></li></ul><blockquote>T0w<hr /></blockquote>
-- `d7 TR el2 ime` — D7, composition counts unpinned (T45.10) — twin `TR@2 ime` (points): D7, composition counts unpinned (T45.10)  
+- `d7 TR el2 ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B) — twin `TR@2 ime` (points): D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B)  
   B w=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>A6w<ul><li>T0w<hr />a</li></ul></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul> c=1 @text:a@1 t=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>A6w<ul><li>T0w<hr />ak</li></ul></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul>  
   H w=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>A6w<ul><li>T0w<hr />a</li></ul></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul> c=3 @text:a@1 t=<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>A6w<ul><li>T0w<hr />ak</li></ul></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul>
 - `ol TR T0w@1 Code` — D2 — no twin: a text caret inside a word; the points and meeting grids hold element points only, and none of them resolves to a caret inside a word  
@@ -2522,7 +2522,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `ol TR T0w@1 Quote` — D2 — no twin: a text caret inside a word; the points and meeting grids hold element points only, and none of them resolves to a caret inside a word  
   B w=<ol><li>Pw</li><li><blockquote>T0w</blockquote><hr /></li><li>Nw</li></ol> c=1 @text:T0w@1 t=<ol><li>Pw</li><li><blockquote>Tk0w</blockquote><hr /></li><li>Nw</li></ol>  
   H w=<ol><li>Pw</li></ol><blockquote>T0w<hr /></blockquote><ol><li>Nw</li></ol> c=1 @text:T0w@1 t=<ol><li>Pw</li></ol><blockquote>Tk0w<hr /></blockquote><ol><li>Nw</li></ol>
-- `ol TR T0w@1 ime` — D7, composition counts unpinned (T45.10) — no twin: a text caret inside a word; the points and meeting grids hold element points only, and none of them resolves to a caret inside a word — head flag: undo does not restore  
+- `ol TR T0w@1 ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B) — no twin: a text caret inside a word; the points and meeting grids hold element points only, and none of them resolves to a caret inside a word — head flag: undo does not restore  
   B w=<ol><li>Pw</li><li>Ta0w<hr /></li><li>Nw</li></ol> c=2 @text:Ta0w@2 t=<ol><li>Pw</li><li>Tak0w<hr /></li><li>Nw</li></ol>  
   H w=<ol><li>Pw</li><li>Ta0w<hr /></li><li>Nw</li></ol> c=3 @text:Ta0w@2 t=<ol><li>Pw</li><li>Tak0w<hr /></li><li>Nw</li></ol>
 - `ol TR el2 Code` — D13 — twin `TR@2 Code` (points): D13  
@@ -2549,7 +2549,7 @@ The unreached grid (T45.6): each line names its rule, its twin (the same command
 - `ol TR el2 Quote` — D13 — twin `TR@2 Quote` (points): D13  
   B w=<ol><li>Pw</li><li>T0w<hr /><blockquote></blockquote></li><li>Nw</li></ol> c=1 @element:quote@0 t=<ol><li>Pw</li><li>T0w<hr /><blockquote>k</blockquote></li><li>Nw</li></ol>  
   H w=<ol><li>Pw</li></ol><blockquote>T0w<hr /></blockquote><ol><li>Nw</li></ol> c=1 @text:Pw@2 t=<ol><li>Pwk</li></ol><blockquote>T0w<hr /></blockquote><ol><li>Nw</li></ol>
-- `ol TR el2 ime` — D7, composition counts unpinned (T45.10) — twin `TR@2 ime` (points): D7, composition counts unpinned (T45.10)  
+- `ol TR el2 ime` — D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B) — twin `TR@2 ime` (points): D7; the composition's count pinned (T46.3: 1 from an element point or an empty caret line, 2 from a text caret; no value holds U+200B)  
   B w=<ol><li>Pw</li><li>T0w<hr />a</li><li>Nw</li></ol> c=1 @text:a@1 t=<ol><li>Pw</li><li>T0w<hr />ak</li><li>Nw</li></ol>  
   H w=<ol><li>Pw</li><li>T0w<hr />a</li><li>Nw</li></ol> c=3 @text:a@1 t=<ol><li>Pw</li><li>T0w<hr />ak</li><li>Nw</li></ol>
 - `ol TR el2 lineForward` — 5.3 deletes and T14.14 (T45.8): the character form's join — twin `TR@2 lineForward` (points): 5.3 deletes and T14.14 (T45.8): the character form's join — head flag: short: D19  
