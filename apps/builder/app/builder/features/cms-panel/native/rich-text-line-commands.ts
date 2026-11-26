@@ -550,7 +550,7 @@ export const registerRichTextCommands = (
     "nodeSelection.typeIntoLine": (payload) => $typeIntoLine(payload),
     "nodeSelection.paste": (payload, command) =>
       $nodeSelectionPaste(command, payload),
-    "nodeSelection.headPath": () => $headPathOnRemove(),
+    "nodeSelection.headPath": (_payload, command) => $headPathOnRemove(command),
     "toolbar.divider": () => $divider(),
     "deletes.edgeForms": (payload, command) =>
       $deleteEdgeForms(command, payload as boolean),

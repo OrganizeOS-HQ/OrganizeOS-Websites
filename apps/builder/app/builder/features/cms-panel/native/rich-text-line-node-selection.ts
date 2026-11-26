@@ -9,6 +9,8 @@ import {
   $isRangeSelection,
   $setSelection,
   CONTROLLED_TEXT_INSERTION_COMMAND,
+  DELETE_LINE_COMMAND,
+  DELETE_WORD_COMMAND,
   type LexicalCommand,
   type LexicalEditor,
   PASTE_COMMAND,
@@ -170,9 +172,18 @@ export const $nodeSelectionPaste = (
 
 /**
  * A remove command under a node selection in a lined container takes the
- * head's path (D15); the removal mark then skips the update.
+ * head's path (D15); the removal mark then skips the update. Only a
+ * command whose node-selection path removes the selected nodes unwraps:
+ * Lexical's word and line deletes act on a range only, so under a node
+ * selection they change nothing, and an unwrap there would dirty the item
+ * for no change (T45.1).
  */
-export const $headPathOnRemove = (): boolean => {
+export const $headPathOnRemove = (
+  command: LexicalCommand<unknown>
+): boolean => {
+  if (command === DELETE_WORD_COMMAND || command === DELETE_LINE_COMMAND) {
+    return false;
+  }
   if ($hasMark(HEAD_PATH_TAG) === false) {
     $headPathOverNodeSelection();
   }

@@ -20,6 +20,8 @@ import {
   keys,
   letter,
   LI,
+  lineBack,
+  lineForward,
   mount,
   nodeAfter,
   nodeSelect,
@@ -34,6 +36,8 @@ import {
   type Step,
   then,
   W,
+  wordBack,
+  wordForward,
 } from "./rich-text-line-test-kit";
 import { undoDepth } from "./rich-text-line-test-kit-branch";
 import { sameState } from "./rich-text-line-test-compare";
@@ -312,6 +316,121 @@ describe("D15: a rule node-selected in a lined item", () => {
       source: "D15, 5.4, check 3, 14.8",
     });
   });
+});
+
+/**
+ * T45.1: Ctrl+Backspace and Ctrl+Delete with a rule or an image
+ * node-selected in a lined item change nothing (D15, D7, T42.1): Lexical's
+ * word delete acts on a range only, and the head writes nothing. The line
+ * forms are controls: Lexical's beforeinput never dispatches them over a
+ * node selection.
+ */
+describe("T45.1: a word delete over a node selection in a lined item", () => {
+  const TQI = LI(`T0w<blockquote><p>Q1w</p></blockquote>X2w${IMG}`);
+  const SHAPES: {
+    name: string;
+    stored: string;
+    place: Step;
+    node: string;
+    typed: string;
+    /** the line forms' write: an image goes, as at the head */
+    lineWrite: string | null;
+  }[] = [
+    {
+      name: "rule in TRT by code",
+      stored: LI("T0w<hr>T2w"),
+      place: nodeSelect("horizontalrule"),
+      node: "node:horizontalrule",
+      typed: W("<li>T0w<hr />kT2w</li>"),
+      lineWrite: null,
+    },
+    {
+      name: "rule in TRT for real",
+      stored: LI("T0w<hr>T2w"),
+      place: nodeAfter("T0w"),
+      node: "node:horizontalrule",
+      typed: W("<li>T0w<hr />kT2w</li>"),
+      lineWrite: null,
+    },
+    {
+      name: "rule in TR by code",
+      stored: LI("T0w<hr>"),
+      place: nodeSelect("horizontalrule"),
+      node: "node:horizontalrule",
+      typed: W("<li>T0w<hr />k</li>"),
+      lineWrite: null,
+    },
+    {
+      name: "rule in TR for real",
+      stored: LI("T0w<hr>"),
+      place: nodeAfter("T0w"),
+      node: "node:horizontalrule",
+      typed: W("<li>T0w<hr />k</li>"),
+      lineWrite: null,
+    },
+    {
+      name: "image in QI by code",
+      stored: QI,
+      place: nodeSelect("cms-image"),
+      node: "node:cms-image",
+      typed: W("<li><blockquote><p>Q0w</p></blockquote><img />k</li>"),
+      lineWrite: W("<li><blockquote><p>Q0w</p></blockquote></li>"),
+    },
+    {
+      name: "image in TQI by code",
+      stored: TQI,
+      place: nodeSelect("cms-image"),
+      node: "node:cms-image",
+      typed: W("<li>T0w<blockquote><p>Q1w</p></blockquote>X2w<img />k</li>"),
+      lineWrite: W("<li>T0w<blockquote><p>Q1w</p></blockquote>X2w</li>"),
+    },
+  ];
+  const FORMS: { name: string; action: Step; control: boolean }[] = [
+    { name: "Ctrl+Backspace", action: wordBack, control: false },
+    { name: "Ctrl+Delete", action: wordForward, control: false },
+    { name: "lineBack", action: lineBack, control: true },
+    { name: "lineForward", action: lineForward, control: true },
+  ];
+  for (const shape of SHAPES) {
+    for (const form of FORMS) {
+      const title = form.control
+        ? `control: the line forms keep the head's write with a rule or an image node-selected in a lined item: ${shape.name}, ${form.name}`
+        : `a word delete with a rule or an image node-selected in a lined item changes nothing: ${shape.name}, ${form.name}`;
+      test(title, async () => {
+        const errors: string[] = [];
+        vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+          const text = args.map(String).join(" ");
+          if (text.includes("not wrapped in act") === false) {
+            errors.push(text.slice(0, 300));
+          }
+        });
+        const onChange = await mount(shape.stored);
+        await shape.place();
+        expect(caretKey(), "the node selected").toBe(shape.node);
+        const value = exportRichTextHtml(editorOf()!);
+        const depth = undoDepth();
+        onChange.mockClear();
+        await form.action();
+        if (form.control && shape.lineWrite !== null) {
+          // the head's write (the node grid's head record): the image goes
+          expect(onChange, "one onChange").toHaveBeenCalledTimes(1);
+          expect(short(lastHtml(onChange)), "the write").toBe(shape.lineWrite);
+          expect(errors, "console errors").toEqual([]);
+          return;
+        }
+        expect(onChange, "no onChange").not.toHaveBeenCalled();
+        expect(exportRichTextHtml(editorOf()!), "the value").toBe(value);
+        expect(undoDepth(), "the history's length").toEqual(depth);
+        expect(caretKey(), "the node still selected").toBe(shape.node);
+        await letter();
+        expect(onChange, "one onChange for the letter").toHaveBeenCalledTimes(
+          1
+        );
+        expect(short(lastHtml(onChange)), "the letter").toBe(shape.typed);
+        expect(errors, "console errors").toEqual([]);
+      });
+    }
+  }
 });
 
 /**
