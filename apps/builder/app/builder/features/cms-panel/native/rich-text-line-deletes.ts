@@ -1,7 +1,11 @@
 // The delete rules at a resolved caret and round 14's delete forms at a line's edge.
 import { $isCodeNode } from "@lexical/code";
 import { $isListItemNode } from "@lexical/list";
-import { $isHeadingNode, $isQuoteNode } from "@lexical/rich-text";
+import {
+  $createHeadingNode,
+  $isHeadingNode,
+  $isQuoteNode,
+} from "@lexical/rich-text";
 import { $findMatchingParent } from "@lexical/utils";
 import {
   $addUpdateTag,
@@ -647,16 +651,23 @@ const codeCanHold = (node: LexicalNode) =>
  * Lw</a></p>` writes `<pre><code>C0wT1w</code></pre><p><a href=
  * "https://example.org/">Lw</a></p>`). Splits the rest off before the
  * join, which Lexical's delete then makes with what is left. From a
- * quote's first paragraph, the rest stays in the quote (T34.1, P14-10).
+ * quote's first paragraph, the rest stays in the quote (T34.1, P14-10);
+ * from a heading, it stays a heading (T64.1).
  */
 const $leaveBehindWhatCodeCannotHold = (holder: ElementNode) => {
   const parent = holder.getParent();
   const atRoot = $isParagraphNode(holder) && $isRootOrShadowRoot(parent);
   const inQuote = $isParagraphNode(holder) && $isQuoteNode(parent);
   const inItem = $isCmsLineNode(holder) && $isListItemNode(parent);
+  // T64.1: a heading joins as a paragraph does, and what stays behind
+  // stays a heading, at the root, in a quote and in a list item
+  const isHeading = $isHeadingNode(holder);
   // a line led by a line break joins nothing (D3 group C)
   if (
-    (atRoot === false && inQuote === false && inItem === false) ||
+    (atRoot === false &&
+      inQuote === false &&
+      inItem === false &&
+      isHeading === false) ||
     (inItem && $isTextNode(holder.getFirstChild()) === false)
   ) {
     return;
@@ -667,7 +678,11 @@ const $leaveBehindWhatCodeCannotHold = (holder: ElementNode) => {
   if (stop === undefined) {
     return;
   }
-  const rest = inItem ? $createCmsLineNode() : $createParagraphNode();
+  const rest = $isHeadingNode(holder)
+    ? $createHeadingNode(holder.getTag())
+    : inItem
+      ? $createCmsLineNode()
+      : $createParagraphNode();
   const moved: LexicalNode[] = [];
   for (
     let node: LexicalNode | null = stop;

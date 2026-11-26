@@ -1261,6 +1261,62 @@ describe("F2 in R1, and check 5's delete rules (Step 1b)", () => {
     }
   }
 
+  // T64.1: T33.3's carry applies to a heading: what the code block cannot
+  // hold stays behind in the heading, at the root and in an item
+  const HEADING_JOINS: ReadonlyArray<
+    readonly [string, string, string, boolean]
+  > = [
+    [
+      "a link later in a heading stays behind in the heading",
+      `${CODE}<h3>T1w${ADDRESS}</h3>`,
+      "<pre><code>C0wT1w</code></pre><h3><a>Lw</a></h3>",
+      true,
+    ],
+    [
+      "an image later in a heading stays behind in the heading",
+      `${CODE}<h3>T1w${IMG}</h3>`,
+      "<pre><code>C0wT1w</code></pre><h3><img /></h3>",
+      false,
+    ],
+    [
+      "a link later in a heading in an item stays behind in the heading",
+      LI(`${CODE}<h3>T1w${ADDRESS}</h3>`),
+      W("<li><pre><code>C0wT1w</code></pre><h3><a>Lw</a></h3></li>"),
+      true,
+    ],
+    [
+      "an image later in a heading in an item stays behind in the heading",
+      LI(`${CODE}<h3>T1w${IMG}</h3>`),
+      W("<li><pre><code>C0wT1w</code></pre><h3><img /></h3></li>"),
+      false,
+    ],
+  ];
+  for (const [name, stored, write, link] of HEADING_JOINS) {
+    for (const [key, action] of [
+      ["Backspace", backspace],
+      ["Ctrl+Backspace", wordBack],
+      ["lineBack", lineBack],
+    ] as const) {
+      test(`T64.1: ${name}, ${key}`, async () => {
+        await expectEdit({
+          stored,
+          place: at("T1w", 0),
+          action,
+          writeMatches: (written) => {
+            expect(short(written), "write").toBe(write);
+            if (link) {
+              expect(written, "the link's address").toContain(
+                'href="https://example.org/"'
+              );
+            }
+          },
+          caret: "text:C0wT1w@3",
+          source: "T64.1, T33.3 (P14-2), T34.1",
+        });
+      });
+    }
+  }
+
   /** The write of `stored` at `place` by `key`, as the build gives it. */
   const writeOf = async (stored: string, place: Step, key: Step) =>
     (await recordEdit({ stored, place, action: key })).write;
