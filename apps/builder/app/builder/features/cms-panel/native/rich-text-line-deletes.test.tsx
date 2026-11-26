@@ -1350,6 +1350,42 @@ describe("T45.3: an empty caret line after a rule at the content's end (D7, T14.
   }
 });
 
+/** The empty first line of the first item before a rule, at the content's start, at depth 7. */
+const D7_FIRST = [1, 2, 3, 4, 5, 6].reduce(
+  (inner) => `<ul><li>${inner}</li></ul>`,
+  "<ul><li><hr>T1w</li><li>Nw</li></ul>"
+);
+
+describe("T47.3: the backward word and line forms at an empty line at the content's start (M-g1)", () => {
+  const SHAPES: ReadonlyArray<readonly [string, string, number]> = [
+    ["depth 1", "<ul><li><hr>T1w</li><li>Nw</li></ul>", 0],
+    ["depth 7", D7_FIRST, 6],
+  ];
+  const FORMS: ReadonlyArray<readonly [string, Step]> = [
+    ["Ctrl+Backspace", wordBack],
+    ["lineBack", lineBack],
+  ];
+  for (const [depth, stored, item] of SHAPES) {
+    for (const [key, action] of FORMS) {
+      test(`the backward word and line forms at an empty first line at the content's start change nothing (${depth}, ${key})`, async () => {
+        await expectEdit({
+          stored,
+          place: itemPoint(item, 0),
+          action: async () => {
+            const before = undoDepth();
+            await action();
+            expect(undoDepth(), "no undo step").toEqual(before);
+          },
+          write: null,
+          caret: "element:listitem@0",
+          typed: stored.replace("<hr>", "k<hr />"),
+          source: "T47.3 (M-g1); D7, T45.3",
+        });
+      });
+    }
+  }
+});
+
 describe("T45.7: Backspace in an empty line after a rule in a nested item (5.3, 5.8)", () => {
   const CELLS: ReadonlyArray<readonly [string, string, string]> = [
     ["d2", D2_TR, short(D2_TR.replace("<hr>", ""))],

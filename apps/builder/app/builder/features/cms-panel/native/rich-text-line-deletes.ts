@@ -100,14 +100,15 @@ export const $emptyLine = (
     return true;
   }
   // T45.3 (D7, T14.14): the word and line forms with nothing in the
-  // key's direction and nothing after the container give the character
-  // form's write, which is none: no node is touched (first example: d7 TR
-  // el2 lineForward, where Lexical's own line delete dirties the line)
+  // key's direction and nothing beyond the container that way touch no
+  // node (first example: d7 TR el2 lineForward, where Lexical's own line
+  // delete dirties the line). T47.3 (M-g1): backward at the empty first
+  // line of the first item at the content's start the same (lineBack
+  // there handed out the value unchanged); Backspace there stays (T33.5)
   if (
     command !== DELETE_CHARACTER_COMMAND &&
-    isBackward === false &&
     beside === null &&
-    $nothingAfter(container)
+    $nothingBeyond(container, isBackward)
   ) {
     return true;
   }
@@ -133,14 +134,20 @@ export const $emptyLine = (
   return false;
 };
 
-/** Nothing follows `node` in the document: no sibling after it or after any ancestor. */
-const $nothingAfter = (node: LexicalNode) => {
+/**
+ * Nothing stands beyond `node` in the document in a direction: no sibling
+ * that way of it or of any ancestor.
+ */
+const $nothingBeyond = (node: LexicalNode, isBackward: boolean) => {
   for (
     let current: LexicalNode | null = node;
     current !== null && $isRootOrShadowRoot(current) === false;
     current = current.getParent()
   ) {
-    if (current.getNextSibling() !== null) {
+    const sibling = isBackward
+      ? current.getPreviousSibling()
+      : current.getNextSibling();
+    if (sibling !== null) {
       return false;
     }
   }
