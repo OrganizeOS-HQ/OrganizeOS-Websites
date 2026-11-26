@@ -116,10 +116,7 @@ import {
   registerCompositionStep,
 } from "./rich-text-line-history";
 import { $isCmsLineNode } from "./rich-text-line-node";
-import {
-  $caretAfterLinedBlock,
-  registerLineInputListener,
-} from "./rich-text-line-node-selection";
+import { registerLineInputListener } from "./rich-text-line-node-selection";
 import {
   $unwrapLines,
   registerLineTransforms,
@@ -149,7 +146,10 @@ import {
   type BlockType,
 } from "./rich-text-line-toolbar";
 import { watchField, type FieldValue } from "./rich-text-field-watch";
-import { INSERT_HORIZONTAL_RULE_COMMAND } from "@lexical/react/LexicalHorizontalRuleNode";
+import {
+  $isHorizontalRuleNode,
+  INSERT_HORIZONTAL_RULE_COMMAND,
+} from "@lexical/react/LexicalHorizontalRuleNode";
 import {
   Button,
   css,
@@ -1115,31 +1115,19 @@ type ImageUpload = {
 };
 
 /**
- * Where Image was chosen: the caret, or a block node-selected in a lined
- * container, whose caret is read when the upload finishes.
- */
-type ImagePlace = RangeSelection | { after: NodeKey } | null;
-
-/**
  * Inserts the image where the caret was when Image was chosen; after the
  * code block that place is in (for a range, the caret the field's removal
  * leaves); or in a new paragraph at the end when that place is gone.
  */
 const insertImage = (
   editor: LexicalEditor,
-  chosen: ImagePlace,
+  caret: RangeSelection | null,
   attributes: CmsImageAttributes
 ) => {
   // 15.14: an upload that finishes during a press in the editor leaves the
   // press's own caret where the press made it
   const pressed = isPressing(editor);
   editor.update(() => {
-    // T59 review L1: beside a node-selected block, the place is read from
-    // where the block stands now; a block gone is a place gone (D1)
-    const caret =
-      chosen === null || $isRangeSelection(chosen)
-        ? chosen
-        : $caretAfterLinedBlock($getNodeByKey(chosen.after));
     const kept = pressed ? ($getSelection()?.clone() ?? null) : null;
     const $keepPress = () => {
       if (
@@ -1219,7 +1207,7 @@ const ImageButton = ({
 }) => {
   const [editor] = useLexicalComposerContext();
   const fileRef = useRef<HTMLInputElement>(null);
-  const caretRef = useRef<ImagePlace>(null);
+  const caretRef = useRef<RangeSelection | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
   const choose = async (file: File) => {
@@ -1280,16 +1268,6 @@ const ImageButton = ({
         onClick={() => {
           caretRef.current = editor.getEditorState().read(() => {
             const selection = $getSelection();
-            if ($isNodeSelection(selection)) {
-              // T59 defect 3: a block node-selected in a lined container
-              // gives the caret a typed letter takes, directly after the
-              // node (D15); the insert resolves it as typing does, from
-              // where the node stands when the upload finishes
-              const last = selection.getNodes().at(-1);
-              return last !== undefined && $caretAfterLinedBlock(last) !== null
-                ? { after: last.getKey() }
-                : null;
-            }
             return $isRangeSelection(selection) ? selection.clone() : null;
           });
           fileRef.current?.click();
@@ -1529,18 +1507,16 @@ const Toolbar = ({
         }
         for (const [index, point] of [next.anchor, next.focus].entries()) {
           const at = kept[index];
-          // T59 defect 2: a block the caret is kept by (a rule ending the
-          // item) leaves the paragraph the item became now, as the
-          // transform would at the commit; the caret then stays beside it,
-          // not in the paragraph the transform removes (5.7, V16)
-          const isBlock =
-            at !== undefined &&
-            ($isElementNode(at.node) || $isDecoratorNode(at.node)) &&
-            at.node.isInline() === false;
+          // T59 defect 2, T71.2: a rule the caret is kept by leaves the
+          // paragraph the item became now, as the transform would at the
+          // commit; the caret then stays beside it, not in the paragraph
+          // the transform removes (5.7, V16, D13). Beside a quote, a
+          // heading or a code block the head's result stands
+          const isRule = at !== undefined && $isHorizontalRuleNode(at.node);
           let holder = at?.node.getParent();
           while (
             at !== undefined &&
-            isBlock &&
+            isRule &&
             ($isParagraphNode(holder) || $isHeadingNode(holder))
           ) {
             $liftBlocksOutOfTextBlock(holder);

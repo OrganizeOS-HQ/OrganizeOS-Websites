@@ -105,35 +105,66 @@ const emptiedOf = (editor: LexicalEditor) => {
 };
 
 /**
+ * T71.3 (D7): each emptied line as it stood in a committed state. Lexical
+ * restores an undo or a redo as a copy of that state holding the same node
+ * objects, so a line the restored state holds as one of these, empty and
+ * holding the caret, is an emptied line again and keeps the caret.
+ */
+const emptiedLineNodes = new WeakSet<LexicalNode>();
+
+/**
  * After a commit: a line a removal in it started in, which held content
  * and a point of the selection before it and is empty and holds a point
  * now, is an emptied line. The set keeps only lines that are still empty
- * and still hold a point of the selection (the caret has not left).
+ * and still hold a point of the selection (the caret has not left). An
+ * undo or a redo brings back the emptied lines of the state it restores.
  */
 const noteEmptiedLines = (
   editor: LexicalEditor,
   editorState: EditorState,
-  prevEditorState: EditorState
+  prevEditorState: EditorState,
+  historic: boolean
 ) => {
   const emptied = emptiedOf(editor);
-  const held = editorState.read(() =>
+  collectEmptiedLines(editor, emptied, editorState, prevEditorState, historic);
+  editorState.read(() => {
+    for (const key of emptied) {
+      const line = $getNodeByKey(key);
+      if (line !== null) {
+        emptiedLineNodes.add(line);
+      }
+    }
+  });
+};
+
+const collectEmptiedLines = (
+  editor: LexicalEditor,
+  emptied: Set<NodeKey>,
+  editorState: EditorState,
+  prevEditorState: EditorState,
+  historic: boolean
+) => {
+  const heldLines = editorState.read(() =>
     $dfs()
       .map(({ node }) => node)
       .filter(
         (node): node is CmsLineNode =>
           $isCmsLineNode(node) && node.isEmpty() && holdsSelection(node)
       )
-      .map((node) => node.getKey())
   );
+  const held = heldLines.map((node) => node.getKey());
   for (const key of [...emptied]) {
     if (held.includes(key) === false) {
       emptied.delete(key);
     }
   }
   const pasted = pasteHeldLines.get(editor);
-  for (const key of held) {
-    if (pasted?.has(key) === true) {
-      emptied.add(key);
+  for (const line of heldLines) {
+    if (
+      pasted?.has(line.getKey()) === true ||
+      (historic && emptiedLineNodes.has(line))
+    ) {
+      emptied.add(line.getKey());
     }
   }
   const removed = removalLines.get(prevEditorState);
@@ -1575,9 +1606,16 @@ export const pointRules = (editor: LexicalEditor, tracker?: EditTracker) => {
         })(),
         // 5.4 and F8: a line this commit emptied while it held the caret is
         // noted before any later update resolves the caret
-        editor.registerUpdateListener(({ editorState, prevEditorState }) => {
-          noteEmptiedLines(editor, editorState, prevEditorState);
-        }),
+        editor.registerUpdateListener(
+          ({ editorState, prevEditorState, tags }) => {
+            noteEmptiedLines(
+              editor,
+              editorState,
+              prevEditorState,
+              tags.has("historic")
+            );
+          }
+        ),
         () => {
           emptiedLines.delete(editor);
           pasteHeldLines.delete(editor);

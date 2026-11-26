@@ -376,8 +376,8 @@
   "QR@2 Bulleted list": {
     "write": "<p>Pw</p><blockquote><p>Q0w</p></blockquote><hr /><p>Nw</p>",
     "calls": 1,
-    "caret": "text:Pw@2",
-    "typed": "<p>Pwk</p><blockquote><p>Q0w</p></blockquote><hr /><p>Nw</p>"
+    "caret": "element:root@3",
+    "typed": "<p>Pw</p><blockquote><p>Q0w</p></blockquote><hr /><p>k</p><p>Nw</p>"
   },
   "QR@2 Code": {
     "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr /><pre><code></code></pre></li><li>Nw</li></ul>",
@@ -1281,8 +1281,8 @@
   "RQ@0 Bulleted list": {
     "write": "<p>Pw</p><hr /><blockquote><p>Q1w</p></blockquote><p>Nw</p>",
     "calls": 1,
-    "caret": "text:Pw@2",
-    "typed": "<p>Pwk</p><hr /><blockquote><p>Q1w</p></blockquote><p>Nw</p>"
+    "caret": "element:root@1",
+    "typed": "<p>Pw</p><p>k</p><hr /><blockquote><p>Q1w</p></blockquote><p>Nw</p>"
   },
   "RQ@0 Code": {
     "write": "<ul><li>Pw</li><li><pre><code></code></pre><hr /><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
@@ -1824,8 +1824,8 @@
   "RR@0 Bulleted list": {
     "write": "<p>Pw</p><hr /><hr /><p>Nw</p>",
     "calls": 1,
-    "caret": "text:Pw@2",
-    "typed": "<p>Pwk</p><hr /><hr /><p>Nw</p>"
+    "caret": "element:root@1",
+    "typed": "<p>Pw</p><p>k</p><hr /><hr /><p>Nw</p>"
   },
   "RR@0 Code": {
     "write": "<ul><li>Pw</li><li><pre><code></code></pre><hr /><hr /></li><li>Nw</li></ul>",
@@ -2005,8 +2005,8 @@
   "RR@1 Bulleted list": {
     "write": "<p>Pw</p><hr /><hr /><p>Nw</p>",
     "calls": 1,
-    "caret": "element:root@3",
-    "typed": "<p>Pw</p><hr /><hr /><p>k</p><p>Nw</p>"
+    "caret": "element:root@2",
+    "typed": "<p>Pw</p><hr /><p>k</p><hr /><p>Nw</p>"
   },
   "RR@1 Code": {
     "write": "<ul><li>Pw</li><li><hr /><pre><code></code></pre><hr /></li><li>Nw</li></ul>",
@@ -2186,8 +2186,8 @@
   "RR@2 Bulleted list": {
     "write": "<p>Pw</p><hr /><hr /><p>Nw</p>",
     "calls": 1,
-    "caret": "text:Pw@2",
-    "typed": "<p>Pwk</p><hr /><hr /><p>Nw</p>"
+    "caret": "element:root@3",
+    "typed": "<p>Pw</p><hr /><hr /><p>k</p><p>Nw</p>"
   },
   "RR@2 Code": {
     "write": "<ul><li>Pw</li><li><hr /><hr /><pre><code></code></pre></li><li>Nw</li></ul>",
@@ -2367,8 +2367,8 @@
   "RT@0 Bulleted list": {
     "write": "<p>Pw</p><hr /><p>T1w</p><p>Nw</p>",
     "calls": 1,
-    "caret": "text:Pw@2",
-    "typed": "<p>Pwk</p><hr /><p>T1w</p><p>Nw</p>"
+    "caret": "element:root@1",
+    "typed": "<p>Pw</p><p>k</p><hr /><p>T1w</p><p>Nw</p>"
   },
   "RT@0 Code": {
     "write": "<ul><li>Pw</li><li><pre><code></code></pre><hr />T1w</li><li>Nw</li></ul>",

@@ -3,6 +3,9 @@
 // 30 commands: 690 cells. Each cell's write, onChange count, caret and the
 // letter after it, and each point's caret right after its place, are in the
 // file snapshot.
+// D13 (T71.2): Bulleted list at QR@2, RQ@0, RR@0, RR@1, RR@2 and RT@0, the
+// empty caret lines beside rules, keeps the caret where its line was (before
+// the leading rule, between the rules, after the final rule), not the head's.
 import { describe, expect, test } from "vitest";
 import { gridTests, pointCells } from "./rich-text-line-cells-grids";
 
