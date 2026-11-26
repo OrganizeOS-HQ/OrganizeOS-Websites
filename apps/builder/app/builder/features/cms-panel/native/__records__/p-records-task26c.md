@@ -229,3 +229,113 @@ A letter typed after a cancelled composition over such a range now takes the sta
 ### Private state
 
 None read in the source or the tests.
+
+# Batch 2: defects 1 to 3, T64.1 and T64.2
+
+Merged at 6b9fd06 (commits 9e50647, 1e7c0c4, db9d84e, eb216be, 6b9fd06).
+
+Worktree: /home/user/OrganizeOS-Websites/.claude/worktrees/agent-a3efbc70d1289fb8a, branch `t59-a`, from `2be768a`; `claude/native-cms-r1-lines` head `8dd5ace` merged in at `9503d15`. Not pushed, not merged.
+
+| Item     | Commit    | Answer         |
+| -------- | --------- | -------------- |
+| Defect 1 | `9e50647` | fixed          |
+| Defect 2 | `1e7c0c4` | fixed          |
+| Defect 3 | `db9d84e` | fixed          |
+| T64.1    | `eb216be` | fixed          |
+| T64.2    | `6b9fd06` | both nits made |
+
+## Defect 1: text/plain loses the new line after a start at a block's end
+
+Cause: `$plainTextOf` (rich-text-line-clipboard.ts) walks only the nodes the range holds. A start at a text's end (`rq@2`, `Q0w@3`, `Pw@2`) or on an element point holds none of the leaf it rests on. Lexical's own walk (the head's) starts at that leaf, so the block boundary that comes next reads as a new line. A start on the empty caret line after a rule (the backward walks' stop 1) also lost it.
+
+Fix: the walk starts as Lexical's does. When the leaf the start rests on is not held (a text end, or the child an element point resolves to), or when the start is on an empty line, the next block boundary gives a new line. No text is added.
+
+Tests: rich-text-line-clipboard.test.tsx, describe "T59 defect 1: text/plain keeps the head's new line after a start at a block's end (D6, 5.8, T39.5)", 6 tests:
+
+- S2b: a copy from rq@2 to bbq@3 is the head's \nbbq
+- c1 S3: Shift+Right twice from Q0w's end copies the head's two new lines
+- a cut walk's first stop that joins two items writes one new line: QR, forward from Pw's end / RQ, forward from Pw's end / QR, backward from Nw's start / Rlast, backward from Nw's start
+
+Runs: 6 failed without the fix ('bbq', '\n', '' four times), 6 passed with it. The whole file passed after the fix (107), and so did rich-text-line-grid-clipboard (273, grids-a).
+
+### Measurements at both builds
+
+Probe: SP-local `rich-text-zzt59-probe.test.tsx`, run at `<base>` (r1-base, `timeout 600`) and at the branch, same gestures. The values below are text/plain.
+
+| Record                                                       | base                              | R1 before      | R1 after      |
+| ------------------------------------------------------------ | --------------------------------- | -------------- | ------------- |
+| S2b rq@2 to bbq@3 (copy)                                     | "\nbbq"                           | "bbq"          | "\nbbq"       |
+| c1 S3 Q0w end, Shift+Right x2 (copy)                         | "\n\n"                            | "\n"           | "\n\n"        |
+| nav cut, F stop 1 (QR, RQ, QRQ, RQR, QRR, Rfirst, Rlast, d2) | "\n"                              | ""             | "\n"          |
+| nav cut, F stops 2 and 3                                     | "\nQ", "\nQ0", "\n\n\n" and so on | one "\n" short | equal to base |
+| nav cut, B stop 1 (RQ, QRQ, Rfirst)                          | "\n"                              | ""             | "\n"          |
+| clip-d rec 2, 3 (after an image to B1w@1)                    | "\nB"                             | "B"            | "\nB"         |
+| clip-d rec 34, 35 (after an item's image to Nw@1)            | "\nN"                             | "N"            | "\nN"         |
+
+After the fix, R1 has as many new lines as the base on every record above. A few records still have fewer, and in each the head over-copies a node the selection does not hold. Its text/html carries that node, and the extra "\n" is that node's text, so these are left as R1 gives them (D6: "the clipboard holds nothing outside the selection"; FS9 pinned on main):
+
+| Record                                                             | base text/plain, text/html                                                       | R1 text/plain, text/html                                                |
+| ------------------------------------------------------------------ | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| nav cut B stop 1, items ending in a rule (QR, RQR, QRR, Rlast, d2) | "\n\n", `<ul><li><hr></li><li></li></ul>` (the head's cut also removes the rule) | "\n", `<ul><li></li><li></li></ul>`                                     |
+| clip-d rec 18, 19 (after the lone break to B2w@1)                  | "\n\nB", `<p><br></p><p>B</p>`                                                   | "\nB", `<p></p><p>B</p>`                                                |
+| clip-x 3#7, 3#8 (after the rule to Nw@1)                           | "\n\nN", `<ul><li><hr></li><li>N</li></ul>`                                      | "\nN", `<ul><li></li><li>N</li></ul>`                                   |
+| c1 S3 one Shift+Right (FS9)                                        | "\n\n\n", the whole item with its `<br>`                                         | "\n", `<blockquote><p></p></blockquote>` (pinned on main, spec FS9 row) |
+
+## Defect 2: Bulleted list after an item's final rule
+
+Cause: in the toolbar's toggleList, the caret is kept by the rule (an element point after it). After REMOVE_LIST the rule still stands inside the paragraph the item became. The commit's `$liftBlocksOutOfTextBlock` transform then lifts the blocks out and removes that paragraph. The caret point went with it and Lexical moved it to Pw's end. TR passed only because its paragraph survives.
+
+Fix (rich-text-field.tsx, toggleList's caret restore): a block the caret is kept by is lifted out of its paragraph or heading right away, as the transform would do at the commit. The caret is then set beside it at the root.
+
+Branch after the fix, by the record's gesture (a click 3 px inside the item's bottom right):
+
+| Record          | Caret after the action | Caret after undo            | Caret after redo | Letter                       |
+| --------------- | ---------------------- | --------------------------- | ---------------- | ---------------------------- |
+| QBR, QTR, d2 CR | `element:root@4`       | the caret before the action | `element:root@4` | `...<hr /><p>k</p><p>Nw</p>` |
+
+Before the fix the caret after the action was `text:Pw@2`, and the letter gave `<p>Pwk</p>`. The write is unchanged.
+
+Tests: rich-text-line-toolbar.test.tsx, describe "T59 defect 2: list off at a click after an item's final rule (5.7, V16)": "QBR / QTR / d2 CR: Bulleted list leaves the caret after the rule, and after redo". They use expectEdit with the caret, typed after undo and redo, undo restores, and redo equals.
+
+Runs: 3 failed without the fix (caret `text:Pw@2`), 3 passed with it.
+
+Note: in the DOM a nested list stands in an item of its own, so d2 CR's item is `li[3]`.
+
+## Defect 3: Image at the ArrowRight x5 stop in QR and QRQ
+
+Cause: the stop node-selects the rule. Image's click stored the caret only for a range selection, so a node selection gave null, and the insert took the end-of-document fallback.
+
+Fix (rich-text-field.tsx, ImageButton's click): a block node-selected in a lined container gives the caret a typed letter takes. That is the element point directly after the node (D15, as `$nodeSelectionIntoLine` does), and the insert resolves it with `$resolveLinedPoints(true)`. Ordinary content is unchanged.
+
+Branch after the fix, letter and image at the same caret:
+
+| Shape | Letter    | Image                                        |
+| ----- | --------- | -------------------------------------------- |
+| QR    | `<hr />k` | `<hr /><img />`                              |
+| QRQ   | `kQ2w`    | `<blockquote><p><img />Q2w</p></blockquote>` |
+
+Before the fix, Image appended `<p><img /></p>` at the document's end.
+
+Tests: rich-text-line-toolbar.test.tsx, describe "T59 defect 3: Image with the rule node-selected lands where a letter does (D15, D1)": "QR / QRQ: the image after the rule, not at the document's end". They first assert that the caret before Image is `node:horizontalrule`.
+
+Runs: 2 failed without the fix (document end), 2 passed with it.
+
+## T64.1: the code-block carry for a heading
+
+`$leaveBehindWhatCodeCannotHold` (rich-text-line-deletes.ts) now takes a heading wherever it stands. What the code block cannot hold stays behind in a new heading of the same tag.
+
+Tests: rich-text-line-deletes.test.tsx, "T64.1: ..." beside T33.3's cases: a link later and an image later in a heading, at the root and in an item, each with Backspace, Ctrl+Backspace and lineBack (12 tests). They check the write, the address, the caret `text:C0wT1w@3`, undo and redo.
+
+Runs: 12 failed without the fix (root link `<pre><code>C0wT1wLw</code></pre>`, root image `<p><img /></p>`), 12 passed with it. The whole deletes file passed (412).
+
+## T64.2: review nits
+
+- rich-text-line-node-selection.ts: the comment on `$startUnlikeSelection` now says it reads the anchor, which is the range's start only once the backward swap has run first in the update. In the read that gates the update, a backward range runs the update anyway.
+- rich-text-line-removal.ts: removed the always-true `parent.isEmpty() === false`.
+
+## Checks at the head (`6b9fd06`)
+
+- Test files: deletes 412, node-selection 59 and composition 135, all passed.
+- `pnpm oxfmt --check`, `pnpm lint`, `pnpm exec tsc --noEmit -p apps/builder` and `pnpm check:runtime-upstream` all exit 0.
+- The lines project run whole: 18 files, 1490 tests passed, 487 s.
+- The lines-b project run whole: 3 files, 649 tests passed, 352 s.
