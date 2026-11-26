@@ -1255,3 +1255,115 @@ Each project run whole, one at a time, at `5cd9757` (the last commit, `0b4fd10`,
 | core-server (at `0b4fd10`) | 124   | 2020 (+1 skipped) | 0      | 104 s |
 
 Checks: `pnpm oxfmt --check`, `pnpm lint`, `pnpm exec tsc --noEmit -p apps/builder`, `pnpm check:runtime-upstream` all exit 0.
+
+# Batch 8: T74.1, T75, T76.1
+
+Merged at 9af4f0c (commits 956f4a4, a9093fe, 6f70c7b).
+
+Worktree: /home/user/OrganizeOS-Websites/.claude/worktrees/agent-abf0f491672256a0b, branch `t75` from a441839.
+
+Commits:
+
+- 956f4a4 test(cms): T74.1 the trailing-image double-click copy
+- a9093fe fix(cms): T75 a second Shift+Home or Shift+End reaches the image
+- 6f70c7b test(cms): T76.1 a letter at an image reached by ArrowLeft
+
+## T74.1
+
+New test in rich-text-line-clipboard.test.tsx: `<li>U1w<img></li>`, U1w selected by a real double click
+(`text:U1w@0|text:U1w@3`); the copy holds `'U1w'` (editor data), text/html `U1w`, text/plain `U1w`, no
+mark. The cut and paste back to the stored value for the trailing shape was already pinned by d418510's
+loop. Passes.
+
+## T75.2 mirror measured first (both builds, 2 runs each, all agree)
+
+Probe SP/t75/probe.test.tsx, raw SP/t75/branch.txt, base.txt. Shift+End from a real click at U1w@0, in
+`<li>U1w<img></li>` and `<p>U1w<img></p>`: at both builds the first press already takes the image
+(Lexical `text:U1w@0 -> listitem@2` / `paragraph@2`, page `li@2` / `p@2`, not inside the decorator);
+the second and third press change nothing; a letter after 1, 2 or 3 presses gives `<li>k</li>` /
+`<p>k</p>`, 1 call, caret text:k@1. The branch equals the head there, so nothing to fix and no P
+record; T10.7b's first press is not touched. Note: in this direction it is the first press, not a
+second, that takes the image, at both builds.
+
+## T75 cause (confirmed by temporary instrumentation, reverted)
+
+Every Shift+Home press, the first and each later one, ends with the page focus inside the image's
+decorator span (`span[img]@1`), which Lexical reads as `listitem@1`; the field's put-back
+(`$selectionBackOnPage`, rich-text-line-points.ts) writes that to the page as `li@1`, read later as
+`text:U1w@0`. From there Chrome's next Home lands in `span[img]@1` again, so the press never moves.
+
+## Fix
+
+rich-text-line-points.ts: at the page's selection change (no press in progress) after a key held with
+Shift, when the page focus lands in a decorator and the new focus is the same place (between the same
+two children) as the committed focus, the focus goes on to the decorator's other side before the
+put-back. Keydown/pointerdown capture listeners on the root track whether the last step was a Shift key.
+Measured after the fix (SP/t75/fixed.txt): Home cells press 1 `text:U1w@0` (page li@1/p@1), press 2
+`listitem@0`/`paragraph@0` (page @0), press 3 unchanged; letters `<img />k`, `k`, `k`. End cells unchanged.
+
+Tests (rich-text-line-readback.test.tsx, "T75: repeated Shift+Home or Shift+End beside an image", 16
+tests): four cells (Home item, Home paragraph, End item, End paragraph), Lexical selection and page
+focus after each of three presses with no onChange, and a letter after 1, 2, 3 presses (write, one
+onChange, caret text:k@1 in Lexical and on the page). Without the fix 6 fail (the Home cells' selection
+and letters after 2 and 3 presses); the End cells pass at both, as measured.
+
+## P record
+
+SP/p-records-t75.md, P75-1 (1 record): Shift+Home from a collapsed caret right after a leading image
+(U1w@0). Base: press 1 lost letter, press 2 takes the image. Branch pre-fix: never takes it (letter
+`<img />kU1w`). With the fix: press 1 takes the image (`kU1w`). Not pinned. Other probed Shift+arrow
+cells (Shift+Left from U1w@0/@1, Shift+Right and Shift+End from U1w@3 by a trailing image) equal at
+all three builds.
+
+## T76.1
+
+rich-text-line-node-selection.test.tsx, "T76.1: a letter at an image node-selected by ArrowLeft lands
+before it": PI-QIT `LI(<blockquote><p>Q0w</p></blockquote>IMG T2w)` and its twin
+`<blockquote>..</blockquote><p>IMG T2w</p>`; real click at T2w@0, ArrowLeft, `node:cms-image` asserted,
+letter: one onChange, write `...</blockquote>k<img />T2w` (item and paragraph), one undo restores.
+Measured on the branch: the letter lands before the image in both, so pinned (2 tests, pass). Not
+measured at the base (the ruling states the twin at both builds).
+
+## Runs (after all changes)
+
+- touched tests: clipboard T69.1/T74.1 4 pass; readback T75 16 pass; node-selection T76.1 2 pass.
+- lines-b: 665 passed, 0 failed (323 s).
+- lines: 1549 passed, 2 failed (482 s). The 2 failures are rich-text-line-normalise.test.tsx "D3 case 3
+  over a range before a key ... (T69.2)" a heading / a code block, text paste over T0w@1 to H1w@2 / C1w@2
+  (write `TAqw<br />` where `TAqw<br /><br />` is expected). They fail identically at a441839 without my
+  change (checked with points.ts reverted): pre-existing, not mine.
+- rich-text: 3110 passed, 0 failed (134 s).
+- grids-a: 1620 passed, 0 failed (249 s). No grid cell altered; no snapshots updated.
+- oxfmt --check clean, lint clean, tsc --noEmit -p apps/builder clean, check:runtime-upstream OK.
+- SP/r1-base left clean (only its pre-existing untracked zz13base.log).
+
+## P record
+
+## P75-1: Shift+Home from a caret directly after a leading image (collapsed at U1w@0)
+
+Not in T75's cells; met while checking what the T75 fix reaches. Nothing pinned.
+
+- Stored: `<ul><li>Pw</li><li><img />U1w</li><li>Nw</li></ul>` and `<p>Pw</p><p><img />U1w</p><p>Nw</p>`
+  (image 40x20, as the t74 probe).
+- Placed: a real click at U1w@0 (page and Lexical `text:U1w@0`, collapsed).
+- Action: Shift+Home once, twice, three times (fresh mount for each letter), then the letter `k`.
+- Base (2a96a45): press 1 page focus inside the image's decorator span (`span[img]@1`), Lexical focus
+  `listitem@1` / `paragraph@1`; letter lost (no write, 0 calls). Press 2 and 3: focus `listitem@0` /
+  `paragraph@0`; letter writes `<li>kU1w</li>` / `<p>kU1w</p>` (the image replaced), 1 call.
+- Branch before the T75 fix (a441839): every press leaves the selection at `text:U1w@0` both ends in
+  Lexical's reading (page focus `li@1`, the put-back); the letter writes `<li><img />kU1w</li>` at every
+  count (the image stays, nothing replaced), 1 call. Shift+Home never reaches the image.
+- Branch with the T75 fix (t75): press 1 takes the image (focus `listitem@0` / `paragraph@0`, page `li@0`);
+  press 2 and 3 change nothing; letter writes `<li>kU1w</li>` / `<p>kU1w</p>` at every count, 1 call.
+- Why a question: T75.1 rules the press from U1w's end. From a collapsed caret right after the image the
+  first press is the one that, at the head, leaves the focus visually where it was and loses the letter;
+  the fix treats it as a press that did not move (5.3: with Shift held no press leaves the focus where it
+  was) and takes the image at once.
+- Candidates: (a) as built with the fix: the first press takes the image, the letter replaces it
+  (`<li>kU1w</li>`), the head's second-press write one press earlier; (b) the head's count: the first
+  press leaves the range empty of content and the letter lands at the caret (`<li><img />kU1w</li>`, the
+  branch's pre-fix write, no loss), the second press takes the image.
+
+Raw: `SP/t75/x-base.txt`, `SP/t75/x-nofix.txt`, `SP/t75/x-fixed.txt` (probe `SP/t75/probe2.test.tsx`).
+The same probe's other cells (Shift+ArrowLeft from U1w@0 and U1w@1 after a leading image, Shift+ArrowRight
+and Shift+End from U1w@3 before a trailing image) are equal at all three builds.
