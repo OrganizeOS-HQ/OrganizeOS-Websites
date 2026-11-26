@@ -72,3 +72,28 @@ holding `T0w` (`containerPoint("T0w", 2)`).
   one onChange with the value unchanged. Control: Heading 2 at d7 TR el2 writes
   `<li>T0w<hr /><h2></h2></li>` at depth 7, one onChange.
 - Not in a ruled cell: a range with one end's line at the limit and the other above it is refused whole.
+
+## P45-5 (T45.7, Task 14): which handler takes Backspace in an empty line after a rule in a nested item
+
+- Log (temporary command listeners at CRITICAL and LOW on KEY_BACKSPACE, OUTDENT_CONTENT, DELETE_CHARACTER
+  and DELETE_LINE, scratch test removed): at d2 TR el2 and d7 TR el2, the caret `element:listitem@2`,
+  Backspace passes every handler of the field's KEY_BACKSPACE CRITICAL row (each returns false) and the LOW
+  listener, and reaches Lexical's own KEY_BACKSPACE handler (RichTextPlugin, EDITOR priority). That handler
+  sees a collapsed caret at offset 0, takes the nearest block element ancestor, the `cms-line`, whose
+  `getIndent()` reports its item's indent (1 at d2, 6 at d7), and dispatches OUTDENT_CONTENT_COMMAND.
+  DELETE_CHARACTER is never dispatched, so `deletes.emptyLine` never runs. Writes before the fix: d2
+  `<ul><li>Aw<ul><li>Pw</li></ul></li><li>T0w<hr /><ul><li>Nw</li></ul></li></ul>`; d7 the T0w item moved
+  up beside A6w, `<li>A6w</li><li>T0w<hr /></li>` at depth 6. At depth 1 the indent is 0, so Lexical
+  dispatches DELETE_CHARACTER and the empty line's rule runs.
+- Fix: a new handler `deletes.emptyLineRuleBeforeOutdent` (`rich-text-line-deletes.ts`), last in the
+  KEY_BACKSPACE CRITICAL row (after `removal.mark`, so the row runs as it does at depth 1): at a collapsed
+  caret in an empty `cms-line` of a lined container, with a rule (or other block decorator) directly before
+  it and an indent above 0, it prevents the key's default and dispatches DELETE_CHARACTER_COMMAND backward,
+  as Lexical's handler does at depth 1. `COMMAND_ORDER` and its node test gain the id.
+- Result: d2 `<ul><li>Aw<ul><li>Pw</li><li>T0w</li><li>Nw</li></ul></li></ul>` and d7 `<li>T0w</li>` at depth
+  7, caret `text:T0w@3`, one onChange, letter `T0wk`, exact undo and redo. Control: Backspace at `T0w@0` (a
+  nested item's first line) still outdents (the item's indent 1 to 0, the rule stays). With the fix taken
+  out, both cells fail.
+- Checked, not changed: an empty caret point after a quote or a heading in a nested item (d2 TQ el2, d2 TH
+  el2) resolves into the block's text (`text:Q1w@3`, `text:H1w@3`) before the key, so Lexical's outdent
+  is not reached there; Backspace removes a letter of the block, as at depth 1.

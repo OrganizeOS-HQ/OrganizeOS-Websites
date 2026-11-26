@@ -140,6 +140,7 @@ describe("the one registration of the field's and the line rules' handlers", () 
           "deletes.noReorderingJoin",
           "nodeSelection.headPath",
           "removal.mark",
+          "deletes.emptyLineRuleBeforeOutdent",
         ],
       },
       {

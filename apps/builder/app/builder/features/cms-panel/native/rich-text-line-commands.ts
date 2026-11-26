@@ -39,6 +39,7 @@ import {
   $breakLedLineStart,
   $deleteEdgeForms,
   $emptyLine,
+  $emptyLineRuleBeforeOutdent,
   $itemStartJoin,
   $joinBeforeEndingImage,
   $lineEndIntoBlock,
@@ -103,6 +104,7 @@ export const LINE_HANDLER_IDS = [
   "deletes.wordBesideRule",
   "deletes.nothingChanges", // 16.10's no-op path (check 5; Task 14 Step 1c)
   "deletes.noReorderingJoin", // 16.13's refusal (check 5; T14.7; Task 14 Step 1c)
+  "deletes.emptyLineRuleBeforeOutdent", // T45.7: an empty line's rule before Lexical's outdent in a nested item
   "clipboard.writeCopyCut",
   "clipboard.dragStart",
   "history.compositionStartChar", // 451f20f04 LN 3844, registered by registerCompositionStep at the carry
@@ -224,6 +226,7 @@ export const COMMAND_ORDER: ReadonlyArray<CommandOrderRow> = [
       "deletes.noReorderingJoin",
       "nodeSelection.headPath",
       "removal.mark",
+      "deletes.emptyLineRuleBeforeOutdent",
     ],
   },
   {
@@ -566,6 +569,8 @@ export const registerRichTextCommands = (
       $joinBeforeEndingImage(payload as boolean),
     "deletes.itemStartJoin": (payload) => $itemStartJoin(payload as boolean),
     "deletes.wordBesideRule": (payload) => $wordBesideRule(payload as boolean),
+    "deletes.emptyLineRuleBeforeOutdent": (payload) =>
+      $emptyLineRuleBeforeOutdent(payload as KeyboardEvent | null),
     // the key rows carry the event; the delete commands their direction
     "deletes.nothingChanges": (payload, command) =>
       command === KEY_BACKSPACE_COMMAND || command === KEY_DELETE_COMMAND

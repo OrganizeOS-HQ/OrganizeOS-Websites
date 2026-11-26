@@ -148,6 +148,38 @@ const $nothingAfter = (node: LexicalNode) => {
 };
 
 /**
+ * T45.7 (5.3, 5.8): Backspace in an empty line after a rule removes the
+ * rule and nothing else, at any depth. A line reports its item's indent,
+ * so in a nested item Lexical's Backspace would outdent at the line's
+ * offset 0 before the delete runs; the empty line's rule goes first.
+ * The outdent stays at the start of an item's first line (first example:
+ * d2 TR el2 Backspace writes `<li>T0w</li>` at depth 2).
+ */
+export const $emptyLineRuleBeforeOutdent = (
+  event: KeyboardEvent | null
+): boolean => {
+  const selection = $getSelection();
+  if (
+    $isRangeSelection(selection) === false ||
+    selection.isCollapsed() === false
+  ) {
+    return false;
+  }
+  const line = selection.anchor.getNode();
+  if (
+    $isCmsLineNode(line) === false ||
+    line.isEmpty() === false ||
+    line.getIndent() === 0 ||
+    isLinedContainer(line.getParent()) === false ||
+    isBlockDecorator(line.getPreviousSibling()) === false
+  ) {
+    return false;
+  }
+  event?.preventDefault();
+  return $getEditor().dispatchCommand(DELETE_CHARACTER_COMMAND, true);
+};
+
+/**
  * T33.4 (P14-7): forward at an empty line that holds the caret before a
  * quote, Delete and Ctrl+Delete remove the line and the quote stays, the
  * caret at its start; the line form removes nothing (the line form at a
