@@ -26,6 +26,7 @@ import {
   clipboard,
   copy,
   cut,
+  doubleClick,
   expectEdit,
   expectSameLines,
   type Held,
@@ -1157,6 +1158,39 @@ describe("Task 18: real empty blocks and whole items (check 4, 15.11)", () => {
     );
     expectNoMark();
   });
+
+  // T69.1, measured at both builds: a double click selects U1w by its two
+  // text ends. The head copies list(listitem('U1w')) and its paste back at
+  // the cut's caret adds an item after the image (<li><img /></li><li>U1w</li>),
+  // so R1's value stands: the copy holds the text and no item (D6)
+  test("a double click on an item's text after a leading image copies the text alone (T69.1)", async () => {
+    const onChange = await mount(LI(`${IMG}U1w`));
+    await doubleClick("U1w")();
+    expect(caretKey(), "the double click selects U1w by text ends").toBe(
+      "text:U1w@0|text:U1w@3"
+    );
+    await copyKeeps(onChange)();
+    expect(shape(clipboard()[EDITOR_DATA])).toBe("'U1w'");
+    expect(bare(clipboard()["text/html"])).toBe("U1w");
+    expect(clipboard()["text/plain"]).toBe("U1w");
+    expectNoMark();
+  });
+
+  for (const stored of [LI(`${IMG}U1w`), LI(`U1w${IMG}`)]) {
+    test(`a double click's cut pasted back at its caret gives the stored value: ${short(stored)} (T69.1)`, async () => {
+      const onChange = await mount(stored);
+      await doubleClick("U1w")();
+      await cut();
+      await settle();
+      expectNoMark();
+      expect(plain(lastHtml(onChange))).toBe(
+        `<ul><li>Pw</li><li>${IMG}</li><li>Nw</li></ul>`
+      );
+      await pasteClip();
+      await settle();
+      expect(plain(lastHtml(onChange))).toBe(stored);
+    });
+  }
 });
 
 describe("Task 18: 16.7, the shell rule holds in a list item and a quote", () => {

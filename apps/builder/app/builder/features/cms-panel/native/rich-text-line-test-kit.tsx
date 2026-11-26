@@ -596,6 +596,15 @@ export const tripleClick =
     await settle();
   };
 
+/** A real double click on the text `word`. */
+export const doubleClick =
+  (word: string): Step =>
+  async () => {
+    await at(word, 1)();
+    await userEvent.dblClick(spanOf(editable()!, word));
+    await settle();
+  };
+
 /** A real click in the bottom right corner of the `item`-th `li`. */
 export const clickItemCorner =
   (item: number): Step =>
