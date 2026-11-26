@@ -4,11 +4,9 @@
 import { describe, expect, test, vi } from "vitest";
 import { act } from "react-dom/test-utils";
 import { userEvent } from "@vitest/browser/context";
-import { $createHorizontalRuleNode } from "@lexical/react/LexicalHorizontalRuleNode";
-import { $dfs } from "@lexical/utils";
 import {
+  $copyNode,
   $getNodeByKey,
-  $getRoot,
   $getSelection,
   $isNodeSelection,
   $isRangeSelection,
@@ -49,6 +47,7 @@ import {
   W,
 } from "./rich-text-line-test-kit";
 import {
+  byLabel,
   editable,
   editorOf,
   lastHtml,
@@ -954,11 +953,18 @@ describe("T59 review L1: Image beside a node-selected rule reads the rule's plac
       await gate;
       return { url: "https://cdn.example.org/x.png", path: "org/x.png" };
     });
-    return { begun, release };
+    // resolves once Image's own act scope, in which the upload starts, has
+    // closed and rendered the button busy, so the test's next step does not
+    // overlap that scope
+    const started = begun.then(async () => {
+      while (
+        (byLabel("Image") as HTMLButtonElement | null)?.disabled !== true
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+    });
+    return { started, release };
   };
-  const theRule = () =>
-    $dfs($getRoot()).find(({ node }) => node.getType() === "horizontalrule")
-      ?.node;
 
   test("QR: Backspace removes the rule before the upload finishes; the image takes the end-of-document fallback, with no throw", async () => {
     const errors = vi.spyOn(console, "error");
@@ -966,7 +972,7 @@ describe("T59 review L1: Image beside a node-selected rule reads the rule's plac
     await toRule();
     const upload = holdUpload();
     const inserted = imageButton();
-    await upload.begun;
+    await upload.started;
     await backspace();
     const removed = lastHtml(onChange);
     expect(removed, "Backspace removed the rule").not.toContain("<hr");
@@ -989,13 +995,16 @@ describe("T59 review L1: Image beside a node-selected rule reads the rule's plac
     const onChange = await mount(LI(`${QUOTE("Q0w")}<hr>`));
     await toRule();
     const editor = editorOf()!;
-    const selected = editor.getEditorState().read(() => theRule()!.getKey());
+    const selected = editor
+      .getEditorState()
+      .read(() => $getSelection()!.getNodes()[0].getKey());
     const upload = holdUpload();
     const inserted = imageButton();
-    await upload.begun;
+    await upload.started;
     await act(async () => {
       editor.update(() => {
-        $getNodeByKey(selected)!.insertBefore($createHorizontalRuleNode());
+        const rule = $getNodeByKey(selected)!;
+        rule.insertBefore($copyNode(rule));
       });
     });
     await settle();
