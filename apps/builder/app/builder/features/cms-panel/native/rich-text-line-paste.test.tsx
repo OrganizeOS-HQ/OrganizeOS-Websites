@@ -718,3 +718,26 @@ describe("D11: a range into a nested item, pasted over by a list whose last item
     });
   }
 });
+
+describe("T70.11 (measurement 11, R4b pt2): plain text over a range from a quote's text into its list", () => {
+  const R4B = "<blockquote>pq<ul><li>l1q</li></ul></blockquote><p>sepq</p>";
+  test("D14: removed first, then pasted as at the caret the removal leaves", async () => {
+    await expectEdit({
+      stored: R4B,
+      place: range("pq", 1, "l1q", 1),
+      action: pasteText("Aq\nBq"),
+      write: "<blockquote>pAq</blockquote><p>Bq1q</p><p>sepq</p>",
+      source: "T70.11, measurement 11 (the base's write; D14)",
+    });
+  });
+  test("the same as the field's removal, then the paste", async () => {
+    await expectRemovalThen(
+      {
+        stored: R4B,
+        place: range("pq", 1, "l1q", 1),
+        action: pasteText("Aq\nBq"),
+      },
+      "T70.11; D14"
+    );
+  });
+});
