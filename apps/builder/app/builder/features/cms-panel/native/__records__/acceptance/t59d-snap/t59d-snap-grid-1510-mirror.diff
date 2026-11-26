@@ -1,0 +1,70 @@
+diff --git a/apps/builder/app/builder/features/cms-panel/native/__snapshots__/rich-text-line-grid-1510-mirror.json b/apps/builder/app/builder/features/cms-panel/native/__snapshots__/rich-text-line-grid-1510-mirror.json
+index 81731d5..e011e53 100644
+--- a/apps/builder/app/builder/features/cms-panel/native/__snapshots__/rich-text-line-grid-1510-mirror.json
++++ b/apps/builder/app/builder/features/cms-panel/native/__snapshots__/rich-text-line-grid-1510-mirror.json
+@@ -15,7 +15,6 @@
+   "L|quote|text|quote|start|3|enter": "the head leaves an emptied quote (5.4)",
+   "L|quote|text|quote|start|3|htmlPaste": "the head leaves an emptied quote (5.4)",
+   "L|quote|text|quote|start|3|cut": "the head leaves an emptied quote (5.4)",
+-  "L|quote|text|quote|start|3|copy": "text/plain is read from the structure (D6)",
+   "L|quote|img|para|start|0|cut": "a copy or a cut at a caret leaves the clipboard as it was (T11.5)",
+   "L|quote|img|para|start|0|copy": "a copy or a cut at a caret leaves the clipboard as it was (T11.5)",
+   "L|quote|img|para|start|1|bs": "the head takes an image or a line break outside the range (check 3)",
+@@ -38,8 +37,6 @@
+   "L|quote|br|para|start|1|copy": "the head copies past an end directly before a block (FS9, K14)",
+   "L|list|text|para|start|0|cut": "a copy or a cut at a caret leaves the clipboard as it was (T11.5)",
+   "L|list|text|para|start|0|copy": "a copy or a cut at a caret leaves the clipboard as it was (T11.5)",
+-  "L|list|text|para|start|1|cut": "text/plain is read from the structure (D6)",
+-  "L|list|text|para|start|1|copy": "text/plain is read from the structure (D6)",
+   "L|list|text|quote|start|0|cut": "a copy or a cut at a caret leaves the clipboard as it was (T11.5)",
+   "L|list|text|quote|start|0|copy": "a copy or a cut at a caret leaves the clipboard as it was (T11.5)",
+   "L|list|text|quote|start|1|cut": "a copy or a cut at a caret leaves the clipboard as it was (T11.5)",
+@@ -52,7 +49,6 @@
+   "L|list|text|quote|start|3|enter": "the head leaves an emptied quote (5.4)",
+   "L|list|text|quote|start|3|htmlPaste": "the head leaves an emptied quote (5.4)",
+   "L|list|text|quote|start|3|cut": "the head leaves an emptied quote (5.4)",
+-  "L|list|text|quote|start|3|copy": "text/plain is read from the structure (D6)",
+   "L|list|img|para|start|0|cut": "a copy or a cut at a caret leaves the clipboard as it was (T11.5)",
+   "L|list|img|para|start|0|copy": "a copy or a cut at a caret leaves the clipboard as it was (T11.5)",
+   "L|list|link|para|start|0|cut": "a copy or a cut at a caret leaves the clipboard as it was (T11.5)",
+@@ -61,8 +57,6 @@
+   "L|list|br|para|start|0|copy": "a copy or a cut at a caret leaves the clipboard as it was (T11.5)",
+   "L|list2|text|para|start|0|cut": "a copy or a cut at a caret leaves the clipboard as it was (T11.5)",
+   "L|list2|text|para|start|0|copy": "a copy or a cut at a caret leaves the clipboard as it was (T11.5)",
+-  "L|list2|text|para|start|1|cut": "text/plain is read from the structure (D6)",
+-  "L|list2|text|para|start|1|copy": "text/plain is read from the structure (D6)",
+   "L|list2|text|quote|start|0|cut": "a copy or a cut at a caret leaves the clipboard as it was (T11.5)",
+   "L|list2|text|quote|start|0|copy": "a copy or a cut at a caret leaves the clipboard as it was (T11.5)",
+   "L|list2|text|quote|start|1|cut": "a copy or a cut at a caret leaves the clipboard as it was (T11.5)",
+@@ -75,11 +69,8 @@
+   "L|list2|text|quote|start|3|enter": "the head leaves an emptied quote (5.4)",
+   "L|list2|text|quote|start|3|htmlPaste": "the head leaves an emptied quote (5.4)",
+   "L|list2|text|quote|start|3|cut": "the head leaves an emptied quote (5.4)",
+-  "L|list2|text|quote|start|3|copy": "text/plain is read from the structure (D6)",
+   "L|para|text|para|start|0|cut": "a copy or a cut at a caret leaves the clipboard as it was (T11.5)",
+   "L|para|text|para|start|0|copy": "a copy or a cut at a caret leaves the clipboard as it was (T11.5)",
+-  "L|para|text|para|start|1|cut": "text/plain is read from the structure (D6)",
+-  "L|para|text|para|start|1|copy": "text/plain is read from the structure (D6)",
+   "L|para|text|quote|start|0|cut": "a copy or a cut at a caret leaves the clipboard as it was (T11.5)",
+   "L|para|text|quote|start|0|copy": "a copy or a cut at a caret leaves the clipboard as it was (T11.5)",
+   "L|para|text|quote|start|1|cut": "a copy or a cut at a caret leaves the clipboard as it was (T11.5)",
+@@ -92,11 +83,8 @@
+   "L|para|text|quote|start|3|enter": "the head leaves an emptied quote (5.4)",
+   "L|para|text|quote|start|3|htmlPaste": "the head leaves an emptied quote (5.4)",
+   "L|para|text|quote|start|3|cut": "the head leaves an emptied quote (5.4)",
+-  "L|para|text|quote|start|3|copy": "text/plain is read from the structure (D6)",
+   "L|heading|text|para|start|0|cut": "a copy or a cut at a caret leaves the clipboard as it was (T11.5)",
+   "L|heading|text|para|start|0|copy": "a copy or a cut at a caret leaves the clipboard as it was (T11.5)",
+-  "L|heading|text|para|start|1|cut": "text/plain is read from the structure (D6)",
+-  "L|heading|text|para|start|1|copy": "text/plain is read from the structure (D6)",
+   "L|heading|text|quote|start|0|cut": "a copy or a cut at a caret leaves the clipboard as it was (T11.5)",
+   "L|heading|text|quote|start|0|copy": "a copy or a cut at a caret leaves the clipboard as it was (T11.5)",
+   "L|heading|text|quote|start|1|cut": "a copy or a cut at a caret leaves the clipboard as it was (T11.5)",
+@@ -108,6 +96,5 @@
+   "L|heading|text|quote|start|3|del": "the head leaves an emptied quote (5.4)",
+   "L|heading|text|quote|start|3|enter": "the head leaves an emptied quote (5.4)",
+   "L|heading|text|quote|start|3|htmlPaste": "the head leaves an emptied quote (5.4)",
+-  "L|heading|text|quote|start|3|cut": "the head leaves an emptied quote (5.4)",
+-  "L|heading|text|quote|start|3|copy": "text/plain is read from the structure (D6)"
++  "L|heading|text|quote|start|3|cut": "the head leaves an emptied quote (5.4)"
+ }

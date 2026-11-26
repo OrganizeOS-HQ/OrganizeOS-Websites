@@ -609,3 +609,120 @@ Paths below are relative to `apps/builder/app/builder/features/cms-panel/native/
   - The new tests pin the acceptance check's expected values: the D3 and T23.1 writes, the base's write for defect 10 plus main's Z13 letter pattern, and the base's copy shape and paste-back for defect 11. The implementer reports they fail without the fixes.
   - No `_`-prefixed Lexical read was added; `_editor` is an existing parameter name. No environment switch was added.
   - The test diffs are additions only, so no test on main was rewritten.
+
+# Batch 4: review follow-ups L1, L2, N2, T65
+
+Merged at d03d074 (commits f55c8eb, ae781a4, 713255e, 83aff9f, b895ada). Snapshot diffs of the six red grid cells: acceptance/t59d-snap/.
+
+Worktree: /home/user/OrganizeOS-Websites/.claude/worktrees/agent-a06b088ac3c208bf4, branch `t59-d` from `838aca9`. Not pushed, not merged. P records: SP/p-records-t59d.md (P59d-1 to P59d-3).
+
+| Item | Commit                        | Answer                                                                                                                      |
+| ---- | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| N2   | `f55c8eb`                     | one helper, `$caretAfterLinedBlock(node)` (rich-text-line-node-selection.ts), used by `$nodeSelectionIntoLine` and by Image |
+| L1   | `ae781a4`, test fix `713255e` | fixed                                                                                                                       |
+| L2   | `83aff9f`                     | quote and code block pinned; leading rule is P59d-1; an undo caret is P59d-2                                                |
+| T65  | `b895ada`                     | asserted where it holds; FS9 disagrees (P59d-3)                                                                             |
+
+## L1
+
+Image's click now stores `{ after: <key of the node-selected block> }` (only when the block stands in a lined container then). `insertImage` reads the place when the upload finishes: `$caretAfterLinedBlock($getNodeByKey(key))`, the element point directly after the block, resolved by `$resolveLinedPoints(true)` as typing does. A block that is gone, detached, or no longer in a lined container gives null: the end-of-document fallback (D1's seventh entry). A range caret is stored and used as before.
+
+Tests (rich-text-line-toolbar.test.tsx, "T59 review L1: ..."), an upload held until the test releases it:
+
+- QR, rule node-selected, Image, Backspace removes the rule before the upload finishes: the image is appended as `<p><img /></p>` after the value Backspace wrote, and no failed update is reported to console.error. Without the fix: no image at all (the insert at the stale `li@2` failed).
+- QR, rule node-selected, Image, an update inserts a rule before the selected rule: the image lands after the selected rule (`<hr /><hr /><img />`). Without the fix: `<hr /><img /><hr />`.
+- Both failed without the fix, pass with it. `713255e`: the tests first waited only for the upload to start, which is inside Image's own `act` scope; a step that opened another `act` scope then left React's act queue broken for every later test of the file (188 failures in the lines run). They now wait until Image's button renders busy.
+
+No value outside D1 and defect 3's rule was needed. Note: a block still attached but moved out of a lined container during the upload also takes the fallback (as a node-selected block outside a lined container does at the click).
+
+## L2
+
+Measured at both builds (probe SP/rich-text-zzt59d-probe.test.tsx; base in SP/r1-base under `timeout 600`), and at R1 with defect 2's hunk reversed:
+
+- Caret before an item's leading rule (RT, RQ, RC at `li@0`, by `itemPoint`, by Pw's end then ArrowRight, by ArrowLeft twice from T1w, by an emptied leading line): base and R1-before-the-lift `text:Pw@2`, letter in Pw; R1 `element:root@1`, letter before the rule. Not given by 5.7's row (TR item@2 only), and 5.3 names RT's element points: P59d-1.
+- Caret after an item ending in a quote or a code block: R1 resolves every element point there into the block's text (D18), so the lift is reached only from an emptied last line (T24). There R1 gives `element:root@2`, the letter after the block at the root, with and without the lift; the head at the same element point (`li@1`) gives `element:root@2` too. Pinned: "T59 review L2: ..." beside the defect 2 tests (quote, code block): write, one onChange, caret, redo, the letter after redo, no console error. Undo restores the HTML but puts the caret at the block's end, not in the emptied line, with and without the lift: P59d-2, left out of the test with a comment.
+
+## T65
+
+`htmlLines(html)` and `expectSameLines(clipboard)` in rich-text-line-test-kit.tsx. Definition (its comment): the html parsed; each block element holding no block (p, h1 to h6, pre, blockquote, ul, ol, li, hr, div), and each run of inline content beside a block or alone, is one line of its text in document order; a `<br>` ends a line inside it. text/plain split on new lines must equal those lines. A unit test in rich-text-line-test-kit.test.tsx.
+
+Asserted (all pass): the six defect 1 tests (S2b, c1 S3, the four cut walk first stops, including the backward QR and Rlast cells), and 10 grid-clipboard cells (para-brOnly afterBreak <-> nextP B2w@1, clip-d 18/19; ruleEnd-TR and ruleEnd-QTR afterRule and emptyLineAfterRule <-> itemAfter Nw@1, clip-x 3#7/3#8's class), with a test that those ids exist. No R1 test holds the clipboard of B stop 1 on RQR, QRR or d2.
+
+Disagrees: FS9 (both stored values): text/html `<blockquote><p></p></blockquote>` is one line, text/plain "\n" is two. The assertion is not committed there (it fails) and the definition was not loosened. Measured over every grid-clipboard cell, not committed: 225 agree, 48 do not, all at an end on a line's edge beside a block, at a rule, or a select-all (P59d-3).
+
+## Runs
+
+Touched files: toolbar (256), clipboard (107 after T65, 105 + 2 FS9 before removing those), node-selection, kit test, grid-clipboard (all in the project runs below).
+
+Projects whole, one at a time, at `713255e`:
+
+| Project                  | Files | Passed | Failed | Wall  |
+| ------------------------ | ----- | ------ | ------ | ----- |
+| lines                    | 18    | 1495   | 0      | 561 s |
+| lines-b                  | 3     | 649    | 0      | 409 s |
+| rich-text                | 9     | 3110   | 0      | 204 s |
+| grids-a                  | 5     | 1620   | 0      | 375 s |
+| grids-b                  | 5     | 1750   | 3      | 308 s |
+| grids-c                  | 5     | 2243   | 1      | 320 s |
+| grids-d                  | 5     | 1432   | 1      | 327 s |
+| grids-e                  | 5     | 1086   | 1      | 410 s |
+| core-browser-builder-cms | 41    | 1609   | 0      | 316 s |
+
+The six grid failures are file snapshots, and they fail at `838aca9` too (the defect 1 to 3 fixes changed them; the T59-a runs covered lines and lines-b only). Not updated here. Diffs written with `-u` and restored (SP/t59d-snap-*.diff, SP/t59d-node-snap-head.diff):
+
+- grid-1510-list, -other, -mirror, -quote ("the cells that differ from the head's, by name"): 8, 35, 14 and 8 copy and cut cells named "text/plain is read from the structure (D6)" no longer differ from the head (defect 1).
+- grid-node ("the grid's writes"): Image with the rule node-selected in TR and TRT (by code and for real) now lands after the rule (`T0w<hr /><img />`, `T0w<hr /><img />T2w`) where the snapshot holds the document's end (defect 3's rule). The same diff at `838aca9` and at this head (compared).
+- grid-points ("the grid's writes"): Bulleted list carets at QR@2, RQ@0, RR@0, RR@1, RR@2, RT@0 (defect 2's lift; P59d-1).
+
+The coordinating session decides whether to take the new snapshots; grid-points' cells need P59d-1's ruling first.
+
+Checks: `pnpm oxfmt --check`, `pnpm lint`, `pnpm exec tsc --noEmit -p apps/builder`, `pnpm check:runtime-upstream` all exit 0.
+
+## P records
+
+Builds: base = `<base>` `2a96a45` (SP/r1-base, the kit copied in for the probe and removed after, `timeout 600`); R1 = `838aca9` plus this branch's L1 commits (the toolbar's list code is unchanged from `1e7c0c4`); "R1 before the lift" = the same with defect 2's hunk of `1e7c0c4` (rich-text-field.tsx) reversed locally. Probe: SP/rich-text-zzt59d-probe.test.tsx (`recordEdit` with `typeAfter`, the letter typed after undo and redo). Stored values use the kit's `LI(middle)` = `<ul><li>Pw</li><li>middle</li><li>Nw</li></ul>`. Logs: SP/t59d-l2-base.log, SP/t59d-l2-branch.log, SP/t59d-l2-branch2.log, SP/t59d-l2-nolift.log, SP/t59d-l2-undo.log.
+
+## P59d-1. List off at a caret before an item's leading rule (L2)
+
+- Stored: `LI("<hr>T1w")` (RT), also `LI("<hr><blockquote><p>Q1w</p></blockquote>")` (RQ) and `LI("<hr><pre><code>C1w</code></pre>")` (RC).
+- Point: the element point before the rule, `element:listitem@0`, placed by `itemPoint(1, 0)`, by Pw's end then ArrowRight, by T1w's start then ArrowLeft twice (RT), and by emptying a leading `Xz` with two Backspaces (`LI("Xz<hr>T1w")`): the same caret before at both builds.
+- Action: Bulleted list.
+- Write (all builds, RT): `<p>Pw</p><hr /><p>T1w</p><p>Nw</p>`, one onChange; undo restores and redo equals at all builds.
+
+|                           | caret after      | letter after undo and redo                   |
+| ------------------------- | ---------------- | -------------------------------------------- |
+| base                      | `text:Pw@2`      | `<p>Pwk</p><hr /><p>T1w</p><p>Nw</p>`        |
+| R1 before the lift        | `text:Pw@2`      | `<p>Pwk</p><hr /><p>T1w</p><p>Nw</p>`        |
+| R1 (with defect 2's lift) | `element:root@1` | `<p>Pw</p><p>k</p><hr /><p>T1w</p><p>Nw</p>` |
+
+RQ and RC give the same three carets and letters with their own block after the rule.
+
+So the lift changes a result where R1 equalled the head. Candidates:
+
+1. The head's caret (`text:Pw@2`): 5.3's requirement names RT's element points and the list buttons among the commands that give the head's result; spec 5.7's list-off row names only TR item@2. Built by keeping the lift to a caret kept after its block (`after: true`).
+2. R1's caret before the rule at the root: toggleList's rule ("an element caret is kept by the node beside it"), the mirror of 5.7's TR row and of defect 2; the head's caret is in the item before, away from the edit.
+
+The 5.3 element-point grid (rich-text-line-grid-points.test.tsx, grids-d) pins the head's carets in its file snapshot and fails at `838aca9` already (defect 2's lift), with this diff for Bulleted list only (SP/t59d-snap-grid-points.diff): RT@0, RQ@0, RR@0 `text:Pw@2` -> `element:root@1` (this record); RR@1, between the two rules, `element:root@3` (a letter after both rules) -> `element:root@2` (a letter between them), a fourth cell of this record, the caret kept by the rule before; QR@2 and RR@2 `text:Pw@2` -> `element:root@3`, defect 2's class. The writes are unchanged.
+
+Not pinned. QR at `element:listitem@2` (`itemPoint(1, 2)`) is defect 2's class (base `text:Pw@2`, R1 `element:root@3`, a letter after the rule), already ruled by defect 2.
+
+## P59d-2. Undo after list off from an emptied last line after a quote or a code block (L2, found while pinning)
+
+- Stored: `LI("<blockquote><p>Q0w</p></blockquote>Xz")`, `LI("<pre><code>C0w</code></pre>Xz")`, `LI("T0w<blockquote><p>Q1w</p></blockquote>Xz")`.
+- Point: `Xz`'s end, Backspace twice: the emptied line keeps the caret (T24); the caret reads `element:listitem@1` (`@2` for the third).
+- Action: Bulleted list, then Ctrl+Z.
+- R1 (with and without the lift, the same): write `<p>Pw</p><blockquote><p>Q0w</p></blockquote><p>Nw</p>`, caret `element:root@2`, a letter after redo `<p>Pw</p><blockquote><p>Q0w</p></blockquote><p>k</p><p>Nw</p>`. Undo restores the HTML (`<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote></li><li>Nw</li></ul>`) but the caret comes back as `text:Q0w@3` (`text:C0w@3`, `text:Q1w@3`), not the emptied line's `element:listitem@1`: the kit's `undoRestores` is false. A second undo restores `Xz`'s `X` with the caret `text:X@1` as expected.
+- Base, same gesture: the two Backspaces leave the caret in the quote (`element:quote@1`; in the code block `text:C0w@3`), so list off keeps it there (letter `Q0wk`, `C0wk`) and undo restores the caret. At the base's own element point after the block (`itemPoint`, `element:listitem@1`/`@2`) the head's caret is `element:root@2`/`@3` and its letter lands after the block at the root, the value the L2 tests pin.
+- Candidates: (1) undo restores the caret to the emptied line, as D7 asks (the same caret); (2) the caret at the block's end is accepted for a caret line that the list command removed (`$caretOffEmptyLine`), the line being a caret holder (D7 leaves empty lines out of the state compared).
+- The L2 tests pin the write, the caret, redo and the letter for the quote and the code block, and leave undo's caret out with a comment naming this record.
+
+## P59d-3. T65: text/plain and text/html disagree on the lines in FS9 (and in 48 grid cells outside T65's list)
+
+- Definition (`htmlLines`, rich-text-line-test-kit.tsx): the html parsed; each block element that holds no block (p, h1 to h6, pre, blockquote, ul, ol, li, hr, div) is one line of its text, and so is each run of inline content standing beside a block or alone, in document order; a `<br>` ends a line inside it. The assertion: `text/plain.split("\n")` equals those lines.
+- Holds (asserted and committed): the six defect 1 tests (S2b, c1 S3, the four cut walk first stops including QR and Rlast backward), and 10 grid-clipboard cells: para-brOnly afterBreak <-> nextP B2w@1 (clip-d 18/19), and ruleEnd-TR / ruleEnd-QTR afterRule and emptyLineAfterRule <-> itemAfter Nw@1 (clip-x 3#7/3#8's class). No other R1 test exists for B stop 1 on RQR, QRR or d2 (the walks file records their stops, not their clipboard).
+- Disagrees: FS9 (rich-text-line-clipboard.test.tsx, "FS9: a copy by keys at a line's edge is the quote's shell", both stored values). Selection from Q0w's end to the start of the line holding the trailing `<br>` (Shift+Right). text/html `<blockquote><p></p></blockquote>` (one line, ""), text/plain "\n" (two lines). Both are pinned on main and by spec FS9's row. The assertion is not committed on these two tests (it fails there); the definition was not changed to make it pass.
+- Measured, not committed: with the assertion on every grid-clipboard cell, 225 pass and 48 fail (SP/t65-grid-all.json, SP/t65-grid-all.log). Three kinds, each a range with an end at a line's edge beside a block, or a rule:
+  1. text/plain holds a new line for a block boundary at an end where the html holds no element on that side: after an image that ends a line to the next quote's text (`imgLineEnd-QTIQ`, `imgLineEnd-TIQT`: html `<blockquote><p>Q</p></blockquote>`, plain "\nQ"); before an image or a break that starts a line, back to the text before (`imgLineStart-TQIT`, `brOnly-TQB`: plain "1w\n", "0w\nQ1w\n"); the FS9 group (`brOnly-QB-FS9`, real14, real18, real19: html the empty quote, plain "\n").
+  2. A rule: text/plain gives the rule's own "\n" and the block boundary beside it, so `<hr>` alone is plain "\n" (two lines) where the definition gives one; `rootRule` cells with the rule and a paragraph give one line more (`<hr><p>B</p>`: plain "\n\nB", html lines ["", "B"]); `rootRule | beforeRule -> prevP A0w@1` (`<p>0w</p>`, plain "0w\n").
+  3. Select all over T0w, a quote and a trailing `<br>` (real37), and over a paragraph with an image, a rule and a paragraph (real07).
+- Question: does T65's "lines of text/html" count a boundary at a range's end that the html does not hold (FS9's one new line, F7) and a rule as one line or as its "\n" plus the boundary? Candidates: (a) the definition above, under which FS9 and the 48 cells disagree and their text/plain would change; (b) a definition that counts F7's boundary at an end and a rule's own "\n", under which they may agree; (c) T65 holds only for the listed records, as committed.
