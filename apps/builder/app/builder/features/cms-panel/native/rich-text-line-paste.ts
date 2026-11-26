@@ -1,6 +1,6 @@
 // Paste routing into lines (D4, D14).
 import { $isCodeNode } from "@lexical/code";
-import { $isListItemNode } from "@lexical/list";
+import { $isListItemNode, $isListNode } from "@lexical/list";
 import { $findMatchingParent } from "@lexical/utils";
 import {
   $addUpdateTag,
@@ -26,9 +26,20 @@ import { $removeRangeWithBreak } from "./rich-text-line-removal";
 const isBlock = (node: LexicalNode) =>
   ($isElementNode(node) || $isDecoratorNode(node)) && node.isInline() === false;
 
+/**
+ * Whether a point is in a lined container. An item that holds only nested
+ * lists is lined for a point on itself (5.1), not for a point in an item
+ * of those lists, which is in that item's own text (D11: a range there
+ * keeps PR #116's tail join, Z13).
+ */
 const inLined = (point: PointType) =>
-  $findMatchingParent(point.getNode(), (node) => isLinedContainer(node)) !==
-  null;
+  $findMatchingParent(
+    point.getNode(),
+    (node) =>
+      isLinedContainer(node) &&
+      (node.is(point.getNode()) ||
+        node.getChildren().every($isListNode) === false)
+  ) !== null;
 
 const endsOf = (selection: RangeSelection) => ({
   start: selection.isBackward() ? selection.focus : selection.anchor,

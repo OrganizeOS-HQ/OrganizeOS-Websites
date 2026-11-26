@@ -118,7 +118,10 @@ const $paragraphToLine = (paragraph: ParagraphNode) => {
  * Of two lines that meet, the second takes a line break first when a
  * block between them had its text join the first line (D3: that text
  * keeps its visual line against the line after), unless a line break
- * already stands at that edge. Read from the state before (public API).
+ * already stands at that edge. The line break that is the whole of an
+ * empty line does not stand at an edge (D3, T23.1): the empty line keeps
+ * it and takes the join's break too. Read from the state before (public
+ * API).
  */
 const $linesNeedingBreak = (
   container: ElementNode,
@@ -136,7 +139,7 @@ const $linesNeedingBreak = (
       $isCmsLineNode(child) === false ||
       $isCmsLineNode(first) === false ||
       isLineBreak(first.getLastChild()) ||
-      isLineBreak(child.getFirstChild())
+      (isLineBreak(child.getFirstChild()) && child.getChildrenSize() > 1)
     ) {
       return;
     }

@@ -1080,6 +1080,35 @@ describe("Task 18: real empty blocks and whole items (check 4, 15.11)", () => {
       /^<ul><li>U0w<img [^>]*><\/li><\/ul>$/
     );
   });
+
+  // T59 defect 11 (probe clip-d real05): the selection holds U1w and not the
+  // image that leads the item, so it does not hold the whole item
+  const shiftHomeAfterImage = then(
+    at("U1w", 3),
+    keys("{Shift>}{Home}{/Shift}")
+  );
+
+  test("a range that holds an item's text but not the image leading it copies the text alone (D6; T59 defect 11)", async () => {
+    const onChange = await mount(LI(`${IMG}U1w`));
+    await shiftHomeAfterImage();
+    await copyKeeps(onChange)();
+    expect(shape(clipboard()[EDITOR_DATA])).toBe("'U1w'");
+    expect(bare(clipboard()["text/html"])).toBe("U1w");
+    expect(clipboard()["text/plain"]).toBe("U1w");
+  });
+
+  test("that range cut and pasted back gives the item back whole (D6; T59 defect 11)", async () => {
+    const onChange = await mount(LI(`${IMG}U1w`));
+    await shiftHomeAfterImage();
+    await cut();
+    await settle();
+    expect(plain(lastHtml(onChange))).toBe(
+      `<ul><li>Pw</li><li>${IMG}</li><li>Nw</li></ul>`
+    );
+    await pasteClip();
+    await settle();
+    expect(plain(lastHtml(onChange))).toBe(LI(`${IMG}U1w`));
+  });
 });
 
 describe("Task 18: 16.7, the shell rule holds in a list item and a quote", () => {
