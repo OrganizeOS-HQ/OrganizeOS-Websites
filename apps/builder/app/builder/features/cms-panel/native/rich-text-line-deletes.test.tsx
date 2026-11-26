@@ -1360,6 +1360,78 @@ describe("T58.3: P26-1's ordinary twins, the join of a link-only paragraph is it
   }
 });
 
+describe("T60.2: ordinary edits whose undo step the line handlers took", () => {
+  const link = (text: string) => `<a href="https://example.org/">${text}</a>`;
+  for (const [name, stored, place, action, write] of [
+    [
+      "Backspace into a link-only heading",
+      `<p>Pw</p><h2>${link("Lw")}</h2>`,
+      at("Lw", 0),
+      backspace,
+      "<p>Pw<a>Lw</a></p>",
+    ],
+    [
+      "Backspace into a quote's second paragraph",
+      `<blockquote><p>Q0w</p><p>${link("Lw")}</p></blockquote>`,
+      at("Lw", 0),
+      backspace,
+      "<blockquote><p>Q0w<a>Lw</a></p></blockquote>",
+    ],
+    [
+      "Backspace into a list item",
+      `<ul><li>Pw</li><li>${link("Lw")}</li></ul>`,
+      at("Lw", 0),
+      backspace,
+      "<ul><li>Pw<a>Lw</a></li></ul>",
+    ],
+    [
+      "Backspace at the second of two link-only paragraphs",
+      `<p>${link("Kw")}</p><p>${link("Lw")}</p>`,
+      at("Lw", 0),
+      backspace,
+      "<p><a>Kw</a><a>Lw</a></p>",
+    ],
+    [
+      "Delete at a link's end after text, before a block that starts with a link",
+      `<p>Pw${link("Lw")}</p><p>${link("Mw")}</p>`,
+      at("Lw", 2),
+      del,
+      "<p>Pw<a>Lw</a><a>Mw</a></p>",
+    ],
+    [
+      "Delete at a link-only paragraph's end, before a block that starts with a link",
+      `<p>${link("Lw")}</p><p>${link("Mw")}</p>`,
+      at("Lw", 2),
+      del,
+      "<p><a>Lw</a><a>Mw</a></p>",
+    ],
+    [
+      "control: a join that also moves plain text",
+      `<p>Pw</p><p>${link("Lw")}x</p>`,
+      at("Lw", 0),
+      backspace,
+      "<p>Pw<a>Lw</a>x</p>",
+    ],
+    [
+      "control: a join led by an image",
+      `<p>Pw</p><p>${IMG}Tw</p>`,
+      beside("cms-image", "before"),
+      backspace,
+      "<p>Pw<img />Tw</p>",
+    ],
+  ] as const) {
+    test(`T60.2: ${name}`, async () => {
+      await expectEdit({
+        stored,
+        place,
+        action,
+        write,
+        source: "T60.2, P26-1",
+      });
+    });
+  }
+});
+
 type FixtureCell = {
   write: string | null;
   calls: number;
