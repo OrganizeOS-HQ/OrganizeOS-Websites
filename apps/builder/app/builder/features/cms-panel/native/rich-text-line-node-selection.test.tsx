@@ -8,6 +8,7 @@ import { $getRoot, createEditor } from "lexical";
 import {
   at,
   backspace,
+  beside,
   caretKey,
   clipboard,
   copy,
@@ -538,6 +539,77 @@ describe("an image after a quote in a lined item (5.7, T28)", () => {
       });
     });
   });
+});
+
+/**
+ * T70.7 (measurement 20, hist-p PI-QIT): an image node-selected between a
+ * quote and the text after it in a lined item. D15 and T28.3: a letter and
+ * a paste land directly after the image, and the image stays.
+ */
+describe("T70.7: typed and pasted content lands after an image node-selected after a quote", () => {
+  const QIT = LI(`<blockquote><p>Q0w</p></blockquote>${IMG}T2w`);
+  const after = (inserted: string) =>
+    LI(`<blockquote><p>Q0w</p></blockquote><img />${inserted}T2w`);
+  const ways: Array<[how: string, select: Step]> = [
+    ["set by code", nodeSelect("cms-image")],
+    ["reached by ArrowRight", nodeAfter("Q0w")],
+  ];
+  const selected = (select: Step): Step =>
+    then(select, async () => {
+      expect(caretKey(), "the image node-selected before the key").toBe(
+        "node:cms-image"
+      );
+    });
+  for (const [how, select] of ways) {
+    // the caret one undo leaves (beside the image, equal at both builds)
+    // is not ruled: the write, the one onChange and the value one undo
+    // gives back are
+    test(`${how}: a letter`, async () => {
+      const onChange = await mount(QIT);
+      await selected(select)();
+      const valueBefore = exportRichTextHtml(editorOf()!);
+      onChange.mockClear();
+      await letter();
+      expect(onChange.mock.calls.length, "one onChange").toBe(1);
+      expect(short(lastHtml(onChange)), "write").toBe(after("k"));
+      await keys("{Control>}z{/Control}")();
+      expect(exportRichTextHtml(editorOf()!), "one undo").toBe(valueBefore);
+    });
+    test(`${how}: plain text`, async () => {
+      await expectEdit({
+        stored: QIT,
+        place: selected(select),
+        action: pasteText("Aq"),
+        write: after("Aq"),
+        source: "T70.7; T28.3",
+      });
+    });
+    test(`${how}: one paragraph`, async () => {
+      await expectEdit({
+        stored: QIT,
+        place: selected(select),
+        action: pasteHtml("<p>Aq</p>"),
+        write: after("Aq"),
+        source: "T70.7; T28.3",
+      });
+    });
+    test(`${how}: two paragraphs give the write of the same paste at the caret directly after the image`, async () => {
+      const p2 = pasteHtml("<p>Aq</p><p>Bq</p>", "Aq\nBq");
+      const atCaret = await recordEdit({
+        stored: QIT,
+        place: beside("cms-image", "after"),
+        action: p2,
+      });
+      expect(atCaret.write, "the paste at the caret writes").not.toBeNull();
+      await expectEdit({
+        stored: QIT,
+        place: selected(select),
+        action: p2,
+        write: atCaret.write,
+        source: "T70.7; T28.3",
+      });
+    });
+  }
 });
 
 describe("the input listeners follow the root (5.8)", () => {
