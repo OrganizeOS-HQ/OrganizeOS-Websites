@@ -902,32 +902,71 @@ const DRAG_IMAGE: ReadonlyArray<
   ],
 ];
 
+/**
+ * A real drag from `word`@`offset` that ends on the image's near half, a
+ * quarter of its width in from the edge the drag enters by (P25-1). The
+ * image's centre is no exact end: a move there, or on the far half, lands
+ * the page's focus on either side of the image in Chrome, from one run to
+ * the next with the same input; a move on the near half lands it on the
+ * near side every time.
+ */
+const dragOntoImage = async (word: string, offset: number) => {
+  const from = pointIn(word, offset);
+  const image = editable()!.querySelector("img")!;
+  const box = image.getBoundingClientRect();
+  const to = {
+    x: from.x < box.left ? box.left + box.width / 4 : box.right - box.width / 4,
+    y: box.top + box.height / 2,
+  };
+  await mouse("mousePressed", from.x, from.y);
+  await settle();
+  for (let step = 1; step <= 6; step += 1) {
+    await mouse(
+      "mouseMoved",
+      from.x + ((to.x - from.x) * step) / 6,
+      from.y + ((to.y - from.y) * step) / 6,
+      1
+    );
+    await new Promise((resolve) => setTimeout(resolve, 16));
+  }
+  await settle();
+  await mouse("mouseReleased", to.x, to.y);
+  await settle();
+  return image;
+};
+
 describe("a drag that ends on an image, then a letter", () => {
   test.each(DRAG_IMAGE)(
     "a drag that ends on an image, then a letter replaces what the range holds: %s",
     async (_name, stored, word, offset, write) => {
       const onChange = await mount(stored);
-      const from = pointIn(word, offset);
-      const box = editable()!.querySelector("img")!.getBoundingClientRect();
-      const to = { x: box.left + box.width / 2, y: box.top + box.height / 2 };
-      await mouse("mousePressed", from.x, from.y);
-      await settle();
-      for (let step = 1; step <= 6; step += 1) {
-        await mouse(
-          "mouseMoved",
-          from.x + ((to.x - from.x) * step) / 6,
-          from.y + ((to.y - from.y) * step) / 6,
-          1
-        );
-        await new Promise((resolve) => setTimeout(resolve, 16));
-      }
-      await settle();
-      await mouse("mouseReleased", to.x, to.y);
-      await settle();
+      const image = await dragOntoImage(word, offset);
+      expect(
+        window.getSelection()!.containsNode(image),
+        "the drag ends on the image's near side"
+      ).toBe(false);
       await letter();
       expect(written(onChange)).toBe(write);
     }
   );
+
+  test("P25-1: the drag ends on the image's near side, 3 runs of each leftward shape", async () => {
+    for (const [name, stored, word, offset, write] of DRAG_IMAGE) {
+      if (word !== "B1w") {
+        continue;
+      }
+      for (let run = 0; run < 3; run += 1) {
+        const onChange = await mount(stored);
+        const image = await dragOntoImage(word, offset);
+        expect(
+          window.getSelection()!.containsNode(image),
+          `${name}, run ${run}: the drag ends on the image's near side`
+        ).toBe(false);
+        await letter();
+        expect(written(onChange), `${name}, run ${run}`).toBe(write);
+      }
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
