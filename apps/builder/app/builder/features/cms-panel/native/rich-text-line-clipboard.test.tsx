@@ -27,6 +27,7 @@ import {
   copy,
   cut,
   expectEdit,
+  expectSameLines,
   type Held,
   keys,
   LI,
@@ -1532,6 +1533,7 @@ describe("T59 defect 1: text/plain keeps the head's new line after a start at a 
       "<p></p><ul><li><blockquote><p>bbq</p></blockquote></li></ul>"
     );
     expect(clipboard()["text/plain"]).toBe("\nbbq");
+    expectSameLines(clipboard());
   });
 
   test("c1 S3: Shift+Right twice from Q0w's end copies the head's two new lines", async () => {
@@ -1544,6 +1546,7 @@ describe("T59 defect 1: text/plain keeps the head's new line after a start at a 
       "<blockquote><p></p></blockquote><br />"
     );
     expect(clipboard()["text/plain"]).toBe("\n\n");
+    expectSameLines(clipboard());
   });
 
   const QR = LI("<blockquote><p>Q0w</p></blockquote><hr>");
@@ -1586,6 +1589,7 @@ describe("T59 defect 1: text/plain keeps the head's new line after a start at a 
       await cut();
       expect(plain(lastHtml(onChange)), "the cut joins two items").toBe(joined);
       expect(clipboard()["text/plain"]).toBe("\n");
+      expectSameLines(clipboard());
     });
   }
 });

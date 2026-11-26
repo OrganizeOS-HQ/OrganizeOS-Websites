@@ -824,6 +824,61 @@ export const cutByKey: Step = async () => {
 /** What the last copy or cut put on the clipboard. */
 export const clipboard = () => ({ ...(clip ?? {}) });
 
+const BLOCK_TAGS = new Set(
+  "P H1 H2 H3 H4 H5 H6 PRE BLOCKQUOTE UL OL LI HR DIV".split(" ")
+);
+
+/**
+ * The lines of a text/html (T65): the html parsed, each element that is a
+ * block and holds no block (p, a heading, pre, blockquote, a list, li, hr)
+ * is one line of its text, and so is each run of inline content standing
+ * beside a block or alone, in document order; inside a line, a `<br>` ends
+ * the line. The result is those lines, joined by new lines and split again.
+ */
+export const htmlLines = (html: string) => {
+  const body = new DOMParser().parseFromString(html, "text/html").body;
+  const isBlock = (node: Node) =>
+    node instanceof Element && BLOCK_TAGS.has(node.tagName);
+  const inline = (node: Node): string =>
+    node.nodeType === Node.TEXT_NODE
+      ? (node.textContent ?? "")
+      : node instanceof Element && node.tagName === "BR"
+        ? "\n"
+        : [...node.childNodes].map(inline).join("");
+  const lines = (parent: Node): string[] => {
+    const children = [...parent.childNodes];
+    if (children.some(isBlock) === false) {
+      return [inline(parent)];
+    }
+    const out: string[] = [];
+    let run: Node[] = [];
+    const flush = () => {
+      if (run.length > 0) {
+        out.push(run.map(inline).join(""));
+        run = [];
+      }
+    };
+    for (const child of children) {
+      if (isBlock(child)) {
+        flush();
+        out.push(...lines(child));
+      } else {
+        run.push(child);
+      }
+    }
+    flush();
+    return out;
+  };
+  return lines(body).join("\n").split("\n");
+};
+
+/** T65: text/plain has exactly the lines of the same clipboard's text/html. */
+export const expectSameLines = (data: Record<string, string>) =>
+  expect(
+    (data["text/plain"] ?? "").split("\n"),
+    `T65: text/plain has the lines of text/html ${data["text/html"]}`
+  ).toEqual(htmlLines(data["text/html"] ?? ""));
+
 export const pasteClip: Step = () => pasteData(transfer(clipboard()));
 
 /**

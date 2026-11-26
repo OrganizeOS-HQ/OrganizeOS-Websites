@@ -49,6 +49,7 @@ import {
   copy,
   expectEdit,
   forceOrder,
+  htmlLines,
   hold,
   imageButton,
   itemEnd,
@@ -552,6 +553,27 @@ describe("the line tests' kit", () => {
     expect(lastHtml(onChange)).not.toContain("<img");
     expect(plain(lastHtml(onChange))).toBe("<p>Aw</p>");
   });
+});
+
+test("htmlLines: a block that holds no block, an inline run and <br> (T65)", () => {
+  expect(
+    htmlLines("<p></p><ul><li><blockquote><p>bbq</p></blockquote></li></ul>")
+  ).toEqual(["", "bbq"]);
+  expect(htmlLines("<blockquote><p></p></blockquote><br>")).toEqual([
+    "",
+    "",
+    "",
+  ]);
+  expect(
+    htmlLines("<ul><li>T0w<blockquote><p>Q1w</p></blockquote></li></ul>")
+  ).toEqual(["T0w", "Q1w"]);
+  expect(htmlLines("<p>A0w</p><hr><p>B<br>w</p>")).toEqual([
+    "A0w",
+    "",
+    "B",
+    "w",
+  ]);
+  expect(htmlLines("<span>Aw</span>")).toEqual(["Aw"]);
 });
 
 describe("the net (kit-branch)", () => {

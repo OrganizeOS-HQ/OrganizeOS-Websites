@@ -31,6 +31,7 @@ import {
   clipboard,
   copy,
   cut,
+  expectSameLines,
   type Held,
   mount,
 } from "./rich-text-line-test-kit";
@@ -312,6 +313,24 @@ const NO_RANGE = [
   'real11 imgLineStart-TQIT | {"k":"shiftclickImg","click":["T0w",1],"img":0,"side":"left"}',
 ];
 
+/**
+ * T65: the records whose text/plain has fewer new lines than the base's
+ * (the base's copy holds a node the range does not hold): text/plain has
+ * exactly the lines of the same copy's text/html.
+ */
+const T65_CELLS = new Set(
+  [
+    ["para-brOnly", "afterBreak", "nextP B2w@1"],
+    ["ruleEnd-TR", "afterRule", "itemAfter Nw@1"],
+    ["ruleEnd-TR", "emptyLineAfterRule", "itemAfter Nw@1"],
+    ["ruleEnd-QTR", "afterRule", "itemAfter Nw@1"],
+    ["ruleEnd-QTR", "emptyLineAfterRule", "itemAfter Nw@1"],
+  ].flatMap(([group, end, other]) => [
+    `${group} | ${end} -> ${other}`,
+    `${group} | ${other} -> ${end}`,
+  ])
+);
+
 const runCell = async (cell: Case) => {
   const errors: string[] = [];
   vi.spyOn(console, "error").mockImplementation((...args) => {
@@ -413,6 +432,9 @@ const runCell = async (cell: Case) => {
     (copied["text/plain"] ?? "").replace(/\n/g, ""),
     "text/plain: H's text"
   ).toBe(h.text);
+  if (T65_CELLS.has(cell.id)) {
+    expectSameLines(copied);
+  }
 
   // 16.6: an element-point end adds nothing to the clipboard: no empty
   // element the range does not enter, in text/html and in the editor data
@@ -431,6 +453,11 @@ const runCell = async (cell: Case) => {
   expect(after.images, "images").toBe(p.images + s.images);
   expect(after.rules, "rules").toBe(p.rules + s.rules);
 };
+
+test("T65's cells are oracle ranges", () => {
+  const ids = new Set([...LINED_CASES, ...UNLINED_CASES].map(({ id }) => id));
+  expect([...T65_CELLS].filter((id) => ids.has(id) === false)).toEqual([]);
+});
 
 describe("the one writer over the oracle ranges: lined (219)", () => {
   for (const cell of LINED_CASES) {

@@ -4,7 +4,13 @@
 import { describe, expect, test, vi } from "vitest";
 import { act } from "react-dom/test-utils";
 import { userEvent } from "@vitest/browser/context";
-import { $getSelection, $isNodeSelection, $isRangeSelection } from "lexical";
+import {
+  $copyNode,
+  $getNodeByKey,
+  $getSelection,
+  $isNodeSelection,
+  $isRangeSelection,
+} from "lexical";
 import {
   at,
   backspace,
@@ -32,6 +38,7 @@ import {
   range,
   realClicks,
   recordEdit,
+  setUpload,
   shiftPress,
   short,
   type Step,
@@ -40,6 +47,7 @@ import {
   W,
 } from "./rich-text-line-test-kit";
 import {
+  byLabel,
   editable,
   editorOf,
   lastHtml,
@@ -841,6 +849,50 @@ describe("T59 defect 2: list off at a click after an item's final rule (5.7, V16
   }
 });
 
+describe("T59 review L2: list off at a caret after an item's ending quote or code block (5.7, D1)", () => {
+  // the item's last line emptied by Backspace keeps the caret (T24);
+  // list off then starts from the element caret after the block, which
+  // the head at that same point leaves after the block at the root
+  const cells: Array<[string, string, string, string, string]> = [
+    [
+      "a quote",
+      LI(`${QUOTE("Q0w")}Xz`),
+      "<p>Pw</p><blockquote><p>Q0w</p></blockquote><p>Nw</p>",
+      "element:root@2",
+      "<p>Pw</p><blockquote><p>Q0w</p></blockquote><p>k</p><p>Nw</p>",
+    ],
+    [
+      "a code block",
+      LI("<pre><code>C0w</code></pre>Xz"),
+      "<p>Pw</p><pre><code>C0w</code></pre><p>Nw</p>",
+      "element:root@2",
+      "<p>Pw</p><pre><code>C0w</code></pre><p>k</p><p>Nw</p>",
+    ],
+  ];
+  for (const [name, stored, write, caret, typed] of cells) {
+    test(`after ${name}: Bulleted list leaves the caret after it at the root`, async () => {
+      // undo's caret here is not ruled (P record P59d-2): not asserted
+      const record = await recordEdit(
+        {
+          stored,
+          place: then(at("Xz", 2), backspace, backspace),
+          action: button("Bulleted list"),
+        },
+        { typeAfter: true }
+      );
+      expect(record.caretBefore, "the caret after the block").toBe(
+        "element:listitem@1"
+      );
+      expect(record.calls, "calls").toBe(1);
+      expect(record.write, "write").toBe(write);
+      expect(record.caret, "caret").toBe(caret);
+      expect(record.redoEquals, "redo equals the write").toBe(true);
+      expect(record.typed, "typed after redo").toBe(typed);
+      expect(record.errors, "console errors").toEqual([]);
+    });
+  }
+});
+
 describe("T59 defect 3: Image with the rule node-selected lands where a letter does (D15, D1)", () => {
   // Pw's end, then five ArrowRight presses: the rule node-selected
   const toRule: Step = async () => {
@@ -876,6 +928,95 @@ describe("T59 defect 3: Image with the rule node-selected lands where a letter d
       });
     });
   }
+});
+
+describe("T59 review L1: Image beside a node-selected rule reads the rule's place when the upload finishes (D15, D1)", () => {
+  const toRule: Step = async () => {
+    await at("Pw", 2)();
+    for (let press = 0; press < 5; press += 1) {
+      await keys("{ArrowRight}")();
+    }
+    expect(caretKey(), "the rule node-selected").toBe("node:horizontalrule");
+  };
+  // an upload held until the test releases it
+  const holdUpload = () => {
+    let release = () => {};
+    let begin = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const begun = new Promise<void>((resolve) => {
+      begin = resolve;
+    });
+    setUpload(async () => {
+      begin();
+      await gate;
+      return { url: "https://cdn.example.org/x.png", path: "org/x.png" };
+    });
+    // resolves once Image's own act scope, in which the upload starts, has
+    // closed and rendered the button busy, so the test's next step does not
+    // overlap that scope
+    const started = begun.then(async () => {
+      while (
+        (byLabel("Image") as HTMLButtonElement | null)?.disabled !== true
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+    });
+    return { started, release };
+  };
+
+  test("QR: Backspace removes the rule before the upload finishes; the image takes the end-of-document fallback, with no throw", async () => {
+    const errors = vi.spyOn(console, "error");
+    const onChange = await mount(LI(`${QUOTE("Q0w")}<hr>`));
+    await toRule();
+    const upload = holdUpload();
+    const inserted = imageButton();
+    await upload.started;
+    await backspace();
+    const removed = lastHtml(onChange);
+    expect(removed, "Backspace removed the rule").not.toContain("<hr");
+    upload.release();
+    await inserted;
+    expect(short(lastHtml(onChange)), "the place is gone (D1)").toBe(
+      `${short(removed)}<p><img /></p>`
+    );
+    // the field reports a failed update as an Error to console.error
+    expect(
+      errors.mock.calls.filter((args) =>
+        args.some((arg) => arg instanceof Error)
+      ),
+      "no failed update"
+    ).toEqual([]);
+    errors.mockRestore();
+  });
+
+  test("QR: a rule inserted before the selected rule during the upload; the image still lands after the selected rule", async () => {
+    const onChange = await mount(LI(`${QUOTE("Q0w")}<hr>`));
+    await toRule();
+    const editor = editorOf()!;
+    const selected = editor
+      .getEditorState()
+      .read(() => $getSelection()!.getNodes()[0].getKey());
+    const upload = holdUpload();
+    const inserted = imageButton();
+    await upload.started;
+    await act(async () => {
+      editor.update(() => {
+        const rule = $getNodeByKey(selected)!;
+        rule.insertBefore($copyNode(rule));
+      });
+    });
+    await settle();
+    expect(short(lastHtml(onChange)), "the edit before the rule").toBe(
+      W(`<li>${QUOTE("Q0w")}<hr /><hr /></li>`)
+    );
+    upload.release();
+    await inserted;
+    expect(short(lastHtml(onChange)), "after the selected rule (D15)").toBe(
+      W(`<li>${QUOTE("Q0w")}<hr /><hr /><img /></li>`)
+    );
+  });
 });
 
 describe("Image at the quote points", () => {
