@@ -422,6 +422,29 @@ describe("T45.4: Quote at the depth limit", () => {
     });
   }
 
+  // T47.4: a range with one end's line at the depth limit is refused whole
+  test("Quote over a range from a line that could hold a quote to a line at the depth limit writes nothing", async () => {
+    const alone = await recordEdit({
+      stored: D7_TR,
+      place: at("A6w", 1),
+      action: chooseBlockType("Quote"),
+    });
+    expect(alone.write ?? "", "Quote at A6w alone makes a quote").toContain(
+      "<blockquote>"
+    );
+    await expectEdit({
+      stored: D7_TR,
+      place: range("A6w", 1, "T0w", 1),
+      action: async () => {
+        const depth = undoDepth();
+        await chooseBlockType("Quote")();
+        expect(undoDepth(), "no undo step").toEqual(depth);
+      },
+      write: null,
+      source: "T47.4; T45.4",
+    });
+  });
+
   test("control: Heading 2 at the depth limit's empty caret line still writes its empty heading (d7 TR el2)", async () => {
     const record = await recordEdit({
       stored: D7_TR,
