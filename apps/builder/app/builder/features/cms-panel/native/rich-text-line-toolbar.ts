@@ -77,38 +77,52 @@ const $holdsInlineFirst = (node: LexicalNode) => {
   );
 };
 
+/** The lined quote a point stands in: its line's quote, or the quote it is an element point on. */
+const $quoteOfPoint = (point: PointType) => {
+  const line = lineOf(point);
+  const node = line === null ? point.getNode() : line.getParent();
+  return $isQuoteNode(node) ? node : null;
+};
+
 /**
- * T46.1 (D2, D19): Paragraph at a text caret on a line of a quote whose
- * lines give way first finds no block to act on where the head finds none
- * (the quote starts with a block, as `<blockquote><h3>H0w</h3>X1w
- * </blockquote>` at X1w@0, and nothing around it holds inline content
- * first): it changes nothing, decided before any node is touched. True
- * when it is refused.
+ * T46.1, T47.6 (D2, D19): Paragraph in a quote whose lines give way first
+ * finds no block to act on where the head finds none (the quote starts
+ * with a block, as `<blockquote><h3>H0w</h3>X1w</blockquote>`, nothing
+ * around it holds inline content first, and the selection holds no block
+ * of its own): it changes nothing, decided before any node is touched.
+ * Both ends stand in such a quote: at a caret or over a range in its
+ * lines, or at an element point on it (an empty line after the heading).
+ * True when it is refused.
  */
 export const $refuseParagraphInQuote = (): boolean => {
   const selection = $getSelection();
-  if (
-    $isRangeSelection(selection) === false ||
-    selection.isCollapsed() === false ||
-    selection.anchor.type !== "text"
-  ) {
+  if ($isRangeSelection(selection) === false) {
     return false;
   }
-  const line = lineOf(selection.anchor);
-  const quote = line?.getParent() ?? null;
-  if ($isQuoteNode(quote) === false) {
+  const quotes = [selection.anchor, selection.focus].map($quoteOfPoint);
+  if (quotes.some((quote) => quote === null)) {
     return false;
   }
-  for (
-    let node: LexicalNode | null = quote;
-    node !== null;
-    node = node.getParent()
-  ) {
-    if ($holdsInlineFirst(node)) {
-      return false;
+  for (const quote of quotes) {
+    for (
+      let node: LexicalNode | null = quote;
+      node !== null;
+      node = node.getParent()
+    ) {
+      if ($holdsInlineFirst(node)) {
+        return false;
+      }
     }
   }
-  return true;
+  // a block the selection reaches acts at the head (a heading in the
+  // range becomes a paragraph); the quote's own lines give way first
+  return selection
+    .getNodes()
+    .every((node) =>
+      $isCmsLineNode(node)
+        ? $isQuoteNode(node.getParent())
+        : $holdsInlineFirst(node) === false
+    );
 };
 
 /**

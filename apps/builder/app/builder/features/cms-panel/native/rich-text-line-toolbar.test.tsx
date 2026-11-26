@@ -495,6 +495,62 @@ describe("Paragraph in a lined quote after a heading", () => {
     });
   }
 
+  // T47.6 (M-g3): the inputs the first refusal left out; the head writes
+  // nothing at each, in an item and at the root
+  const MORE: ReadonlyArray<{
+    name: string;
+    stored: string;
+    place: Step;
+  }> = [
+    {
+      name: "a range inside X1w, in an item",
+      stored: LI("<blockquote><h3>H0w</h3>X1w</blockquote>T2w"),
+      place: range("X1w", 1, "X1w", 2),
+    },
+    {
+      name: "a range inside X1w, at the root",
+      stored: "<blockquote><h3>H0w</h3>X1w</blockquote>",
+      place: range("X1w", 1, "X1w", 2),
+    },
+    {
+      name: "the empty line after the heading, in an item",
+      stored: LI("<blockquote><h3>H0w</h3><br>X1w</blockquote>T2w"),
+      place: containerPoint("X1w", 1),
+    },
+    {
+      name: "the empty line after the heading, at the root",
+      stored: "<blockquote><h3>H0w</h3><br>X1w</blockquote>",
+      place: containerPoint("X1w", 1),
+    },
+  ];
+  for (const cell of MORE) {
+    test(`Paragraph in a lined quote after a heading changes nothing: ${cell.name}`, async () => {
+      const record = await recordEdit({
+        stored: cell.stored,
+        place: cell.place,
+        action: async () => {
+          const depth = undoDepth();
+          await chooseBlockType("Paragraph")();
+          expect(undoDepth(), "no undo step").toEqual(depth);
+        },
+      });
+      expect(record.calls, "no onChange").toBe(0);
+      expect(record.caret, "the caret").toBe(record.caretBefore);
+    });
+  }
+
+  // T47.6 (M-g3): a range from the heading into X1w changes the heading,
+  // in the item as at the root (equal at both builds)
+  test("control: Paragraph over a range from the heading into X1w makes the heading a paragraph", async () => {
+    await expectEdit({
+      stored: LI("<blockquote><h3>H0w</h3>X1w</blockquote>T2w"),
+      place: range("H0w", 1, "X1w", 1),
+      action: chooseBlockType("Paragraph"),
+      write: W("<li><blockquote><p>H0w</p>X1w</blockquote>T2w</li>"),
+      source: "T47.6 (M-g3): <base>'s root write with the item around it",
+    });
+  });
+
   test("control: Paragraph in a quote that starts with text still unwraps it", async () => {
     await expectEdit({
       stored: "<blockquote>X1w<p>X2w</p></blockquote>",
