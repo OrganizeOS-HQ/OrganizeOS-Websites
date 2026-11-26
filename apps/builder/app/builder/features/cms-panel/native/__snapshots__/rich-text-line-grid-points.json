@@ -139,7 +139,7 @@
   },
   "QR@0 ime": {
     "write": "<ul><li>Pw</li><li><blockquote><p>aQ0w</p></blockquote><hr /></li><li>Nw</li></ul>",
-    "calls": 2,
+    "calls": 1,
     "caret": "text:aQ0w@1",
     "typed": "<ul><li>Pw</li><li><blockquote><p>akQ0w</p></blockquote><hr /></li><li>Nw</li></ul>"
   },
@@ -320,7 +320,7 @@
   },
   "QR@1 ime": {
     "write": "<ul><li>Pw</li><li><blockquote><p>Q0wa</p></blockquote><hr /></li><li>Nw</li></ul>",
-    "calls": 2,
+    "calls": 1,
     "caret": "text:Q0wa@4",
     "typed": "<ul><li>Pw</li><li><blockquote><p>Q0wak</p></blockquote><hr /></li><li>Nw</li></ul>"
   },
@@ -682,7 +682,7 @@
   },
   "QRQ@0 ime": {
     "write": "<ul><li>Pw</li><li><blockquote><p>aQ0w</p></blockquote><hr /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
-    "calls": 2,
+    "calls": 1,
     "caret": "text:aQ0w@1",
     "typed": "<ul><li>Pw</li><li><blockquote><p>akQ0w</p></blockquote><hr /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>"
   },
@@ -863,7 +863,7 @@
   },
   "QRQ@1 ime": {
     "write": "<ul><li>Pw</li><li><blockquote><p>Q0wa</p></blockquote><hr /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
-    "calls": 2,
+    "calls": 1,
     "caret": "text:Q0wa@4",
     "typed": "<ul><li>Pw</li><li><blockquote><p>Q0wak</p></blockquote><hr /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>"
   },
@@ -1044,7 +1044,7 @@
   },
   "QRQ@2 ime": {
     "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr /><blockquote><p>aQ2w</p></blockquote></li><li>Nw</li></ul>",
-    "calls": 2,
+    "calls": 1,
     "caret": "text:aQ2w@1",
     "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr /><blockquote><p>akQ2w</p></blockquote></li><li>Nw</li></ul>"
   },
@@ -1225,7 +1225,7 @@
   },
   "QRQ@3 ime": {
     "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr /><blockquote><p>Q2wa</p></blockquote></li><li>Nw</li></ul>",
-    "calls": 2,
+    "calls": 1,
     "caret": "text:Q2wa@4",
     "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr /><blockquote><p>Q2wak</p></blockquote></li><li>Nw</li></ul>"
   },
@@ -1587,7 +1587,7 @@
   },
   "RQ@1 ime": {
     "write": "<ul><li>Pw</li><li><hr /><blockquote><p>aQ1w</p></blockquote></li><li>Nw</li></ul>",
-    "calls": 2,
+    "calls": 1,
     "caret": "text:aQ1w@1",
     "typed": "<ul><li>Pw</li><li><hr /><blockquote><p>akQ1w</p></blockquote></li><li>Nw</li></ul>"
   },
@@ -1768,7 +1768,7 @@
   },
   "RQ@2 ime": {
     "write": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1wa</p></blockquote></li><li>Nw</li></ul>",
-    "calls": 2,
+    "calls": 1,
     "caret": "text:Q1wa@4",
     "typed": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1wak</p></blockquote></li><li>Nw</li></ul>"
   },
@@ -2673,7 +2673,7 @@
   },
   "RT@1 ime": {
     "write": "<ul><li>Pw</li><li><hr />aT1w</li><li>Nw</li></ul>",
-    "calls": 2,
+    "calls": 1,
     "caret": "text:aT1w@1",
     "typed": "<ul><li>Pw</li><li><hr />akT1w</li><li>Nw</li></ul>"
   },
@@ -2854,7 +2854,7 @@
   },
   "RT@2 ime": {
     "write": "<ul><li>Pw</li><li><hr />T1wa</li><li>Nw</li></ul>",
-    "calls": 2,
+    "calls": 1,
     "caret": "text:T1wa@4",
     "typed": "<ul><li>Pw</li><li><hr />T1wak</li><li>Nw</li></ul>"
   },
@@ -3035,7 +3035,7 @@
   },
   "TR@0 ime": {
     "write": "<ul><li>Pw</li><li>aT0w<hr /></li><li>Nw</li></ul>",
-    "calls": 2,
+    "calls": 1,
     "caret": "text:aT0w@1",
     "typed": "<ul><li>Pw</li><li>akT0w<hr /></li><li>Nw</li></ul>"
   },
@@ -3216,7 +3216,7 @@
   },
   "TR@1 ime": {
     "write": "<ul><li>Pw</li><li>T0wa<hr /></li><li>Nw</li></ul>",
-    "calls": 2,
+    "calls": 1,
     "caret": "text:T0wa@4",
     "typed": "<ul><li>Pw</li><li>T0wak<hr /></li><li>Nw</li></ul>"
   },
@@ -3578,7 +3578,7 @@
   },
   "TRT@0 ime": {
     "write": "<ul><li>Pw</li><li>aT0w<hr />T2w</li><li>Nw</li></ul>",
-    "calls": 2,
+    "calls": 1,
     "caret": "text:aT0w@1",
     "typed": "<ul><li>Pw</li><li>akT0w<hr />T2w</li><li>Nw</li></ul>"
   },
@@ -3759,7 +3759,7 @@
   },
   "TRT@1 ime": {
     "write": "<ul><li>Pw</li><li>T0wa<hr />T2w</li><li>Nw</li></ul>",
-    "calls": 2,
+    "calls": 1,
     "caret": "text:T0wa@4",
     "typed": "<ul><li>Pw</li><li>T0wak<hr />T2w</li><li>Nw</li></ul>"
   },
@@ -3940,7 +3940,7 @@
   },
   "TRT@2 ime": {
     "write": "<ul><li>Pw</li><li>T0w<hr />aT2w</li><li>Nw</li></ul>",
-    "calls": 2,
+    "calls": 1,
     "caret": "text:aT2w@1",
     "typed": "<ul><li>Pw</li><li>T0w<hr />akT2w</li><li>Nw</li></ul>"
   },
@@ -4121,7 +4121,7 @@
   },
   "TRT@3 ime": {
     "write": "<ul><li>Pw</li><li>T0w<hr />T2wa</li><li>Nw</li></ul>",
-    "calls": 2,
+    "calls": 1,
     "caret": "text:T2wa@4",
     "typed": "<ul><li>Pw</li><li>T0w<hr />T2wak</li><li>Nw</li></ul>"
   },

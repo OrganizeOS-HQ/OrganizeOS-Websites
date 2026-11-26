@@ -139,7 +139,7 @@
   },
   "AQ el1 ime": {
     "write": "<ul><li>Pw</li><li><a>Awa</a><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
-    "calls": 2,
+    "calls": 1,
     "caret": "text:Awa@3",
     "typed": "<ul><li>Pw</li><li><a>Awa</a>k<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
   },
@@ -863,7 +863,7 @@
   },
   "QT@1 ime": {
     "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>aT1w</li><li>Nw</li></ul>",
-    "calls": 2,
+    "calls": 1,
     "caret": "text:aT1w@1",
     "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>akT1w</li><li>Nw</li></ul>"
   },
@@ -1044,7 +1044,7 @@
   },
   "TC@1 ime": {
     "write": "<ul><li>Pw</li><li>T0wa<pre><code>C1w</code></pre></li><li>Nw</li></ul>",
-    "calls": 2,
+    "calls": 1,
     "caret": "text:T0wa@4",
     "typed": "<ul><li>Pw</li><li>T0wak<pre><code>C1w</code></pre></li><li>Nw</li></ul>"
   },
@@ -1225,7 +1225,7 @@
   },
   "TH@1 ime": {
     "write": "<ul><li>Pw</li><li>T0wa<h3>H1w</h3></li><li>Nw</li></ul>",
-    "calls": 2,
+    "calls": 1,
     "caret": "text:T0wa@4",
     "typed": "<ul><li>Pw</li><li>T0wak<h3>H1w</h3></li><li>Nw</li></ul>"
   },
@@ -1406,7 +1406,7 @@
   },
   "TQ@1 ime": {
     "write": "<ul><li>Pw</li><li>T0wa<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
-    "calls": 2,
+    "calls": 1,
     "caret": "text:T0wa@4",
     "typed": "<ul><li>Pw</li><li>T0wak<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
   },
@@ -1587,7 +1587,7 @@
   },
   "TQT el1 ime": {
     "write": "<ul><li>Pw</li><li>T0wa<blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>",
-    "calls": 2,
+    "calls": 1,
     "caret": "text:T0wa@4",
     "typed": "<ul><li>Pw</li><li>T0wak<blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>"
   },
@@ -1768,7 +1768,7 @@
   },
   "TQT el2 ime": {
     "write": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>aT2w</li><li>Nw</li></ul>",
-    "calls": 2,
+    "calls": 1,
     "caret": "text:aT2w@1",
     "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>akT2w</li><li>Nw</li></ul>"
   },
@@ -1949,7 +1949,7 @@
   },
   "root el1 ime": {
     "write": "<blockquote>X1wa<p>X2w</p></blockquote>",
-    "calls": 2,
+    "calls": 1,
     "caret": "text:X1wa@4",
     "typed": "<blockquote>X1wak<p>X2w</p></blockquote>"
   },

@@ -151,7 +151,7 @@
   },
   "AR Lw@1 ime": {
     "write": "<ul><li>Pw</li><li><a>Law</a><hr /></li><li>Nw</li></ul>",
-    "calls": 2,
+    "calls": 1,
     "caret": "text:Law@2",
     "typed": "<ul><li>Pw</li><li><a>Lakw</a><hr /></li><li>Nw</li></ul>"
   },
@@ -535,7 +535,7 @@
   },
   "HQ in item H0w@1 ime": {
     "write": "<ul><li>Pw</li><li><blockquote><h3>Ha0w</h3>X1w</blockquote>T2w</li><li>Nw</li></ul>",
-    "calls": 2,
+    "calls": 1,
     "caret": "text:Ha0w@2",
     "typed": "<ul><li>Pw</li><li><blockquote><h3>Hak0w</h3>X1w</blockquote>T2w</li><li>Nw</li></ul>"
   },
@@ -727,7 +727,7 @@
   },
   "HQ in item el1 ime": {
     "write": "<ul><li>Pw</li><li><blockquote><h3>H0w</h3>aX1w</blockquote>T2w</li><li>Nw</li></ul>",
-    "calls": 2,
+    "calls": 1,
     "caret": "text:aX1w@1",
     "typed": "<ul><li>Pw</li><li><blockquote><h3>H0w</h3>akX1w</blockquote>T2w</li><li>Nw</li></ul>"
   },
@@ -1303,7 +1303,7 @@
   },
   "TQT in item X1w@1 ime": {
     "write": "<ul><li>Pw</li><li>T0w<blockquote>Xa1w<hr /></blockquote>T2w</li><li>Nw</li></ul>",
-    "calls": 2,
+    "calls": 1,
     "caret": "text:Xa1w@2",
     "typed": "<ul><li>Pw</li><li>T0w<blockquote>Xak1w<hr /></blockquote>T2w</li><li>Nw</li></ul>"
   },
@@ -1495,7 +1495,7 @@
   },
   "TQT in item el1 ime": {
     "write": "<ul><li>Pw</li><li>T0w<blockquote>X1wa<hr /></blockquote>T2w</li><li>Nw</li></ul>",
-    "calls": 2,
+    "calls": 1,
     "caret": "text:X1wa@4",
     "typed": "<ul><li>Pw</li><li>T0w<blockquote>X1wak<hr /></blockquote>T2w</li><li>Nw</li></ul>"
   },
@@ -1687,7 +1687,7 @@
   },
   "TRT in quote T1w@1 ime": {
     "write": "<blockquote>X0w<ul><li>Ta1w<hr />T2w</li></ul>X3w</blockquote>",
-    "calls": 2,
+    "calls": 1,
     "caret": "text:Ta1w@2",
     "typed": "<blockquote>X0w<ul><li>Tak1w<hr />T2w</li></ul>X3w</blockquote>"
   },
@@ -1879,7 +1879,7 @@
   },
   "TRT in quote el1 ime": {
     "write": "<blockquote>X0w<ul><li>T1wa<hr />T2w</li></ul>X3w</blockquote>",
-    "calls": 2,
+    "calls": 1,
     "caret": "text:T1wa@4",
     "typed": "<blockquote>X0w<ul><li>T1wak<hr />T2w</li></ul>X3w</blockquote>"
   },
@@ -2071,7 +2071,7 @@
   },
   "d2 TR T0w@1 ime": {
     "write": "<ul><li>Aw<ul><li>Pw</li><li>Ta0w<hr /></li><li>Nw</li></ul></li></ul>",
-    "calls": 2,
+    "calls": 1,
     "caret": "text:Ta0w@2",
     "typed": "<ul><li>Aw<ul><li>Pw</li><li>Tak0w<hr /></li><li>Nw</li></ul></li></ul>"
   },
@@ -2455,7 +2455,7 @@
   },
   "d6 TQT T0w@1 ime": {
     "write": "<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>Ta0w<blockquote><p>Q1w</p></blockquote>T2w</li></ul></li></ul></li></ul></li></ul></li></ul></li></ul>",
-    "calls": 2,
+    "calls": 1,
     "caret": "text:Ta0w@2",
     "typed": "<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>Tak0w<blockquote><p>Q1w</p></blockquote>T2w</li></ul></li></ul></li></ul></li></ul></li></ul></li></ul>"
   },
@@ -2647,7 +2647,7 @@
   },
   "d6 TQT el1 ime": {
     "write": "<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>T0wa<blockquote><p>Q1w</p></blockquote>T2w</li></ul></li></ul></li></ul></li></ul></li></ul></li></ul>",
-    "calls": 2,
+    "calls": 1,
     "caret": "text:T0wa@4",
     "typed": "<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>T0wak<blockquote><p>Q1w</p></blockquote>T2w</li></ul></li></ul></li></ul></li></ul></li></ul></li></ul>"
   },
@@ -2839,7 +2839,7 @@
   },
   "d7 TR T0w@1 ime": {
     "write": "<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>A6w<ul><li>Ta0w<hr /></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul>",
-    "calls": 2,
+    "calls": 1,
     "caret": "text:Ta0w@2",
     "typed": "<ul><li>A1w<ul><li>A2w<ul><li>A3w<ul><li>A4w<ul><li>A5w<ul><li>A6w<ul><li>Tak0w<hr /></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul>"
   },
@@ -3223,7 +3223,7 @@
   },
   "ol TR T0w@1 ime": {
     "write": "<ol><li>Pw</li><li>Ta0w<hr /></li><li>Nw</li></ol>",
-    "calls": 2,
+    "calls": 1,
     "caret": "text:Ta0w@2",
     "typed": "<ol><li>Pw</li><li>Tak0w<hr /></li><li>Nw</li></ol>"
   },

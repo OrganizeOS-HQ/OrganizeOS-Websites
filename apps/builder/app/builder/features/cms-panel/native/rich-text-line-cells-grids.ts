@@ -352,18 +352,18 @@ const runCell = async (
     expect(write, "D18 step 1: the write in the line").toBe(cell.write);
   }
   if (cell.name.endsWith(" ime")) {
-    // T46.3: no value handed out holds the composition-start character; one
-    // value (the composed one) from an element point or an empty caret line,
-    // two (the value as it stood, then the composed one) from a text caret
+    // T46.3: no value handed out holds the composition-start character;
+    // T67.2: a composition hands out its composed values and nothing else,
+    // from a text caret too (its start's commit, which leaves the document
+    // as it was, is not handed out): one call for the one composed value
     expect(
       record.values.filter((value) => value.includes("\u200b")),
       "T46.3: no value holds U+200B"
     ).toEqual([]);
-    // QA el1 is T45.10's c=1 list too: at the start of a line led by a
-    // link the composition first moves before the link (5.3), into no text
-    const intoText =
-      record.caretBefore.startsWith("text:") && cell.point !== "QA el1";
-    expect(calls, "T46.3: the composition's count").toBe(intoText ? 2 : 1);
+    expect(calls, "T67.2: one call per composed value").toBe(1);
+    expect(record.values, "T67.2: not the value as it stood").not.toContain(
+      record.valueBefore
+    );
   }
   const pinned = PINS[cell.name];
   if (pinned !== undefined) {
@@ -396,11 +396,11 @@ export const PINS: Record<
   { ruling: string; pin: GridEntry; written?: string; fixedPoint?: boolean }
 > = {
   "AQ el1 ime": {
-    ruling: "T46.2",
+    ruling: "T46.2, T67.2",
     pin: {
       write:
         "<ul><li>Pw</li><li><a>Awa</a><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
-      calls: 2,
+      calls: 1,
       caret: "text:Awa@3",
       typed:
         "<ul><li>Pw</li><li><a>Awa</a>k<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",

@@ -204,10 +204,11 @@ describe("D7: compositions at an element point and Block type at BQ el1", () => 
       }),
       action: ime("a"),
       write: "<p>Pw</p><p>Ta0w</p><p>Nw</p>",
-      // the value as it stood at the composition's start, the first after
-      // mount (T42.1), then the composed one; no repeat (16.10)
-      calls: 2,
-      source: "section 8 (F12); P16-2, T42.1",
+      // the composed value only: the composition's start, which leaves the
+      // document as it was, hands out nothing, also as the first change
+      // since mount (T67.2); no repeat (16.10)
+      calls: 1,
+      source: "section 8 (F12); P16-2, T67.2",
     });
   });
   const BQ = LI("<br><blockquote><p>Q1w</p></blockquote>");

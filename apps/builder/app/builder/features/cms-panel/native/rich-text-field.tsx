@@ -7,7 +7,13 @@
  * A value the editor would not keep whole (a block shape its export does
  * not reproduce) opens read-only, so nothing is lost silently.
  */
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   $copyNode,
   $createNodeSelection,
@@ -96,7 +102,6 @@ import { ContentEditable } from "@lexical/react/LexicalContentEditable";
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
 import { LinkPlugin } from "@lexical/react/LexicalLinkPlugin";
 import { ListPlugin } from "@lexical/react/LexicalListPlugin";
-import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
 import { HorizontalRulePlugin } from "@lexical/react/LexicalHorizontalRulePlugin";
 import { LEXICAL_CLIPBOARD_TYPE } from "./rich-text-line-clipboard";
@@ -124,6 +129,7 @@ import {
   $resolveLinedPoints,
   focusEditor,
   isPressing,
+  d7Document,
   removeKeptLines,
 } from "./rich-text-line-points";
 import { $rangeEndsIntoText } from "./rich-text-line-removal";
@@ -2745,28 +2751,59 @@ const fieldValueOf = (editor: LexicalEditor): FieldValue => {
 };
 
 /**
- * The field's change handler (16.10, first contract; 16.21; T42.1): it
- * hands out the value of each commit that changes the document, except one
- * equal to the value it handed out last, and one that holds a
- * composition-start character the composition under way added. Values are
- * compared by their HTML, and every "no value" is one value (its text
- * follows from the HTML but for the blank lines an empty line adds). Before
- * the first onChange of this mounted field nothing has been handed out: the
- * first value after mount is handed out even where it equals the stored
- * one; only repeats of the value handed out last are withheld.
+ * The field's change handler (16.10, first contract; 16.21; T42.1; T67.2):
+ * it hands out the value of each commit that changes the document, except
+ * one equal to the value it handed out last, one that holds a
+ * composition-start character the composition under way added, and the
+ * commit a composition's start makes where it leaves the D7 document as it
+ * was. Values are compared by their HTML, and every "no value" is one value
+ * (its text follows from the HTML but for the blank lines an empty line
+ * adds). Before the first onChange of this mounted field nothing has been
+ * handed out: the first value after mount is handed out even where it
+ * equals the stored one; only repeats of the value handed out last are
+ * withheld. Its filter is Lexical's `OnChangePlugin` with
+ * `ignoreSelectionChange` and `ignoreHistoryMergeTagChange`, in a listener
+ * that sees every commit, so that it knows the commit at which the editor
+ * starts composing.
  */
 const ChangePlugin = ({
   onChange,
 }: {
   onChange: (value: FieldValue) => void;
 }) => {
+  const [editor] = useLexicalComposerContext();
   const handedOut = useRef<{ key: string | null } | undefined>(undefined);
-  return (
-    <OnChangePlugin
-      ignoreSelectionChange
-      ignoreHistoryMergeTagChange
-      onChange={(_editorState, editor) => {
+  useLayoutEffect(() => {
+    // whether the editor composed at the commit before
+    let composedBefore = editor.isComposing();
+    return editor.registerUpdateListener(
+      ({ editorState, prevEditorState, dirtyElements, dirtyLeaves, tags }) => {
+        // T67.2: the commit at which the editor starts composing is the
+        // update of Lexical's own `compositionstart` handler: it sets the
+        // composition's key, which makes the caret's node dirty, and
+        // inserts the start character only within 30 ms of the last
+        // keydown or away from a plain text caret
+        const composing = editor.isComposing();
+        const compositionStart = composing && composedBefore === false;
+        composedBefore = composing;
+        if (
+          (dirtyElements.size === 0 && dirtyLeaves.size === 0) ||
+          tags.has("history-merge") ||
+          prevEditorState.isEmpty()
+        ) {
+          return;
+        }
         if (compositionHoldsStartChar(editor)) {
+          return;
+        }
+        // a composition hands out its composed values and nothing else: its
+        // start's commit that leaves the document as it was is not handed
+        // out, also as the first change since mount (T42.1's exception
+        // holds for every other first change)
+        if (
+          compositionStart &&
+          d7Document(prevEditorState) === d7Document(editorState)
+        ) {
           return;
         }
         const value = fieldValueOf(editor);
@@ -2776,9 +2813,10 @@ const ChangePlugin = ({
         }
         handedOut.current = { key };
         onChange(value);
-      }}
-    />
-  );
+      }
+    );
+  }, [editor, onChange]);
+  return null;
 };
 
 /** Development only: the field's harness watch, dropped at unmount. */
