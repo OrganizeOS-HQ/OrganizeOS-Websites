@@ -453,7 +453,7 @@ const setBlockType = (editor: LexicalEditor, block: BlockType) => {
     if (block === "paragraph") {
       $unwrapQuoteLinesForParagraph(selection);
     }
-    if ($refuseBlockTypeOnLine(block)) {
+    if ($refuseBlockTypeOnLine(block, $nestingOf)) {
       return;
     }
 

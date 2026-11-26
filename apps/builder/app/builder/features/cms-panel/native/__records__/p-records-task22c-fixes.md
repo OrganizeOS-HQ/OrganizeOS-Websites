@@ -58,3 +58,17 @@ holding `T0w` (`containerPoint("T0w", 2)`).
   before) the character form is not a no-op (Backspace lifts the line with the item, T33.5), and the
   existing tests there (`wordBack` writes nothing, `lineBack` leaves the value) are unchanged. If the ruling
   meant both directions, it needs the backward cell named.
+
+## P45-4 (T45.4, Task 19): Quote refused where its quote would be lifted
+
+- Fix: `$refuseBlockTypeOnLine` (`rich-text-line-toolbar.ts`) takes the depth limit's count as a second
+  argument; `setBlockType` (`rich-text-field.tsx`) passes the lift's own `$nestingOf`. Quote is refused when
+  the line of the selection's anchor or focus would hold a quote at a nesting of `RICH_TEXT_MAX_DEPTH - 1`
+  or more (the lift's own bound). A line after a nested list in its list item is not refused: the count
+  reads a quote there as leaving the lists around it, so the lift would not take it.
+- Measured with the fix: d7 TR el2 Quote and d7 TR T0w@1 Quote write nothing (no onChange, no undo step),
+  carets `element:listitem@2` and `text:T0w@1`, letters `<li>T0w<hr />k</li>` and `<li>Tk0w<hr /></li>` at
+  depth 7. Without the fix the T0w@1 cell gives the split (one onChange, one undo step) and the el2 cell
+  one onChange with the value unchanged. Control: Heading 2 at d7 TR el2 writes
+  `<li>T0w<hr /><h2></h2></li>` at depth 7, one onChange.
+- Not in a ruled cell: a range with one end's line at the limit and the other above it is refused whole.

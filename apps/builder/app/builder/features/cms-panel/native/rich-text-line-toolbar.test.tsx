@@ -14,6 +14,7 @@ import {
   chooseBlockType,
   clickAt,
   clickItemCorner,
+  containerPoint,
   expectEdit,
   forceOrder,
   hold,
@@ -370,6 +371,68 @@ describe("Block type (D2, FS4, FS8)", () => {
       source: "from P6 (already ruled); D2 (accepted)",
     },
   ]);
+});
+
+/** Task 22's unreached shape `d7 TR`: seven nested lists, the innermost item `T0w<hr>`. */
+const D7_TR = [6, 5, 4, 3, 2, 1].reduce(
+  (inner, level) => `<ul><li>A${level}w${inner}</li></ul>`,
+  "<ul><li>T0w<hr></li></ul>"
+);
+
+/**
+ * T45.4 (D13, section 4's depth limit): Quote on a line whose quote would
+ * stand at the nesting the depth limit's lift removes changes nothing,
+ * on the empty caret line and on a line with text.
+ */
+describe("T45.4: Quote at the depth limit", () => {
+  const CELLS: ReadonlyArray<{
+    name: string;
+    place: Step;
+    caret: string;
+    typed: string;
+  }> = [
+    {
+      name: "the empty caret line (d7 TR el2)",
+      place: containerPoint("T0w", 2),
+      caret: "element:listitem@2",
+      typed: D7_TR.replace("<hr>", "<hr />k"),
+    },
+    {
+      name: "a line with text (d7 TR T0w@1)",
+      place: at("T0w", 1),
+      caret: "text:T0w@1",
+      typed: D7_TR.replace("T0w<hr>", "Tk0w<hr />"),
+    },
+  ];
+  for (const cell of CELLS) {
+    test(`Quote at the depth limit changes nothing: ${cell.name}`, async () => {
+      await expectEdit({
+        stored: D7_TR,
+        place: cell.place,
+        action: async () => {
+          const depth = undoDepth();
+          await chooseBlockType("Quote")();
+          expect(undoDepth(), "no undo step").toEqual(depth);
+        },
+        write: null,
+        caret: cell.caret,
+        typed: cell.typed,
+        source: "T45.4; D13; section 4",
+      });
+    });
+  }
+
+  test("control: Heading 2 at the depth limit's empty caret line still writes its empty heading (d7 TR el2)", async () => {
+    const record = await recordEdit({
+      stored: D7_TR,
+      place: containerPoint("T0w", 2),
+      action: chooseBlockType("Heading 2"),
+    });
+    expect(record.calls, "one onChange").toBe(1);
+    expect(record.write, "the write").toBe(
+      D7_TR.replace("<hr>", "<hr /><h2></h2>")
+    );
+  });
 });
 
 describe("Link (D10, V15)", () => {
