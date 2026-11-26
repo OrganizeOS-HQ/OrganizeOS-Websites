@@ -523,3 +523,89 @@ text/html and text/plain alone pasted). Base: `r1-base` (`2a96a45`), `timeout 60
 - lines-b (whole): 3 files, 649 of 649 passed, 280 s.
 - grids-a, `rich-text-line-grid-clipboard.test.tsx` only (no grid file touched; the writer changed): 273 of 273.
 - `pnpm oxfmt --check`, `pnpm lint`, `pnpm exec tsc --noEmit -p apps/builder`, `pnpm check:runtime-upstream`: all pass.
+
+## Review of 42d2883 (defects 9 to 11)
+
+Read-only. I read the diffs, the code around them at `42d2883`, and Lexical 0.21's `RangeSelection.getNodes` and
+`ListItemNode.extractWithChild`. I ran nothing. Findings that depend on a write I did not run are marked "by reading".
+
+Paths below are relative to `apps/builder/app/builder/features/cms-panel/native/`.
+
+## Findings, by severity
+
+### 1. Medium. Defect 9: `$removeRangeWithBreak` should follow. Enter over the range form likely loses the empty line, and Enter and Shift+Enter now disagree (by reading)
+
+- Where: `rich-text-line-removal.ts:247` (`isLineBreak(next.getFirstChild()) === false`), unchanged. It runs before Enter and Shift+Enter over a range (`$enterRangeWithBreak`, `:1548`) and before a paste whose start is in a line (`rich-text-line-paste.ts:68`).
+- Scenario: `<li>T0w<h3>H1w</h3><br></li>`, select `T0w@1` to `H1w@2`, press Enter.
+  - `$tagRemoval` marks D3's break for the line.
+  - `$removeRangeWithBreak` adds no break, because `next` is the lone-break line.
+  - The key then splits the item at `T|w`, which moves `w` and the empty line into a new item. `$linesNeedingBreak` reads that container's previous children, and a new item has none. So the normalise does not add the break either.
+  - Likely write: `<li>T</li><li>w<br /></li>`, which loses the empty line, as defect 9 did.
+- What the rules give: T35.1/T36.1 say the result is "the removal, then the break". The removal now writes `Tw<br /><br />`, so Enter should give `<li>T</li><li>w<br /><br /></li>`.
+- Shift+Enter: it keeps both lines in the same container, so the normalise now adds the break: `T<br />w<br /><br />`. Before the fix it wrote `T<br />w<br />`.
+  - So the fix changes Shift+Enter, and leaves Enter as it was.
+- Block paste over the same range: it unwraps and rewraps the lines (D14), so the normalise may not see the old keys. It is probably in the same position as Enter.
+- Rule: D3, third case. Its parenthesis covers any two lines that meet this way, and E1's join is that join (`rich-text-line-commands.ts:92`). T35.1 sets the oracle for Enter, and T30.3 makes T23.1's reading hold for every entry point.
+- Fix: at `:247`, use the same test as the normalise: `(isLineBreak(next.getFirstChild()) && next.getChildrenSize() > 1) === false`. Then add Enter, Shift+Enter, a text paste and an HTML block paste beside the six tests, with the oracle "the field's removal, then the key" (T36.1).
+
+### 2. Low to medium. Defect 11: the fix also changes ordinary content where the head's own selection has two text ends. That is a new D1 difference, and nothing lists it
+
+- Where: `rich-text-line-clipboard.ts:444` (`$markItemsNotHeldWhole`). It runs for every range through the one writer, ordinary content included.
+- Scenario: ordinary `<ul><li>Pw</li><li><img>U1w</li><li>Nw</li></ul>` (or `<li>U1w<img></li>`). Double-click `U1w`, or select `U1w@0` to `U1w@3` by keys, then copy.
+  - At the head, both ends are text points. Lexical's `extractWithChild` takes the item whole, because the item's text equals the selection's text (the image has no text). The head copies `list(listitem('U1w'))`.
+  - R1 matched the head here before this commit. It now copies `'U1w'`.
+- Defect 11's own record matched the base only because the base's focus was an element point after the image.
+- Rule: D6 supports the new value ("holds a list item only where the selection holds the whole item"; the build does not copy more than the selection holds). But it is now an ordinary-content difference from the head, outside the one recorded case.
+  - It needs an entry in the pull request's D1 list and a line in T60.3's count, or an owner ruling.
+  - It also needs a pinned test: a text-point range over an item's text beside an image. The two new tests use only the Shift+Home record.
+
+### 3. Low. Defect 10: the fix is narrower than its own reasoning (by reading)
+
+- Where: `rich-text-line-paste.ts:35` (`inLined`).
+- What the fix does: it exempts only an ancestor item whose children are all lists. The commit's own reason is broader: a point in a nested item is in that item's own text.
+- What is left: the climb still skips the nearest ordinary item and stops at any lined ancestor that is not a wrapper of lists only.
+  - Example: a lined quote that holds a line beside a list, `<blockquote>Tw<ul><li>Aq<ul><li>Bq</li></ul></li><li>Cq</li></ul></blockquote>`. Quotes do hold lists here; the new test pastes one.
+  - Select `Aq@1` to `Bq@1` and paste `<ol><li>Xq</li><li><hr>Yq</li></ol>`. `inLined` is still true, so the range is removed first, and PR #116's tail join is lost, as in defect 10.
+- Lexical's import moves nested lists into wrapper items (`$normalizeChildren`), so a list item holding a list beside other content should not occur. A quote has no such step.
+- Rule: D11 (Z13 stands) and D14 (a range that starts outside every lined container).
+- Suggestion: stop the climb at the nearest list item. The nearest list item or lined quote decides, and a wrapper counts only for a point on itself. Measure the quote case at the base before pinning it.
+
+### 4. Low. Defect 11: rec-49 and the accepted whole-item shape are untested on the new path
+
+- The accepted-shape test that still passes ("a range that holds a whole list item copies with its list and item", clipboard test `:1071`) uses Ctrl+A. Its ends leave the item, so `$markItemsNotHeldWhole` never considers that item.
+- rec-49 is Shift+End from `U0w@0` over a trailing image. By reading it stays accepted:
+  - `$endsIntoText` gives the focus a place text after the image.
+  - Lexical 0.21's `getNodes` includes every node between the ends, so the image is held and no mark is added.
+- Nothing pins this. Add a test for rec-49 (and for `<li><img>U1w</li>` with the range starting before the image), both expecting `list(listitem(...))`.
+
+## No finding
+
+- **Defect 9, other shapes.** The changed condition runs only when `BREAK_AFTER_TAG` was set for the first line, so only D3's joins are affected.
+  - A line that starts with a break and holds more than it (`<br>Xw`) is still treated as a break at the edge. D3's fourth case and T30.2 read it that way.
+  - Several blocks between the lines (`T0w<h3>H1w</h3><h3>H2w</h3><br>`, range to `H2w@2`) also get the break, which is right by D3.
+  - A heading of one break joined in (`T0w<h3><br></h3><br>`) still uses its own break as the separator, because the first line ends in a break.
+  - An empty line made for a caret holds no child and was never skipped.
+  - Typing, cut and text paste over the range form now also get `...<br /><br />` through the same normalise. That is consistent with T30.3, but untested; see finding 1.
+- **Defect 10, other users and changed paths.**
+  - `inLined` has one caller (`rich-text-line-paste.ts:67`).
+  - A point on the wrapper itself is still lined, so the D18 resolver and T56.4's item that holds only a nested list are unchanged.
+  - The changed path: paste or drop over a range that starts in a nested ordinary item. It now routes the way a start at depth 1 does (branch 2's D5 block-paste rule, otherwise `$unwrapEndContainer`), which matches D14 as the code applies it at depth 1.
+  - `rich-text-line-toolbar.ts:176` (`isParagraphish`) climbs the same way, but I found no reachable difference.
+    - It changes behaviour only when the paragraph's nearest lined ancestor is a wrapper of lists only. That would need a paragraph or a quote inside an ordinary nested item.
+    - A quote makes its item lined, so the climb stops there first.
+    - Making it consistent is optional.
+- **Defect 11, containment of the made-up character.** It cannot reach the clipboard data, the live editor or undo:
+  - It exists only in the scratch editor: a fresh `createEditor` from JSON, a discrete update, no history, discarded afterwards.
+  - text/plain comes from the live selection (`$plainTextOf`).
+  - The character goes before a leaf that lies before the start, or after a leaf that lies after the end. Lexical 0.21's `getNodes` includes the start node even at its end offset, so no unheld leaf lies inside the range.
+  - Both ends are text points, so the selection restore in `insertBefore`/`insertAfter` moves neither of them.
+  - The selection's cached nodes exclude the character, so `isSelected` and `getTextContent` stay as they were.
+  - Text normalisation could merge it into an adjacent text node, but that happens only when the update ends, after the data is read.
+- **Defect 11, other shapes.**
+  - Nested lists: the climb also marks wrapper items, but a wrapper is already not whole by its text. Where the unheld leaf is an empty list item, `ListItemNode.insertAfter(text)` splits the list in the scratch editor. That changes nothing written: the item holding the range stays whole or not as before.
+  - An item holding only an image: its ends are places beside the image, and the image is held.
+  - Several items: only items that hold both ends are considered.
+- **Tests and hygiene.**
+  - The new tests pin the acceptance check's expected values: the D3 and T23.1 writes, the base's write for defect 10 plus main's Z13 letter pattern, and the base's copy shape and paste-back for defect 11. The implementer reports they fail without the fixes.
+  - No `_`-prefixed Lexical read was added; `_editor` is an existing parameter name. No environment switch was added.
+  - The test diffs are additions only, so no test on main was rewritten.
