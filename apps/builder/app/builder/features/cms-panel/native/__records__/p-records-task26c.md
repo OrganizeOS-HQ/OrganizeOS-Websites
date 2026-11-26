@@ -137,3 +137,95 @@ Scratch files (a zz test and the copied probe directory) were deleted.
 - core-browser-builder-cms-rich-text: 3110 passed.
 - grids-a 1619, grids-b 1753, grids-c 2244, grids-d 1433, grids-e 1087: all passed. No snapshot written or changed, so no grid cell changed.
 - core-browser-builder-cms: 1609 passed.
+
+## Review of 342bd52 (defects 4 to 7)
+
+Read-only review. Paths are relative to `apps/builder/app/builder/features/cms-panel/native/`. Line numbers are at HEAD (5fef5e5). I did not run any tests. The fail-before and pass-after counts come from the implementer's report.
+
+## Verdict
+
+None of the four code fixes is wrong. Each matches the rule it cites, and I found no failing scenario outside the cells the defects name. I found no read of Lexical private (`_`-prefixed) state and no env switch. No test on main was rewritten: all four commits only add test lines. There are two low items for the record or docs and two nits.
+
+## Findings, by severity
+
+### 1. Low (docs, not code): D1's sixth entry does not yet name a heading, but d2b7fc8 adds new differences in ordinary content
+
+- Where: rich-text-line-deletes.ts:605-609 (the holder check). The spec entry is in OrganizeOS `docs/superpowers/specs/2026-11-19-native-cms-rich-text-lines-design.md:41` ("Backspace before an image or other child that leads a quote or a line ...").
+- Scenario: in ordinary content, `<pre><code>C0w</code></pre><h3><img />X0w</h3><p>E9w</p>`, Backspace before the image. The head and R1 before the fix both wrote the reorder. R1 now writes nothing. The root link-led heading cells (caret before the link, and at the link text's start) also join at the head and now refuse. The defect named only the `{BL,LL}` image cells, but the test pins the root image cell too.
+- Rule: T59.2 together with T33.3 and 16.13 ("in lined and ordinary content") does rule this, so the code is right. D1's list is "the one place that names every difference of ordinary content from the head", and T59.1 asks for "the entries added". The entry's wording ("leads a quote or a line") does not cover a heading. The records note at 5fef5e5 says "the same D1 entry 16.13 already holds", which is true in substance but not in wording. The entry, and the PR's list of differences, should name a heading.
+
+### 2. Low (for the coordinating session): T33.3's carry for a heading whose text leads is still not built
+
+- Where: rich-text-line-deletes.ts:652-662. `$leaveBehindWhatCodeCannotHold` returns early for a heading, because `atRoot`, `inQuote` and `inItem` each require a paragraph or a line.
+- Scenario: `<pre><code>C0w</code></pre><h3>T1w<a href=...>Lw</a></h3>`, Backspace at T1w@0. Lexical's join runs and the link's text joins the code block, so its address is lost. T33.3 would give `<pre><code>C0wT1w</code></pre><h3><a>Lw</a></h3>`, or a paragraph.
+- Rule: T59.2 says T33.3 "is general for a join into a code block" and "A heading is not excepted", but its ruling sentence covers only a leading image or link. These cells are not in defect 4's list, and the fix leaves them unchanged (the implementer says so), so this is not a defect of these commits. It is a possible follow-up to ask about: whether the carry half of T33.3 applies to a heading, and what the left-behind block is (a heading or a paragraph).
+
+### 3. Nit: the comment on `$startUnlikeSelection` says "the range's start", but the code reads the anchor
+
+- Where: rich-text-line-node-selection.ts:242-252, used at 256-260 and 278-283.
+- In Lexical 0.21, `RangeSelection.getStartEndPoints()` returns `[this.anchor, this.focus]` (Lexical.dev.js:7155), not the points in document order.
+- The code is still right: inside the update, the backward swap runs first, so the anchor is the document start. In the read precondition, `$backward() ||` short-circuits for a backward range.
+- There is no failing scenario today. It would break if someone reordered the update or called the helper on its own. Either use `isBackward()` to pick the start, or reword the comment.
+
+### 4. Nit: a condition that can never fail in the defect 5 check
+
+- Where: rich-text-line-removal.ts:315. `parent.isEmpty() === false` is always true, because `parent` holds `inline`. It is harmless.
+
+## Your specific questions
+
+### Defect 4: a heading at the root, where the head reorders
+
+The refusal now covers root headings (finding 1), and that is ruled by T59.2 and 16.13.
+
+A heading whose first child is text, a line break or inline code is not refused: `codeCanHold(first)` holds. In that case, `$leaveBehindWhatCodeCannotHold` is a no-op for headings, so the behaviour from before is kept.
+
+A heading that is a quote's first child after a code block is also refused now. T34.1 and T33.3 cover that.
+
+### Defect 5: can the early "changes nothing" decision fire where Backspace should do something?
+
+I found no such case. The new branch is a strict subset of the old path, which was `$nothingBefore(inline)` followed by `parent.collapseAtStart`:
+
+- The old path, for a heading parent, always ran `HeadingNode.collapseAtStart`. In Lexical 0.21 (LexicalRichText.dev.js:317), that replaces a non-empty heading with a new heading of the same tag. It does nothing else, and in particular it never outdents an item.
+- The base's result is nothing: `LinkNode.collapseAtStart` is false and `removeText` on a caret removes nothing.
+
+As a side effect, the old path also dropped a heading's alignment and indent, because `$createHeadingNode` copies neither. The new branch avoids that.
+
+An indented heading is not affected: Lexical's own KEY_BACKSPACE handler outdents it before DELETE_CHARACTER is dispatched.
+
+The heading's start rule is unchanged where something stands before the heading.
+
+### Defect 6: assigning `selection.format` directly
+
+`format` is a public, non-underscore field of `RangeSelection`, and 0.21 has no setter for it. The `setStyle` call that follows sets `dirty`.
+
+Lexical carries `lastSelection.format` into its own compositionstart selection.
+
+The change can only happen inside `composeForward`, which runs only from the compositionstart capture listener. It applies only when the range spans text nodes whose shared format differs from the format of the start node.
+
+In that case Lexical's multi-node `insertText` splices the start character into the start node anyway, through `firstNode.spliceText`. So the composed value is the start node's format either way. The value assertion in each defect 6 test passed before the fix; only the undo depth failed. So no value changes, only the step count, which now matches the forward twin (16.20, F12).
+
+A letter typed after a cancelled composition over such a range now takes the start text's format. That matches 16.20's oracle, the forward range, for "the next letter". A letter typed outside any composition is untouched.
+
+### Defect 7: the `held` baseline across successive compositions and undo
+
+`held` is taken per record: at line 185 from `before`, captured before the point moves (direction does not change `getTextContent`), and at line 591 from `prevEditorState`.
+
+- A record is deleted at settle (written text), on a historic tag, or on a void. So a second composition, or one after an undo or redo, starts from a fresh record with `held` empty at a caret. A stale `held` cannot carry over.
+- For a cancelled composition over a range that holds a stored U+200B, the record stays in the "ended" phase. The new baseline is correct there too. Before the fix, Lexical's start character there was not counted at all, so the fix also corrects that case.
+- `held` lowers the baseline only by characters the composition replaces. A composition over a range always replaces the range: Lexical's start insertion, then `removal.mark` (5.4). So I found no case where it withholds a value wrongly or removes a stored character.
+- U+200B outside the range (X1z) is still kept.
+
+### Tests
+
+- Every test addition is new; none rewrites an existing test, and there are no `skip` or `only` calls and no env reads.
+- Each pins a ruled result:
+  - Defect 4: `write: null`, plus no onChange, undo and redo (T59.2, T33.3's word and line forms).
+  - Defect 5: no onChange, no undo step, and the caret at `text:Zw@0`, as at the base (D1, D7).
+  - Defect 6: the composed value, one undo step, one undo and one redo (F12, 16.20).
+  - Defect 7: no U+200B in any value, the composed value, and one undo (16.21, T48.5).
+- Defect 5's root cell with a bold link, and defect 4's cells with the caret at the link text's start, go beyond the cells the defects list. They sit under the same rules (D1 count; T59.2), and the report says they failed before the fix.
+- In the defect 6 test, NBSP is U+00A0 in the source, as its name says.
+
+### Private state
+
+None read in the source or the tests.
