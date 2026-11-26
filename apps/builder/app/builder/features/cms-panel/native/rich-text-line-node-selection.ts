@@ -14,6 +14,7 @@ import {
   DELETE_WORD_COMMAND,
   type LexicalCommand,
   type LexicalEditor,
+  type LexicalNode,
   PASTE_COMMAND,
 } from "lexical";
 import { objectKlassEquals } from "@lexical/utils";
@@ -36,6 +37,27 @@ import {
 } from "./rich-text-line-removal";
 
 /**
+ * Where a typed letter goes beside a block node-selected in a lined
+ * container: the element point directly after the block (D15), which
+ * `$resolveLinedPoints` takes into a line. Null for a block that is not
+ * attached or does not stand in a lined container.
+ */
+export const $caretAfterLinedBlock = (node: LexicalNode | null | undefined) => {
+  if (node == null || node.isAttached() === false) {
+    return null;
+  }
+  const container = node.getParent();
+  if (isLinedContainer(container) === false) {
+    return null;
+  }
+  const index = node.getIndexWithinParent() + 1;
+  const range = $createRangeSelection();
+  range.anchor.set(container.getKey(), index, "element");
+  range.focus.set(container.getKey(), index, "element");
+  return range;
+};
+
+/**
  * A node selection of a block in a lined container becomes a caret in a
  * line after the block; with `replace`, the block goes (a paste, a drop or
  * typing replaces it).
@@ -46,15 +68,10 @@ export const $nodeSelectionIntoLine = (replace: boolean, create: boolean) => {
     return;
   }
   const nodes = selection.getNodes();
-  const last = nodes.at(-1);
-  const container = last?.getParent() ?? null;
-  if (last === undefined || isLinedContainer(container) === false) {
+  const range = $caretAfterLinedBlock(nodes.at(-1));
+  if (range === null) {
     return;
   }
-  const index = last.getIndexWithinParent() + 1;
-  const range = $createRangeSelection();
-  range.anchor.set(container.getKey(), index, "element");
-  range.focus.set(container.getKey(), index, "element");
   $setSelection(range);
   $resolveLinedPoints(create);
   if (replace) {
