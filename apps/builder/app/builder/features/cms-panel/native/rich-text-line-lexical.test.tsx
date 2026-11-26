@@ -20,12 +20,14 @@ import {
   $setSelection,
   COMMAND_PRIORITY_CRITICAL,
   createEditor,
+  type DOMExportOutput,
   type EditorState,
   type LexicalEditor,
   type LexicalNode,
   type NodeKey,
   REDO_COMMAND,
   SELECTION_CHANGE_COMMAND,
+  type SerializedElementNode,
   type TextNode,
   UNDO_COMMAND,
 } from "lexical";
@@ -42,7 +44,7 @@ import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
 import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { $createHorizontalRuleNode } from "@lexical/react/LexicalHorizontalRuleNode";
 import { richTextNodes } from "./rich-text-html";
-import { $createCmsLineNode } from "./rich-text-line-node";
+import { CmsLineNode } from "./rich-text-line-node";
 
 const onError = (error: Error) => {
   throw error;
@@ -118,19 +120,55 @@ const $list = (...items: Array<() => LexicalNode[]>) => {
   return list;
 };
 
+/**
+ * A line whose export is a real `div[data-cms-line]` (the field's line
+ * exports an empty fragment, whose children Lexical splices in either way),
+ * so only `excludeFromCopy` keeps the div out of a copy.
+ */
+class ExportedLineNode extends CmsLineNode {
+  static getType() {
+    return "test-exported-line";
+  }
+
+  static clone(node: ExportedLineNode) {
+    return new ExportedLineNode(node.__key);
+  }
+
+  static importJSON() {
+    return new ExportedLineNode();
+  }
+
+  exportJSON(): SerializedElementNode {
+    return { ...super.exportJSON(), type: "test-exported-line" };
+  }
+
+  exportDOM(): DOMExportOutput {
+    const element = document.createElement("div");
+    element.setAttribute("data-cms-line", "");
+    return { element };
+  }
+
+  excludeFromCopy() {
+    return true;
+  }
+}
+
 const text = (editor: LexicalEditor, key: NodeKey) =>
   editor.getEditorState().read(() => $getNodeByKey(key)?.getTextContent());
 
 describe("Lexical 0.21.0 as the line rules read it, on a page (spec section 12)", () => {
   // D6: a copy carries the line's children, never the line
   test("an excluded element's children are promoted in copied HTML", () => {
-    const editor = createEditor({ nodes: richTextNodes, onError });
+    const editor = createEditor({
+      nodes: [...richTextNodes, ExportedLineNode],
+      onError,
+    });
     let html = "";
     write(editor, () => {
       $list(
         () => [
           $createQuoteNode().append($createTextNode("Q0w")),
-          $createCmsLineNode().append($createTextNode("Aw")),
+          new ExportedLineNode().append($createTextNode("Aw")),
         ],
         () => [$createTextNode("Bw")]
       );
@@ -304,13 +342,32 @@ describe("Lexical 0.21.0 as the line rules read it, on a page (spec section 12)"
   test("Lexical leaves `insertText` over a node selection to the browser", () => {
     const { editor, root } = plainEditor();
     let ruleKey = "";
+    let paragraphKey = "";
     write(editor, () => {
       const rule = $createHorizontalRuleNode();
-      $getRoot()
-        .clear()
-        .append($createParagraphNode().append($createTextNode("Tw")), rule);
+      const paragraph = $createParagraphNode().append($createTextNode("Tw"));
+      $getRoot().clear().append(paragraph, rule);
       ruleKey = rule.getKey();
+      paragraphKey = paragraph.getKey();
     });
+    const typeK = () => {
+      const event = new InputEvent("beforeinput", {
+        inputType: "insertText",
+        data: "k",
+        bubbles: true,
+        cancelable: true,
+      });
+      root.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    // the control: an element point, which Lexical handles itself
+    write(editor, () => {
+      const range = $createRangeSelection();
+      range.anchor.set(paragraphKey, 0, "element");
+      range.focus.set(paragraphKey, 0, "element");
+      $setSelection(range);
+    });
+    expect(typeK()).toBe(true);
     write(editor, () => {
       const selection = $createNodeSelection();
       selection.add(ruleKey);
@@ -319,14 +376,7 @@ describe("Lexical 0.21.0 as the line rules read it, on a page (spec section 12)"
     expect(
       editor.getEditorState().read(() => $isNodeSelection($getSelection()))
     ).toBe(true);
-    const event = new InputEvent("beforeinput", {
-      inputType: "insertText",
-      data: "k",
-      bubbles: true,
-      cancelable: true,
-    });
-    root.dispatchEvent(event);
-    expect(event.defaultPrevented).toBe(false);
+    expect(typeK()).toBe(false);
   });
 
   // 5.4: redo does not rerun the emptied rule

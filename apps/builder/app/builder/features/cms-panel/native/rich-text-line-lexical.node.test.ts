@@ -26,7 +26,7 @@ import {
   type LexicalEditor,
   type LexicalNode,
   type NodeKey,
-  type TextNode,
+  TextNode,
 } from "lexical";
 import { $generateJSONFromSelectedNodes } from "@lexical/clipboard";
 import {
@@ -328,15 +328,21 @@ describe("Lexical 0.21.0 as the line rules read it (spec section 12)", () => {
       key = node.getKey();
     });
     let runs = 0;
+    let textRuns = 0;
     editor.registerNodeTransform(ListItemNode, () => {
       runs += 1;
     });
+    editor.registerNodeTransform(TextNode, () => {
+      textRuns += 1;
+    });
     await flush();
     const before = runs;
+    const textBefore = textRuns;
     write(editor, () => {
       $caret($getNodeByKey<TextNode>(key)!, 1);
     });
     expect(runs).toBe(before);
+    expect(textRuns).toBe(textBefore);
   });
 
   // 5.3, deletes at a resolved point
@@ -357,6 +363,14 @@ describe("Lexical 0.21.0 as the line rules read it (spec section 12)", () => {
         true
       );
       expect(adjacent?.is(next)).toBe(false);
+
+      // the line is its item's last child and a next item exists: nothing
+      const last = $createTextNode("Cw");
+      $list(
+        () => [$createCmsLineNode().append(last)],
+        () => [$createTextNode("Dw")]
+      );
+      expect($getAdjacentNode($caret(last, 2).focus, false)).toBe(null);
     });
   });
 
@@ -385,26 +399,17 @@ describe("Lexical 0.21.0 as the line rules read it (spec section 12)", () => {
 
   // 5.4: the removal call sites counted when R1 was planned (M45)
   test("the removal call sites are the ones counted when R1 was planned", () => {
-    const counted = readFileSync(
-      join(here, "__records__", "r1-removetext-count.txt"),
-      "utf8"
-    )
-      .trim()
-      .split("\n")
-      .map((line) => {
-        const [path, count] = line.split(":");
-        return { path: path.replace(/^node_modules\//, ""), count };
-      });
-    expect(counted).toHaveLength(5);
-    for (const { path, count } of counted) {
-      const parts = path.split("/");
-      const name = parts[0].startsWith("@") ? parts.slice(0, 2) : parts[0];
-      const pkg = Array.isArray(name) ? name.join("/") : name;
-      const file = path.slice(pkg.length + 1);
+    // M45: grep -c "\.removeText()" in each bundle, resolved from the builder
+    const counted: Array<[string, string, number]> = [
+      ["lexical", "Lexical.dev.js", 5],
+      ["@lexical/rich-text", "LexicalRichText.dev.js", 2],
+      ["@lexical/clipboard", "LexicalClipboard.dev.js", 0],
+      ["@lexical/selection", "LexicalSelection.dev.js", 0],
+      ["@lexical/list", "LexicalList.dev.js", 0],
+    ];
+    for (const [pkg, file, count] of counted) {
       const source = readFileSync(join(resolveFrom(here, pkg), file), "utf8");
-      expect(source.split(".removeText()").length - 1, path).toBe(
-        Number(count)
-      );
+      expect(source.split(".removeText()").length - 1, file).toBe(count);
     }
   });
 
@@ -430,7 +435,7 @@ describe("Lexical 0.21.0 as the line rules read it (spec section 12)", () => {
   });
 
   // section 12 (3)
-  test("setEditorState adds its tag to a pending update and commits that update first", () => {
+  test("setEditorState adds its tag to a pending update and commits that update first", async () => {
     const editor = fresh();
     let key = "";
     write(editor, () => {
@@ -444,11 +449,18 @@ describe("Lexical 0.21.0 as the line rules read it (spec section 12)", () => {
       $getNodeByKey<TextNode>(key)?.setTextContent("Awk");
       editor.setEditorState(other, { tag: "historic" });
     });
-    const committed = updates.find(({ editorState }) =>
-      editorState.read(() => $getNodeByKey(key)?.getTextContent() === "Awk")
+    await flush();
+    const textOf = (state: EditorState) =>
+      state.read(() => $getNodeByKey(key)?.getTextContent());
+    const pending = updates.findIndex(
+      ({ editorState }) => textOf(editorState) === "Awk"
     );
-    expect(committed).toBeDefined();
-    expect(committed?.tags.has("historic")).toBe(true);
+    const restored = updates.findIndex(
+      ({ editorState }) => textOf(editorState) === "Aw"
+    );
+    expect(pending).toBeGreaterThan(-1);
+    expect(updates[pending].tags.has("historic")).toBe(true);
+    expect(restored).toBeGreaterThan(pending);
   });
 
   // 5.4, 5.8: the removal step and the writer give such ends a place in
