@@ -738,6 +738,45 @@ describe("T70.3: a letter with the rule node-selected before a nested list", () 
   }
 });
 
+/**
+ * T76.1: the same image reached by ArrowLeft from the start of the text
+ * after it. The field's image rule puts the letter on the side the arrow
+ * moved toward, before the image; the ordinary twin gives that at both
+ * builds (D1), and the lined item follows its twin.
+ */
+describe("T76.1: a letter at an image node-selected by ArrowLeft lands before it", () => {
+  const cells: Array<[name: string, stored: string, write: string]> = [
+    [
+      "in a lined item (PI-QIT)",
+      LI(`<blockquote><p>Q0w</p></blockquote>${IMG}T2w`),
+      LI("<blockquote><p>Q0w</p></blockquote>k<img />T2w"),
+    ],
+    [
+      "its ordinary twin",
+      `<blockquote><p>Q0w</p></blockquote><p>${IMG}T2w</p>`,
+      "<blockquote><p>Q0w</p></blockquote><p>k<img />T2w</p>",
+    ],
+  ];
+  for (const [name, stored, write] of cells) {
+    test(`${name}: a letter`, async () => {
+      const onChange = await mount(stored);
+      await at("T2w", 0)();
+      expect(caretKey(), "the click").toBe("text:T2w@0");
+      await keys("{ArrowLeft}")();
+      expect(caretKey(), "the image node-selected before the key").toBe(
+        "node:cms-image"
+      );
+      const valueBefore = exportRichTextHtml(editorOf()!);
+      onChange.mockClear();
+      await letter();
+      expect(onChange.mock.calls.length, "one onChange").toBe(1);
+      expect(short(lastHtml(onChange)), "write").toBe(write);
+      await keys("{Control>}z{/Control}")();
+      expect(exportRichTextHtml(editorOf()!), "one undo").toBe(valueBefore);
+    });
+  }
+});
+
 describe("the input listeners follow the root (5.8)", () => {
   const rootChange = async () => {
     const editor = editorOf()!;

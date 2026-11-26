@@ -1179,6 +1179,22 @@ describe("Task 18: real empty blocks and whole items (check 4, 15.11)", () => {
     expectNoMark();
   });
 
+  // T74.1: the trailing shape is pinned like the leading one. The head copies
+  // list(listitem('U1w')) here too (P68-1); R1's copy holds the text and no
+  // item (D6), whichever side the image is on
+  test("a double click on an item's text before a trailing image copies the text alone (T74.1)", async () => {
+    const onChange = await mount(LI(`U1w${IMG}`));
+    await doubleClick("U1w")();
+    expect(caretKey(), "the double click selects U1w by text ends").toBe(
+      "text:U1w@0|text:U1w@3"
+    );
+    await copyKeeps(onChange)();
+    expect(shape(clipboard()[EDITOR_DATA])).toBe("'U1w'");
+    expect(bare(clipboard()["text/html"])).toBe("U1w");
+    expect(clipboard()["text/plain"]).toBe("U1w");
+    expectNoMark();
+  });
+
   for (const stored of [LI(`${IMG}U1w`), LI(`U1w${IMG}`)]) {
     test(`a double click's cut pasted back at its caret gives the stored value: ${short(stored)} (T69.1)`, async () => {
       const onChange = await mount(stored);
