@@ -1,4 +1,4 @@
-# Task 26: T58.3, P26-1's cause in ordinary content
+# Task 26: T58.3 and T60.2, P26-1's cause in ordinary content
 
 Branch `t58-twin` from `origin/claude/native-cms-r1-lines` 6845516. Worktree
 `/home/user/OrganizeOS-Websites/.claude/worktrees/agent-a922c4fdbf8e9b1e8`. Not pushed.
@@ -115,3 +115,34 @@ K, M, D' and N are probe results only.
 - `pnpm oxfmt --check`: clean. `pnpm lint`: exit 0. `tsc --noEmit -p apps/builder`: exit 0.
 - No scratch file is left; `git status` is clean. The r1-base worktree is unchanged (only its pre-existing untracked
   `zz13base.log`).
+
+## T60.2
+
+Branch `t60-pin` from `origin/claude/native-cms-r1-lines` 928c077. Commit **9727bd6** `test(cms): T60 pin the
+ordinary edits that lost their undo step`. Not pushed.
+
+- **The describe.** New describe "T60.2: ordinary edits whose undo step the line handlers took" in
+  `rich-text-line-deletes.test.tsx`, after the T58.3 describe. No existing test was touched.
+- **The tests.** 8 tests through `expectEdit`, source "T60.2, P26-1". `expectEdit` checks the write, one onChange,
+  that one undo restores the state and caret, that redo equals the write, no console errors, and the fixed point.
+
+| test                                                                             | stored                                                | place                                                            | key       | write                                          |
+| -------------------------------------------------------------------------------- | ----------------------------------------------------- | ---------------------------------------------------------------- | --------- | ---------------------------------------------- |
+| B: Backspace into a link-only heading                                            | `<p>Pw</p><h2><a>Lw</a></h2>`                         | click Lw@0                                                       | Backspace | `<p>Pw<a>Lw</a></p>`                           |
+| K: Backspace into a quote's second paragraph                                     | `<blockquote><p>Q0w</p><p><a>Lw</a></p></blockquote>` | click Lw@0                                                       | Backspace | `<blockquote><p>Q0w<a>Lw</a></p></blockquote>` |
+| L: Backspace into a list item                                                    | `<ul><li>Pw</li><li><a>Lw</a></li></ul>`              | click Lw@0                                                       | Backspace | `<ul><li>Pw<a>Lw</a></li></ul>`                |
+| M: Backspace at the second of two link-only paragraphs                           | `<p><a>Kw</a></p><p><a>Lw</a></p>`                    | click Lw@0                                                       | Backspace | `<p><a>Kw</a><a>Lw</a></p>`                    |
+| D': Delete at a link's end after text, before a block that starts with a link    | `<p>Pw<a>Lw</a></p><p><a>Mw</a></p>`                  | click Lw@2                                                       | Delete    | `<p>Pw<a>Lw</a><a>Mw</a></p>`                  |
+| N: Delete at a link-only paragraph's end, before a block that starts with a link | `<p><a>Lw</a></p><p><a>Mw</a></p>`                    | click Lw@2                                                       | Delete    | `<p><a>Lw</a><a>Mw</a></p>`                    |
+| control: a join that also moves plain text (A)                                   | `<p>Pw</p><p><a>Lw</a>x</p>`                          | click Lw@0                                                       | Backspace | `<p>Pw<a>Lw</a>x</p>`                          |
+| control: a join led by an image (F)                                              | `<p>Pw</p><p>IMGTw</p>`                               | `beside("cms-image", "before")` (element point, as in the probe) | Backspace | `<p>Pw<img />Tw</p>`                           |
+
+- **At head:** 8 passed (`t58/t60-head.log`).
+- **With 16c40cc's history file swapped in (tests kept, file restored after):**
+  - B, K, L, M, D' and N failed, each with `undo restores the state before: expected false to be true`.
+  - Both controls passed (`t58/t60-without.log`).
+  - At the base (2a96a45), the probe from section 2 (`others-base.log`) kept the step for both control shapes.
+- **Checks at 9727bd6:**
+  - core-browser-builder-cms-rich-text-lines, run whole: 18 files, 1431 passed (`t58/t60-lines-whole.log`).
+  - `pnpm oxfmt --check` exit 0, `pnpm lint` exit 0, `tsc --noEmit -p apps/builder` exit 0.
+  - `git status` is clean.
