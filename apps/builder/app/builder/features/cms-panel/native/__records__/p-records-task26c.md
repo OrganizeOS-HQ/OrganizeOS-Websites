@@ -339,3 +339,79 @@ Runs: 12 failed without the fix (root link `<pre><code>C0wT1wLw</code></pre>`, r
 - `pnpm oxfmt --check`, `pnpm lint`, `pnpm exec tsc --noEmit -p apps/builder` and `pnpm check:runtime-upstream` all exit 0.
 - The lines project run whole: 18 files, 1490 tests passed, 487 s.
 - The lines-b project run whole: 3 files, 649 tests passed, 352 s.
+
+## Review of 6b9fd06 (defects 1 to 3, T64)
+
+Read-only review. No tests were run. All paths are under `apps/builder/app/builder/features/cms-panel/native/`.
+
+Verdict: no blocking findings. Each fix matches the rule it cites. Two low findings and two notes follow.
+
+## Findings, by severity
+
+### L1 (low). Defect 3: the stored caret is a container index, which can go stale during an upload
+
+`rich-text-field.tsx:1260-1272`, used by `insertImage` (`:1145-1163`).
+
+The caret is stored as `element:<container>@<index of the rule + 1>`. `insertImage` only checks that the keys still exist (`isAttached`). It checks neither the offset nor what now stands at that index.
+
+Scenario: in QR, node-select the rule (index 2 in `li[quote, hr]`) and click Image. While the upload runs, press Backspace, which removes the rule. The upload then finishes and sets a point at `li@2` on an item that has one child. Lexical's point check (dev) can throw, or the image can land somewhere else. Also in QRQ: anything inserted before the rule in the item while the upload runs moves the image off the rule.
+
+Rule: D1's seventh entry: "the end-of-document fallback stays only for a place that is gone when the upload finishes." A range caret held a text point, which carries its node with it, so this exposure is new with the element point. Fix: also store the rule's key, and at insert time read the place again from where the rule now stands. If the rule is gone, fall back as for any place that is gone. The `fits` guard that `$keepPress` already has would do as a minimum. This is an edge case, outside the defect's records.
+
+### L2 (low, scope). Defect 2's lift reaches past the three cells and no test covers the extra cases
+
+`rich-text-field.tsx:1513-1529`
+
+The lift runs for any element caret kept by a non-inline node that sits in a paragraph or heading after REMOVE_LIST. That covers more than "after an item's final rule". It also covers a caret before an item's leading rule (`{hr, after:false}`) and a caret after an item that ends in a quote or a code block. In those cases the caret now ends up beside the block at the root. Before, it went wherever Lexical moved it when the transform removed the emptied paragraph.
+
+This follows toggleList's own rule ("an element caret is kept by the node beside it") and the 5.7 row, and the implementer reports that the whole lines grid passed. So I count it as within the rule. But no test pins those extra carets. The write cannot change: `$liftBlocksOutOfTextBlock` is the commit transform itself, it lifts the same blocks in the same order and is idempotent, and it runs inside the same update, so undo stays one step.
+
+Ordinary content cannot reach the lift, because in ordinary content a paragraph or heading never holds a block node. Insert-list paths keep their nodes in items or at the root. Detached kept nodes (lines unwrapped by `$unwrapListLinesAtCaret`) have a null parent, so the loop skips them. The loop ends because each pass moves a block out.
+
+Suggestion: add one cell for the leading-rule caret (RT, list off at `li@0`), or note in the P record that the change reaches it.
+
+### N1 (note). Defect 1's open call: the implementer's reading is right
+
+The records in question are B stop 1 on items ending in a rule, clip-d 18/19, clip-x 3#7/3#8 and FS9. In each one, the base's extra "\n" is the text of a node the selection does not hold. A `HorizontalRuleNode` and a `LineBreakNode` each return "\n" from `getTextContent()`. The head picks that node up because Lexical 0.21's `getNodes()` resolves an element-point start through `getDescendantByIndex` to the last child, and 0.21 has no over-selection guard (checked in `lexical@0.21.0/Lexical.dev.js`, `getNodes`). The base's text/html carries that node too, and the head's cut removes it.
+
+D6 settles this case directly: "Where the head's copy holds more than the selection, the build's does not follow it", plus "the clipboard holds nothing outside the selection". The spec's 5.8 row says "the head's for the same selection, plus one new line". The words "never fewer new lines" appear only in the acceptance check's Expected, which itself opens with "wherever the head does not over-copy". FS9 is the same pattern, already ruled. R1's own invariants also hold: the html lacks the rule and the cut keeps it.
+
+So the tests at `rich-text-line-clipboard.test.tsx:1537` and `:1544` (QR and Rlast backward, text/plain "\n") pin a result that D6 rules. The P record should still quote D6's over-copy sentence so the coordinating session can confirm it. As things stand, the tests pin the reading before the coordinator has confirmed it.
+
+### N2 (nit). Defect 3 copies `$nodeSelectionIntoLine`'s point code
+
+`rich-text-field.tsx:1263-1271` repeats `rich-text-line-node-selection.ts:48-57`: the same last node, the same `isLinedContainer` guard and the same index + 1. A shared helper that returns the point would keep "where a letter lands" and "where Image lands" from drifting apart. This is not a correctness issue today.
+
+## Checks that passed
+
+**Defect 1** (`rich-text-line-clipboard.ts:152-174`)
+
+- No text is added. The change only sets `prevWasElement` and `lastInBlockText`, so it can add a "\n" only at the first block boundary after the start, and that boundary is inside the range.
+- The change fires only when the start's leaf is not held. A text end is never held, because `lastChar == from`.
+- In ordinary content it matches Lexical's `getTextContent`. The head's first node is that same leaf, which sets `prevWasElement = false`. The only remaining difference is the leaf's own text, where the head over-copies and D6 says not to follow it. Lines do not apply, and the start is the same in both: the walk reads the start in the order of the head's `getNodes`.
+- A range inside one text node is unchanged, because the start's leaf is held.
+- A node selection and a drag are untouched.
+- The empty-line branch applies to CMS lines only.
+
+**Defect 3**
+
+- Ordinary content is unchanged. An image is node-selected inside a paragraph, or a rule at the root, and neither is a lined container, so the code returns null as before (and as on main).
+- The insert goes through `$resolveLinedPoints(true)`, as typing does. Defect 3's tests assert the rule node-selection before the action.
+
+**T64.1** (`rich-text-line-deletes.ts:657-697`)
+
+- The write matches T64.1's text exactly: `<pre><code>C0wT1w</code></pre><h3><a>Lw</a></h3>`, with the address kept, and the same for an image, at the root and in an item, with the same tag.
+- The leading-child refusal (T59.2 and T63.1) still runs first, because `codeCanHold(first)` gates the carry.
+- The carry runs only on the delete-command path (`event === null`), so the word and line forms follow and undo stays one step. The tests check the write, the address, the caret `text:C0wT1w@3`, undo and redo.
+- A heading that is a quote's first child, which T64.1 does not name, also stays in place as a heading. That is T34.1 by analogy and is consistent with the rulings.
+
+**T64.2**
+
+- The comment is accurate. `getStartEndPoints()` returns `[anchor, focus]` in 0.21, and the gate short-circuits on `$backward()`.
+- `parent.isEmpty() === false` was always true: the parent contains `inline`.
+
+**Hygiene**
+
+- No new `_`-prefixed or `__` reads, no `process.env` or `import.meta.env` switches, no `.skip` or `.only` in any added line.
+- The commits add tests only to `rich-text-line-*.test.tsx`, none of which exist on main. No test that exists on main was touched, and `rich-text-field.tsx`'s tests on main are untouched.
+- Each new test asserts the value the defect or ruling states. The one exception is N1's two backward cells, which pin the D6 reading.
