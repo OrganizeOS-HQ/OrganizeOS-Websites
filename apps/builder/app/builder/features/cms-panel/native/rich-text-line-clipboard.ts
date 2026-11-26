@@ -149,6 +149,29 @@ export const $plainTextOf = (selection: BaseSelection): string => {
   let prevWasElement = true;
   // whether the last leaf read stood in a block's text, not in a line
   let lastInBlockText = false;
+  // T59 defect 1: Lexical's walk starts at the leaf the start rests on
+  // (a text end, or the child an element point resolves to) even where the
+  // range holds none of it, so a block boundary right after the start
+  // reads as a new line, as at the head; an empty line the start rests on
+  // (the caret line after a rule) reads the same way, as Lexical reads an
+  // empty block. Neither adds text.
+  const startNode = start.getNode();
+  const startLeaf =
+    start.type === "text"
+      ? startNode
+      : $isElementNode(startNode)
+        ? startNode.getDescendantByIndex(start.offset)
+        : null;
+  if (
+    startLeaf !== null &&
+    $isElementNode(startLeaf) === false &&
+    inRange.has(startLeaf.getKey()) === false
+  ) {
+    prevWasElement = false;
+    lastInBlockText = $findMatchingParent(startLeaf, $isCmsLineNode) === null;
+  } else if ($isCmsLineNode(startNode) && startNode.isEmpty()) {
+    prevWasElement = false;
+  }
   for (const node of nodes) {
     if ($isCmsLineNode(node)) {
       continue;

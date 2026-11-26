@@ -1489,3 +1489,74 @@ describe("Task 18: the writer's state and its failures", () => {
     }
   }
 });
+
+describe("T59 defect 1: text/plain keeps the head's new line after a start at a block's end (D6, 5.8, T39.5)", () => {
+  const S2B =
+    "<ul><li>xq<blockquote><p>qq</p></blockquote>yq</li><li>oq</li></ul><blockquote><p>zq</p></blockquote><p>rq</p><ul><li><blockquote><p>bbq</p></blockquote></li></ul><p>sq</p><ul><li>pq<ul><li>nq</li></ul></li></ul>";
+  const shiftLeft = keys("{Shift>}{ArrowLeft}{/Shift}");
+
+  test("S2b: a copy from rq@2 to bbq@3 is the head's \\nbbq", async () => {
+    const onChange = await mount(S2B);
+    await range("rq", 2, "bbq", 3)();
+    await copyKeeps(onChange)();
+    expect(short(clipboard()["text/html"] ?? "")).toBe(
+      "<p></p><ul><li><blockquote><p>bbq</p></blockquote></li></ul>"
+    );
+    expect(clipboard()["text/plain"]).toBe("\nbbq");
+  });
+
+  test("c1 S3: Shift+Right twice from Q0w's end copies the head's two new lines", async () => {
+    const onChange = await mount(FS9);
+    await at("Q0w", 3)();
+    await shiftRight();
+    await shiftRight();
+    await copyKeeps(onChange)();
+    expect(short(clipboard()["text/html"] ?? "")).toBe(
+      "<blockquote><p></p></blockquote><br />"
+    );
+    expect(clipboard()["text/plain"]).toBe("\n\n");
+  });
+
+  const QR = LI("<blockquote><p>Q0w</p></blockquote><hr>");
+  const cells: Array<[string, string, Step, Step, string]> = [
+    [
+      "QR, forward from Pw's end",
+      QR,
+      at("Pw", 2),
+      shiftRight,
+      "<ul><li>PwQ0w</li><li><hr /></li><li>Nw</li></ul>",
+    ],
+    [
+      "RQ, forward from Pw's end",
+      LI("<hr><blockquote><p>Q1w</p></blockquote>"),
+      at("Pw", 2),
+      shiftRight,
+      "<ul><li>Pw<hr /><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    ],
+    [
+      "QR, backward from Nw's start",
+      QR,
+      at("Nw", 0),
+      shiftLeft,
+      "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr />Nw</li></ul>",
+    ],
+    [
+      "Rlast, backward from Nw's start",
+      LI("T0w<hr>"),
+      at("Nw", 0),
+      shiftLeft,
+      "<ul><li>Pw</li><li>T0w<hr />Nw</li></ul>",
+    ],
+  ];
+  for (const [name, stored, place, press, joined] of cells) {
+    test(`a cut walk's first stop that joins two items writes one new line: ${name}`, async () => {
+      const onChange = await mount(stored);
+      await place();
+      await press();
+      onChange.mockClear();
+      await cut();
+      expect(plain(lastHtml(onChange)), "the cut joins two items").toBe(joined);
+      expect(clipboard()["text/plain"]).toBe("\n");
+    });
+  }
+});
