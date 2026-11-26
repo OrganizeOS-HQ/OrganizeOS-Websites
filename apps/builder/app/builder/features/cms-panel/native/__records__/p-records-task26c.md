@@ -1367,3 +1367,58 @@ Not in T75's cells; met while checking what the T75 fix reaches. Nothing pinned.
 Raw: `SP/t75/x-base.txt`, `SP/t75/x-nofix.txt`, `SP/t75/x-fixed.txt` (probe `SP/t75/probe2.test.tsx`).
 The same probe's other cells (Shift+ArrowLeft from U1w@0 and U1w@1 after a leading image, Shift+ArrowRight
 and Shift+End from U1w@3 before a trailing image) are equal at all three builds.
+
+# Batch 9: T78
+
+Fast-forwarded to 745fb31 (commits 62d05c7, 745fb31); every project ran whole at 745fb31.
+
+Branch `t78` in /home/user/OrganizeOS-Websites/.claude/worktrees/agent-a1275a65681d5c70d, from c3df835.
+
+## Commits
+
+- 62d05c7 fix(cms): a text paste over a range keeps the empty line after a joined block (T69.2 with T70.11)
+- 745fb31 test(cms): T78.1 Shift+Home from a caret just after a leading image
+
+## Cause (62d05c7)
+
+`$removeRangeBeforePlainText` (rich-text-line-paste.ts) runs the field's removal (DELETE_CHARACTER_COMMAND) and then
+unwraps a container left holding only lines with plain `$unwrapLines`. Within the update, after the removal the li
+holds two lines that meet: `[Tw]` and `[<br>]` (the heading went). D3's join break between them is added only by the
+line rules at commit (`$linesNeedingBreak`, from the BREAK_AFTER mark and the state before), so the plain unwrap
+concatenated the lines without it: `Tw<br>` instead of `Tw<br><br>`. The removal itself (4c791f5's site) was not at fault.
+
+Fix: new `$unwrapLinedContainer(container)` in rich-text-line-normalise.ts: computes `$linesNeedingBreak` for the
+container and splices the join break at the start of each line in that set (as the normaliser's own unwrap does),
+then `$unwrapLines`. `$removeRangeBeforePlainText` calls it in place of the plain unwrap.
+
+Before: T69.2 run (-t T69.2, lines project): 2 failed (heading and code-block text paste: `TAqw<br />` for
+`TAqw<br /><br />`), 6 passed. After: T69.2 8/8 and T70.11 R4b pt2 2/2 pass. Logs: SP/t78-before.log, SP/t78-after.log.
+
+## T78.1 (745fb31)
+
+Measured at the branch head; equal to the ruling (P75-1 candidate a). Pinned 6 tests beside T75's in
+rich-text-line-readback.test.tsx: for an item and a paragraph, the Lexical selection after each of two presses
+(`text:U1w@0|element:listitem@0` / `...paragraph@0`, both presses, no onChange) and a letter after 1 and 2 presses
+(`<li>kU1w</li>` / `<p>kU1w</p>`, one onChange, caret `text:kU1w@1`). T75 + T78.1: 22/22 pass.
+
+## Whole projects at 745fb31 (one at a time)
+
+| project                                    | result                            | wall  |
+| ------------------------------------------ | --------------------------------- | ----- |
+| core-browser-builder-cms-rich-text-lines   | 1554 passed                       | 411 s |
+| core-browser-builder-cms-rich-text-lines-b | 671 passed                        | 266 s |
+| core-browser-builder-cms-rich-text         | 3110 passed                       | 140 s |
+| core-browser-builder-cms-rich-text-sweeps  | 10 passed                         | 117 s |
+| core-browser-builder-cms-rich-text-grids-a | 1619 passed                       | 256 s |
+| core-browser-builder-cms-rich-text-grids-b | 1753 passed                       | 269 s |
+| core-browser-builder-cms-rich-text-grids-c | 2255 passed                       | 268 s |
+| core-browser-builder-cms-rich-text-grids-d | 1433 passed                       | 243 s |
+| core-browser-builder-cms-rich-text-grids-e | 1087 passed                       | 310 s |
+| core-browser-builder-cms                   | 1609 passed                       | 277 s |
+| core-server                                | 2020 passed, 1 skipped (upstream) | 72 s  |
+
+No failures. Logs: SP/t78-proj-<project>.log, SP/t78-summary.txt.
+
+## Checks
+
+oxfmt --check, lint, tsc -p apps/builder, check:runtime-upstream, check:every-test-runs: all pass (exit 0).
