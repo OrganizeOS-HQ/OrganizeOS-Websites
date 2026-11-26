@@ -18,6 +18,20 @@ Base: 49 record-set hangs, 24 probe files killed by the watchdog.
 - deterministic (rerun alone: same). The branch's T13.3 tests (`rich-text-line-deletes.test.tsx`, a real click at
   `A1w@0`) pass.
 
+**Cause.** The placement does not matter; a link with no text after it on its line does. Backspace runs Lexical's own
+delete (`RangeSelection.deleteCharacter` → `removeText` → `ParagraphNode.append(link)`), which leaves one dirty leaf,
+`"Q0w"`, unchanged in parent and JSON. `@lexical/history` 0.21.0 (`createMergeActionGetter`) merges such a commit
+(`dirtyLeaves.size === 1 && isTextNodeUnchanged`; its `isDeletingLine` escape needs an element selection before), so
+nothing is pushed. A real click at `Lw@0` fails the same way; the T13.3 tests pass because their fixture `<a>A1w</a>x`
+moves a second leaf. A `history-push` tag does not help (that branch is not guarded).
+
+**Proposed fix.** In `rich-text-line-history.ts`, an update listener registered before `unchangedEditListener`: when a
+commit not tagged `historic` or `history-merge`, outside a composition, with one dirty leaf unchanged in `__parent` and
+`__text`, left the undo stack's length as it was and `history.current` on the new state, while the document changed
+(`d7Document`), push the previous entry, clear the redo stack and announce. A scratch prototype passed the four cases
+below; typing `abc` stays one undo step. Pinning test: T13.3's describe, `<blockquote><p>Q0w</p></blockquote><a>Lw</a>`
+at `Lw@0` and at `el1`, Backspace and the word form, each alone and after an earlier edit (8 cases, all failing today).
+
 ## P26-2 to P26-4: toolbar Bold over a range, then undo, redo and a letter
 
 Write equal at both builds; the value after undo, redo and a letter differs.
