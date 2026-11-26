@@ -35,6 +35,7 @@ import {
   link,
   mount,
   nodeAfter,
+  nodeSelect,
   noWait,
   recordEdit,
   short,
@@ -635,6 +636,70 @@ describe("a page range that appears where Lexical last left none is not read bac
     expect([...writes]).toHaveLength(1);
     expect([...writes][0]).toMatch(/<img \/>k|k<img \/>/);
   }, 120_000);
+
+  // P22-9: an image node-selected by code in an item, Numbered list, then a
+  // letter. Lexical's node selection leaves the page no range; Chrome puts
+  // its own caret back at the field's start, and the selection change that
+  // reports it reaches the field while the node selection stands. Numbered
+  // list rebuilds the list's DOM, so the browser's next own caret, there
+  // when the key comes, stands in a new text node
+  const P22_9: ReadonlyArray<readonly [string, string, string]> = [
+    [
+      "TQI",
+      LI(`T0w${BQ("Q1w")}X2w${IMG}`),
+      `<ol><li>Pw</li><li>T0w${BQ("Q1w")}X2w<img />k</li><li>Nw</li></ol>`,
+    ],
+    [
+      "QI",
+      LI(`${BQ("Q0w")}${IMG}`),
+      `<ol><li>Pw</li><li>${BQ("Q0w")}<img />k</li><li>Nw</li></ol>`,
+    ],
+  ];
+  const firstText = () => editable()!.querySelector("li span")!.firstChild!;
+
+  test("P22-9: the browser's own caret under a node selection, Numbered list, then a letter: the letter after the image, both orders forced", async () => {
+    for (const [shape, stored, write] of P22_9) {
+      for (let time = 0; time < 3; time += 1) {
+        const onChange = await mount(stored);
+        await nodeSelect("cms-image")();
+        // the browser's own caret at the start, reported while the node
+        // selection stands
+        await act(async () => {
+          window.getSelection()!.collapse(firstText(), 0);
+        });
+        await settle();
+        expect(caretKey(), shape).toBe("node:cms-image");
+        await button("Numbered list")();
+        expect(caretKey(), shape).toBe("node:cms-image");
+        // the browser's next own caret, in the rebuilt list, there when the
+        // key comes and not yet reported
+        const hold = (event: Event) => event.stopImmediatePropagation();
+        document.addEventListener("selectionchange", hold, true);
+        try {
+          window.getSelection()!.collapse(firstText(), 0);
+          await userEvent.keyboard("k");
+        } finally {
+          document.removeEventListener("selectionchange", hold, true);
+        }
+        await settle();
+        expect(written(onChange), shape).toBe(write);
+      }
+    }
+  }, 120_000);
+
+  test("P22-9: an image node-selected by code, Numbered list, then a letter: the letter after the image, 20 runs of each shape", async () => {
+    for (const [shape, stored, write] of P22_9) {
+      const writes = new Set<string>();
+      for (let time = 0; time < 20; time += 1) {
+        const onChange = await mount(stored);
+        await nodeSelect("cms-image")();
+        await button("Numbered list")();
+        await letter();
+        writes.add(written(onChange));
+      }
+      expect([...writes], shape).toEqual([write]);
+    }
+  }, 240_000);
 });
 
 // ---------------------------------------------------------------------------

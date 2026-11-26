@@ -1354,7 +1354,12 @@ export const pointRules = (editor: LexicalEditor, tracker?: EditTracker) => {
     return true;
   };
   const rememberPageSelection = () => {
-    pageSelection = pageSnapshot();
+    // a node selection's commit leaves the page no range: a range the page
+    // shows under one is the browser's own caret (Chrome puts one back on
+    // its own), no step of the person's, and is not remembered; else a
+    // later key, once a commit rebuilt that caret's text, reads the
+    // browser's next own caret back as a move (P22-9)
+    pageSelection = $isNodeSelection($getSelection()) ? null : pageSnapshot();
     return false;
   };
   const readBackOnKey = () => {
