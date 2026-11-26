@@ -1105,19 +1105,31 @@ type ImageUpload = {
 };
 
 /**
+ * Where Image was chosen: the caret, or a block node-selected in a lined
+ * container, whose caret is read when the upload finishes.
+ */
+type ImagePlace = RangeSelection | { after: NodeKey } | null;
+
+/**
  * Inserts the image where the caret was when Image was chosen; after the
  * code block that place is in (for a range, the caret the field's removal
  * leaves); or in a new paragraph at the end when that place is gone.
  */
 const insertImage = (
   editor: LexicalEditor,
-  caret: RangeSelection | null,
+  chosen: ImagePlace,
   attributes: CmsImageAttributes
 ) => {
   // 15.14: an upload that finishes during a press in the editor leaves the
   // press's own caret where the press made it
   const pressed = isPressing(editor);
   editor.update(() => {
+    // T59 review L1: beside a node-selected block, the place is read from
+    // where the block stands now; a block gone is a place gone (D1)
+    const caret =
+      chosen === null || $isRangeSelection(chosen)
+        ? chosen
+        : $caretAfterLinedBlock($getNodeByKey(chosen.after));
     const kept = pressed ? ($getSelection()?.clone() ?? null) : null;
     const $keepPress = () => {
       if (
@@ -1197,7 +1209,7 @@ const ImageButton = ({
 }) => {
   const [editor] = useLexicalComposerContext();
   const fileRef = useRef<HTMLInputElement>(null);
-  const caretRef = useRef<RangeSelection | null>(null);
+  const caretRef = useRef<ImagePlace>(null);
   const [isUploading, setIsUploading] = useState(false);
 
   const choose = async (file: File) => {
@@ -1261,8 +1273,12 @@ const ImageButton = ({
             if ($isNodeSelection(selection)) {
               // T59 defect 3: a block node-selected in a lined container
               // gives the caret a typed letter takes, directly after the
-              // node (D15); the insert resolves it as typing does
-              return $caretAfterLinedBlock(selection.getNodes().at(-1));
+              // node (D15); the insert resolves it as typing does, from
+              // where the node stands when the upload finishes
+              const last = selection.getNodes().at(-1);
+              return last !== undefined && $caretAfterLinedBlock(last) !== null
+                ? { after: last.getKey() }
+                : null;
             }
             return $isRangeSelection(selection) ? selection.clone() : null;
           });
