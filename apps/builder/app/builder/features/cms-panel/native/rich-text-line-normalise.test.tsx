@@ -679,3 +679,42 @@ describe("where a line may stand (5.1)", () => {
     expect(quote?.textContent, out).toContain("Q1w");
   });
 });
+
+describe("D3 case 3: a block's text joins the line before, and an empty line after the block stays (T59 defect 9)", () => {
+  // The line break that is the whole of an empty line does not stand at
+  // the edge (D3): the join adds its line break, and the empty line keeps
+  // its own (T23.1: a line of one line break is an empty paragraph).
+  const cases = [
+    ["a heading", LI("T0w<h3>H1w</h3><br>"), "H1w"],
+    ["a code block", LI("T0w<pre><code>C1w</code></pre><br>"), "C1w"],
+  ] as const;
+  for (const [name, stored, word] of cases) {
+    test(`${name}, Backspace at its start`, async () => {
+      await expectEdit({
+        stored,
+        place: at(word, 0),
+        action: backspace,
+        write: W(`<li>T0w${word}<br /><br /></li>`),
+        source: "D3 case 3; acceptance check defect 9",
+      });
+    });
+    test(`${name}, Delete at the line's end`, async () => {
+      await expectEdit({
+        stored,
+        place: at("T0w"),
+        action: del,
+        write: W(`<li>T0w${word}<br /><br /></li>`),
+        source: "D3 case 3; acceptance check defect 9",
+      });
+    });
+    test(`${name}, Backspace over a range from the line into the block`, async () => {
+      await expectEdit({
+        stored,
+        place: range("T0w", 1, word, 2),
+        action: backspace,
+        write: W("<li>Tw<br /><br /></li>"),
+        source: "D3 case 3; acceptance check defect 9",
+      });
+    });
+  }
+});
