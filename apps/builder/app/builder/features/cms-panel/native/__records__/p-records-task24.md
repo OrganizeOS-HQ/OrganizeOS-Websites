@@ -18,3 +18,8 @@ Measured with a scratch test (not committed) on `<ul><li><blockquote><p>Z1</p></
 - c. After the undo the DOM carries `dir="ltr"` on the line (P) and the item (LI); a fresh editor carries the same two attributes. Removing them changes no element's bounding box (x, y, width, height of every element in the editable, rounded to 0.1 px). Holds, for all three.
 
 Result: the third ruled exception (T52.1) applies to the undo comparison of the 36 lined-caret cases only.
+
+## P24-3: the one skipped core-server test (T53.4)
+
+- `apps/builder/app/services/safe-resource-fetch.live.server.test.ts`, "uses the Resource editor request in the inspected server loader path".
+- It is `test.skipIf(process.env.WEBSTUDIO_LIVE_RESOURCE_GET !== "1")` (line 224): a live-network test that runs only when that variable is set. The file is on fork main unchanged (last change 88fda27, the upstream 0.309.0 merge; `git diff 2a96a45 HEAD` on it is empty), so it is skipped on main as well. This build skipped no test.
