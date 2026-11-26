@@ -937,6 +937,56 @@ describe("T75: repeated Shift+Home or Shift+End beside an image", () => {
   }
 });
 
+// T78.1 (P75-1): from a caret directly after a leading image, the first
+// Shift+Home takes the image and a second changes nothing; a letter then
+// replaces the image
+const FROM_IMAGE_SIDE = [
+  {
+    name: "an item led by an image",
+    stored: LI(`${IMAGE40}U1w`),
+    focus: "text:U1w@0|element:listitem@0",
+    write: LI("kU1w"),
+  },
+  {
+    name: "a paragraph led by an image",
+    stored: `<p>Pw</p><p>${IMAGE40}U1w</p><p>Nw</p>`,
+    focus: "text:U1w@0|element:paragraph@0",
+    write: "<p>Pw</p><p>kU1w</p><p>Nw</p>",
+  },
+] as const;
+
+describe("T78.1: Shift+Home from a caret just after a leading image", () => {
+  const press = keys("{Shift>}{Home}{/Shift}");
+  for (const cell of FROM_IMAGE_SIDE) {
+    test(`${cell.name}: the selection after each of two presses`, async () => {
+      const onChange = await mount(cell.stored);
+      await at("U1w", 0)();
+      expect(caretKey(), "the click").toBe("text:U1w@0");
+      const seen: string[] = [];
+      for (let index = 0; index < 2; index += 1) {
+        await press();
+        seen.push(caretKey());
+      }
+      expect(seen).toEqual([cell.focus, cell.focus]);
+      expect(onChange).not.toHaveBeenCalled();
+    });
+
+    for (const count of [1, 2]) {
+      test(`${cell.name}: a letter after ${count} press(es)`, async () => {
+        const onChange = await mount(cell.stored);
+        await at("U1w", 0)();
+        for (let step = 0; step < count; step += 1) {
+          await press();
+        }
+        await letter();
+        expect(onChange).toHaveBeenCalledTimes(1);
+        expect(short(lastHtml(onChange))).toBe(cell.write);
+        expect(caretKey()).toBe("text:kU1w@1");
+      });
+    }
+  }
+});
+
 // a real drag from text that ends on an image: on release the field puts
 // Lexical's selection back on the page, and a letter types over it
 const send = (method: string, params: Record<string, unknown>) =>
