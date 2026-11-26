@@ -91,6 +91,65 @@ const richTextLineGrids = [
   "app/builder/features/cms-panel/native/rich-text-line-mount.{test,spec}.{ts,tsx}",
   "app/builder/features/cms-panel/native/rich-text-line-layout.{test,spec}.{ts,tsx}",
 ];
+// The grids run as five projects by file, each leg under its 400 s bound on
+// CI by the files' measured times (Task 22).
+const lineGrid = (names: string[]) =>
+  names.map(
+    (name) =>
+      `app/builder/features/cms-panel/native/rich-text-line-${name}.{test,spec}.{ts,tsx}`
+  );
+const richTextLineGridLegs: Array<[string, string[]]> = [
+  [
+    "a",
+    lineGrid([
+      "grid-twin-edge",
+      "grid-shift-nowait-ltr-1",
+      "grid-meeting",
+      "grid-clipboard",
+      "mount",
+    ]),
+  ],
+  [
+    "b",
+    lineGrid([
+      "grid-shift-nowait-rtl-2",
+      "grid-1510-list",
+      "grid-1510-other",
+      "grid-node",
+      "grid-twin-backward",
+    ]),
+  ],
+  [
+    "c",
+    lineGrid([
+      "grid-1510-mirror",
+      "grid-unreached",
+      "grid-removal",
+      "grid-walks",
+      "clicks",
+    ]),
+  ],
+  [
+    "d",
+    lineGrid([
+      "grid-points",
+      "grid-shift-nowait-ltr-2",
+      "grid-removal-2",
+      "layout",
+      "grid-twin-forward",
+    ]),
+  ],
+  [
+    "e",
+    lineGrid([
+      "grid-walks-nowait",
+      "grid-shift-nowait-rtl-1",
+      "grid-1510-quote",
+      "grid-paste-node",
+      "grid-enter-heading",
+    ]),
+  ],
+];
 const richTextNet =
   "./app/builder/features/cms-panel/native/rich-text-line-invariant-setup.ts";
 
@@ -121,12 +180,14 @@ const projects = [
     richTextLineGrids,
     [richTextNet]
   ),
-  browserProject(
-    "core",
-    "builder-cms-rich-text-grids",
-    richTextLineGrids,
-    [],
-    [richTextNet]
+  ...richTextLineGridLegs.map(([leg, include]) =>
+    browserProject(
+      "core",
+      `builder-cms-rich-text-grids-${leg}`,
+      include,
+      [],
+      [richTextNet]
+    )
   ),
   browserProject(
     "core",
