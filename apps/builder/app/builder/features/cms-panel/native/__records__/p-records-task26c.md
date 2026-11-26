@@ -726,3 +726,143 @@ Not pinned. QR at `element:listitem@2` (`itemPoint(1, 2)`) is defect 2's class (
   2. A rule: text/plain gives the rule's own "\n" and the block boundary beside it, so `<hr>` alone is plain "\n" (two lines) where the definition gives one; `rootRule` cells with the rule and a paragraph give one line more (`<hr><p>B</p>`: plain "\n\nB", html lines ["", "B"]); `rootRule | beforeRule -> prevP A0w@1` (`<p>0w</p>`, plain "0w\n").
   3. Select all over T0w, a quote and a trailing `<br>` (real37), and over a paragraph with an image, a rule and a paragraph (real07).
 - Question: does T65's "lines of text/html" count a boundary at a range's end that the html does not hold (FS9's one new line, F7) and a rule as one line or as its "\n" plus the boundary? Candidates: (a) the definition above, under which FS9 and the 48 cells disagree and their text/plain would change; (b) a definition that counts F7's boundary at an end and a rule's own "\n", under which they may agree; (c) T65 holds only for the listed records, as committed.
+
+# Batch 5: T68.3, T68.4, T69
+
+Merged at 961d184 (commits ec62f9b, d418510, 4c791f5, 3ba2046).
+
+Worktree: `/home/user/OrganizeOS-Websites/.claude/worktrees/agent-a27ac8a267bbd8560`, branch `t68`. Not pushed.
+
+Measurements: harness-only probe `SP/t68-probe/rich-text-zzt68-probe.test.tsx` (never committed), run at the branch
+(`6a6cea6`) and at `<base>` `2a96a45` (`SP/r1-base`, `timeout 600`). Raw: `SP/t68-probe/{branch,base,branchq,baseq}.txt`.
+P records: `SP/p-records-t68.md` (1: P68-1).
+
+| Item               | Answer                                                                                                                     | Commit                  |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| 1 T68.3 + T69.4    | placeholder made a private-use character and asserted absent; rec-49 and leading-image whole-item tests                    | `ec62f9b`               |
+| 2 T69.1            | measured; branch 1 holds for the leading image: R1's value stands, new PR list entry (T60.3). Trailing image splits: P68-1 | `d418510`               |
+| 3 T68.4(a) + T69.2 | reading held for Enter and the HTML paste; fixed at removal.ts:247                                                         | `4c791f5`               |
+| 4 T68.4(b)         | stands: branch equals base for all six commands                                                                            | no commit (record here) |
+| 5 T69.3            | quote case measured at base; branch lost the tail join at depth 2 and 3; climb now stops at nearest list item              | `3ba2046`               |
+
+## 1. T68.3 + T69.4 (`ec62f9b`)
+
+- The placeholder was `"x"`, which every editor-data flavour holds (`"text"` keys) and every text/html with the kit's
+  image holds (`x.png`), so "no flavour holds it" could not be asserted. It is now `ITEM_NOT_WHOLE_MARK = ""`,
+  exported from `rich-text-line-clipboard.ts`.
+- Assertions: defect 11's two tests (copy, and the cut's clipboard) check text/plain, text/html and the editor data;
+  the clipboard grid's per-cell check asserts it for the copy and the cut of every cell (no snapshot in that file).
+- New tests (measured first; base gives no list for both because its focus is an element point, branch gives the
+  accepted shape): rec-49, `LI(U0w<img>)`, click U0w@0 + Shift+End: `list(listitem('U0w',cms-image))`; a range from
+  `listitem@0` (before the leading image, set by code) to `U1w@3`: `list(listitem(cms-image,'U1w'))`.
+- Without (placeholder back to `"x"`): clipboard "whole items" describe 4 failed / 3 passed; grid-clipboard 270 failed /
+  4 passed. With: clipboard file 111/111; grid-clipboard 274/274.
+
+## 2. T69.1 (`d418510`)
+
+Double click on U1w (`text:U1w@0 -> text:U1w@3` at both builds):
+
+| shape               | base copy                                             | base cut + paste back                         | branch copy         | branch cut + paste back |
+| ------------------- | ----------------------------------------------------- | --------------------------------------------- | ------------------- | ----------------------- |
+| `<li><img>U1w</li>` | `list(listitem('U1w'))`, html `<ul><li>U1w</li></ul>` | `<li><img /></li><li>U1w</li>` (adds an item) | `'U1w'`, html `U1w` | stored                  |
+| `<li>U1w<img></li>` | `list(listitem('U1w'))`                               | stored                                        | `'U1w'`             | stored                  |
+
+- Leading image: the head's copy holds an item and its paste back adds one: branch 1, R1's value stands. **New PR list
+  entry** (counted under T60.3).
+- Trailing image: the head's paste back gives the stored value (branch 2's condition). Branch 2's limit cannot separate
+  the shapes (both have two text ends at the head). P68-1; its copy shape is not pinned.
+- Tests: the leading-image copy holds the text and no item (and no placeholder); cut and paste back give the stored
+  value for both shapes. Added `doubleClick` to the kit.
+- No code change. "Without" = defect 11's `$markItemsNotHeldWhole` call removed: 2 failed (leading-image copy and
+  paste back), 1 passed (trailing image, as at the base). With: 3/3.
+- Seen in passing, not asked: Shift+Home twice from U1w@3 after a leading image stops at `text:U1w@0` on the branch, the
+  base reaches `listitem@0` (copy then `<img />U1w`).
+
+## 3. T68.4(a) + T69.2 (`4c791f5`)
+
+Range T0w@1 to H1w@2 (C1w@2) in `LI(T0w<h3>H1w</h3><br>)` (and `<pre><code>C1w</code></pre>`), set by code after a
+click. Oracle: Backspace over the range (writes `Tw<br /><br />`, caret Tw@1), then the key.
+
+| action                          | branch before                 | oracle (branch)                     | base                         | ordinary twin (`<p>T0w</p><h3>H1w</h3><p><br></p>`) |
+| ------------------------------- | ----------------------------- | ----------------------------------- | ---------------------------- | --------------------------------------------------- |
+| Enter                           | `<li>T</li><li>w<br /></li>`  | `<li>T</li><li>w<br /><br /></li>`  | `<li>T</li><li><br />w</li>` | `<p>T</p><p>w</p><p><br></p>`                       |
+| Shift+Enter                     | `T<br />w<br /><br />`        | same                                | `T<br /><br />w`             | `<p>T<br>w</p><p><br></p>`                          |
+| text paste Aq                   | `TAqw<br /><br />`            | same                                | `TAqw<br />`                 | `<p>TAqw</p><p><br></p>`                            |
+| HTML paste `<p>Aq</p><p>Bq</p>` | `…</ul><p>Bqw<br /></p><ul>…` | `…</ul><p>Bqw<br /><br /></p><ul>…` | `…<p>Bq<br />w</p>…`         | `<p>TAq</p><p>Bqw</p><p><br></p>`                   |
+
+Code block: identical values. The reading held (Enter and the HTML paste lost the empty line; the twin keeps it).
+Fix: the skip at `:247` now applies only when the next line holds more than its break. 8 tests (heading and code block
+x four keys, write and caret). Without: 4 failed (Enter, HTML paste) / 4 passed. With: normalise file 48/48.
+
+## 4. T68.4(b): stands
+
+Stored `<ul><li>a1q<ul><li>p1q<ul><li>s1q</li></ul></li></ul></li></ul>`, caret s1q@1 set by code. Twin: the depth-1
+item `<ul><li>a1q</li><li>s1q</li></ul>`.
+
+| command       | branch = base (depth 3)              | twin (depth 1), both builds         |
+| ------------- | ------------------------------------ | ----------------------------------- |
+| Bulleted list | `<p>a1q</p><p>p1q</p><p>s1q</p>`     | `<p>a1q</p><p>s1q</p>`              |
+| Numbered list | `…<ul><li>p1q<ol><li>s1q</li></ol>…` | `<ol><li>a1q</li><li>s1q</li></ol>` |
+| Divider       | split at s                           | 1q, `<hr>` at the root              | same pattern |
+| Quote         | `…<blockquote>s1q</blockquote>`      | same pattern                        |
+| Heading 2     | `…<h2>s1q</h2>`                      | same pattern                        |
+| Paragraph     | no write (0 onChange)                | no write                            |
+
+Branch and base equal for every command at depth 3 (and at depth 1). The climb at `rich-text-line-toolbar.ts:176`
+(`isParagraphish`) runs only for Paragraph and needs a paragraph ancestor, which an ordinary nested item never has; the
+other five commands never reach it. Left as is; no test added (no fix, and the values are the head's).
+
+## 5. T69.3 (`3ba2046`)
+
+Paste `<ol><li>Xq</li><li><hr>Yq</li></ol>` over Aq@1 to Bq@1 in
+`<blockquote>Tw<ul><li>Aq<ul><li>Bq</li></ul></li><li>Cq</li></ul></blockquote>` (at the root, in an item, and in an
+item after a line Lw): base = branch, `…<ol><li>Xq</li><li><hr />Yqq</li></ol><ul><li>Cq</li></ul>`, typed `Yqkq`. At
+depth 1 the removal-first path joins the tail anyway, so this cell does not show the fault.
+
+The fault shows one level deeper (Z13's range in the quote), paste `<ol><li>Aq</li><li><hr>T1q</li></ol>` over p1q@2 to
+n1q@1: depth 2 at the root, depth 3 at the root and in an item. Base: `<li><hr />T1q1q</li>`, tail
+`<ul><li><ul><li>t1q</li></ul></li><li>u1q</li></ul>` (depth 2), typed `T1qk1q`. Branch: `<li><hr />T1q</li>`, tail
+`<ul><li>1q<ul><li>t1q</li></ul></li>…` (join lost), typed `T1qk`.
+
+Fix: `inLined` takes the nearest list item or lined container; only that decides (a wrapper of only lists is lined for a
+point on itself). Tests: the three cells (base's write and typed letter) and the reviewer's depth-1 cell. Without: 3
+failed / 1 passed. With: paste file 78/78; main's Z6/Z9/Z13 (`rich-text-structure.test.tsx -t "Z6|Z9|Z13"`, project
+core-browser-builder-cms-rich-text) 84/84.
+
+## Whole runs and checks at the head
+
+Head `3ba2046`:
+
+- lines (whole): 18 files, 1,522 of 1,522 passed, 424 s.
+- lines-b (whole): 3 files, 649 of 649 passed, 334 s.
+- grids-a (whole): 5 files, 1,620 of 1,620 passed, 343 s. No snapshot updated; grids-b to e not run.
+- Touched files on their own: clipboard 114/114 (in lines), grid-clipboard 274/274, normalise 48/48, paste 78/78;
+  structure Z6/Z9/Z13 84/84.
+- `pnpm oxfmt --check`, `pnpm lint`, `pnpm exec tsc --noEmit -p apps/builder`, `pnpm check:runtime-upstream`: all pass.
+
+## P record
+
+Measured by the harness-only probe `SP/t68-probe/rich-text-zzt68-probe.test.tsx` (never committed), at the branch
+(`6a6cea6`, before this branch's commits) and at `<base>` `2a96a45` (`SP/r1-base`, `timeout 600`). Raw outputs:
+`SP/t68-probe/branch.txt`, `base.txt`, `branchq.txt`, `baseq.txt`.
+
+## P68-1: the copy of a double-clicked U1w before a trailing image (T69.1's second shape)
+
+- Stored: `<ul><li>Pw</li><li>U1w<img></li><li>Nw</li></ul>`.
+- Placed: a real click in U1w, then a real double click on U1w (`doubleClick("U1w")`). Selection at both builds:
+  `text:U1w@0 -> text:U1w@3`.
+- Action: copy; and, after a remount, cut then the cut's clipboard pasted at the caret the cut leaves.
+- Base: copy text/html `<ul><li>U1w</li></ul>`, editor data `list(listitem('U1w'))`, text/plain `U1w`. Cut writes
+  `<li><img /></li>`, caret `listitem@0`; the paste back writes the stored value `<li>U1w<img /></li>`.
+- Branch: copy text/html `U1w`, editor data `'U1w'`, text/plain `U1w`. Cut and paste back as the base (stored value).
+- Why a question: T69.1 decides by the head's paste back. With the leading image (`<li><img>U1w</li>`) the head's paste
+  back adds an item (`<li><img /></li><li>U1w</li>`), so branch 1 holds there and R1's value stands (pinned). With the
+  trailing image the head's paste back gives the stored value, which is branch 2's condition. The two shapes split, and
+  branch 2's limit ("a selection whose end does not reach a text end at the head") cannot tell them apart: both
+  double-click selections have two text ends at the head, so applying it would also restore the head's copy for the
+  leading image, where the head breaks D6.
+- Candidates: (a) R1's `'U1w'` for both shapes (branch 1 taken for the ruling as a whole; the current code); (b) the
+  head's `list(listitem('U1w'))` for the trailing image only, which needs a limit other than branch 2's (for example:
+  the placeholder only where the content the range does not hold stands before the range).
+- Pinned now: only what both builds share for this shape (the cut pasted back gives the stored value). The copy's shape
+  for this shape is not pinned.

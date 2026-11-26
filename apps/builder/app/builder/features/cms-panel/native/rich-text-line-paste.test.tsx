@@ -718,3 +718,68 @@ describe("D11: a range into a nested item, pasted over by a list whose last item
     });
   }
 });
+
+describe("D11: a range into a nested item of a list in a lined quote keeps PR #116's tail join (T69.3)", () => {
+  // the nearest list item decides, not the quote above it: a point in an
+  // ordinary item is in that item's own text. The writes are the base's
+  const HTML = "<ol><li>Aq</li><li><hr>T1q</li></ol>";
+  const Q2 =
+    "<ul><li>p1q<ul><li>s1q<ul><li>n1q</li></ul></li><li>t1q</li></ul></li><li>u1q</li></ul>";
+  const Q3 = `<ul><li>a1q${Q2}</li></ul>`;
+  const quoted = (inner: string) => `<blockquote>Tw${inner}</blockquote>`;
+  const pasted = (item: string) => `<ol><li>Aq</li>${item}</ol>`;
+  const cases = [
+    [
+      "depth 2, the quote at the root",
+      quoted(Q2),
+      (item: string) =>
+        quoted(
+          `<ul><li>p1</li></ul>${pasted(item)}<ul><li><ul><li>t1q</li></ul></li><li>u1q</li></ul>`
+        ),
+    ],
+    [
+      "depth 3, the quote at the root",
+      quoted(Q3),
+      (item: string) =>
+        quoted(
+          `<ul><li>a1q<ul><li>p1</li></ul></li></ul>${pasted(item)}<ul><li><ul><li><ul><li>t1q</li></ul></li><li>u1q</li></ul></li></ul>`
+        ),
+    ],
+    [
+      "depth 3, the quote in an item",
+      LI(quoted(Q3)),
+      (item: string) =>
+        LI(
+          quoted(
+            `<ul><li>a1q<ul><li>p1</li></ul></li></ul>${pasted(item)}<ul><li><ul><li><ul><li>t1q</li></ul></li><li>u1q</li></ul></li></ul>`
+          )
+        ),
+    ],
+  ] as const;
+  for (const [name, stored, written] of cases) {
+    test(`${name}, p1q@2 to n1q@1`, async () => {
+      await expectEdit({
+        stored,
+        place: range("p1q", 2, "n1q", 1),
+        action: pasteHtml(HTML, "x"),
+        write: written("<li><hr />T1q1q</li>"),
+        typed: written("<li><hr />T1qk1q</li>"),
+        source: "D11, D14 (PR #116, Z13); the base's write (T69.3)",
+      });
+    });
+  }
+
+  test("depth 1 beside the quote's line, Aq@1 to Bq@1 (the reviewer's cell)", async () => {
+    const write = (tail: string) =>
+      `<blockquote>Tw<ul><li>A</li></ul><ol><li>Xq</li><li><hr />${tail}</li></ol><ul><li>Cq</li></ul></blockquote>`;
+    await expectEdit({
+      stored:
+        "<blockquote>Tw<ul><li>Aq<ul><li>Bq</li></ul></li><li>Cq</li></ul></blockquote>",
+      place: range("Aq", 1, "Bq", 1),
+      action: pasteHtml("<ol><li>Xq</li><li><hr>Yq</li></ol>", "x"),
+      write: write("Yqq"),
+      typed: write("Yqkq"),
+      source: "D11, D14 (PR #116, Z13); the base's write (T69.3)",
+    });
+  });
+});

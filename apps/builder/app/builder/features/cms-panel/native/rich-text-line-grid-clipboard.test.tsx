@@ -46,6 +46,7 @@ import {
 } from "./rich-text-line-writer-cases";
 import { editable, editorOf, settle } from "./rich-text-test-harness";
 import { exportRichTextHtml } from "./rich-text-html";
+import { ITEM_NOT_WHOLE_MARK } from "./rich-text-line-clipboard";
 
 declare module "@vitest/browser/context" {
   interface BrowserCommands {
@@ -366,6 +367,18 @@ const runCell = async (cell: Case) => {
     copied[EDITOR_DATA]
   );
   expect(errors, "console errors").toEqual([]);
+  // T68.3: the writer's made-up character is in no flavour of either
+  for (const [name, data] of [
+    ["copy", copied],
+    ["cut", cutData],
+  ] as const) {
+    for (const type of ["text/plain", "text/html", EDITOR_DATA]) {
+      expect(
+        data[type] ?? "",
+        `${name} ${type}: no made-up character`
+      ).not.toContain(ITEM_NOT_WHOLE_MARK);
+    }
+  }
   if (NO_RANGE.includes(cell.id)) {
     expect(noSelection, "Lexical holds no selection (T12.1)").toBe(true);
     expect(popovers, "the image's popover is open (T12.1)").toBeGreaterThan(0);

@@ -27,19 +27,23 @@ const isBlock = (node: LexicalNode) =>
   ($isElementNode(node) || $isDecoratorNode(node)) && node.isInline() === false;
 
 /**
- * Whether a point is in a lined container. An item that holds only nested
- * lists is lined for a point on itself (5.1), not for a point in an item
- * of those lists, which is in that item's own text (D11: a range there
- * keeps PR 116's tail join, Z13).
+ * Whether a point is in a lined container. The nearest list item or lined
+ * container decides: a point in an ordinary item is in that item's own
+ * text, whatever holds its list (D11: a range there keeps PR 116's tail
+ * join, Z13; T69.3). An item that holds only nested lists is lined for a
+ * point on itself (5.1).
  */
-const inLined = (point: PointType) =>
-  $findMatchingParent(
+const inLined = (point: PointType) => {
+  const nearest = $findMatchingParent(
     point.getNode(),
-    (node) =>
-      isLinedContainer(node) &&
-      (node.is(point.getNode()) ||
-        node.getChildren().every($isListNode) === false)
-  ) !== null;
+    (node) => $isListItemNode(node) || isLinedContainer(node)
+  );
+  return (
+    isLinedContainer(nearest) &&
+    (nearest.is(point.getNode()) ||
+      nearest.getChildren().every($isListNode) === false)
+  );
+};
 
 const endsOf = (selection: RangeSelection) => ({
   start: selection.isBackward() ? selection.focus : selection.anchor,

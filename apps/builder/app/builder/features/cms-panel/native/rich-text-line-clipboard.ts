@@ -433,6 +433,13 @@ export const createScratchEditor = (config: ScratchConfig): LexicalEditor =>
   });
 
 /**
+ * The made-up character `$markItemsNotHeldWhole` puts beside content an item
+ * holds outside the range, in the scratch editor only. A private-use
+ * character, so no clipboard flavour can hold it unseen (T68.3).
+ */
+export const ITEM_NOT_WHOLE_MARK = "\uE000";
+
+/**
  * D6: the copied HTML holds a list item only where the selection holds the
  * whole item. Lexical's writer takes an item that holds both ends whole
  * when the selection's text is as long as the item's, so an item whose
@@ -472,7 +479,7 @@ const $markItemsNotHeldWhole = (selection: BaseSelection | null) => {
     if (outside === undefined) {
       continue;
     }
-    const mark = $createTextNode("x");
+    const mark = $createTextNode(ITEM_NOT_WHOLE_MARK);
     if (outside.isBefore(start)) {
       outside.insertBefore(mark);
     } else {
