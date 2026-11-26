@@ -110,7 +110,7 @@ import {
   registerCompositionEndOnKey,
   registerCompositionStep,
 } from "./rich-text-line-history";
-import { lineSpike } from "./rich-text-line-node";
+import { $isCmsLineNode, lineSpike } from "./rich-text-line-node";
 import { registerLineInputListener } from "./rich-text-line-node-selection";
 import {
   $unwrapLines,
@@ -129,6 +129,7 @@ import { $rangeEndsIntoText } from "./rich-text-line-removal";
 import {
   $quotedLineContent,
   $refuseBlockTypeOnLine,
+  $refuseParagraphInQuote,
   $restoreLinesAfterBlockType,
   $unwrapListLinesAtCaret,
   $unwrapQuoteLinesForParagraph,
@@ -451,9 +452,12 @@ const setBlockType = (editor: LexicalEditor, block: BlockType) => {
       return;
     }
     if (block === "paragraph") {
+      if ($refuseParagraphInQuote()) {
+        return;
+      }
       $unwrapQuoteLinesForParagraph(selection);
     }
-    if ($refuseBlockTypeOnLine(block)) {
+    if ($refuseBlockTypeOnLine(block, $nestingOf)) {
       return;
     }
 
@@ -2360,6 +2364,15 @@ const ImageEditingPlugin = () => {
           const selection = $getSelection();
           if ($isRangeSelection(selection) === false) {
             return false;
+          }
+          // T45.2 (D10): at a collapsed caret in a line with no word at it
+          // (no text node at the caret), Link writes nothing, before
+          // anything is touched
+          if (
+            selection.isCollapsed() &&
+            $isCmsLineNode(selection.anchor.getNode())
+          ) {
+            return true;
           }
           // 16.11: the range's element-point ends take their place in text
           // first (the removal step's placement), as the toggle reads only

@@ -26,6 +26,7 @@ import {
 } from "./rich-text-line-node";
 import { $unwrapLines } from "./rich-text-line-normalise";
 import { $inlineEdgeOf } from "./rich-text-line-points";
+import { RICH_TEXT_MAX_DEPTH } from "./rich-text-nodes";
 
 export type BlockType = "paragraph" | "h2" | "h3" | "h4" | "quote" | "code";
 
@@ -52,11 +53,107 @@ export const $unwrapQuoteLinesForParagraph = (
   }
 };
 
-/** Block type that changes nothing writes nothing (D19); true when it is refused. */
-export const $refuseBlockTypeOnLine = (block: BlockType): boolean => {
+/**
+ * At the head, Block type acts on the nearest ancestor that holds inline
+ * content first (Lexical's `$setBlocksType`). `node` holds it once the
+ * quote's lines have given way: a line counts as its first content.
+ */
+const $holdsInlineFirst = (node: LexicalNode) => {
+  if (
+    $isElementNode(node) === false ||
+    $isRootOrShadowRoot(node) ||
+    node.isInline()
+  ) {
+    return false;
+  }
+  let first = node.getFirstChild();
+  while ($isCmsLineNode(first)) {
+    first = first.getFirstChild() ?? first.getNextSibling();
+  }
+  return (
+    first === null ||
+    $isTextNode(first) ||
+    ($isElementNode(first) || $isDecoratorNode(first) ? first.isInline() : true)
+  );
+};
+
+/**
+ * T46.1 (D2, D19): Paragraph at a text caret on a line of a quote whose
+ * lines give way first finds no block to act on where the head finds none
+ * (the quote starts with a block, as `<blockquote><h3>H0w</h3>X1w
+ * </blockquote>` at X1w@0, and nothing around it holds inline content
+ * first): it changes nothing, decided before any node is touched. True
+ * when it is refused.
+ */
+export const $refuseParagraphInQuote = (): boolean => {
+  const selection = $getSelection();
+  if (
+    $isRangeSelection(selection) === false ||
+    selection.isCollapsed() === false ||
+    selection.anchor.type !== "text"
+  ) {
+    return false;
+  }
+  const line = lineOf(selection.anchor);
+  const quote = line?.getParent() ?? null;
+  if ($isQuoteNode(quote) === false) {
+    return false;
+  }
+  for (
+    let node: LexicalNode | null = quote;
+    node !== null;
+    node = node.getParent()
+  ) {
+    if ($holdsInlineFirst(node)) {
+      return false;
+    }
+  }
+  return true;
+};
+
+/**
+ * A quote made in place of `line` would stand at the nesting the depth
+ * limit's lift removes (the lift's own count, `nestingOf`, and its bound).
+ * A quote after a nested list in its item leaves the lists around it, as
+ * the count reads it; a line there is counted with them.
+ */
+const $quoteWouldLift = (
+  line: LexicalNode,
+  nestingOf: (node: LexicalNode) => number
+) => {
+  if (
+    $isListItemNode(line.getParent()) &&
+    line.getPreviousSiblings().some($isListNode)
+  ) {
+    return false;
+  }
+  return nestingOf(line) >= RICH_TEXT_MAX_DEPTH - 1;
+};
+
+/**
+ * Block type that changes nothing writes nothing (D19); true when it is
+ * refused. `nestingOf` is the depth limit's count of the lists and quotes
+ * around a node.
+ */
+export const $refuseBlockTypeOnLine = (
+  block: BlockType,
+  nestingOf?: (node: LexicalNode) => number
+): boolean => {
   const selection = $getSelection();
   if ($isRangeSelection(selection) === false) {
     return false;
+  }
+  // T45.4: Quote on a line whose quote would stand at the nesting the
+  // depth limit's lift removes changes nothing: the lift would take the
+  // quote back (an empty line) or turn it into items (a line with text),
+  // so it is refused before anything is touched (first example: d7 TR el2)
+  if (block === "quote" && nestingOf !== undefined) {
+    for (const point of [selection.anchor, selection.focus]) {
+      const line = lineOf(point);
+      if (line !== null && $quoteWouldLift(line, nestingOf)) {
+        return true;
+      }
+    }
   }
   // Block type that changes nothing writes nothing (D19): Paragraph on
   // a line or on a paragraph

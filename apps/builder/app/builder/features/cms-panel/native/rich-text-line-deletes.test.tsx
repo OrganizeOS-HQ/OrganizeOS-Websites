@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { act } from "react-dom/test-utils";
 import { $isHeadingNode } from "@lexical/rich-text";
+import { $isListItemNode } from "@lexical/list";
 import { $dfs } from "@lexical/utils";
 import {
   $getSelection,
@@ -14,6 +15,7 @@ import {
   backspace,
   beside,
   caretKey,
+  containerPoint,
   del,
   expectEdit,
   IMG,
@@ -1306,4 +1308,85 @@ describe("16.10: a key whose delete changes nothing writes nothing (T11.6, T15.8
       }
     });
   }
+});
+
+/** Task 22's unreached shapes `d2 TR` and `d7 TR`. */
+const D2_TR =
+  "<ul><li>Aw<ul><li>Pw</li><li>T0w<hr></li><li>Nw</li></ul></li></ul>";
+const D7_TR = [6, 5, 4, 3, 2, 1].reduce(
+  (inner, level) => `<ul><li>A${level}w${inner}</li></ul>`,
+  "<ul><li>T0w<hr></li></ul>"
+);
+
+describe("T45.3: an empty caret line after a rule at the content's end (D7, T14.14)", () => {
+  const SHAPES: ReadonlyArray<readonly [string, string]> = [
+    ["depth 1", WN("<li>T0w<hr></li>")],
+    ["depth 7", D7_TR],
+  ];
+  const FORMS: ReadonlyArray<readonly [string, Step]> = [
+    ["Delete", del],
+    ["Ctrl+Delete", wordForward],
+    ["lineForward", lineForward],
+  ];
+  for (const [depth, stored] of SHAPES) {
+    for (const [key, action] of FORMS) {
+      test(`an empty caret line after a rule at the content's end: Delete and its word and line forms change nothing (${depth}, ${key})`, async () => {
+        let depthBefore: ReturnType<typeof undoDepth> | undefined;
+        await expectEdit({
+          stored,
+          place: containerPoint("T0w", 2),
+          action: async () => {
+            depthBefore = undoDepth();
+            await action();
+            expect(undoDepth(), "no undo step").toEqual(depthBefore);
+          },
+          write: null,
+          caret: "element:listitem@2",
+          typed: short(stored.replace("<hr>", "<hr>k")),
+          source: "T45.3; D7; T14.14",
+        });
+      });
+    }
+  }
+});
+
+describe("T45.7: Backspace in an empty line after a rule in a nested item (5.3, 5.8)", () => {
+  const CELLS: ReadonlyArray<readonly [string, string, string]> = [
+    ["d2", D2_TR, short(D2_TR.replace("<hr>", ""))],
+    ["d7", D7_TR, short(D7_TR.replace("<hr>", ""))],
+  ];
+  for (const [depth, stored, write] of CELLS) {
+    test(`Backspace in an empty line after a rule in a nested item removes the rule (${depth})`, async () => {
+      await expectEdit({
+        stored,
+        place: containerPoint("T0w", 2),
+        action: backspace,
+        write,
+        caret: "text:T0w@3",
+        typed: write.replace("T0w", "T0wk"),
+        source: "T45.7; spec 5.3, 5.8",
+      });
+    });
+  }
+
+  test("control: Backspace at the start of a nested item's first line still outdents", async () => {
+    const indentOfT0w = () =>
+      editorOf()!
+        .getEditorState()
+        .read(() => {
+          const item = $dfs().find(
+            ({ node }) =>
+              $isListItemNode(node) && node.getTextContent().startsWith("T0w")
+          )?.node;
+          return $isListItemNode(item) ? item.getIndent() : -1;
+        });
+    const onChange = await mount(D2_TR);
+    await at("T0w", 0)();
+    expect(indentOfT0w(), "the item's depth before").toBe(1);
+    onChange.mockClear();
+    await backspace();
+    expect(onChange, "one onChange").toHaveBeenCalledTimes(1);
+    expect(indentOfT0w(), "the item outdented").toBe(0);
+    expect(short(lastHtml(onChange)), "the rule stays").toContain("T0w<hr />");
+  });
 });
