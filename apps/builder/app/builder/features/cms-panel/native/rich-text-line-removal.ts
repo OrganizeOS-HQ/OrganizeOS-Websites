@@ -303,6 +303,20 @@ export const $caretBesideInlineEdge = (
     return false;
   }
   const parent = inline.getParentOrThrow();
+  // T59 defect 5: a heading's start rule (HeadingNode.collapseAtStart)
+  // replaces a heading that holds content with a new heading of the same
+  // tag: no change, yet every node in it dirty and a value handed out.
+  // Backspace at the content's start in a heading is decided here as
+  // changing nothing, the caret left where it is (D1, D7; T42.1)
+  if (
+    isBackward &&
+    character &&
+    $isHeadingNode(parent) &&
+    parent.isEmpty() === false &&
+    $nothingBefore(inline)
+  ) {
+    return true;
+  }
   const offset = isBackward ? 0 : parent.getChildrenSize();
   selection.anchor.set(parent.getKey(), offset, "element");
   selection.focus.set(parent.getKey(), offset, "element");
