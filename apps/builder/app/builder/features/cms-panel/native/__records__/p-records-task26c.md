@@ -1194,3 +1194,64 @@ Builds: base `<base>` 2a96a45 (SP/r1-base, `timeout 600`), branch `t70` (from be
 - Where the branch stands: set by code and reached by ArrowRight (the two ways T70.7 names for the tests), the letter, plain and p1 already land after the image and p2 gives the write at the caret after it: pinned in `rich-text-line-node-selection.test.tsx` ("T70.7: …"); no code change. Reached by ArrowLeft, R1 lands before the image (in the line), as the ordinary twin does at both builds.
 - Candidates: (a) D15/T28.3 as T70.7 reads them: in a lined container the content lands after the image whatever arrow selected it (R1 then departs from its ordinary twin for an ArrowLeft-reached image, `kQ0w`-side becomes `<img />k`); (b) the field's existing rule as D15 cites it: the side the arrow moved toward, so ArrowLeft lands before the image in lined and ordinary content alike, and T70.7's expected writes hold for the code and ArrowRight routes only.
 - The caret after one undo of the letter (set by code or ArrowRight) is the caret beside the image (`text:T2w@0`), not the node selection, at both builds and in the ordinary twin; the pastes' undo gives the node selection back. Not ruled; the tests pin the value one undo gives back, not that caret.
+
+# Batch 7: T71
+
+Merged at 3c0ada7 (commits 32cdd3e, 0a07040, bb28a6a, f7c147f, 0b4fd10, b57a9af, cc68d4e, aa6ad92, 5cd9757).
+
+Worktree: /home/user/OrganizeOS-Websites/.claude/worktrees/agent-a24c6b8d7d1b45a8e, branch `t71` from `0d02dce`. Not pushed, not merged. No P records.
+
+| Item  | Commit                                                             | Answer                                                         |
+| ----- | ------------------------------------------------------------------ | -------------------------------------------------------------- |
+| T71.1 | `32cdd3e`                                                          | defect 3 taken back                                            |
+| T71.2 | `0a07040`                                                          | lift only for a rule; points grid six cells                    |
+| T71.3 | `bb28a6a`                                                          | fixed: the emptied line's mark restored at undo/redo           |
+| T71.4 | `f7c147f`, `0b4fd10`                                               | assertion restated; all 273 grid cells, FS9 and defect 1 agree |
+| T71.5 | `b57a9af` list, `cc68d4e` other, `aa6ad92` mirror, `5cd9757` quote | snapshots updated                                              |
+
+## T71.1
+
+`git revert` of `713255e` and `ae781a4` applied cleanly; `db9d84e` and the Image half of `f55c8eb` hand-reverted (the node-selection branch in ImageButton's click, the helper's import in rich-text-field.tsx, the defect 3 tests). ImageButton and insertImage now equal `db9d84e^`. `$caretAfterLinedBlock` stays in rich-text-line-node-selection.ts, used by `$nodeSelectionIntoLine` only. grid-node, snapshot unchanged: 258 passed. Toolbar file: 252 passed.
+
+## T71.2
+
+toggleList's lift (rich-text-field.tsx) now runs only when the node the caret is kept by is a rule (`$isHorizontalRuleNode`); beside a quote, a heading or a code block nothing is lifted. grid-points with `-u`: the diff is exactly Bulleted list at QR@2, RQ@0, RR@0, RR@1, RR@2, RT@0 (caret and typed; writes unchanged), identical to SP/t59d-snap-grid-points.diff; no other cell, no T67.2 change in this file. The grid's cells carry no label, so the grid file's header comment names the six cells as D13 (T71.2). L2 tests (83aff9f) and the defect 2 tests pass.
+
+## T71.3
+
+Cause: `emptiedLines` (rich-text-line-points.ts), the mark that a line was emptied by the person, is per editor and is dropped at the commit where the caret leaves the line. Lexical 0.21's `setEditorState` restores an undo or a redo as a copy of the stored state (`cloneEditorState`: a new state object, the same node objects), and nothing restored the mark, so the point check gave the empty line back (C2) and the caret landed at the block's end (`text:Q0w@3`, `text:C0w@3`).
+
+Fix: each emptied line node is remembered (WeakSet of the node objects) at every commit; at a commit tagged `historic`, a line the restored state holds as one of those objects, empty and holding the caret, is marked again. A line node rewritten since (e.g. a resolver's line that was never emptied) is a different object and is not marked.
+
+Tests (rich-text-line-toolbar.test.tsx, "T71.3: ..."): undo after Bulleted list, Heading 2 and a typed letter from an emptied last line after a quote and after a code block: undo's caret equals the caret before (`element:listitem@1`) and the next letter lands in the line. Before the fix the four list and heading cells failed; the two typed-letter cells already held at the branch (not traced why; likely no selection change resolves the restored line when the caret was already in it). The L2 tests now assert `undoRestores` (state and caret); they failed before the fix and pass after.
+
+## T71.4
+
+`expectSameLines` (kit): the lines of text/plain that hold text equal, in order, the non-empty lines of `htmlLines(text/html)`; the count of new lines is left to each test's literal. Unit test in rich-text-line-test-kit.test.tsx (FS9's end boundary, a rule, a quote after a paragraph agree; two blocks on one line, extra text and order fail). Run on every clipboard grid cell (273: the T65 list and its id test removed), on FS9 (both stored values) and on the defect 1 tests: all agree. No disagreement to report.
+
+## T71.5
+
+Each file with `-u`, one commit per file; each diff equals the one measured at T59 (SP/t59d-snap-grid-1510-*.diff): list 8, other 35, mirror 14, quote 8 cells named "text/plain is read from the structure (D6)" removed, none added. A cell outside a list is one where `sameAsFixture` held (write, onChange count, clipboard html, plain and editor data), since 15.10-ruled cells are always named, so each removed cell equals the base in every compared field. Mirror: `L|heading|text|quote|start|3|cut` keeps its name "the head leaves an emptied quote (5.4)" (moves to the end only because its copy twin, after it, left); its reason changes from emptied quote plus text/plain to the emptied quote only: the base's cut and copy clipboards are identical, the grid asserts cut equals copy (16.5), and the copy twin now equals the base. grid-node not updated.
+
+## core-server
+
+The whole-project run at `5cd9757` failed one test: `organizeos-org-script.wiring.node.test.ts` (the raw-HTML list) found `parseFromString(` in rich-text-line-test-kit.tsx, from `htmlLines` (b895ada). That failure is already there at `0d02dce`; it does not come from T71. Fixed in `0b4fd10`: the kit now uses rich-text-html.ts's reviewed `parseHtml`, and the check itself is unchanged. After the fix: core-server 2020 passed, 1 skipped (the skip was already there), 104 s; the kit and clipboard files 148 passed; grid-clipboard 273 passed.
+
+## Runs
+
+Each project run whole, one at a time, at `5cd9757` (the last commit, `0b4fd10`, changes only the kit's parse call; the files that use it were run again after it):
+
+| Project                    | Files | Passed            | Failed | Wall  |
+| -------------------------- | ----- | ----------------- | ------ | ----- |
+| lines                      | 18    | 1528              | 0      | 541 s |
+| lines-b                    | 3     | 649               | 0      | 392 s |
+| rich-text                  | 9     | 3110              | 0      | 182 s |
+| grids-a                    | 5     | 1619              | 0      | 319 s |
+| grids-b                    | 5     | 1753              | 0      | 373 s |
+| grids-c                    | 5     | 2244              | 0      | 330 s |
+| grids-d                    | 5     | 1433              | 0      | 279 s |
+| grids-e                    | 5     | 1087              | 0      | 331 s |
+| core-browser-builder-cms   | 41    | 1609              | 0      | 324 s |
+| core-server (at `0b4fd10`) | 124   | 2020 (+1 skipped) | 0      | 104 s |
+
+Checks: `pnpm oxfmt --check`, `pnpm lint`, `pnpm exec tsc --noEmit -p apps/builder`, `pnpm check:runtime-upstream` all exit 0.
