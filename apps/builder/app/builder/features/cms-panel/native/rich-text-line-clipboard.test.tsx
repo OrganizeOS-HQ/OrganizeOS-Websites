@@ -22,10 +22,12 @@ import {
   $rangeOracle,
   IMG,
   at,
+  backspace,
   caretKey,
   clipboard,
   copy,
   cut,
+  del,
   expectEdit,
   expectSameLines,
   type Held,
@@ -1590,6 +1592,45 @@ describe("T59 defect 1: text/plain keeps the head's new line after a start at a 
       expect(plain(lastHtml(onChange)), "the cut joins two items").toBe(joined);
       expect(clipboard()["text/plain"]).toBe("\n");
       expectSameLines(clipboard());
+    });
+  }
+});
+
+describe("T70.2 (measurement 6): c1 S3, a removal from Q0w's end to the start of the line that holds only the break", () => {
+  // T23.1 for every entry point of a removal: the line and its break go,
+  // nothing is added to the quote; one onChange, one undo step, the caret
+  // stays at Q0w@3. The cut's clipboard is FS9's.
+  const removed = "<ul><li><blockquote><p>Q0w</p></blockquote></li></ul>";
+  const placed = then(fs9Place, async () => {
+    expect(caretKey(), "Q0w@3 to the break's line start").toMatch(
+      /^text:Q0w@3\|/
+    );
+  });
+  const actions: Array<[string, Step]> = [
+    ["Backspace", backspace],
+    ["Delete", del],
+    [
+      "a cut",
+      then(cut, async () => {
+        const held = clipboard();
+        expect(
+          short(held["text/html"] ?? ""),
+          "text/html: the quote's shell"
+        ).toBe("<blockquote><p></p></blockquote>");
+        expect(held["text/plain"], "text/plain: one new line").toBe("\n");
+      }),
+    ],
+  ];
+  for (const [name, action] of actions) {
+    test(name, async () => {
+      await expectEdit({
+        stored: FS9,
+        place: placed,
+        action,
+        write: removed,
+        caret: "text:Q0w@3",
+        source: "T70.2; T23.1; FS9",
+      });
     });
   }
 });
