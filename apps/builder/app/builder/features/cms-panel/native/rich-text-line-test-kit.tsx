@@ -36,6 +36,7 @@ import { RichTextField, type RichTextFieldProps } from "./rich-text-field";
 import {
   exportRichTextHtml,
   importRichTextHtml,
+  parseHtml,
   registerRichTextTransforms,
   richTextHtmlConfig,
   richTextNodes,
@@ -845,7 +846,7 @@ const BLOCK_TAGS = new Set(
  * the line. The result is those lines, joined by new lines and split again.
  */
 export const htmlLines = (html: string) => {
-  const body = new DOMParser().parseFromString(html, "text/html").body;
+  const body = parseHtml(html).body;
   const isBlock = (node: Node) =>
     node instanceof Element && BLOCK_TAGS.has(node.tagName);
   const inline = (node: Node): string =>
