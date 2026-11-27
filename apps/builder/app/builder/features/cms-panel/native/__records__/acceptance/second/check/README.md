@@ -7,6 +7,15 @@ them there; `scripts/ld.py` and `scripts/common.py` name the paths.
 
 ## How to run it again
 
+Without `SP`, run `cd scripts && python3 master.py`. It runs the 12 program checks from this directory alone and
+writes `scripts/master.json`, which equals the committed `master.json.gz` (gunzipped; it is gzipped so the formatter leaves its bytes alone). In that case `ld.py` reads these files:
+
+- `lib2.py`, a copy of `SP/second/scripts/lib2.py`, with its stored-value table taken from `lib2-stored.json.gz`;
+- `u1652.json.gz`;
+- `traces-1652.json.gz`: both builds' records of the 1,652, as `ld.full()` returns them, with every step's caret,
+  calls, live value and note.
+
+With `SP` present:
 From `scripts/`, with `SP/second/` and `SP/acceptance/` in place and `u1652.json` (the 1,652 records of
 `../differences.jsonl.gz` whose `check` is `no-program` or `not confirmed` and that have no `readByHand`) beside
 the scripts:

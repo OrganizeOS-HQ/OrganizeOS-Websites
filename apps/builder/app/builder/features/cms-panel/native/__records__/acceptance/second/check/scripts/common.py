@@ -3,7 +3,7 @@ the action, write, and the letter typed after redo."""
 import json, re
 import ld, lib2, ht, pos
 
-U = json.load(open(ld.HERE + '/u1652.json'))
+U = ld.u1652()
 F = ld.full()
 SKIP = ('["snap"', '["an"', '["cmp"')
 
