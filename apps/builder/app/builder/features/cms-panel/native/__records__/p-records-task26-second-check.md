@@ -1,4 +1,4 @@
-# Task 26: the second comparison's check (T79.7 to T79.10)
+# Task 26: the second comparison's check (T79.7 to T79.10, T82)
 
 The check T79 owes of R1's second comparison (`p-records-task26-second.md`, data `acceptance/second/`): R1 at
 `a3bc7d8` (the same code as `d20016d`) against `<base>` `2a96a45`. The data, the checkers and how to run them
@@ -282,3 +282,87 @@ and the page's (`dom`) at every mark. The stored value is `<p>A0w</p><hr><p>B1w<
   - keys-phase-2: 44 (n1);
   - gap-fill: 3.
 - **Q3 (the flags).** One line each is in `acceptance/second/README.md`, section "Flags".
+
+## T82's additions (T82.3 item 2, T82.4, T82.5)
+
+### T82.3 item 2: `undo-vs-base.jsonl` against the main run's comparison notes (`undo-vs-base-check.json`)
+
+- **What the two values are.** A `cmps` entry is `[phase, snapshot, html-or-state, state]`
+  (`SP/second/scripts/lib2.py`, `engine_fields`, lines 212 to 215).
+  - The third value is the note's `html` where the engine records one, which is the toolbar and gap-fill
+    engines' check that the page's sanitised HTML equals the snapshot's. Where the engine records none (the
+    keys engines), it is the note's `state`.
+  - The fourth value is the note's `state`.
+  - The note's `caret` is not in the entry. Reading the two values as state and caret gives the 185
+    disagreements: `B::ul-d1|QBR|liEnd|UL`'s R1 note is html true, state false, caret true, and the file
+    gives R1 `[true, false]`, which is html and state.
+- **Which run made them.** The second comparison's main run: the same records in `SP/second/sets/*/out/`.
+  Recomputing every entry from those records gives the file's value in all 10,080 entries.
+- **Whether r1Flags' `undo` and `redo` come from the file.** They do not. `compare.flags_engine` (lines 102
+  to 107) reads the same notes directly from the record's trace. It applies the same test
+  (`html`, else `state`) to the record's first and second `cmp` step.
+- **The file's R1 failures, D7-diffed.** The file gives R1 a false value in 195 entries of 194 records.
+  - 30 are the Q1 re-run above, all D7-equal.
+  - 7 are T82.3 item 1's toolbar records, left to the other agent.
+  - The other 157 were re-run at R1 (`d20016d`) through each set's own engine, patched so that every
+    `cmp` note also gives D7's equality: `editorState.toJSON()` before the action and at the comparison,
+    with every `direction` and every empty line left out (`toJSON` holds no node keys). The note also gives
+    the first raw difference and the first D7 difference (`q2drive.py`, `q2-d7-rerun.json`).
+  - **152 are D7-equal at every comparison**, with the caret the same.
+  - **2 clipboard `k2` records** (`K11 H only elem0 / hr`, `/ ul`) were read from the clipboard engine's own
+    `diff` note: the first raw difference is `"direction":null` against `"ltr"`. Their full D7 equality was
+    not measured.
+  - **3 gap-fill `g3` multi-key records** (`adj|TQT|Q1w whole Bksp x2`, `emptyLine-enter|QT|Bksp3Enter`,
+    `emptyLine-k|QT|Bksp3k`) are not D7-equal after their record's single undo. Their action holds two or
+    three edits that change the value, and T67.1 rules that many undos. Re-run with four undos (T67.1,
+    `../g3-per-edit.json`), the last undo restores the value before at both builds. The one-undo comparison is
+    not D7's test for them. They stand under T67.1, and **no D7 defect** is found.
+
+### T82.4: the 23 label corrections (`labels-t82.jsonl.gz`)
+
+The corrections are applied after the classifier's 14 as K1 to K23 (`t82_labels.py`); the values stand.
+154 records changed label:
+
+| correction | records | old label → new label (short)                                                              |
+| ---------- | ------- | ------------------------------------------------------------------------------------------ |
+| K1         | 45      | D2 list buttons → D13 with T71.2 and T65.3 (T70.5 for a ruleClick before a leading rule)   |
+| K2         | 1       | p4 C13: D1's bar / D7 → D1's emptied entry (T62.5)                                         |
+| K3         | 2       | g5 blockNoRefocus REFI, ROOT → D1's focus entry                                            |
+| K4         | 6       | g4 compose REFI/REFP/ROOT T0w@1 → F12 with 15.2; T67.2 and the composition-start entry     |
+| K5         | 2       | g4 compose ROOT afterRule → the composition-start entry (T67.2, T72.2)                     |
+| K6         | 1       | g5 blur QTR → group 11 at the base's click; 5.3's stop on the rule (T80.1)                 |
+| K7         | 2       | g4 compose QTR afterRule → T80.1                                                           |
+| K8         | 1       | g4 replace QTR T1w → T80.2                                                                 |
+| K9         | 1       | g4 compose TQT Q1w@1 'a\nb' → T80.3                                                        |
+| K10        | 3       | g6 I1root-q, I2li, I5root-p drag → T80.4                                                   |
+| K11        | 2       | g5 undo5 QT, g6 I1root-q click P → T56.1, T56.2                                            |
+| K12        | 12      | toolbar Bold over a range → group 11 at the base's shift-click; 5.4 and D5 (T55.4)         |
+| K13        | 9       | k3 TCB, THB, TQB → D3's third case with T68.1                                              |
+| K14        | 16      | n2 rightQ k and BS → T70.11 with T76.2                                                     |
+| K15        | 10      | n2 QBR liEnd k and 9 afterBr0 equal-write records → D1's same caret; D13 for liEnd         |
+| K16        | 1       | n2 top-QrTB afterBr0 ins \n\n → D1's bar with T70.9 measurement 14 (low confidence)        |
+| K17        | 4       | paste-sweeps B dlim → D1's emptied entry (5.4)                                             |
+| K18        | 3       | k3 TRL walk Right; k2 QQR, QTR walk Left → T29.2; group 11 with T29.1 and T29.2            |
+| K19        | 5       | paste-sweeps E (no join) → T56.3 to T56.5                                                  |
+| K20        | 3       | g6 click Del → F2 (D1's fourth entry)                                                      |
+| K21        | 1       | R r-C Pw->C0w Im → the seventh entry as T43.2 restates it                                  |
+| K22        | 15      | letter after redo, not confirmed → D3's third case (R1's letter leaves one line break)     |
+| K23        | 9       | 8 D18 walk-Left records → 5.3's node stop on ArrowLeft; k3 TBQ walk Left → D1's same caret |
+
+- The four that concern ordinary content are K2 with K17 (the emptied entry), K3 (the focus entry), K4 (F12
+  with T67.2) and K20 (F2).
+- 34 of the 154 are in the 1,652: 30 are confirmed by a program relation and 4 are read. A new label changes
+  none of T79.7's outcomes.
+
+### T82.5
+
+T60.3's number from the record sets is 0 (T82.5). The coordinating session's program checks of T82.2 agree
+with this check where they overlap:
+
+- no R1 write reorders content;
+- a Backspace or Delete at a caret removes at most one character, rule or image (`R-RM`'s first clause);
+- focus is kept in 1,206 records;
+- the 213 new shapes are fixed points and reopen editable;
+- measurement 17's selections are equal at both builds.
+
+They are cross-checks only. T79.7's ways are counted per record above.
