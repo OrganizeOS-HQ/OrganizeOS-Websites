@@ -35,3 +35,20 @@ Files:
 | `probes-pcmp-base-r1.*`, `probes-pcmp-h0-r1.*`, `probes-changed-since-0ae275f.md` | check 5's probes: base against R1, and R1 at `0ae275f` against R1 now                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `defect-probes.json.gz`                                                           | T63.5: the probe records of the acceptance check's defects at R1, at `0ae275f` and at the base                                                                                                                                                                                                                                                                                                                                                                                      |
 | `base-hangs.json`                                                                 | the 44 record-set records that hung at the base in this run                                                                                                                                                                                                                                                                                                                                                                                                                         |
+
+## Flags
+
+The `baseFlags` and `r1Flags` of `differences.jsonl.gz` (the coordinator's Q3).
+
+Set by `SP/acceptance/compare.py`, `flags_engine` (lines 79 to 124) for the engine sets and `flags_case`
+(lines 127 to 148) for the paste sets:
+
+- `hang`: the record hung (the 40 s stall watchdog, or a second 600 s kill in the same scenario). `crash`: the run crashed in it.
+- `slow`: a step took more than 2 s (`ms`), or the paste record's `ms` is over 2 s.
+- `err`: a console error during the record that is not React's act warning.
+- `ro`: the write's read-only check found a reason (`note.readOnly`, or `reloadReadOnly`).
+- `notFixed`: re-importing the write does not give it back (`note.fixedPoint` false, or `reloadHeadless` false).
+- `empty`: the write holds `<li></li>`, `<blockquote></blockquote>`, `<p></p>`, an empty heading, `<ul></ul>`, `<ol></ol>`, `<li><br /></li>` or an empty code block (the paste sets: the first four).
+- `lost-hr`, `lost-img`, `lost-blockquote`, `lost-pre`, `lost-h3`: the write holds fewer of that tag than the stored value. `reorder`: the stored words the write keeps stand in another order.
+- `kNoChange`: the letter typed after redo changed nothing (`typeK` note `changed` false).
+- `undo`: the first `cmp` step of the record has neither `html` nor `state` true. `redo`: the same for the second `cmp` step. `state` is `JSON.stringify(editor.getEditorState().toJSON())` compared as a string with the snapshot (the keys engine, `engine.tsx`, the `cmp` step): no `direction` or empty line is left out, so it is stricter than D7. In the clipboard set's engine records the first `cmp` is not always after undo (`p4` compares the paste with the value before the cut first). The paste sets: `undoState` or `undoDom` false gives `undo`, `redoOk` false gives `redo`.

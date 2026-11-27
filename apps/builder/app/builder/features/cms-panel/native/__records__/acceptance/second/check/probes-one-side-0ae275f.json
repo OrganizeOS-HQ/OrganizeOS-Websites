@@ -1,0 +1,50 @@
+[
+  {
+    "file": "insert/zzq1-a-BQA-rerun",
+    "side": "0ae275f only",
+    "records": 4,
+    "tests0ae275f": ["4 passed | 290 skipped", ["0", "11"]],
+    "testsNow": ["none", ["?", "?"]],
+    "reason": "a re-run file made only in the acceptance run (defect 12's check); the second run ran each probe file of check 5 once and has no such file"
+  },
+  {
+    "file": "insert/zzq1-a-TAGS-rerun",
+    "side": "0ae275f only",
+    "records": 2,
+    "tests0ae275f": ["2 passed | 292 skipped", ["0", "9"]],
+    "testsNow": ["none", ["?", "?"]],
+    "reason": "as zzq1-a-BQA-rerun"
+  },
+  {
+    "file": "keys/zzv15-keys-i3bb",
+    "side": "0ae275f only",
+    "records": 33,
+    "tests0ae275f": ["1 passed", ["0", "71"]],
+    "testsNow": ["none", ["0", "73"]],
+    "reason": "R1 now holds fewer (480) than 0ae275f (513): re-run twice at d20016d (the code of a3bc7d8), both runs finish with 513 records, every key of 0ae275f's, the 33 missing records equal to 0ae275f's and the 480 equal to the second run's; the second run's file was short, not R1's behaviour"
+  },
+  {
+    "file": "keys/zzv15-keys-i3bwdb",
+    "side": "R1 now only",
+    "records": 4,
+    "tests0ae275f": ["1 passed", ["0", "98"]],
+    "testsNow": ["1 passed", ["0", "97"]],
+    "reason": "R1 now holds 4 more (684) than 0ae275f (680; both runs passed): the four lineB cells of bwd|R|para|contentStart (twin, linkOut, linkIn, code) are recorded at R1 now only; R1 holds every 0ae275f record, so this is not a run that ended early at R1"
+  },
+  {
+    "file": "keys/zzv15-keys-i3fwda",
+    "side": "R1 now only",
+    "records": 350,
+    "tests0ae275f": ["none", ["0", "42"]],
+    "testsNow": ["1 passed", ["0", "91"]],
+    "reason": "the 0ae275f run did not finish (no test summary, exit 0 after 42 s, 280 of 630 records); R1 now finishes (1 passed, 630 records, every 0ae275f record present)"
+  },
+  {
+    "file": "keys/zzv15-keys-i3real",
+    "side": "R1 now only",
+    "records": 181,
+    "tests0ae275f": ["none", ["0", "43"]],
+    "testsNow": ["1 passed", ["0", "71"]],
+    "reason": "the 0ae275f run did not finish (no test summary, 200 of 381 records); R1 now finishes (1 passed, 381 records)"
+  }
+]

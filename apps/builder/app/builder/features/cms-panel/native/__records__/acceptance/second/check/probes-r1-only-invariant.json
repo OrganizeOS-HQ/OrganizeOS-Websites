@@ -1,0 +1,84 @@
+{
+  "counts": {
+    "no invariant of its own": 10714,
+    "fails": 21,
+    "passes": 10076
+  },
+  "byLens": {
+    "clip|no invariant of its own": 10152,
+    "clip|fails": 11,
+    "clip|passes": 25,
+    "code|passes": 11,
+    "comp|no invariant of its own": 464,
+    "comp|passes": 58,
+    "hist|no invariant of its own": 98,
+    "hist|passes": 12,
+    "hist|fails": 2,
+    "keys|passes": 9940,
+    "keys|fails": 8,
+    "nav|passes": 30
+  },
+  "fails": [
+    ["clip/zzv15-clip-x", "zzv15-clip-x-out-all.json", "3#14", ["undoBack"]],
+    ["clip/zzv15-clip-x", "zzv15-clip-x-out-all.json", "3#17", ["undoBack"]],
+    ["clip/zzv15-clip-x", "zzv15-clip-x-out-all.json", "3#20", ["undoBack"]],
+    ["clip/zzv15-clip-x", "zzv15-clip-x-out-all.json", "3#23", ["undoBack"]],
+    ["clip/zzv15-clip-x", "zzv15-clip-x-out-all.json", "6", ["errors"]],
+    ["clip/zzv15-clip-x", "zzv15-clip-x-out-all.json", "6#2", ["errors"]],
+    ["clip/zzv15-clip-x", "zzv15-clip-x-out-all.json", "6#3", ["errors"]],
+    ["clip/zzv15-clip-x", "zzv15-clip-x-out-all.json", "6#4", ["errors"]],
+    ["clip/zzv15-clip-x", "zzv15-clip-x-out-all.json", "6#6", ["errors"]],
+    ["clip/zzv15-clip-x", "zzv15-clip-x-out-all.json", "6#8", ["errors"]],
+    ["clip/zzv15-clip-x", "zzv15-clip-x-out-all.json", "6#10", ["errors"]],
+    [
+      "hist/zzv15-hist-a",
+      "out-A2-two-noop-then-range-delete.json",
+      "log",
+      ["errors", "errors", "errors", "errors", "errors"]
+    ],
+    [
+      "hist/zzv15-hist-ab",
+      "out-A2-two-noop-then-range-delete.json",
+      "log",
+      ["errors", "errors", "errors", "errors", "errors"]
+    ],
+    ["keys/zzv15-keys-i6", "out-i6.json", "imgEnd->Q2w|cutRefused", ["thrown"]],
+    ["keys/zzv15-keys-i6", "out-i6.json", "Q2w->imgEnd|cutRefused", ["thrown"]],
+    [
+      "keys/zzv15-keys-i6",
+      "out-i6.json",
+      "paraEnd->Q2w|cutRefused",
+      ["thrown"]
+    ],
+    [
+      "keys/zzv15-keys-i6",
+      "out-i6.json",
+      "T1w->beforeLink|cutRefused",
+      ["thrown"]
+    ],
+    [
+      "keys/zzv15-keys-i6",
+      "out-i6.json",
+      "caretAfterImg|cutRefused",
+      ["thrown"]
+    ],
+    [
+      "keys/zzv15-keys-i6",
+      "out-i6.json",
+      "caretBeforeImg|cutRefused",
+      ["thrown"]
+    ],
+    [
+      "keys/zzv15-keys-i6",
+      "out-i6.json",
+      "rootAfterQuote|cutRefused",
+      ["thrown"]
+    ],
+    [
+      "keys/zzv15-keys-i6",
+      "out-i6.json",
+      "afterRule->B2w|cutRefused",
+      ["thrown"]
+    ]
+  ]
+}
