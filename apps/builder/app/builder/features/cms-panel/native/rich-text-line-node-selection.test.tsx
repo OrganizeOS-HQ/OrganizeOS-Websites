@@ -381,6 +381,27 @@ describe("T95.3: a paste with a rule node-selected goes through the field's past
       expect(record.undoRestores, "one undo restores").toBe(true);
       expect(record.redoEquals, "redo equals the write").toBe(true);
       expect(record.errors, "console errors").toEqual([]);
+      // the rule's removal runs in a queued update: once it has run, still
+      // one value handed out and one undo step, and one undo hands out the
+      // stored value with the rule back and node-selected
+      const onChange = await mount(QRT);
+      await pressRule();
+      const stored = exportRichTextHtml(editorOf()!);
+      const depth = undoDepth();
+      onChange.mockClear();
+      await pasteHtml(html, text)();
+      await settle();
+      expect(onChange, "one onChange once settled").toHaveBeenCalledTimes(1);
+      expect(short(lastHtml(onChange)), "the value handed out").toBe(write);
+      expect(undoDepth().undo, "one undo step").toBe(depth.undo + 1);
+      await keys("{Control>}z{/Control}")();
+      await settle();
+      expect(onChange, "one more onChange at undo").toHaveBeenCalledTimes(2);
+      expect(lastHtml(onChange), "undo hands out the stored value").toBe(
+        stored
+      );
+      expect(caretKey(), "the rule node-selected").toBe("node:horizontalrule");
+      expect(undoDepth().undo, "the undo step taken").toBe(depth.undo);
     });
   }
 });
