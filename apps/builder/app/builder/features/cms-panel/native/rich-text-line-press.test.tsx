@@ -859,8 +859,35 @@ describe("the press cannot stick", () => {
 // selects nothing; Escape closes it with a caret right after the image, as
 // at the base (measured: p-records-task10b.md)
 describe("an image clicked, then Escape", () => {
+  // The point of the click, relative to the image's box: the one nearest its
+  // centre that hit-tests to the image with its neighbours a quarter pixel
+  // away, read from the live layout. The image is 2 by 3 pixels: where the
+  // glyph advances of the text beside it are rounded to whole pixels, the
+  // centre of its box can hit the text beside it.
+  const onImage = (image: Element) => {
+    const box = image.getBoundingClientRect();
+    const hits = (x: number, y: number) =>
+      document.elementFromPoint(box.left + x, box.top + y) === image;
+    let best: { x: number; y: number } | undefined;
+    let bestDistance = Number.POSITIVE_INFINITY;
+    for (let y = 0.25; y < box.height; y += 0.25) {
+      for (let x = 0.25; x < box.width; x += 0.25) {
+        const around = [-0.25, 0, 0.25].every((dy) =>
+          [-0.25, 0, 0.25].every((dx) => hits(x + dx, y + dy))
+        );
+        const distance = (x - box.width / 2) ** 2 + (y - box.height / 2) ** 2;
+        if (around && distance < bestDistance) {
+          best = { x, y };
+          bestDistance = distance;
+        }
+      }
+    }
+    expect(best, "a point on the image").toBeDefined();
+    return best!;
+  };
   const clickImageEscape: Step = async () => {
-    await userEvent.click(editable()!.querySelector("img")!);
+    const image = editable()!.querySelector("img")!;
+    await userEvent.click(image, { position: onImage(image) } as never);
     await settle();
     expect(caretKey(), "the popover's click selects nothing").toBe("none");
     await keys("{Escape}")();
