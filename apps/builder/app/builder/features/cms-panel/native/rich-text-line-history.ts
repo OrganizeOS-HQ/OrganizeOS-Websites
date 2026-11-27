@@ -658,6 +658,16 @@ export const registerCompositionStep = (editor: LexicalEditor) => {
 };
 
 /**
+ * T95.6: the history's composition state ends with a keydown that belongs
+ * to no composition, as Lexical's key (T43.1) and the page's state (T83.2)
+ * do. Runs after the clear of Lexical's key has committed, so a
+ * composition that clear settles is settled first (F12).
+ */
+const endHistoryComposition = (editor: LexicalEditor) => {
+  compositions.delete(editor);
+};
+
+/**
  * T43.1: a keydown that belongs to no composition (`isComposing` false, no
  * key code 229, a key other than "Process" and "Unidentified") while the
  * editor still composes: the browser has ended the composition without
@@ -683,6 +693,7 @@ export const registerCompositionEndOnKey = (editor: LexicalEditor) => {
     // ends with it
     endPageComposition(editor);
     if (editor.isComposing() === false) {
+      endHistoryComposition(editor);
       return;
     }
     // the clear's commit writes Lexical's selection to the page: the page's
@@ -704,6 +715,7 @@ export const registerCompositionEndOnKey = (editor: LexicalEditor) => {
           ] as const)
         : null;
     editor.update(() => $setCompositionKey(null), { discrete: true });
+    endHistoryComposition(editor);
     if (
       page !== null &&
       dom !== null &&

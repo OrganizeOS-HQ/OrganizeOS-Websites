@@ -27,7 +27,9 @@ import {
   LI,
   mount,
   mountExtraField,
+  nodeAfter,
   nodeSelect,
+  pasteHtml,
   quiet,
   range,
   short,
@@ -1526,4 +1528,69 @@ describe("T83: the page composing with no composition key holds the read-back", 
       }
     }, 60_000);
   }
+});
+
+// ---------------------------------------------------------------------------
+// T95.6: a keydown that belongs to no composition ends the history's
+// composition state, as it ends Lexical's key (T43.1) and the page's state
+// (T83.2)
+
+/**
+ * A composition the page starts with the rule node-selected by a click
+ * (Lexical sets no composition key there) and never ends, then ArrowRight.
+ */
+const compositionLeftAtRule = async (stored: string, word: string) => {
+  const onChange = await mount(stored);
+  await at(word, 1)();
+  await userEvent.click(editable()!.querySelector("hr")!);
+  await settle();
+  expect(caretKey(), "the rule node-selected").toBe("node:horizontalrule");
+  await quietly();
+  await act(async () => {
+    editable()!.dispatchEvent(
+      new CompositionEvent("compositionstart", { data: "", bubbles: true })
+    );
+  });
+  await settle();
+  expect(editorOf()!.isComposing(), "no composition key").toBe(false);
+  await keys("{ArrowRight}")();
+  return onChange;
+};
+
+describe("T95.6: after a composition that never ended and a key that is no composition's", () => {
+  test("an edit the history merges into the step before is its own undo step", async () => {
+    await compositionLeftAtRule(`<hr><p>Pw</p><p>${LINK}</p>`, "Pw");
+    await at("Pw")();
+    await letter();
+    await at("Lw", 0)();
+    await backspace();
+    expect(valueOf()).toBe("<hr /><p>Pwk<a>Lw</a></p>");
+    await undo();
+    expect(valueOf(), "one Ctrl+Z").toBe("<hr /><p>Pwk</p><p><a>Lw</a></p>");
+    await undo();
+    expect(valueOf(), "a second Ctrl+Z").toBe(
+      "<hr /><p>Pw</p><p><a>Lw</a></p>"
+    );
+  });
+
+  test("an edit that leaves the value unchanged makes no undo step", async () => {
+    const onChange = await compositionLeftAtRule(
+      "<p>xq</p><hr><p>yq</p>",
+      "xq"
+    );
+    await at("yq")();
+    await letter();
+    await nodeAfter("xq")();
+    expect(caretKey(), "the rule node-selected").toBe("node:horizontalrule");
+    const depth = undoDepth();
+    onChange.mockClear();
+    await pasteHtml("<hr>", "")();
+    expect(valueOf()).toBe("<p>xq</p><hr /><p>yqk</p>");
+    expect(onChange, "no onChange").not.toHaveBeenCalled();
+    expect(undoDepth(), "no undo step").toEqual(depth);
+    await undo();
+    expect(valueOf(), "one Ctrl+Z takes back the letter").toBe(
+      "<p>xq</p><hr /><p>yq</p>"
+    );
+  });
 });
