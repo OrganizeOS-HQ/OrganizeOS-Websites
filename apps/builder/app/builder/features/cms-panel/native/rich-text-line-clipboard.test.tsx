@@ -37,6 +37,7 @@ import {
   letter,
   mount,
   mountExtraField,
+  onPage,
   pasteClip,
   range,
   rangeToLineStart,
@@ -898,8 +899,7 @@ const dragOntoRule =
         }
       ).send("Input.dispatchMouseEvent", {
         type,
-        x,
-        y,
+        ...onPage(x, y),
         button: "left",
         buttons: type === "mouseReleased" ? 0 : 1,
         clickCount: 1,

@@ -30,6 +30,7 @@ import {
   letter,
   LI,
   mount,
+  onPage,
   pasteText,
   setUpload,
   short,
@@ -67,8 +68,7 @@ const mouse = (
 ) =>
   send("Input.dispatchMouseEvent", {
     type,
-    x,
-    y,
+    ...onPage(x, y),
     button: type === "mouseMoved" && buttons === 0 ? "none" : "left",
     buttons,
     clickCount,

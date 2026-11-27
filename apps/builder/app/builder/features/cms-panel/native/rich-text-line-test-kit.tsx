@@ -1107,6 +1107,25 @@ export const sameUpdate =
     await settle();
   };
 
+/**
+ * A point of this frame on the page raw mouse events are sent to (T96,
+ * T99.3): `Input.dispatchMouseEvent` takes the top page's viewport, and the test
+ * frame sits in it at an offset that is not always zero: a Playwright click
+ * that retries scrolls the page with the target's `scrollIntoView`, and the
+ * page stays so. The offset is read when the event is made.
+ */
+export const onPage = (x: number, y: number) => {
+  let left = x;
+  let top = y;
+  for (let view: Window = window; view.frameElement !== null;) {
+    const frame = view.frameElement;
+    const box = frame.getBoundingClientRect();
+    left += box.left + frame.clientLeft;
+    top += box.top + frame.clientTop;
+    view = frame.ownerDocument.defaultView!;
+  }
+  return { x: left, y: top };
+};
 const mouse = (
   type: "mousePressed" | "mouseReleased",
   x: number,
@@ -1116,8 +1135,7 @@ const mouse = (
 ) =>
   session().send("Input.dispatchMouseEvent", {
     type,
-    x,
-    y,
+    ...onPage(x, y),
     button: "left",
     buttons: type === "mousePressed" ? 1 : 0,
     clickCount,
@@ -1128,7 +1146,7 @@ const centre = (element: Element) => {
   return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
 };
 
-/** A real click at page coordinates. */
+/** A real click at this frame's coordinates. */
 export const clickAt =
   (x: number, y: number): Step =>
   async () => {

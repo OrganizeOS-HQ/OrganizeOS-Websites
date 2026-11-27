@@ -37,6 +37,7 @@ import {
   nodeAfter,
   nodeSelect,
   noWait,
+  onPage,
   recordEdit,
   short,
   type Step,
@@ -1003,8 +1004,7 @@ const mouse = (
 ) =>
   send("Input.dispatchMouseEvent", {
     type,
-    x,
-    y,
+    ...onPage(x, y),
     button: type === "mouseMoved" ? (buttons ? "left" : "none") : "left",
     buttons,
     clickCount: type === "mouseMoved" ? 0 : 1,

@@ -29,6 +29,7 @@ import {
   mountExtraField,
   nodeAfter,
   nodeSelect,
+  onPage,
   pasteHtml,
   quiet,
   range,
@@ -858,25 +859,6 @@ const pointIn = (word: string, offset: number) => {
   domRange.setEnd(span.firstChild!, offset);
   const rect = domRange.getBoundingClientRect();
   return { x: rect.left, y: rect.top + rect.height / 2 };
-};
-/**
- * A point of this frame on the page the mouse events are sent to (T96).
- * `Input.dispatchMouseEvent` takes the top page's viewport, and the test
- * frame sits in it at an offset that is not always zero: a Playwright click
- * that retries scrolls the page with the target's `scrollIntoView`, and the
- * page stays so. The offset is read when the event is made.
- */
-const onPage = (x: number, y: number) => {
-  let left = x;
-  let top = y;
-  for (let view: Window = window; view.frameElement !== null;) {
-    const frame = view.frameElement;
-    const box = frame.getBoundingClientRect();
-    left += box.left + frame.clientLeft;
-    top += box.top + frame.clientTop;
-    view = frame.ownerDocument.defaultView!;
-  }
-  return { x: left, y: top };
 };
 const mouse = (type: string, x: number, y: number, buttons: number) =>
   session().send("Input.dispatchMouseEvent", {
