@@ -1,5 +1,0 @@
-node_modules/lexical/Lexical.dev.js:5
-node_modules/@lexical/rich-text/LexicalRichText.dev.js:2
-node_modules/@lexical/clipboard/LexicalClipboard.dev.js:0
-node_modules/@lexical/selection/LexicalSelection.dev.js:0
-node_modules/@lexical/list/LexicalList.dev.js:0
