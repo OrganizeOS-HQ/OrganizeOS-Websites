@@ -1,5 +1,4 @@
 // Node selections in a lined container, their handlers, and the line code's root input listeners.
-import { $insertDataTransferForRichText } from "@lexical/clipboard";
 import {
   $createRangeSelection,
   $getEditor,
@@ -115,6 +114,30 @@ export const $typeIntoLine = (payload: unknown): boolean => {
   return false;
 };
 
+/**
+ * The selected nodes go once a paste at the point after them is done (D15).
+ * T37.2: where the paste inserted nothing, the caret stays in the line made
+ * at that point, where the nodes were.
+ */
+const $removeAfterPaste = (nodes: LexicalNode[]) => {
+  for (const node of nodes) {
+    if (node.isAttached()) {
+      node.remove();
+    }
+  }
+  const after = $getSelection();
+  const line = $isRangeSelection(after) ? after.anchor.getNode() : null;
+  if (
+    $isRangeSelection(after) &&
+    after.isCollapsed() &&
+    $isCmsLineNode(line) &&
+    line.isEmpty() &&
+    line.isAttached()
+  ) {
+    $notePasteHeldLine(line);
+  }
+};
+
 /** A paste or drop over a node selection in a lined container (D15). */
 export const $nodeSelectionPaste = (
   command: LexicalCommand<unknown>,
@@ -146,29 +169,17 @@ export const $nodeSelectionPaste = (
       $isCmsLineNode(container.getFirstChild()) === false
     ) {
       $nodeSelectionIntoLine(false, true);
-      const caret = $getSelection();
-      if ($isRangeSelection(caret)) {
-        (payload as ClipboardEvent).preventDefault();
+      if ($isRangeSelection($getSelection())) {
+        const event = payload as ClipboardEvent;
+        const editor = $getEditor();
+        event.preventDefault();
         $mark(PASTE_OVER_NODE_MARK);
-        $insertDataTransferForRichText(data, caret, $getEditor());
-        for (const node of nodes) {
-          if (node.isAttached()) {
-            node.remove();
-          }
-        }
-        // T37.2: where the paste inserted nothing, the caret stays in the
-        // line made at the point after the nodes, where they were
-        const after = $getSelection();
-        const line = $isRangeSelection(after) ? after.anchor.getNode() : null;
-        if (
-          $isRangeSelection(after) &&
-          after.isCollapsed() &&
-          $isCmsLineNode(line) &&
-          line.isEmpty() &&
-          line.isAttached()
-        ) {
-          $notePasteHeldLine(line);
-        }
+        // the field's own paste path runs at that caret, every paste rule
+        // with it (T95.3)
+        editor.dispatchCommand(PASTE_COMMAND, event);
+        // Lexical's own insert is queued in this update: the nodes go
+        // after it, in an update queued behind it
+        editor.update(() => $removeAfterPaste(nodes));
         return true;
       }
     }

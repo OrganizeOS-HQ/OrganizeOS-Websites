@@ -49,6 +49,7 @@ import {
 } from "./rich-text-line-test-kit";
 import { undoDepth } from "./rich-text-line-test-kit-branch";
 import { sameState } from "./rich-text-line-test-compare";
+import { selectRule } from "./rich-text-line-cells-paste-node";
 import { registerLineInputListener } from "./rich-text-line-node-selection";
 import { registerCompositionStep } from "./rich-text-line-history";
 import { exportRichTextHtml } from "./rich-text-html";
@@ -324,6 +325,64 @@ describe("D15: a rule node-selected in a lined item", () => {
       source: "D15, 5.4, check 3, 14.8",
     });
   });
+});
+
+/**
+ * T95.3: with a rule node-selected by a press in an item that starts with
+ * a block, a paste goes through the field's paste rules: its write is the
+ * same paste's at the caret directly after the rule, the rule taken out
+ * (D15, T37.1), in one onChange, and one undo restores the value before.
+ */
+describe("T95.3: a paste with a rule node-selected goes through the field's paste rules", () => {
+  const pressRule = then(at("Q0w", 1), selectRule("QRT", "click"));
+  const QQ = "<blockquote><p>Q0w</p></blockquote>";
+  for (const [name, html, text, write] of [
+    [
+      "a link whose address the field refuses is unwrapped",
+      '<p><a href="page.html">t1w</a></p>',
+      "t1w",
+      W(`<li>${QQ}t1wT2w</li>`),
+    ],
+    [
+      "a link around blocks moves into each block",
+      '<a href="https://x.org/"><p>L1w</p><p>L2w</p></a>',
+      "L1w\nL2w",
+      `<ul><li>Pw</li><li>${QQ}<a>L1w</a></li></ul><p><a>L2w</a>T2w</p><ul><li>Nw</li></ul>`,
+    ],
+    [
+      "a pasted image is left out and the space beside it stays",
+      `<p>D1w ${IMG} D2w</p>`,
+      "D1w  D2w",
+      W(`<li>${QQ}D1w D2wT2w</li>`),
+    ],
+    [
+      "the text after a pasted item's nested list goes to an item after it",
+      "<ul><li>N1w<ul><li>N2w</li></ul>N3w</li></ul>",
+      "N1w\nN2w\nN3w",
+      W(`<li>${QQ}</li><li>N1w<ul><li>N2w</li></ul></li><li>N3wT2w</li>`),
+    ],
+  ] as const) {
+    test(name, async () => {
+      const atCaret = await recordEdit({
+        stored: QRT,
+        place: at("T2w", 0),
+        action: pasteHtml(html, text),
+      });
+      const record = await recordEdit({
+        stored: QRT,
+        place: pressRule,
+        action: pasteHtml(html, text),
+      });
+      expect(record.calls, "one onChange").toBe(1);
+      expect(record.write, "the write").toBe(write);
+      expect(record.written, "the caret's write, the rule taken out").toBe(
+        atCaret.written.replace(/<hr\b[^>]*>/, "")
+      );
+      expect(record.undoRestores, "one undo restores").toBe(true);
+      expect(record.redoEquals, "redo equals the write").toBe(true);
+      expect(record.errors, "console errors").toEqual([]);
+    });
+  }
 });
 
 /**
