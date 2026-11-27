@@ -1533,6 +1533,11 @@ export const pointRules = (editor: LexicalEditor, tracker?: EditTracker) => {
         return true;
       }
     }
+    // a plain arrow over a range collapses it (R5-5, the field's own step):
+    // the step past a break acts only on a caret or with Shift (T95.2)
+    if (event.shiftKey === false && selection.isCollapsed() === false) {
+      return false;
+    }
     const focus = selection.focus;
     const node = focus.getNode();
     let child: LexicalNode | null = node;
