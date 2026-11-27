@@ -1,0 +1,189 @@
+diff -ru -x __pycache__ ../../acceptance/sets/keys-phase-1/src/engine.tsx keys-phase-1/engine.tsx
+--- ../../acceptance/sets/keys-phase-1/src/engine.tsx	2026-11-26 08:41:44.684334783 +0000
++++ keys-phase-1/engine.tsx	2026-11-27 06:11:17.931265649 +0000
+@@ -28,6 +28,7 @@
+   save,
+   settle,
+   stateOf,
++  stateD7,
+   unmount,
+   type Where,
+ } from "./harness";
+@@ -343,7 +344,7 @@
+   };
+   window.addEventListener("unhandledrejection", onRejection);
+   const trace: Array<Record<string, unknown>> = [];
+-  const snaps = new Map<string, { state: string; caret: string }>();
++  const snaps = new Map<string, { state: string; d7: string; caret: string }>();
+   let copied: Record<string, string> | undefined;
+   let failed: string | undefined;
+   let seen = 0;
+@@ -802,11 +803,12 @@
+       } else if (step[0] === "dump") {
+         note = stateOf();
+       } else if (step[0] === "snap") {
+-        snaps.set(step[1], { state: stateOf(), caret: selInfo() });
++        snaps.set(step[1], { state: stateOf(), d7: stateD7(), caret: selInfo() });
+       } else if (step[0] === "cmp") {
+         const snap = snaps.get(step[1]);
+         note = {
+-          state: snap?.state === stateOf(),
++          state: snap?.d7 === stateD7(),
++          stateRaw: snap?.state === stateOf(),
+           caret: snap?.caret === selInfo(),
+         };
+       }
+diff -ru -x __pycache__ ../../acceptance/sets/keys-phase-1/src/harness.tsx keys-phase-1/harness.tsx
+--- ../../acceptance/sets/keys-phase-1/src/harness.tsx	2026-11-26 08:41:44.684429376 +0000
++++ keys-phase-1/harness.tsx	2026-11-27 06:11:17.930545961 +0000
+@@ -283,6 +283,24 @@
+ export const stateOf = () =>
+   JSON.stringify(editorOf()!.getEditorState().toJSON());
+ 
++// D7's state (T85.1, rerun-t88): every "direction" key and every cms-line with no children left out.
++const stripD7 = (v: unknown): unknown => {
++  if (Array.isArray(v))
++    return v
++      .filter((c) => !(c && typeof c === "object" && (c as { type?: string }).type === "cms-line" && Array.isArray((c as { children?: unknown[] }).children) && (c as { children: unknown[] }).children.length === 0))
++      .map(stripD7);
++  if (v && typeof v === "object") {
++    const o: Record<string, unknown> = {};
++    for (const k of Object.keys(v).sort()) {
++      if (k === "direction") continue;
++      o[k] = stripD7((v as Record<string, unknown>)[k]);
++    }
++    return o;
++  }
++  return v;
++};
++export const stateD7 = () => JSON.stringify(stripD7(editorOf()!.getEditorState().toJSON()));
++
+ export const liveExport = () => exportRichTextHtml(editorOf()!);
+ 
+ export const caretInfo = () =>
+diff -ru -x __pycache__ ../../acceptance/sets/keys-phase-2/src/engine.tsx keys-phase-2/engine.tsx
+--- ../../acceptance/sets/keys-phase-2/src/engine.tsx	2026-11-26 08:41:44.690175419 +0000
++++ keys-phase-2/engine.tsx	2026-11-27 06:11:17.934372684 +0000
+@@ -28,6 +28,7 @@
+   save,
+   settle,
+   stateOf,
++  stateD7,
+   unmount,
+   type Where,
+ } from "./harness";
+@@ -347,7 +348,7 @@
+   };
+   window.addEventListener("unhandledrejection", onRejection);
+   const trace: Array<Record<string, unknown>> = [];
+-  const snaps = new Map<string, { state: string; caret: string }>();
++  const snaps = new Map<string, { state: string; d7: string; caret: string }>();
+   let copied: Record<string, string> | undefined;
+   let failed: string | undefined;
+   let seen = 0;
+@@ -846,11 +847,12 @@
+       } else if (step[0] === "dump") {
+         note = stateOf();
+       } else if (step[0] === "snap") {
+-        snaps.set(step[1], { state: stateOf(), caret: selInfo() });
++        snaps.set(step[1], { state: stateOf(), d7: stateD7(), caret: selInfo() });
+       } else if (step[0] === "cmp") {
+         const snap = snaps.get(step[1]);
+         note = {
+-          state: snap?.state === stateOf(),
++          state: snap?.d7 === stateD7(),
++          stateRaw: snap?.state === stateOf(),
+           caret: snap?.caret === selInfo(),
+         };
+       }
+diff -ru -x __pycache__ ../../acceptance/sets/keys-phase-2/src/harness.tsx keys-phase-2/harness.tsx
+--- ../../acceptance/sets/keys-phase-2/src/harness.tsx	2026-11-26 08:41:44.690487674 +0000
++++ keys-phase-2/harness.tsx	2026-11-27 06:11:17.934092803 +0000
+@@ -283,6 +283,24 @@
+ export const stateOf = () =>
+   JSON.stringify(editorOf()!.getEditorState().toJSON());
+ 
++// D7's state (T85.1, rerun-t88): every "direction" key and every cms-line with no children left out.
++const stripD7 = (v: unknown): unknown => {
++  if (Array.isArray(v))
++    return v
++      .filter((c) => !(c && typeof c === "object" && (c as { type?: string }).type === "cms-line" && Array.isArray((c as { children?: unknown[] }).children) && (c as { children: unknown[] }).children.length === 0))
++      .map(stripD7);
++  if (v && typeof v === "object") {
++    const o: Record<string, unknown> = {};
++    for (const k of Object.keys(v).sort()) {
++      if (k === "direction") continue;
++      o[k] = stripD7((v as Record<string, unknown>)[k]);
++    }
++    return o;
++  }
++  return v;
++};
++export const stateD7 = () => JSON.stringify(stripD7(editorOf()!.getEditorState().toJSON()));
++
+ export const liveExport = () => exportRichTextHtml(editorOf()!);
+ 
+ export const caretInfo = () =>
+diff -ru -x __pycache__ ../../acceptance/sets/gap-fill/src/zzh2-fill-engine.tsx gap-fill/zzh2-fill-engine.tsx
+--- ../../acceptance/sets/gap-fill/src/zzh2-fill-engine.tsx	2026-11-26 08:47:49.761812902 +0000
++++ gap-fill/zzh2-fill-engine.tsx	2026-11-27 06:11:17.937108818 +0000
+@@ -29,6 +29,7 @@
+   save,
+   settle,
+   stateOf,
++  stateD7,
+   unmount,
+   type Where,
+ } from "./zzh2-fill-harness";
+@@ -471,7 +472,7 @@
+   };
+   window.addEventListener("unhandledrejection", onRejection);
+   const trace: Array<Record<string, unknown>> = [];
+-  const snaps = new Map<string, { state: string; caret: string; html: string }>();
++  const snaps = new Map<string, { state: string; d7: string; caret: string; html: string }>();
+   let copied: Record<string, string> | undefined;
+   let failed: string | undefined;
+   let seen = 0;
+@@ -1180,11 +1181,12 @@
+       } else if (step[0] === "dump") {
+         note = stateOf();
+       } else if (step[0] === "snap") {
+-        snaps.set(step[1], { state: stateOf(), caret: selInfo(), html: sanitizeRichTextHtml(liveExport()) });
++        snaps.set(step[1], { state: stateOf(), d7: stateD7(), caret: selInfo(), html: sanitizeRichTextHtml(liveExport()) });
+       } else if (step[0] === "cmp") {
+         const snap = snaps.get(step[1]);
+         note = {
+-          state: snap?.state === stateOf(),
++          state: snap?.d7 === stateD7(),
++          stateRaw: snap?.state === stateOf(),
+           caret: snap?.caret === selInfo(),
+           html: snap?.html === sanitizeRichTextHtml(liveExport()),
+           focus: document.activeElement === editable(),
+diff -ru -x __pycache__ ../../acceptance/sets/gap-fill/src/zzh2-fill-harness.tsx gap-fill/zzh2-fill-harness.tsx
+--- ../../acceptance/sets/gap-fill/src/zzh2-fill-harness.tsx	2026-11-26 08:41:44.695137429 +0000
++++ gap-fill/zzh2-fill-harness.tsx	2026-11-27 06:11:17.936733829 +0000
+@@ -289,6 +289,24 @@
+ export const stateOf = () =>
+   JSON.stringify(editorOf()!.getEditorState().toJSON());
+ 
++// D7's state (T85.1, rerun-t88): every "direction" key and every cms-line with no children left out.
++const stripD7 = (v: unknown): unknown => {
++  if (Array.isArray(v))
++    return v
++      .filter((c) => !(c && typeof c === "object" && (c as { type?: string }).type === "cms-line" && Array.isArray((c as { children?: unknown[] }).children) && (c as { children: unknown[] }).children.length === 0))
++      .map(stripD7);
++  if (v && typeof v === "object") {
++    const o: Record<string, unknown> = {};
++    for (const k of Object.keys(v).sort()) {
++      if (k === "direction") continue;
++      o[k] = stripD7((v as Record<string, unknown>)[k]);
++    }
++    return o;
++  }
++  return v;
++};
++export const stateD7 = () => JSON.stringify(stripD7(editorOf()!.getEditorState().toJSON()));
++
+ export const liveExport = () => exportRichTextHtml(editorOf()!);
+ 
+ export const caretInfo = () =>
