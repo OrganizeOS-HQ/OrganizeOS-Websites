@@ -285,3 +285,159 @@ composition matches the same read-back's footprint, but that is not shown.
   - The trace (8 of 8, against 0 of 8 in the base-form variants) points to (a).
 - The count of ordinary-content cases with an R1-only form, which is T60.3's number until ruled: **2**. One is the
   ordinary rule (v3, traced); the other is the ordinary image (2 runs, untraced).
+
+# T83: the fix of P-t81-6 (3a2e8bd)
+
+The work is in worktree `/home/user/OrganizeOS-Websites/.claude/worktrees/agent-a940e2e89d2af5ae5`, on branch `t83`. It
+starts from `572be9f`, whose code equals `a3bc7d8`. The fix is commit `3a2e8bd`. Nothing was pushed or merged. The base
+`SP/r1-base` was left clean. Its untracked `zz13base.log` was there before this task.
+
+## T83.2 The fix
+
+The fix tracks the page's composition on the root, in the capture phase: `registerPageComposition` sets the state at
+`compositionstart` and clears it at `compositionend` (`rich-text-line-points.ts`). The field registers it first, inside
+`registerCompositionEndOnKey`, ahead of every other listener the field has. T43.1 holds: a keydown that belongs to no
+composition (`isComposing` false, key code not 229, a key other than Process and Unidentified) also ends the page's state,
+through `endPageComposition`. The browser ending a composition therefore does not leave the steps held. The editor's own
+composition key is still cleared as before. `isComposingAtPage(editor)` is `editor.isComposing()` or the page's state.
+
+Every place where the field tests the editor's composing state, and what each does after the fix:
+
+| place                                                                                                                                                                    | what it holds                                                                    | after the fix                                                                                                                                                                                                                                    |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `removeKeptLines` (points)                                                                                                                                               | kept lines do not go while composing                                             | reads the page's state: kept lines stay while the page composes                                                                                                                                                                                  |
+| `pageMoved`, 15.12/5.3's read-back (points)                                                                                                                              | no read-back while composing                                                     | reads the page's state: no read-back while the page composes (the defect's step)                                                                                                                                                                 |
+| `beforeKeyOrEdit` (points)                                                                                                                                               | while composing, an edit only ends an open press                                 | reads the page's state: during a keyless composition it no longer runs the read-back, the kept lines or the held step                                                                                                                            |
+| 16.23's listener, kept lines at the commit that ends a composition (points)                                                                                              | the transition from composing to not                                             | reads the page's state at each commit                                                                                                                                                                                                            |
+| `registerPointCheck` (points)                                                                                                                                            | the point check is held while composing                                          | reads the page's state                                                                                                                                                                                                                           |
+| `onCompositionStart`, the press's held step (16.18, points)                                                                                                              | it does not run for a `compositionstart` while Lexical still composes            | unchanged. It asks whether Lexical still holds a composition (T43.1's stale key) when the page's start arrives. The page's state is set by that same event, so it cannot answer that question                                                    |
+| history: `compositionStartChar`, `rememberCompositionStart`, the voided and removing phases, the unchanged-edit and merged-edit listeners, the composition step listener | the undo step and the start character of a composition that Lexical tracks       | unchanged. These hold no step of the line rules. They decide undo steps and the U+200B start character, which Lexical only adds while it holds a key. For keyless compositions, the values, calls, undo and redo equal the head's (T70.8, T73.3) |
+| history: the key or input that belongs to no composition (`onKeyOrInput`)                                                                                                | reads the event's own `isComposing` and `inputType`, then `editor.isComposing()` | unchanged                                                                                                                                                                                                                                        |
+| history: `registerCompositionEndOnKey` (T43.1)                                                                                                                           | clears Lexical's key on a keydown that belongs to no composition                 | now ends the page's state first, then clears the key as before                                                                                                                                                                                   |
+| `ChangePlugin`, T67.2's start commit (field)                                                                                                                             | the commit at which Lexical's key is set                                         | unchanged. With no key, no start commit exists to withhold                                                                                                                                                                                       |
+| `watchField`, the start-character count (field-watch, development)                                                                                                       | counts start characters around a Lexical composition                             | unchanged                                                                                                                                                                                                                                        |
+
+My reading of "every step of the field that holds while composing" is the line rules' steps (5.3's read-back, kept lines,
+the point check, the press's held step). The coordinating session should rule if the history or hand-out tests are meant
+too.
+
+## T83.3 The bar
+
+**The forced-order test.** It is in `rich-text-line-composition.test.tsx`, in the block "T83: the page composing with no
+composition key holds the read-back". It has two tests, each looping three times:
+
+- `<p>Pw</p><hr><p>Nw</p>`, with the rule selected by code;
+- QTR, with the rule selected by a click on it.
+
+The losing order is made on purpose:
+
+1. the rule is node-selected;
+2. a bare pointerdown on Nw leaves Lexical's press mark pending;
+3. the composition `a`, then `a\nb`, then the commit, by CDP;
+4. at the composition's second `compositionupdate`, a `selectionchange` is dispatched while the page shows the
+   composition range, so Lexical uses up the mark and holds a range;
+5. then the `beforeinput`.
+
+The test checks:
+
+- the page's range was reported;
+- no value handed out holds a line break;
+- the last value is the head's in that order: `<p>a</p><hr /><p>Nw</p>`, and
+  `<ul><li>a</li><li><blockquote><p>Q0w</p></blockquote>T1w<hr /></li><li>Nw</li></ul>`;
+- what Backspace hands out: nothing in the ordinary shape, and the emptied item in QTR.
+
+The head's values come from the probe in the same order: the base gave them 3 of 3, and R1 with the fix gave the same.
+
+- With the fix taken out (the two source files reverted), the two tests failed in 3 of 3 runs, with the defect's
+  forms: `expected '<p>a\nb</p><hr /><p>Nw</p>' not to contain '\n'` and `'<ul><li>a\nbQ0w</li><li>T1w<hr />...'`.
+- With the fix, they pass.
+- The probe in the same order with `a`: both builds and R1 without the fix give `aPw`, with Backspace writing `Pw`, 3 of 3. Only `a\nb` reached the defect.
+
+**300 runs at R1 after the fix**
+
+- The three cases were interleaved as in T81.6. Data is in `SP/t80/data-h3`, and the table in `SP/t80/cmp-after.txt`.
+- They are compared with the base's 300 runs from T81.6 (`data-h`, `data-h2`).
+- The load average was 1.25 before the batch and 1.68 after.
+
+| case                                            | form                                                | base (300) | R1 after the fix (300)          |
+| ----------------------------------------------- | --------------------------------------------------- | ---------- | ------------------------------- |
+| `<p>Pw</p><hr><p>Nw</p>`, the pointerdown start | normal (rule kept, Backspace `<p>bPw</p><p>Nw</p>`) | 290        | 289                             |
+|                                                 | v1 (`<p>a</p><hr>`, Backspace writes nothing)       | 6          | 7                               |
+|                                                 | v2 (`bPw`, Backspace writes nothing)                | 4          | 4                               |
+|                                                 | **`<p>a\nb</p>`**                                   | 0          | **0** (9 of 300 before the fix) |
+| `<p>X0w<img></p>`, the caret-by-code start      | normal                                              | 300        | 300                             |
+|                                                 | single-value form                                   | 0          | 0                               |
+| QTR, the pointerdown start, a press             | normal                                              | 294        | 292                             |
+|                                                 | `<p>a</p>` lifted out                               | 3          | 3                               |
+|                                                 | `<p>bPw</p>` lifted out                             | 3          | 1                               |
+|                                                 | **`<li>a\nbQ0w</li>`**                              | 0          | **0** (4 of 300 before the fix) |
+|                                                 | `a` at a@1, then Backspace empties the item         | 0          | 4                               |
+
+- The two forms that were R1's alone no longer occur.
+- In ordinary content every remaining form is one the base gives, at rates the runs cannot tell apart. T60.3's number
+  from these runs is 0.
+- The image case's single-value form was seen twice in 1,250 runs before the fix and not after (0 of 300).
+- One form in QTR remains at R1: the composed `a` with the caret at a@1, after which Backspace empties the item.
+  - It appears 4 of 300 at R1 and 0 of 300 at the base in the free-running order. Before the fix it was 7 of 300.
+  - It is the head's own form for the order in which the mark is used up at the composition's second update: the base
+    gives it 3 of 3 in the forced order, and the QTR forced test pins it.
+  - So the gap is how often the browser's selection change falls at that moment, not a write the head lacks. It is
+    lined content.
+
+**`a`, 100 runs per build** (`<p>Pw</p><hr><p>Nw</p>`, the pointerdown start, then Backspace)
+
+- Both builds give one form, 100 of 100: `aPw` with the caret at aPw@1, then Backspace writes `<p>Pw</p><hr><p>Nw</p>`.
+
+**A real gesture**
+
+- The setup: after the mount, with no caret in the field (the mount's own click skipped), a real click on the rule is
+  the first gesture, then the composition. 20 runs per build, in each of `<p>Pw</p><hr><p>Nw</p>` and QTR, with `a` and
+  with `a\nb`.
+- At both builds the rule stays node-selected after the composition in 80 of 80 runs. A press on the rule leaves no
+  mark pending, because Lexical sets none for a press inside a decorator.
+- So a person does not reach the path with this gesture. The path needs Lexical's press mark pending at a node
+  selection, which these runs set only with a synthetic pointerdown.
+- The letter after the composition differs in QTR only, by D15's typed-text rule.
+- QTR's `a\nb` gives its composed value at different rates across the two builds (T70.12's timing).
+
+**Whole-project runs at `3a2e8bd`**
+
+- These ran one at a time, all passing. Logs are in `SP/t83-all/`.
+- The composition file passed whole: 140 of 140, including the T43.1 cells and the new tests.
+- T51.1's two tests (P22-9, the forced order and the 20 runs): 2 of 2.
+- The node grid (`rich-text-line-grid-node.test.tsx`): 258 of 258. No value changed; the file ran unchanged.
+
+| project                  | test files | tests                   | seconds |
+| ------------------------ | ---------- | ----------------------- | ------- |
+| lines                    | 18         | 1,556                   | 414     |
+| lines-b                  | 3          | 671                     | 310     |
+| rich-text                | 9          | 3,110                   | 134     |
+| sweeps                   | 3          | 10                      | 110     |
+| grids-a                  | 5          | 1,619                   | 242     |
+| grids-b                  | 5          | 1,753                   | 261     |
+| grids-c                  | 5          | 2,255                   | 267     |
+| grids-d                  | 5          | 1,433                   | 245     |
+| grids-e                  | 5          | 1,087                   | 310     |
+| core-browser-builder-cms | 41         | 1,609                   | 290     |
+| core-server              | 124        | 2,020 passed, 1 skipped | 79      |
+
+- core-server's one skipped test is `safe-resource-fetch.live.server.test.ts`. It is not a file this change touches.
+- `oxfmt --check`, `lint`, `tsc --noEmit -p apps/builder`, `check:runtime-upstream` and `check:every-test-runs` (1,149
+  of 1,152 test files run, 3 exempt) all pass.
+
+## T83.4
+
+T60.3's number from the runs after the fix is 0. That counts the ordinary rule and the ordinary image, 300 runs each,
+with no R1-only form.
+
+## T83.5: not run (T88.7)
+
+The diff `git diff --stat a3bc7d8..HEAD` covers 33 files, with 5,236 insertions and 13 deletions:
+
+- code: `rich-text-line-points.ts` (50 lines changed) and `rich-text-line-history.ts` (28), the composing guard only;
+- test: `rich-text-line-composition.test.tsx` (+102);
+- the other 30 files are records under `__records__/`: `acceptance/second/` (27 files) and
+  `p-records-task26-{second,six,t80}.md`, from the commits before this one.
+
+The record re-run was started, then stopped on T88.7, before any set finished. Its scratch directories were removed from
+both trees, and its partial data is left uncommitted under `SP/t83/`.
