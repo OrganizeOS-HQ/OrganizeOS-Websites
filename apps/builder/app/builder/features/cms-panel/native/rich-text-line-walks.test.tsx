@@ -315,7 +315,7 @@ const V10_WRITES: ReadonlyArray<readonly [string, string, string?]> = [
     "M28-RBQ-2",
     "<ul><li>Pw</li><li><hr />k<br /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
   ],
-  // r1-task5-rulings.md M28-RBQ-3: carry
+  // M28-RBQ-3 (D15): carry
   [
     "M28-RBQ-3",
     "<ul><li>Pw</li><li><hr />k<br /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
@@ -393,7 +393,7 @@ const V10_WRITES: ReadonlyArray<readonly [string, string, string?]> = [
     "M28-QBR-1",
     "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><br /><hr />k</li><li>Nw</li></ul>",
   ],
-  // r1-task5-rulings.md M28-QBR-2: carry
+  // M28-QBR-2 (D15): carry
   [
     "M28-QBR-2",
     "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><br /><hr />k</li><li>Nw</li></ul>",
@@ -403,7 +403,7 @@ const V10_WRITES: ReadonlyArray<readonly [string, string, string?]> = [
     "M28-QBR-3",
     "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><br />k<hr /></li><li>Nw</li></ul>",
   ],
-  // r1-task5-rulings.md M28-QBR-4: carry
+  // M28-QBR-4 (T9.1): carry
   [
     "M28-QBR-4",
     "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>k<br /><hr /></li><li>Nw</li></ul>",
@@ -524,11 +524,11 @@ const SHIFT_CARETS: ReadonlyArray<readonly [string, string]> = [
   ["M28s-BQR-Left-5", "text:Q1w@1|text:Pw@0"],
   ["M28s-BQR-Right-1", "text:Q1w@1|text:Q1w@2"],
   ["M28s-BQR-Right-2", "text:Q1w@1|text:Q1w@3"],
-  // r1-task5-rulings.md M28s-BQR-Right-3: carry (spec 5.3, the Shift bullet)
+  // M28s-BQR-Right-3: carry (spec 5.3, the Shift bullet)
   ["M28s-BQR-Right-3", "text:Q1w@1|element:listitem@3"],
-  // r1-task5-rulings.md M28s-BQR-Right-4: carry (spec 5.3, the Shift bullet)
+  // M28s-BQR-Right-4: carry (spec 5.3, the Shift bullet)
   ["M28s-BQR-Right-4", "text:Q1w@1|text:Nw@0"],
-  // r1-task5-rulings.md M28s-BQR-Right-5: carry (spec 5.3, the Shift bullet)
+  // M28s-BQR-Right-5: carry (spec 5.3, the Shift bullet)
   ["M28s-BQR-Right-5", "text:Q1w@1|text:Nw@1"],
   ["M28s-BQT-Left-1", "text:Q1w@1|text:Q1w@0"],
   ["M28s-BQT-Left-2", "text:Q1w@1|element:listitem@0"],

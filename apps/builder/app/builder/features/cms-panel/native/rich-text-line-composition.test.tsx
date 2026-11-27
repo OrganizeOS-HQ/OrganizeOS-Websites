@@ -1433,7 +1433,7 @@ describe("T67.2: a composition's start hands out nothing", () => {
 // range, and Lexical takes it as a range). The losing order is made on
 // purpose: the read-back of 5.3 must not run at the composition's next
 // `beforeinput`, since the page composes. The writes are the head's in that
-// order (measured at the base, 3 of 3: p-records-task26-t80.md, T83)
+// order (measured at the base, 3 of 3; T83, T89.4)
 describe("T83: the page composing with no composition key holds the read-back", () => {
   const CASES: ReadonlyArray<
     readonly [string, string, string, Step, string, string | undefined]

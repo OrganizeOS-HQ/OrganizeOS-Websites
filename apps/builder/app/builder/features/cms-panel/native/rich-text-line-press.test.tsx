@@ -857,7 +857,7 @@ describe("the press cannot stick", () => {
 
 // T25.1's ordinary cell: a real click on an image opens its popover and
 // selects nothing; Escape closes it with a caret right after the image, as
-// at the base (measured: p-records-task10b.md)
+// at the base (measured; T27.1)
 describe("an image clicked, then Escape", () => {
   // The point of the click, relative to the image's box: the one nearest its
   // centre that hit-tests to the image with its neighbours a quarter pixel
@@ -900,7 +900,7 @@ describe("an image clicked, then Escape", () => {
       write: "<p>Aw <img />Bw</p>",
       caret: "text:Bw@0",
       typed: "<p>Aw <img />kBw</p>",
-      source: "the base, measured (p-records-task10b.md)",
+      source: "the base, measured (T27.1)",
     });
   });
 });

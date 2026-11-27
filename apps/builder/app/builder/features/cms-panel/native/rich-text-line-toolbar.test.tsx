@@ -1525,7 +1525,7 @@ describe("clicks (T9.2 L, T10.8, 15.7, 16.16)", () => {
       );
     };
     // the caret and the typed value no check names: sent as a P record
-    // (p-records-task19.md, P19-3), not pinned
+    // (P19-3), not pinned
     await expectEdit({
       stored: LI("<br><hr><hr>"),
       place: clickFirstRule,
