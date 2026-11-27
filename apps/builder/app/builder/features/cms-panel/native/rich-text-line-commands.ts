@@ -42,6 +42,7 @@ import {
   $emptyLineRuleBeforeOutdent,
   $itemStartJoin,
   $joinBeforeEndingImage,
+  $lineBreakBeforeBlock,
   $lineEndIntoBlock,
   $noReorderingJoin,
   $nothingChanges,
@@ -98,6 +99,7 @@ export const LINE_HANDLER_IDS = [
   "deletes.emptyLine",
   "deletes.blockEdge",
   "deletes.lineEndIntoBlock", // D3's third case, Delete form (round 9, LN 1619-1670)
+  "deletes.lineBreakBeforeBlock", // D3's fourth case from the line's side (rulings T88)
   "deletes.breakLedLineStart", // 451f20f04 LN 3246, group C
   "deletes.joinBeforeEndingImage", // 451f20f04 LN 3287, D3's second case (15.5, 16.12)
   "deletes.itemStartJoin",
@@ -275,6 +277,7 @@ export const COMMAND_ORDER: ReadonlyArray<CommandOrderRow> = [
     priority: "LOW",
     handlers: [
       "deletes.blockEdge",
+      "deletes.lineBreakBeforeBlock",
       "deletes.lineEndIntoBlock",
       "deletes.breakLedLineStart",
       "deletes.itemStartJoin",
@@ -318,6 +321,7 @@ export const COMMAND_ORDER: ReadonlyArray<CommandOrderRow> = [
     handlers: [
       "deletes.wordBesideRule",
       "deletes.blockEdge",
+      "deletes.lineBreakBeforeBlock",
       "deletes.lineEndIntoBlock",
       "deletes.breakLedLineStart",
       "deletes.itemStartJoin",
@@ -563,6 +567,8 @@ export const registerRichTextCommands = (
       $blockEdge(payload as boolean, command),
     "deletes.lineEndIntoBlock": (payload) =>
       $lineEndIntoBlock(payload as boolean),
+    "deletes.lineBreakBeforeBlock": (payload) =>
+      $lineBreakBeforeBlock(payload as boolean),
     "deletes.breakLedLineStart": (payload) =>
       $breakLedLineStart(payload as boolean),
     "deletes.joinBeforeEndingImage": (payload) =>
