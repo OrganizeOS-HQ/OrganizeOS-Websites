@@ -30,7 +30,7 @@ import {
   lastHtml,
   settle,
 } from "./rich-text-test-harness";
-import measured from "./__records__/r1-measurements.head.json";
+import measured from "./__fixtures__/rich-text-line-measurements.head.json";
 
 const undo = keys("{Control>}z{/Control}");
 const redo = keys("{Control>}y{/Control}");
