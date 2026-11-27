@@ -361,7 +361,13 @@ can be merged with minimal conflict.
   tests, `core-browser-builder-cms-rich-text-lines-b` for the slowest of those
   files (press, readback, walks), split off so each leg stays under 400 s; and `core-browser-builder-cms-rich-text-grids-a` to
   `core-browser-builder-cms-rich-text-grids-e` for their grids, click test,
-  mount sweep and layout test, split by file so each leg stays under 400 s),
+  mount sweep and layout test, split by file so each leg stays under 400 s;
+  the line rules also add to `apps/builder/vitest.config.ts` the
+  `grantClipboard` browser command (a test reads and writes the system
+  clipboard), the setup file `rich-text-line-invariant-setup.ts` that the
+  rich-text projects run (every test ends with the line invariant), and
+  `--font-render-hinting=none` in the seven line projects' Chromium launch, so
+  glyph widths match on every Linux machine),
   with no secret, environment or checkout ref, and checkouts that keep no
   token in the clone (`persist-credentials: false`); only its cli leg builds
   the blocks package. The typecheck covers every package and fixture but two fixtures the

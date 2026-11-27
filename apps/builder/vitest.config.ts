@@ -41,7 +41,8 @@ const browserProject = (
   name: string,
   include: string[],
   exclude: string[] = [],
-  setupFiles: string[] = []
+  setupFiles: string[] = [],
+  launchArgs: string[] = []
 ) => ({
   extends: "./vitest.config.ts",
   test: {
@@ -54,7 +55,11 @@ const browserProject = (
       enabled: true,
       headless: true,
       screenshotFailures: false,
-      instances: [{ browser: "chromium" as const }],
+      instances: [
+        launchArgs.length === 0
+          ? { browser: "chromium" as const }
+          : { browser: "chromium" as const, launch: { args: launchArgs } },
+      ],
       commands: { keepRequestInterception, grantClipboard },
     },
   },
@@ -159,6 +164,11 @@ const richTextLineGridLegs: Array<[string, string[]]> = [
 const richTextNet =
   "./app/builder/features/cms-panel/native/rich-text-line-invariant-setup.ts";
 
+// OrganizeOS fork: the line rules' projects pin text rendering, so glyph
+// widths are the same on every Linux machine; the layout baseline and the
+// vertical walks depend on them to within a pixel (fork doc section 7).
+const pinnedTextRendering = ["--font-render-hinting=none"];
+
 const projects = [
   serverProject,
   browserProject("core", "builder-settings", [
@@ -184,14 +194,16 @@ const projects = [
     "builder-cms-rich-text-lines",
     [richTextLineTests],
     [...richTextLineGrids, ...richTextLineTestsB],
-    [richTextNet]
+    [richTextNet],
+    pinnedTextRendering
   ),
   browserProject(
     "core",
     "builder-cms-rich-text-lines-b",
     richTextLineTestsB,
     [],
-    [richTextNet]
+    [richTextNet],
+    pinnedTextRendering
   ),
   ...richTextLineGridLegs.map(([leg, include]) =>
     browserProject(
@@ -199,7 +211,8 @@ const projects = [
       `builder-cms-rich-text-grids-${leg}`,
       include,
       [],
-      [richTextNet]
+      [richTextNet],
+      pinnedTextRendering
     )
   ),
   browserProject(
