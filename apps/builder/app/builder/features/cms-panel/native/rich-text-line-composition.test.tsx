@@ -27,6 +27,7 @@ import {
   LI,
   mount,
   mountExtraField,
+  nodeSelect,
   quiet,
   range,
   short,
@@ -1424,4 +1425,105 @@ describe("T67.2: a composition's start hands out nothing", () => {
       expect.stringContaining("Tb0w"),
     ]);
   });
+});
+
+// T83 (P-t81-6): a composition that starts at a node selection gets no
+// composition key from Lexical. Lexical's press mark, left pending, is used
+// up partway through it (a selection change reports the page's composition
+// range, and Lexical takes it as a range). The losing order is made on
+// purpose: the read-back of 5.3 must not run at the composition's next
+// `beforeinput`, since the page composes. The writes are the head's in that
+// order (measured at the base, 3 of 3: p-records-task26-t80.md, T83)
+describe("T83: the page composing with no composition key holds the read-back", () => {
+  const CASES: ReadonlyArray<
+    readonly [string, string, string, Step, string, string | undefined]
+  > = [
+    [
+      "ordinary content, the rule node-selected by code",
+      "<p>Pw</p><hr><p>Nw</p>",
+      "Pw",
+      nodeSelect("horizontalrule"),
+      "<p>a</p><hr /><p>Nw</p>",
+      undefined,
+    ],
+    [
+      "QTR, the rule node-selected by a click on it",
+      "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>T1w<hr></li><li>Nw</li></ul>",
+      "T1w",
+      async () => {
+        await userEvent.click(editable()!.querySelector("hr")!);
+        await settle();
+      },
+      "<ul><li>a</li><li><blockquote><p>Q0w</p></blockquote>T1w<hr /></li><li>Nw</li></ul>",
+      "<ul><li></li><li><blockquote><p>Q0w</p></blockquote>T1w<hr /></li><li>Nw</li></ul>",
+    ],
+  ];
+  for (const [name, stored, word, select, composed, backspaced] of CASES) {
+    test(`${name}: 'a\\nb' writes no line break into the text, 3 runs`, async () => {
+      for (let time = 0; time < 3; time += 1) {
+        const onChange = await mount(stored);
+        await at(word, 1)();
+        await select();
+        expect(caretKey(), name).toBe("node:horizontalrule");
+        // the press's mark, pending: a pointerdown with no selection change
+        // after it (the selecting step's own press used up its mark)
+        const nw = [...editable()!.querySelectorAll("span")].find(
+          (span) => span.textContent === "Nw"
+        )!;
+        await act(async () => {
+          nw.dispatchEvent(
+            new PointerEvent("pointerdown", {
+              bubbles: true,
+              cancelable: true,
+              pointerType: "mouse",
+              button: 0,
+              buttons: 1,
+            })
+          );
+        });
+        await settle();
+        expect(caretKey(), name).toBe("node:horizontalrule");
+        // the mark used up at the composition's second update
+        let updates = 0;
+        const reported: boolean[] = [];
+        const onUpdate = () => {
+          updates += 1;
+          if (updates === 2) {
+            const page = window.getSelection()!;
+            reported.push(
+              page.rangeCount > 0 &&
+                editable()!.contains(page.anchorNode) &&
+                page.isCollapsed === false
+            );
+            document.dispatchEvent(new Event("selectionchange"));
+          }
+        };
+        window.addEventListener("compositionupdate", onUpdate, true);
+        try {
+          await quietly();
+          onChange.mockClear();
+          await imeSet("a");
+          await imeSet("a\nb");
+          await imeCommit("a\nb");
+          await quiet();
+        } finally {
+          window.removeEventListener("compositionupdate", onUpdate, true);
+        }
+        expect(reported, "the page's composition range reported").toEqual([
+          true,
+        ]);
+        const values = rawValues(onChange).map(short);
+        for (const value of values) {
+          expect(value, name).not.toContain("\n");
+        }
+        expect(values.at(-1), name).toBe(composed);
+        onChange.mockClear();
+        await backspace();
+        await quiet();
+        expect(rawValues(onChange).map(short), name).toEqual(
+          backspaced === undefined ? [] : [backspaced]
+        );
+      }
+    }, 60_000);
+  }
 });

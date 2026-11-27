@@ -401,6 +401,44 @@ type Press = {
 };
 const presses = new WeakMap<LexicalEditor, Press>();
 
+/**
+ * T83 (5.3): the page composing, from its `compositionstart` to its
+ * `compositionend`, whether or not Lexical holds a composition key (it sets
+ * none for a composition that starts at a node selection). A keydown that
+ * belongs to no composition ends it too, as it ends Lexical's (T43.1).
+ */
+const pageComposing = new WeakSet<LexicalEditor>();
+
+/** Every step of the field that holds while composing reads this. */
+export const isComposingAtPage = (editor: LexicalEditor) =>
+  editor.isComposing() || pageComposing.has(editor);
+
+/** T43.1: the browser has ended the page's composition. */
+export const endPageComposition = (editor: LexicalEditor) => {
+  pageComposing.delete(editor);
+};
+
+/** The page's composition, seen at the root in the capture phase. */
+export const registerPageComposition = (editor: LexicalEditor) => {
+  const onStart = () => {
+    pageComposing.add(editor);
+  };
+  const onEnd = () => {
+    pageComposing.delete(editor);
+  };
+  const unregister = editor.registerRootListener((root, previous) => {
+    previous?.removeEventListener("compositionstart", onStart, true);
+    previous?.removeEventListener("compositionend", onEnd, true);
+    pageComposing.delete(editor);
+    root?.addEventListener("compositionstart", onStart, true);
+    root?.addEventListener("compositionend", onEnd, true);
+  });
+  return () => {
+    unregister();
+    pageComposing.delete(editor);
+  };
+};
+
 export const isPressing = (editor: LexicalEditor) => presses.has(editor);
 
 export const focusEditor = (
@@ -615,7 +653,7 @@ export const keepPageRange = <T>(editor: LexicalEditor, update: () => T): T => {
  * and at the commit that ends a composition; never while composing.
  */
 export const removeKeptLines = (editor: LexicalEditor) => {
-  if (keptOf(editor).size === 0 || editor.isComposing()) {
+  if (keptOf(editor).size === 0 || isComposingAtPage(editor)) {
     return;
   }
   keepPageRange(editor, () =>
@@ -1209,7 +1247,7 @@ export const pointRules = (editor: LexicalEditor, tracker?: EditTracker) => {
   // 15.12: the page's selection is read back where the page has moved
   // since Lexical last wrote or read it
   const pageMoved = () => {
-    if (editor.isComposing()) {
+    if (isComposingAtPage(editor)) {
       return false;
     }
     const now = pageSnapshot();
@@ -1268,7 +1306,7 @@ export const pointRules = (editor: LexicalEditor, tracker?: EditTracker) => {
       .getEditorState()
       .read(() => $isRangeSelection($getSelection()));
     const press = presses.get(editor);
-    if (editor.isComposing()) {
+    if (isComposingAtPage(editor)) {
       // 16.18: an edit of a composition ends an open press too; the
       // composition's own updates are not disturbed (its start ran the
       // held step, onCompositionStart)
@@ -1678,10 +1716,10 @@ export const pointRules = (editor: LexicalEditor, tracker?: EditTracker) => {
         }),
         // 16.23: kept lines go at the commit that ends a composition
         (() => {
-          let composing = editor.isComposing();
+          let composing = isComposingAtPage(editor);
           return editor.registerUpdateListener(() => {
             const was = composing;
-            composing = editor.isComposing();
+            composing = isComposingAtPage(editor);
             if (was && composing === false) {
               removeKeptLines(editor);
             }
@@ -1740,7 +1778,7 @@ export const registerPointCheck = (
     }
     // held while a composition runs: it adds no update between the
     // composition's own; the commit that ends it is checked
-    if (editor.isComposing() || presses.has(editor)) {
+    if (isComposingAtPage(editor) || presses.has(editor)) {
       return;
     }
     const broken = editorState.read($pointRuleBroken);

@@ -24,7 +24,11 @@ import {
   type NodeKey,
 } from "lexical";
 import { createElement, useEffect, useState } from "react";
-import { d7Document } from "./rich-text-line-points";
+import {
+  d7Document,
+  endPageComposition,
+  registerPageComposition,
+} from "./rich-text-line-points";
 
 /** The field's history (Lexical's HistoryPlugin state), per editor. */
 const cmsHistory = new WeakMap<LexicalEditor, HistoryState>();
@@ -671,9 +675,14 @@ export const registerCompositionEndOnKey = (editor: LexicalEditor) => {
       event.isComposing ||
       event.keyCode === 229 ||
       event.key === "Process" ||
-      event.key === "Unidentified" ||
-      editor.isComposing() === false
+      event.key === "Unidentified"
     ) {
+      return;
+    }
+    // T83: the page's composing state, with Lexical's key or with none,
+    // ends with it
+    endPageComposition(editor);
+    if (editor.isComposing() === false) {
       return;
     }
     // the clear's commit writes Lexical's selection to the page: the page's
@@ -708,10 +717,15 @@ export const registerCompositionEndOnKey = (editor: LexicalEditor) => {
       dom.setBaseAndExtent(...page);
     }
   };
-  return editor.registerRootListener((root, previous) => {
-    previous?.removeEventListener("keydown", onKeyDown, true);
-    root?.addEventListener("keydown", onKeyDown, true);
-  });
+  return mergeRegister(
+    // T83: the page's composition, seen before every other listener of the
+    // field
+    registerPageComposition(editor),
+    editor.registerRootListener((root, previous) => {
+      previous?.removeEventListener("keydown", onKeyDown, true);
+      root?.addEventListener("keydown", onKeyDown, true);
+    })
+  );
 };
 
 /** Lexical's history, held where the line rules can reach it (K). */
