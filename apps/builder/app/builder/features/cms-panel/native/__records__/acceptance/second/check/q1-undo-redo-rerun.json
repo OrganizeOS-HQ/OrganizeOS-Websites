@@ -1,0 +1,3662 @@
+{
+  "ul-d1|RB|hr0@start|BS": {
+    "base": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><br /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><br /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><br /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><br /></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><br /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><br /></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ],
+    "r1": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><br /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><br /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><br /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><br /></li><li>Nw</li></ul>",
+        "note": {
+          "state": false,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "ule\",\"version\":1},{\"children\":[{\"type\":\"linebreak\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"cms-line\",\"version\":1}],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"Nw\",\"type\" || ule\",\"version\":1},{\"children\":[{\"type\":\"linebreak\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"cms-line\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"Nw\",\"type",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><br /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><br /></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ]
+  },
+  "ul-d1|RL|hr0@start|BS": {
+    "base": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><ul><li>L1w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><ul><li>L1w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><ul><li>L1w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><ul><li>L1w</li></ul></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><ul><li>L1w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><ul><li>L1w</li></ul></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ],
+    "r1": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><ul><li>L1w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><ul><li>L1w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><ul><li>L1w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><ul><li>L1w</li></ul></li><li>Nw</li></ul>",
+        "note": {
+          "state": false,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "{\"children\":[{\"children\":[],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"cms-line\",\"version\":1},{\"type\":\"horizontalrule\",\"version\":1}],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"children\":[{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"st || {\"children\":[{\"children\":[],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"cms-line\",\"version\":1},{\"type\":\"horizontalrule\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"children\":[{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"s",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><ul><li>L1w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><ul><li>L1w</li></ul></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ]
+  },
+  "ul-d1|RQ|hr0@start|BS": {
+    "base": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ],
+    "r1": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+        "note": {
+          "state": false,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "t\":0,\"type\":\"paragraph\",\"version\":1,\"textFormat\":0,\"textStyle\":\"\"}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"quote\",\"version\":1}],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"Nw\",\"type\" || t\":0,\"type\":\"paragraph\",\"version\":1,\"textFormat\":0,\"textStyle\":\"\"}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"quote\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"Nw\",\"type",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ]
+  },
+  "ul-d1|RR|hr0@start|BS": {
+    "base": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><hr /></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ],
+    "r1": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /></li><li>Nw</li></ul>",
+        "note": {
+          "state": false,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "\":null,\"format\":\"\",\"indent\":0,\"type\":\"cms-line\",\"version\":1},{\"type\":\"horizontalrule\",\"version\":1},{\"type\":\"horizontalrule\",\"version\":1}],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"Nw\",\"type\" || \":null,\"format\":\"\",\"indent\":0,\"type\":\"cms-line\",\"version\":1},{\"type\":\"horizontalrule\",\"version\":1},{\"type\":\"horizontalrule\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"Nw\",\"type",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><hr /></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ]
+  },
+  "ul-d1|RR|hr1@start|BS": {
+    "base": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><hr /></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ],
+    "r1": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /></li><li>Nw</li></ul>",
+        "note": {
+          "state": false,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "\":null,\"format\":\"\",\"indent\":0,\"type\":\"cms-line\",\"version\":1},{\"type\":\"horizontalrule\",\"version\":1},{\"type\":\"horizontalrule\",\"version\":1}],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"Nw\",\"type\" || \":null,\"format\":\"\",\"indent\":0,\"type\":\"cms-line\",\"version\":1},{\"type\":\"horizontalrule\",\"version\":1},{\"type\":\"horizontalrule\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"Nw\",\"type",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><hr /></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ]
+  },
+  "ul-d1|R|hr0@start|BS": {
+    "base": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ],
+    "r1": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /></li><li>Nw</li></ul>",
+        "note": {
+          "state": false,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "{\"children\":[{\"children\":[],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"cms-line\",\"version\":1},{\"type\":\"horizontalrule\",\"version\":1}],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"Nw\",\"type\" || {\"children\":[{\"children\":[],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"cms-line\",\"version\":1},{\"type\":\"horizontalrule\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"Nw\",\"type",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ]
+  },
+  "ul-d1|RBB|hr0@start|BS": {
+    "base": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><br /><br /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><br /><br /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><br /><br /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><br /><br /></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><br /><br /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><br /><br /></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ],
+    "r1": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><br /><br /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><br /><br /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><br /><br /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><br /><br /></li><li>Nw</li></ul>",
+        "note": {
+          "state": false,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "type\":\"linebreak\",\"version\":1},{\"type\":\"linebreak\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"cms-line\",\"version\":1}],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"Nw\",\"type\" || type\":\"linebreak\",\"version\":1},{\"type\":\"linebreak\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"cms-line\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"Nw\",\"type",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><br /><br /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><br /><br /></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ]
+  },
+  "ul-d1|RBL|hr0@start|BS": {
+    "base": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><br /><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><br /><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><br /><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><br /><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><br /><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><br /><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ],
+    "r1": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><br /><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><br /><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><br /><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><br /><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": {
+          "state": false,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "ule\",\"version\":1},{\"children\":[{\"type\":\"linebreak\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"cms-line\",\"version\":1}],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"children\":[{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"st || ule\",\"version\":1},{\"children\":[{\"type\":\"linebreak\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"cms-line\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"children\":[{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"s",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><br /><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><br /><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ]
+  },
+  "ul-d1|RBQ|hr0@start|BS": {
+    "base": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><br /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><br /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><br /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><br /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><br /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><br /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ],
+    "r1": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><br /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><br /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><br /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><br /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": {
+          "state": false,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "t\":0,\"type\":\"paragraph\",\"version\":1,\"textFormat\":0,\"textStyle\":\"\"}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"quote\",\"version\":1}],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"Nw\",\"type\" || t\":0,\"type\":\"paragraph\",\"version\":1,\"textFormat\":0,\"textStyle\":\"\"}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"quote\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"Nw\",\"type",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><br /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><br /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ]
+  },
+  "ul-d1|RBR|hr0@start|BS": {
+    "base": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><br /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><br /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><br /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><br /><hr /></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><br /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><br /><hr /></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ],
+    "r1": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><br /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><br /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><br /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><br /><hr /></li><li>Nw</li></ul>",
+        "note": {
+          "state": false,
+          "caret": true,
+          "d7": true,
+          "rawDiff": ":\"linebreak\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"cms-line\",\"version\":1},{\"type\":\"horizontalrule\",\"version\":1}],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"Nw\",\"type\" || :\"linebreak\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"cms-line\",\"version\":1},{\"type\":\"horizontalrule\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"Nw\",\"type",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><br /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><br /><hr /></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ]
+  },
+  "ul-d1|RLL|hr0@start|BS": {
+    "base": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><ul><li>L1w</li></ul><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><ul><li>L1w</li></ul><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><ul><li>L1w</li></ul><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><ul><li>L1w</li></ul><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><ul><li>L1w</li></ul><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><ul><li>L1w</li></ul><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ],
+    "r1": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><ul><li>L1w</li></ul><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><ul><li>L1w</li></ul><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><ul><li>L1w</li></ul><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><ul><li>L1w</li></ul><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": {
+          "state": false,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "{\"children\":[{\"children\":[],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"cms-line\",\"version\":1},{\"type\":\"horizontalrule\",\"version\":1}],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"children\":[{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"st || {\"children\":[{\"children\":[],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"cms-line\",\"version\":1},{\"type\":\"horizontalrule\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"children\":[{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"s",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><ul><li>L1w</li></ul><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><ul><li>L1w</li></ul><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ]
+  },
+  "ul-d1|RQB|hr0@start|BS": {
+    "base": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><br /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><br /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><br /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><br /></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><br /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><br /></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ],
+    "r1": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><br /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><blockquote><p>Q1w</p></blockquote><br /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><br /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><br /></li><li>Nw</li></ul>",
+        "note": {
+          "state": false,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "ote\",\"version\":1},{\"children\":[{\"type\":\"linebreak\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"cms-line\",\"version\":1}],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"Nw\",\"type\" || ote\",\"version\":1},{\"children\":[{\"type\":\"linebreak\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"cms-line\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"Nw\",\"type",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><blockquote><p>Q1w</p></blockquote><br /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><blockquote><p>Q1w</p></blockquote><br /></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ]
+  },
+  "ul-d1|RQL|hr0@start|BS": {
+    "base": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ],
+    "r1": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><blockquote><p>Q1w</p></blockquote><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": {
+          "state": false,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "t\":0,\"type\":\"paragraph\",\"version\":1,\"textFormat\":0,\"textStyle\":\"\"}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"quote\",\"version\":1}],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"children\":[{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"st || t\":0,\"type\":\"paragraph\",\"version\":1,\"textFormat\":0,\"textStyle\":\"\"}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"quote\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"children\":[{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"s",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><blockquote><p>Q1w</p></blockquote><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><blockquote><p>Q1w</p></blockquote><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ]
+  },
+  "ul-d1|RQQ|hr0@start|BS": {
+    "base": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ],
+    "r1": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><blockquote><p>Q1w</p></blockquote><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": {
+          "state": false,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "t\":0,\"type\":\"paragraph\",\"version\":1,\"textFormat\":0,\"textStyle\":\"\"}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"quote\",\"version\":1}],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"Nw\",\"type\" || t\":0,\"type\":\"paragraph\",\"version\":1,\"textFormat\":0,\"textStyle\":\"\"}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"quote\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"Nw\",\"type",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><blockquote><p>Q1w</p></blockquote><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><blockquote><p>Q1w</p></blockquote><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ]
+  },
+  "ul-d1|RQR|hr0@start|BS": {
+    "base": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><hr /></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><hr /></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ],
+    "r1": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><blockquote><p>Q1w</p></blockquote><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><blockquote><p>Q1w</p></blockquote><hr /></li><li>Nw</li></ul>",
+        "note": {
+          "state": false,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "extFormat\":0,\"textStyle\":\"\"}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"quote\",\"version\":1},{\"type\":\"horizontalrule\",\"version\":1}],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"Nw\",\"type\" || extFormat\":0,\"textStyle\":\"\"}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"quote\",\"version\":1},{\"type\":\"horizontalrule\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"Nw\",\"type",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><blockquote><p>Q1w</p></blockquote><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><blockquote><p>Q1w</p></blockquote><hr /></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ]
+  },
+  "ul-d1|RRB|hr0@start|BS": {
+    "base": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><br /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><br /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><br /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><br /></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><br /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><br /></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ],
+    "r1": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><br /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><hr /><br /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><br /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><br /></li><li>Nw</li></ul>",
+        "note": {
+          "state": false,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "ule\",\"version\":1},{\"children\":[{\"type\":\"linebreak\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"cms-line\",\"version\":1}],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"Nw\",\"type\" || ule\",\"version\":1},{\"children\":[{\"type\":\"linebreak\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"cms-line\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"Nw\",\"type",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><hr /><br /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><hr /><br /></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ]
+  },
+  "ul-d1|RRB|hr1@start|BS": {
+    "base": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><br /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><br /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><br /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><br /></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><br /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><br /></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ],
+    "r1": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><br /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><hr /><br /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><br /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><br /></li><li>Nw</li></ul>",
+        "note": {
+          "state": false,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "ule\",\"version\":1},{\"children\":[{\"type\":\"linebreak\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"cms-line\",\"version\":1}],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"Nw\",\"type\" || ule\",\"version\":1},{\"children\":[{\"type\":\"linebreak\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"cms-line\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"Nw\",\"type",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><hr /><br /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><hr /><br /></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ]
+  },
+  "ul-d1|RRL|hr0@start|BS": {
+    "base": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ],
+    "r1": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><hr /><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": {
+          "state": false,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "\":null,\"format\":\"\",\"indent\":0,\"type\":\"cms-line\",\"version\":1},{\"type\":\"horizontalrule\",\"version\":1},{\"type\":\"horizontalrule\",\"version\":1}],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"children\":[{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"st || \":null,\"format\":\"\",\"indent\":0,\"type\":\"cms-line\",\"version\":1},{\"type\":\"horizontalrule\",\"version\":1},{\"type\":\"horizontalrule\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"children\":[{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"s",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><hr /><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><hr /><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ]
+  },
+  "ul-d1|RRL|hr1@start|BS": {
+    "base": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ],
+    "r1": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><hr /><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": {
+          "state": false,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "\":null,\"format\":\"\",\"indent\":0,\"type\":\"cms-line\",\"version\":1},{\"type\":\"horizontalrule\",\"version\":1},{\"type\":\"horizontalrule\",\"version\":1}],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"children\":[{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"st || \":null,\"format\":\"\",\"indent\":0,\"type\":\"cms-line\",\"version\":1},{\"type\":\"horizontalrule\",\"version\":1},{\"type\":\"horizontalrule\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"children\":[{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"s",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><hr /><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><hr /><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ]
+  },
+  "ul-d1|RRQ|hr0@start|BS": {
+    "base": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ],
+    "r1": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><hr /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": {
+          "state": false,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "t\":0,\"type\":\"paragraph\",\"version\":1,\"textFormat\":0,\"textStyle\":\"\"}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"quote\",\"version\":1}],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"Nw\",\"type\" || t\":0,\"type\":\"paragraph\",\"version\":1,\"textFormat\":0,\"textStyle\":\"\"}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"quote\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"Nw\",\"type",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><hr /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><hr /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ]
+  },
+  "ul-d1|RRQ|hr1@start|BS": {
+    "base": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ],
+    "r1": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><hr /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": {
+          "state": false,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "t\":0,\"type\":\"paragraph\",\"version\":1,\"textFormat\":0,\"textStyle\":\"\"}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"quote\",\"version\":1}],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"Nw\",\"type\" || t\":0,\"type\":\"paragraph\",\"version\":1,\"textFormat\":0,\"textStyle\":\"\"}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"quote\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"Nw\",\"type",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><hr /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><hr /><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ]
+  },
+  "ul-d1|RRR|hr0@start|BS": {
+    "base": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><hr /></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><hr /></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ],
+    "r1": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><hr /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><hr /></li><li>Nw</li></ul>",
+        "note": {
+          "state": false,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "cms-line\",\"version\":1},{\"type\":\"horizontalrule\",\"version\":1},{\"type\":\"horizontalrule\",\"version\":1},{\"type\":\"horizontalrule\",\"version\":1}],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"Nw\",\"type\" || cms-line\",\"version\":1},{\"type\":\"horizontalrule\",\"version\":1},{\"type\":\"horizontalrule\",\"version\":1},{\"type\":\"horizontalrule\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"Nw\",\"type",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><hr /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><hr /><hr /></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ]
+  },
+  "ul-d1|RRR|hr1@start|BS": {
+    "base": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><hr /></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><hr /></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ],
+    "r1": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><hr /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+        "live": "<ul><li>Pw</li><li><hr /><hr /><hr /></li><li>Nw</li></ul>",
+        "note": {
+          "state": false,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "cms-line\",\"version\":1},{\"type\":\"horizontalrule\",\"version\":1},{\"type\":\"horizontalrule\",\"version\":1},{\"type\":\"horizontalrule\",\"version\":1}],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"Nw\",\"type\" || cms-line\",\"version\":1},{\"type\":\"horizontalrule\",\"version\":1},{\"type\":\"horizontalrule\",\"version\":1},{\"type\":\"horizontalrule\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"Nw\",\"type",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]/cms-line[0]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><hr /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+        "live": "<ul><li>Pw<hr /><hr /><hr /></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[0]/cms-line[0]/text[0]@text:2\"Pw\""
+        }
+      }
+    ]
+  },
+  "top-QpT|qel0|Enter": {
+    "base": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/quote[1]@element:0",
+        "live": "<p>Pw</p><blockquote><p>X1w</p>X2w</blockquote><p>Nw</p>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/quote[1]/paragraph[1]/text[0]@text:0\"X1w\"",
+        "live": "<p>Pw</p><blockquote><p></p><p>X1w</p>X2w</blockquote><p>Nw</p>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/quote[1]@element:0",
+        "live": "<p>Pw</p><blockquote><p>X1w</p>X2w</blockquote><p>Nw</p>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/quote[1]@element:0",
+        "live": "<p>Pw</p><blockquote><p>X1w</p>X2w</blockquote><p>Nw</p>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/quote[1]@element:0",
+          "nowCaret": "root/quote[1]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/quote[1]/paragraph[1]/text[0]@text:0\"X1w\"",
+        "live": "<p>Pw</p><blockquote><p></p><p>X1w</p>X2w</blockquote><p>Nw</p>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/quote[1]/paragraph[1]/text[0]@text:0\"X1w\"",
+        "live": "<p>Pw</p><blockquote><p></p><p>X1w</p>X2w</blockquote><p>Nw</p>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/quote[1]/paragraph[1]/text[0]@text:0\"X1w\"",
+          "nowCaret": "root/quote[1]/paragraph[1]/text[0]@text:0\"X1w\""
+        }
+      }
+    ],
+    "r1": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/quote[1]/paragraph[0]/text[0]@text:0\"X1w\"",
+        "live": "<p>Pw</p><blockquote><p>X1w</p>X2w</blockquote><p>Nw</p>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/quote[1]/paragraph[1]/text[0]@text:0\"X1w\"",
+        "live": "<p>Pw</p><blockquote><br /><p>X1w</p>X2w</blockquote><p>Nw</p>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/quote[1]/paragraph[0]/text[0]@text:0\"X1w\"",
+        "live": "<p>Pw</p><blockquote><p>X1w</p>X2w</blockquote><p>Nw</p>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/quote[1]/paragraph[0]/text[0]@text:0\"X1w\"",
+        "live": "<p>Pw</p><blockquote><p>X1w</p>X2w</blockquote><p>Nw</p>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/quote[1]/paragraph[0]/text[0]@text:0\"X1w\"",
+          "nowCaret": "root/quote[1]/paragraph[0]/text[0]@text:0\"X1w\""
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/quote[1]/paragraph[1]/text[0]@text:0\"X1w\"",
+        "live": "<p>Pw</p><blockquote><br /><p>X1w</p>X2w</blockquote><p>Nw</p>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/quote[1]/paragraph[1]/text[0]@text:0\"X1w\"",
+        "live": "<p>Pw</p><blockquote><br /><p>X1w</p>X2w</blockquote><p>Nw</p>",
+        "note": {
+          "state": false,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "\":\"\",\"indent\":0,\"type\":\"paragraph\",\"version\":1,\"textFormat\":0,\"textStyle\":\"\"},{\"children\":[{\"children\":[{\"type\":\"linebreak\",\"version\":1}],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"cms-line\",\"version\":1},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"X1w\",\"type\":\"text\",\" || \":\"\",\"indent\":0,\"type\":\"paragraph\",\"version\":1,\"textFormat\":0,\"textStyle\":\"\"},{\"children\":[{\"children\":[{\"type\":\"linebreak\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"cms-line\",\"version\":1},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"X1w\",\"type\":\"text\",",
+          "d7Diff": "",
+          "snapCaret": "root/quote[1]/paragraph[1]/text[0]@text:0\"X1w\"",
+          "nowCaret": "root/quote[1]/paragraph[1]/text[0]@text:0\"X1w\""
+        }
+      }
+    ]
+  },
+  "top-QrT|qel0|SEnter": {
+    "base": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/quote[1]@element:0",
+        "live": "<p>Pw</p><blockquote><hr />X2w</blockquote><p>Nw</p>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/quote[1]/paragraph[0]@element:1",
+        "live": "<p>Pw</p><blockquote><p><br /></p><hr />X2w</blockquote><p>Nw</p>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/quote[1]@element:0",
+        "live": "<p>Pw</p><blockquote><hr />X2w</blockquote><p>Nw</p>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/quote[1]@element:0",
+        "live": "<p>Pw</p><blockquote><hr />X2w</blockquote><p>Nw</p>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/quote[1]@element:0",
+          "nowCaret": "root/quote[1]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/quote[1]/paragraph[0]@element:1",
+        "live": "<p>Pw</p><blockquote><p><br /></p><hr />X2w</blockquote><p>Nw</p>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/quote[1]/paragraph[0]@element:1",
+        "live": "<p>Pw</p><blockquote><p><br /></p><hr />X2w</blockquote><p>Nw</p>",
+        "note": {
+          "state": false,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "\":\"\",\"indent\":0,\"type\":\"paragraph\",\"version\":1,\"textFormat\":0,\"textStyle\":\"\"},{\"children\":[{\"children\":[{\"type\":\"linebreak\",\"version\":1}],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"paragraph\",\"version\":1,\"textFormat\":0,\"textStyle\":\"\"},{\"type\":\"horizontalrule\",\"version\":1},{\"detail\":0,\"format\":0 || \":\"\",\"indent\":0,\"type\":\"paragraph\",\"version\":1,\"textFormat\":0,\"textStyle\":\"\"},{\"children\":[{\"children\":[{\"type\":\"linebreak\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"paragraph\",\"version\":1,\"textFormat\":0,\"textStyle\":\"\"},{\"type\":\"horizontalrule\",\"version\":1},{\"detail\":0,\"format\":",
+          "d7Diff": "",
+          "snapCaret": "root/quote[1]/paragraph[0]@element:1",
+          "nowCaret": "root/quote[1]/paragraph[0]@element:1"
+        }
+      }
+    ],
+    "r1": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/quote[1]/cms-line[0]@element:0",
+        "live": "<p>Pw</p><blockquote><hr />X2w</blockquote><p>Nw</p>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/quote[1]/cms-line[0]@element:1",
+        "live": "<p>Pw</p><blockquote><br /><hr />X2w</blockquote><p>Nw</p>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/quote[1]/cms-line[0]@element:0",
+        "live": "<p>Pw</p><blockquote><hr />X2w</blockquote><p>Nw</p>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/quote[1]/cms-line[0]@element:0",
+        "live": "<p>Pw</p><blockquote><hr />X2w</blockquote><p>Nw</p>",
+        "note": {
+          "state": false,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "n\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"paragraph\",\"version\":1,\"textFormat\":0,\"textStyle\":\"\"},{\"children\":[{\"children\":[],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"cms-line\",\"version\":1},{\"type\":\"horizontalrule\",\"version\":1},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\" || n\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"paragraph\",\"version\":1,\"textFormat\":0,\"textStyle\":\"\"},{\"children\":[{\"children\":[],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"cms-line\",\"version\":1},{\"type\":\"horizontalrule\",\"version\":1},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",",
+          "d7Diff": "",
+          "snapCaret": "root/quote[1]/cms-line[0]@element:0",
+          "nowCaret": "root/quote[1]/cms-line[0]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/quote[1]/cms-line[0]@element:1",
+        "live": "<p>Pw</p><blockquote><br /><hr />X2w</blockquote><p>Nw</p>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/quote[1]/cms-line[0]@element:1",
+        "live": "<p>Pw</p><blockquote><br /><hr />X2w</blockquote><p>Nw</p>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/quote[1]/cms-line[0]@element:1",
+          "nowCaret": "root/quote[1]/cms-line[0]@element:1"
+        }
+      }
+    ]
+  },
+  "ul-d1|HT|H0w@start|Enter": {
+    "base": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]/heading[0]/text[0]@text:0\"H0w\"",
+        "live": "<ul><li>Pw</li><li><h3>H0w</h3>T1w</li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[1]/heading[1]/text[0]@text:0\"H0w\"",
+        "live": "<ul><li>Pw</li><li><p></p><h3>H0w</h3>T1w</li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/heading[0]/text[0]@text:0\"H0w\"",
+        "live": "<ul><li>Pw</li><li><h3>H0w</h3>T1w</li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/heading[0]/text[0]@text:0\"H0w\"",
+        "live": "<ul><li>Pw</li><li><h3>H0w</h3>T1w</li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]/heading[0]/text[0]@text:0\"H0w\"",
+          "nowCaret": "root/list[0]/listitem[1]/heading[0]/text[0]@text:0\"H0w\""
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[1]/heading[1]/text[0]@text:0\"H0w\"",
+        "live": "<ul><li>Pw</li><li><p></p><h3>H0w</h3>T1w</li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[1]/heading[1]/text[0]@text:0\"H0w\"",
+        "live": "<ul><li>Pw</li><li><p></p><h3>H0w</h3>T1w</li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]/heading[1]/text[0]@text:0\"H0w\"",
+          "nowCaret": "root/list[0]/listitem[1]/heading[1]/text[0]@text:0\"H0w\""
+        }
+      }
+    ],
+    "r1": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]/heading[0]/text[0]@text:0\"H0w\"",
+        "live": "<ul><li>Pw</li><li><h3>H0w</h3>T1w</li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[1]/heading[1]/text[0]@text:0\"H0w\"",
+        "live": "<ul><li>Pw</li><li><br /><h3>H0w</h3>T1w</li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/heading[0]/text[0]@text:0\"H0w\"",
+        "live": "<ul><li>Pw</li><li><h3>H0w</h3>T1w</li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/heading[0]/text[0]@text:0\"H0w\"",
+        "live": "<ul><li>Pw</li><li><h3>H0w</h3>T1w</li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]/heading[0]/text[0]@text:0\"H0w\"",
+          "nowCaret": "root/list[0]/listitem[1]/heading[0]/text[0]@text:0\"H0w\""
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[1]/heading[1]/text[0]@text:0\"H0w\"",
+        "live": "<ul><li>Pw</li><li><br /><h3>H0w</h3>T1w</li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[1]/heading[1]/text[0]@text:0\"H0w\"",
+        "live": "<ul><li>Pw</li><li><br /><h3>H0w</h3>T1w</li><li>Nw</li></ul>",
+        "note": {
+          "state": false,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "ection\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":1},{\"children\":[{\"children\":[{\"type\":\"linebreak\",\"version\":1}],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"cms-line\",\"version\":1},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"H0w\",\"type\":\"text\",\" || ection\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":1},{\"children\":[{\"children\":[{\"type\":\"linebreak\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"cms-line\",\"version\":1},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"H0w\",\"type\":\"text\",",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]/heading[1]/text[0]@text:0\"H0w\"",
+          "nowCaret": "root/list[0]/listitem[1]/heading[1]/text[0]@text:0\"H0w\""
+        }
+      }
+    ]
+  },
+  "ul-d1|HT|el0|Enter": {
+    "base": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><h3>H0w</h3>T1w</li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[1]/heading[1]/text[0]@text:0\"H0w\"",
+        "live": "<ul><li>Pw</li><li><p></p><h3>H0w</h3>T1w</li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><h3>H0w</h3>T1w</li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:0",
+        "live": "<ul><li>Pw</li><li><h3>H0w</h3>T1w</li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[1]/heading[1]/text[0]@text:0\"H0w\"",
+        "live": "<ul><li>Pw</li><li><p></p><h3>H0w</h3>T1w</li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[1]/heading[1]/text[0]@text:0\"H0w\"",
+        "live": "<ul><li>Pw</li><li><p></p><h3>H0w</h3>T1w</li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]/heading[1]/text[0]@text:0\"H0w\"",
+          "nowCaret": "root/list[0]/listitem[1]/heading[1]/text[0]@text:0\"H0w\""
+        }
+      }
+    ],
+    "r1": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]/heading[0]/text[0]@text:0\"H0w\"",
+        "live": "<ul><li>Pw</li><li><h3>H0w</h3>T1w</li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[1]/heading[1]/text[0]@text:0\"H0w\"",
+        "live": "<ul><li>Pw</li><li><br /><h3>H0w</h3>T1w</li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/heading[0]/text[0]@text:0\"H0w\"",
+        "live": "<ul><li>Pw</li><li><h3>H0w</h3>T1w</li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/heading[0]/text[0]@text:0\"H0w\"",
+        "live": "<ul><li>Pw</li><li><h3>H0w</h3>T1w</li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]/heading[0]/text[0]@text:0\"H0w\"",
+          "nowCaret": "root/list[0]/listitem[1]/heading[0]/text[0]@text:0\"H0w\""
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[1]/heading[1]/text[0]@text:0\"H0w\"",
+        "live": "<ul><li>Pw</li><li><br /><h3>H0w</h3>T1w</li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[1]/heading[1]/text[0]@text:0\"H0w\"",
+        "live": "<ul><li>Pw</li><li><br /><h3>H0w</h3>T1w</li><li>Nw</li></ul>",
+        "note": {
+          "state": false,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "ection\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":1},{\"children\":[{\"children\":[{\"type\":\"linebreak\",\"version\":1}],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"cms-line\",\"version\":1},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"H0w\",\"type\":\"text\",\" || ection\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":1},{\"children\":[{\"children\":[{\"type\":\"linebreak\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"cms-line\",\"version\":1},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"H0w\",\"type\":\"text\",",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]/heading[1]/text[0]@text:0\"H0w\"",
+          "nowCaret": "root/list[0]/listitem[1]/heading[1]/text[0]@text:0\"H0w\""
+        }
+      }
+    ]
+  },
+  "ul-d1|QBR|liEnd|BS": {
+    "base": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "null",
+        "live": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><br /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/paragraph[0]/text[0]@text:0\"Pw\"",
+        "live": "<p>Pw</p><ul><li><blockquote><p>Q0w</p></blockquote><br /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "nodes:root/list[0]/listitem[1]/horizontalrule[2]",
+        "live": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><br /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "nodes:root/list[0]/listitem[1]/horizontalrule[2]",
+        "live": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><br /><hr /></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": false,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "null",
+          "nowCaret": "nodes:root/list[0]/listitem[1]/horizontalrule[2]"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/paragraph[0]/text[0]@text:0\"Pw\"",
+        "live": "<p>Pw</p><ul><li><blockquote><p>Q0w</p></blockquote><br /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/paragraph[0]/text[0]@text:0\"Pw\"",
+        "live": "<p>Pw</p><ul><li><blockquote><p>Q0w</p></blockquote><br /><hr /></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/paragraph[0]/text[0]@text:0\"Pw\"",
+          "nowCaret": "root/paragraph[0]/text[0]@text:0\"Pw\""
+        }
+      }
+    ],
+    "r1": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]/cms-line[3]@element:0",
+        "live": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><br /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[1]/cms-line[1]@element:1",
+        "live": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><br /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[3]@element:0",
+        "live": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><br /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[3]@element:0",
+        "live": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><br /><hr /></li><li>Nw</li></ul>",
+        "note": {
+          "state": false,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "\"version\":1},{\"type\":\"horizontalrule\",\"version\":1},{\"children\":[],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"cms-line\",\"version\":1}],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"Nw\",\"type\" || \"version\":1},{\"type\":\"horizontalrule\",\"version\":1},{\"children\":[],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"cms-line\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"Nw\",\"type",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]/cms-line[3]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]/cms-line[3]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[1]/cms-line[1]@element:1",
+        "live": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><br /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[1]/cms-line[1]@element:1",
+        "live": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><br /></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]/cms-line[1]@element:1",
+          "nowCaret": "root/list[0]/listitem[1]/cms-line[1]@element:1"
+        }
+      }
+    ]
+  },
+  "ul-d1|QBR|liEnd|Enter": {
+    "base": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "null",
+        "live": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><br /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[1]/text[0]@text:0\"Pw\"",
+        "live": "<ul><li></li><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><br /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "nodes:root/list[0]/listitem[1]/horizontalrule[2]",
+        "live": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><br /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "nodes:root/list[0]/listitem[1]/horizontalrule[2]",
+        "live": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><br /><hr /></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": false,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "null",
+          "nowCaret": "nodes:root/list[0]/listitem[1]/horizontalrule[2]"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[1]/text[0]@text:0\"Pw\"",
+        "live": "<ul><li></li><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><br /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[1]/text[0]@text:0\"Pw\"",
+        "live": "<ul><li></li><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><br /><hr /></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]/text[0]@text:0\"Pw\"",
+          "nowCaret": "root/list[0]/listitem[1]/text[0]@text:0\"Pw\""
+        }
+      }
+    ],
+    "r1": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]/cms-line[3]@element:0",
+        "live": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><br /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[2]@element:0",
+        "live": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><br /><hr /></li><li></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[3]@element:0",
+        "live": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><br /><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[3]@element:0",
+        "live": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><br /><hr /></li><li>Nw</li></ul>",
+        "note": {
+          "state": false,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "\"version\":1},{\"type\":\"horizontalrule\",\"version\":1},{\"children\":[],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"cms-line\",\"version\":1}],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"Nw\",\"type\" || \"version\":1},{\"type\":\"horizontalrule\",\"version\":1},{\"children\":[],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"cms-line\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"Nw\",\"type",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]/cms-line[3]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]/cms-line[3]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[2]@element:0",
+        "live": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><br /><hr /></li><li></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[2]@element:0",
+        "live": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><br /><hr /></li><li></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[2]@element:0",
+          "nowCaret": "root/list[0]/listitem[2]@element:0"
+        }
+      }
+    ]
+  },
+  "ul-d1|QR|liEnd|Enter": {
+    "base": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]@element:2",
+        "live": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[2]@element:0",
+        "live": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr /></li><li></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:2",
+        "live": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]@element:2",
+        "live": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr /></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]@element:2",
+          "nowCaret": "root/list[0]/listitem[1]@element:2"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[2]@element:0",
+        "live": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr /></li><li></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[2]@element:0",
+        "live": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr /></li><li></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[2]@element:0",
+          "nowCaret": "root/list[0]/listitem[2]@element:0"
+        }
+      }
+    ],
+    "r1": [
+      {
+        "step": "[\"snap\",\"m\"]",
+        "calls": 0,
+        "caret": "root/list[0]/listitem[1]/cms-line[2]@element:0",
+        "live": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"snap\",\"post\"]",
+        "calls": 1,
+        "caret": "root/list[0]/listitem[2]@element:0",
+        "live": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr /></li><li></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"key\",\"{Control>}z{/Control}\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[2]@element:0",
+        "live": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr /></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"m\"]",
+        "calls": 2,
+        "caret": "root/list[0]/listitem[1]/cms-line[2]@element:0",
+        "live": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr /></li><li>Nw</li></ul>",
+        "note": {
+          "state": false,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "\"version\":1},{\"type\":\"horizontalrule\",\"version\":1},{\"children\":[],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"cms-line\",\"version\":1}],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"Nw\",\"type\" || \"version\":1},{\"type\":\"horizontalrule\",\"version\":1},{\"children\":[],\"direction\":null,\"format\":\"\",\"indent\":0,\"type\":\"cms-line\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"listitem\",\"version\":1,\"value\":2},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"Nw\",\"type",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[1]/cms-line[2]@element:0",
+          "nowCaret": "root/list[0]/listitem[1]/cms-line[2]@element:0"
+        }
+      },
+      {
+        "step": "[\"key\",\"{Control>}{Shift>}z{/Shift}{/Control}\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[2]@element:0",
+        "live": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr /></li><li></li><li>Nw</li></ul>",
+        "note": null
+      },
+      {
+        "step": "[\"cmp\",\"post\"]",
+        "calls": 3,
+        "caret": "root/list[0]/listitem[2]@element:0",
+        "live": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><hr /></li><li></li><li>Nw</li></ul>",
+        "note": {
+          "state": true,
+          "caret": true,
+          "d7": true,
+          "rawDiff": "",
+          "d7Diff": "",
+          "snapCaret": "root/list[0]/listitem[2]@element:0",
+          "nowCaret": "root/list[0]/listitem[2]@element:0"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "in all four runs": 22078,
+  "unchanged at both builds": 19912,
+  "unchanged, and equal base against R1": 10924,
+  "unchanged, base and R1 differ": 8988,
+  "changed at a build": 2166
+}
