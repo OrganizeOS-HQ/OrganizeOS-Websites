@@ -78,8 +78,9 @@ const serverProject = {
 // stays inside its step limit (fork doc section 7): the rich-text field's
 // tests, its generated sweeps, and everything else in the two panels. A file
 // joins a project by its name; scripts/check-every-test-runs.mjs fails when
-// two projects collect one file. The line rules' tests run as two more
-// projects, the assertion files and the grids, for the same reason.
+// two projects collect one file. The line rules' tests run as seven more
+// projects for the same reason: the assertion files in two (lines, and
+// lines-b for its slowest files) and the grids in five (grids-a to grids-e).
 const cmsPanelTests =
   "app/builder/features/{cms-panel,organizeos-panel}/**/*.{test,spec}.{ts,tsx}";
 const richTextTests =
