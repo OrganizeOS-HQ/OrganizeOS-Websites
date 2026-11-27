@@ -189,6 +189,7 @@ describe("the one registration of the field's and the line rules' handlers", () 
         priority: "LOW",
         handlers: [
           "deletes.blockEdge",
+          "deletes.lineBreakBeforeBlock",
           "deletes.lineEndIntoBlock",
           "deletes.breakLedLineStart",
           "deletes.itemStartJoin",
@@ -232,6 +233,7 @@ describe("the one registration of the field's and the line rules' handlers", () 
         handlers: [
           "deletes.wordBesideRule",
           "deletes.blockEdge",
+          "deletes.lineBreakBeforeBlock",
           "deletes.lineEndIntoBlock",
           "deletes.breakLedLineStart",
           "deletes.itemStartJoin",

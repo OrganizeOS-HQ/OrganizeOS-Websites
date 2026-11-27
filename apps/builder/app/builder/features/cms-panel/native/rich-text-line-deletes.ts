@@ -24,6 +24,7 @@ import {
   ElementNode,
   type LexicalCommand,
   type LexicalNode,
+  type PointType,
 } from "lexical";
 import {
   $atContentEdge,
@@ -297,6 +298,71 @@ export const $lineEndIntoBlock = (isBackward: boolean): boolean => {
   }
   point.set(line.getKey(), at, "element");
   selection.focus.set(line.getKey(), at, "element");
+  return true;
+};
+
+/** The node directly after a point, climbing out of inline elements. */
+const $nodeAfterPoint = (point: PointType): LexicalNode | null => {
+  let node: LexicalNode = point.getNode();
+  if (point.type === "text") {
+    if (point.offset !== node.getTextContentSize()) {
+      return null;
+    }
+  } else if ($isElementNode(node) && point.offset < node.getChildrenSize()) {
+    return node.getChildAtIndex(point.offset);
+  }
+  while (node.getNextSibling() === null) {
+    const parent = node.getParent();
+    if ($isElementNode(parent) === false || parent.isInline() === false) {
+      return null;
+    }
+    node = parent;
+  }
+  return node.getNextSibling();
+};
+
+// D3's fourth case from the line's side (rulings T88): Delete and its word
+// form at a point directly before a line break that ends its line, where a
+// block or a rule follows the line, remove that break and nothing else, as
+// the same keys do in ordinary content (the twin <p>T0w<br></p> before the
+// block). The line form there removes nothing, at both builds and in the
+// twin, and is not this rule's (first example: TBQ, Delete at T0w@3 writes
+// <li>T0w<blockquote><p>Q2w</p></blockquote></li>)
+export const $lineBreakBeforeBlock = (isBackward: boolean): boolean => {
+  const selection = $getSelection();
+  if (
+    isBackward ||
+    $isRangeSelection(selection) === false ||
+    selection.isCollapsed() === false
+  ) {
+    return false;
+  }
+  const brk = $nodeAfterPoint(selection.anchor);
+  if (
+    brk === null ||
+    isLineBreak(brk) === false ||
+    brk.getNextSibling() !== null ||
+    brk.getPreviousSibling() === null
+  ) {
+    return false;
+  }
+  const line = brk.getParent();
+  if (
+    $isCmsLineNode(line) === false ||
+    isLinedContainer(line.getParent()) === false
+  ) {
+    return false;
+  }
+  const block = line.getNextSibling();
+  if (
+    isBlockDecorator(block) === false &&
+    ($isElementNode(block) === false ||
+      block.isInline() ||
+      $isCmsLineNode(block))
+  ) {
+    return false;
+  }
+  brk.remove();
   return true;
 };
 

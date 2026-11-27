@@ -1780,3 +1780,189 @@ describe("T45.7: Backspace in an empty line after a rule in a nested item (5.3, 
     expect(short(lastHtml(onChange)), "the rule stays").toContain("T0w<hr />");
   });
 });
+
+/** T88: an item of a list at depth 7 around `middle`. */
+const d7 = (middle: string) =>
+  [6, 5, 4, 3, 2, 1].reduce(
+    (inner, level) => `<ul><li>A${level}w${inner}</li></ul>`,
+    `<ul><li>${middle}</li></ul>`
+  );
+
+describe("T88: Delete before a line break that ends a line before a block (D3's fourth case from the line's side)", () => {
+  // each row's twin, <p>T0w<br></p> before the same block, removes only
+  // the break at both builds (T88.3's measurement)
+  const CELLS: ReadonlyArray<
+    readonly [name: string, stored: string, write: string, form: Step]
+  > = [
+    [
+      "TBQ, Delete",
+      LI("T0w<br><blockquote><p>Q2w</p></blockquote>"),
+      LI("T0w<blockquote><p>Q2w</p></blockquote>"),
+      del,
+    ],
+    [
+      "TBC, Delete",
+      LI("T0w<br><pre><code>C2w</code></pre>"),
+      LI("T0w<pre><code>C2w</code></pre>"),
+      del,
+    ],
+    ["TBH, Delete", LI("T0w<br><h3>H2w</h3>"), LI("T0w<h3>H2w</h3>"), del],
+    [
+      "TBQ at depth 2, Delete",
+      "<ul><li>Aw<ul><li>Pw</li><li>T0w<br><blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul></li></ul>",
+      "<ul><li>Aw<ul><li>Pw</li><li>T0w<blockquote><p>Q2w</p></blockquote></li><li>Nw</li></ul></li></ul>",
+      del,
+    ],
+    [
+      "TBH in an ordered list, Delete",
+      "<ol><li>Pw</li><li>T0w<br><h3>H2w</h3></li><li>Nw</li></ol>",
+      "<ol><li>Pw</li><li>T0w<h3>H2w</h3></li><li>Nw</li></ol>",
+      del,
+    ],
+    [
+      "TBC at depth 7, Delete",
+      d7("T0w<br><pre><code>C2w</code></pre>"),
+      d7("T0w<pre><code>C2w</code></pre>"),
+      del,
+    ],
+    [
+      "TBQ, Ctrl+Delete",
+      LI("T0w<br><blockquote><p>Q2w</p></blockquote>"),
+      LI("T0w<blockquote><p>Q2w</p></blockquote>"),
+      wordForward,
+    ],
+    [
+      "TBC, Ctrl+Delete",
+      LI("T0w<br><pre><code>C2w</code></pre>"),
+      LI("T0w<pre><code>C2w</code></pre>"),
+      wordForward,
+    ],
+    [
+      "TBH, Ctrl+Delete",
+      LI("T0w<br><h3>H2w</h3>"),
+      LI("T0w<h3>H2w</h3>"),
+      wordForward,
+    ],
+    [
+      "before a rule, Ctrl+Delete",
+      LI("T0w<br><hr>"),
+      LI("T0w<hr />"),
+      wordForward,
+    ],
+    [
+      "before a rule that text follows, Ctrl+Delete",
+      LI("T0w<br><hr>T3w"),
+      LI("T0w<hr />T3w"),
+      wordForward,
+    ],
+  ];
+  for (const [name, stored, write, form] of CELLS) {
+    test(`${name}: only the break goes, the letter after lands in T0w`, async () => {
+      await expectEdit({
+        stored,
+        place: at("T0w"),
+        action: form,
+        write,
+        caret: "text:T0w@3",
+        typed: write.replace("T0w", "T0wk"),
+        source: "rulings T88.1, T88.2; D3's fourth case",
+      });
+    });
+  }
+
+  for (const [key, form] of [
+    ["Delete", del],
+    ["Ctrl+Delete", wordForward],
+  ] as const) {
+    test(`a lined root quote, ${key}: only the break goes`, async () => {
+      await expectEdit({
+        stored: "<blockquote>X0w<br><p>X1w</p></blockquote>",
+        place: at("X0w"),
+        action: form,
+        write: "<blockquote>X0w<p>X1w</p></blockquote>",
+        caret: "text:X0w@3",
+        typed: "<blockquote>X0wk<p>X1w</p></blockquote>",
+        source: "rulings T88.3; the twin is a quote of two paragraphs",
+      });
+    });
+  }
+
+  test("TBQ, Delete after ArrowLeft from Q2w@0 (the element point before the break, T88.6)", async () => {
+    await expectEdit({
+      stored: LI("T0w<br><blockquote><p>Q2w</p></blockquote>"),
+      place: then(at("Q2w", 0), keys("{ArrowLeft}")),
+      action: del,
+      write: LI("T0w<blockquote><p>Q2w</p></blockquote>"),
+      typed: LI("T0wk<blockquote><p>Q2w</p></blockquote>"),
+      source: "rulings T88.6",
+    });
+  });
+
+  test("TBQ, a second Delete meets the quote at the line's end (D3's third case)", async () => {
+    const onChange = await mount(
+      LI("T0w<br><blockquote><p>Q2w</p></blockquote>")
+    );
+    await at("T0w")();
+    await del();
+    expect(short(lastHtml(onChange)), "the first Delete").toBe(
+      LI("T0w<blockquote><p>Q2w</p></blockquote>")
+    );
+    await del();
+    expect(short(lastHtml(onChange)), "the second Delete").toBe(LI("T0wQ2w"));
+    expect(caretKey(), "caret").toBe("text:T0wQ2w@3");
+  });
+
+  describe("controls that do not change", () => {
+    test("TBQ, the line form changes nothing, as in the twin", async () => {
+      await expectEdit({
+        stored: LI("T0w<br><blockquote><p>Q2w</p></blockquote>"),
+        place: at("T0w"),
+        action: lineForward,
+        write: null,
+        typed: LI("T0wk<br /><blockquote><p>Q2w</p></blockquote>"),
+        source: "rulings T88.3's measurement",
+      });
+    });
+
+    const BACK: ReadonlyArray<readonly [string, string, string]> = [
+      ["TBQ", "<blockquote><p>Q2w</p></blockquote>", "Q2w"],
+      ["TBC", "<pre><code>C2w</code></pre>", "C2w"],
+      ["TBH", "<h3>H2w</h3>", "H2w"],
+    ];
+    for (const [name, block, word] of BACK) {
+      test(`${name}, Backspace at the block's first text removes the break (D3's fourth case)`, async () => {
+        await expectEdit({
+          stored: LI(`T0w<br>${block}`),
+          place: at(word, 0),
+          action: backspace,
+          write: LI(`T0w${block}`),
+          caret: `text:${word}@0`,
+          typed: LI(`T0w${block.replace(word, `k${word}`)}`),
+          source: "D3's fourth case",
+        });
+      });
+    }
+
+    test("TCT, Delete at the line's end with no break before the block (D3's third case)", async () => {
+      await expectEdit({
+        stored: LI("T0w<pre><code>C1w</code></pre>T2w"),
+        place: at("T0w"),
+        action: del,
+        write: LI("T0wC1w<br />T2w"),
+        caret: "text:T0wC1w@3",
+        source: "D3's third case",
+      });
+    });
+
+    test("Delete before a break that text follows in the same line joins the text", async () => {
+      await expectEdit({
+        stored: LI("T0w<br>T1w<blockquote><p>Q2w</p></blockquote>"),
+        place: at("T0w"),
+        action: del,
+        write: LI("T0wT1w<blockquote><p>Q2w</p></blockquote>"),
+        caret: "text:T0wT1w@3",
+        source: "measured: the base writes the same, and so does the twin",
+      });
+    });
+  });
+});
