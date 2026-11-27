@@ -1,0 +1,974 @@
+{
+  "fwd|R|quote|rule|twin|del": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:root@3",
+    "typed": "<p>A9w</p><blockquote><p>X0wZw</p></blockquote><hr /><p>k</p>"
+  },
+  "fwd|R|quote|rule|img|del": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:root@3",
+    "typed": "<p>A9w</p><blockquote><p>X0w<img /></p></blockquote><hr /><p>k</p>"
+  },
+  "fwd|R|quote|rule|br|del": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:root@3",
+    "typed": "<p>A9w</p><blockquote><p>X0w<br /></p></blockquote><hr /><p>k</p>"
+  },
+  "fwd|R|quote|rule|linkOut|del": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:root@3",
+    "typed": "<p>A9w</p><blockquote><p>X0w<a>Zw</a></p></blockquote><hr /><p>k</p>"
+  },
+  "fwd|R|quote|rule|linkIn|del": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:root@3",
+    "typed": "<p>A9w</p><blockquote><p>X0w<a>Zw</a></p></blockquote><hr /><p>k</p>"
+  },
+  "fwd|R|quote|rule|code|del": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:root@3",
+    "typed": "<p>A9w</p><blockquote><p>X0w<code>Zw</code></p></blockquote><hr /><p><code>k</code></p>"
+  },
+  "fwd|R|quote|rule|linkBold|del": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:root@3",
+    "typed": "<p>A9w</p><blockquote><p>X0w<a><b><strong>Zw</strong></b></a></p></blockquote><hr /><p>k</p>"
+  },
+  "fwd|R|quote|rule|boldLink|del": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:root@3",
+    "typed": "<p>A9w</p><blockquote><p>X0w<a><b><strong>Zw</strong></b></a></p></blockquote><hr /><p>k</p>"
+  },
+  "fwd|R|quote|rule|codeIn|del": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:root@3",
+    "typed": "<p>A9w</p><blockquote><p>X0w<code>Zw</code></p></blockquote><hr /><p>k</p>"
+  },
+  "fwd|R|quote|rule|twin|wordF": {
+    "write": "<p>A9w</p><blockquote><p>X0wZw</p></blockquote>",
+    "calls": 1,
+    "caret": "text:X0wZw@5",
+    "typed": "<p>A9w</p><blockquote><p>X0wZwk</p></blockquote>"
+  },
+  "fwd|R|quote|rule|img|wordF": {
+    "write": "<p>A9w</p><blockquote><p>X0w</p></blockquote>",
+    "calls": 1,
+    "caret": "text:X0w@3|element:root@2",
+    "typed": "<p>A9w</p><blockquote><p>k</p></blockquote>"
+  },
+  "fwd|R|quote|rule|br|wordF": {
+    "write": "<p>A9w</p><blockquote><p>X0w</p></blockquote>",
+    "calls": 1,
+    "caret": "text:X0w@3|element:root@2",
+    "typed": "<p>A9w</p><blockquote><p>k</p></blockquote>"
+  },
+  "fwd|R|quote|rule|linkOut|wordF": {
+    "write": "<p>A9w</p><blockquote><p>X0w<a>Zw</a></p></blockquote>",
+    "calls": 1,
+    "caret": "text:Zw@2",
+    "typed": "<p>A9w</p><blockquote><p>X0w<a>Zw</a>k</p></blockquote>"
+  },
+  "fwd|R|quote|rule|linkIn|wordF": {
+    "write": "<p>A9w</p><blockquote><p>X0w<a>Zw</a></p></blockquote>",
+    "calls": 1,
+    "caret": "text:Zw@2",
+    "typed": "<p>A9w</p><blockquote><p>X0w<a>Zw</a>k</p></blockquote>"
+  },
+  "fwd|R|quote|rule|code|wordF": {
+    "write": "<p>A9w</p><blockquote><p>X0w<code>Zw</code></p></blockquote>",
+    "calls": 1,
+    "caret": "text:Zw@2",
+    "typed": "<p>A9w</p><blockquote><p>X0w<code>Zwk</code></p></blockquote>"
+  },
+  "fwd|R|quote|rule|linkBold|wordF": {
+    "write": "<p>A9w</p><blockquote><p>X0w<a><b><strong>Zw</strong></b></a></p></blockquote>",
+    "calls": 1,
+    "caret": "text:Zw@2",
+    "typed": "<p>A9w</p><blockquote><p>X0w<a><b><strong>Zw</strong></b></a>k</p></blockquote>"
+  },
+  "fwd|R|quote|rule|boldLink|wordF": {
+    "write": "<p>A9w</p><blockquote><p>X0w<a><b><strong>Zw</strong></b></a></p></blockquote>",
+    "calls": 1,
+    "caret": "text:Zw@2",
+    "typed": "<p>A9w</p><blockquote><p>X0w<a><b><strong>Zw</strong></b></a>k</p></blockquote>"
+  },
+  "fwd|R|quote|rule|codeIn|wordF": {
+    "write": "<p>A9w</p><blockquote><p>X0w<code>Zw</code></p></blockquote>",
+    "calls": 1,
+    "caret": "text:Zw@2",
+    "typed": "<p>A9w</p><blockquote><p>X0w<code>Zw</code>k</p></blockquote>"
+  },
+  "fwd|R|quote|rule|twin|lineF": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:X0wZw@5",
+    "typed": "<p>A9w</p><blockquote><p>X0wZwk</p></blockquote><hr />"
+  },
+  "fwd|R|quote|rule|img|lineF": {
+    "write": "<p>A9w</p><blockquote><p>X0w<img /> </p></blockquote>",
+    "calls": 1,
+    "caret": "text: @0|element:root@2",
+    "typed": "<p>A9w</p><blockquote><p>X0w<img />k</p></blockquote>"
+  },
+  "fwd|R|quote|rule|br|lineF": {
+    "write": "<p>A9w</p><blockquote><p>X0w<br /> </p></blockquote>",
+    "calls": 1,
+    "caret": "text: @0|element:root@2",
+    "typed": "<p>A9w</p><blockquote><p>X0w<br />k</p></blockquote>"
+  },
+  "fwd|R|quote|rule|linkOut|lineF": {
+    "write": "<p>A9w</p><blockquote><p>X0w<a>Zw</a> </p></blockquote>",
+    "calls": 1,
+    "caret": "text:Zw@2|element:root@2",
+    "typed": "<p>A9w</p><blockquote><p>X0w<a>Zw</a>k </p></blockquote>"
+  },
+  "fwd|R|quote|rule|linkIn|lineF": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@2",
+    "typed": "<p>A9w</p><blockquote><p>X0w<a>Zw</a>k</p></blockquote><hr />"
+  },
+  "fwd|R|quote|rule|code|lineF": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@2",
+    "typed": "<p>A9w</p><blockquote><p>X0w<code>Zwk</code></p></blockquote><hr />"
+  },
+  "fwd|R|quote|rule|linkBold|lineF": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@2",
+    "typed": "<p>A9w</p><blockquote><p>X0w<a><b><strong>Zw</strong></b></a>k</p></blockquote><hr />"
+  },
+  "fwd|R|quote|rule|boldLink|lineF": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@2",
+    "typed": "<p>A9w</p><blockquote><p>X0w<a><b><strong>Zw</strong></b></a>k</p></blockquote><hr />"
+  },
+  "fwd|R|quote|rule|codeIn|lineF": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@2",
+    "typed": "<p>A9w</p><blockquote><p>X0w<code>Zw</code>k</p></blockquote><hr />"
+  },
+  "fwd|R|heading|rule|twin|del": {
+    "write": "<p>A9w</p><h3>X0wZw</h3>",
+    "calls": 1,
+    "caret": "text:X0wZw@5",
+    "typed": "<p>A9w</p><h3>X0wZwk</h3>"
+  },
+  "fwd|R|heading|rule|img|del": {
+    "write": "<p>A9w</p><h3>X0w<img /></h3>",
+    "calls": 1,
+    "caret": "element:heading@2",
+    "typed": "<p>A9w</p><h3>X0w<img />k</h3>"
+  },
+  "fwd|R|heading|rule|br|del": {
+    "write": "<p>A9w</p><h3>X0w<br /></h3>",
+    "calls": 1,
+    "caret": "element:heading@2",
+    "typed": "<p>A9w</p><h3>X0w<br />k</h3>"
+  },
+  "fwd|R|heading|rule|linkOut|del": {
+    "write": "<p>A9w</p><h3>X0w<a>Zw</a></h3>",
+    "calls": 1,
+    "caret": "element:heading@2",
+    "typed": "<p>A9w</p><h3>X0w<a>Zw</a>k</h3>"
+  },
+  "fwd|R|heading|rule|linkIn|del": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:root@3",
+    "typed": "<p>A9w</p><h3>X0w<a>Zw</a></h3><hr /><p>k</p>"
+  },
+  "fwd|R|heading|rule|code|del": {
+    "write": "<p>A9w</p><h3>X0w<code>Zw</code></h3>",
+    "calls": 1,
+    "caret": "text:Zw@2",
+    "typed": "<p>A9w</p><h3>X0w<code>Zwk</code></h3>"
+  },
+  "fwd|R|heading|rule|linkBold|del": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:root@3",
+    "typed": "<p>A9w</p><h3>X0w<a><b><strong>Zw</strong></b></a></h3><hr /><p>k</p>"
+  },
+  "fwd|R|heading|rule|boldLink|del": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:root@3",
+    "typed": "<p>A9w</p><h3>X0w<a><b><strong>Zw</strong></b></a></h3><hr /><p>k</p>"
+  },
+  "fwd|R|heading|rule|codeIn|del": {
+    "write": "<p>A9w</p><h3>X0w<code>Zw</code></h3>",
+    "calls": 1,
+    "caret": "text:Zw@2",
+    "typed": "<p>A9w</p><h3>X0w<code>Zw</code>k</h3>"
+  },
+  "fwd|R|heading|rule|twin|wordF": {
+    "write": "<p>A9w</p><h3>X0wZw</h3>",
+    "calls": 1,
+    "caret": "text:X0wZw@5",
+    "typed": "<p>A9w</p><h3>X0wZwk</h3>"
+  },
+  "fwd|R|heading|rule|img|wordF": {
+    "write": "<p>A9w</p><h3>X0w</h3>",
+    "calls": 1,
+    "caret": "text:X0w@3|element:root@2",
+    "typed": "<p>A9w</p><h3>k</h3>"
+  },
+  "fwd|R|heading|rule|br|wordF": {
+    "write": "<p>A9w</p><h3>X0w</h3>",
+    "calls": 1,
+    "caret": "text:X0w@3|element:root@2",
+    "typed": "<p>A9w</p><h3>k</h3>"
+  },
+  "fwd|R|heading|rule|linkOut|wordF": {
+    "write": "<p>A9w</p><h3>X0w</h3>",
+    "calls": 1,
+    "caret": "text:X0w@3|element:root@2",
+    "typed": "<p>A9w</p><h3>k</h3>"
+  },
+  "fwd|R|heading|rule|linkIn|wordF": {
+    "write": "<p>A9w</p><h3>X0w<a>Zw</a></h3>",
+    "calls": 1,
+    "caret": "text:Zw@2",
+    "typed": "<p>A9w</p><h3>X0w<a>Zw</a>k</h3>"
+  },
+  "fwd|R|heading|rule|code|wordF": {
+    "write": "<p>A9w</p><h3>X0w<code>Zw</code></h3>",
+    "calls": 1,
+    "caret": "text:Zw@2",
+    "typed": "<p>A9w</p><h3>X0w<code>Zwk</code></h3>"
+  },
+  "fwd|R|heading|rule|linkBold|wordF": {
+    "write": "<p>A9w</p><h3>X0w<a><b><strong>Zw</strong></b></a></h3>",
+    "calls": 1,
+    "caret": "text:Zw@2",
+    "typed": "<p>A9w</p><h3>X0w<a><b><strong>Zw</strong></b></a>k</h3>"
+  },
+  "fwd|R|heading|rule|boldLink|wordF": {
+    "write": "<p>A9w</p><h3>X0w<a><b><strong>Zw</strong></b></a></h3>",
+    "calls": 1,
+    "caret": "text:Zw@2",
+    "typed": "<p>A9w</p><h3>X0w<a><b><strong>Zw</strong></b></a>k</h3>"
+  },
+  "fwd|R|heading|rule|codeIn|wordF": {
+    "write": "<p>A9w</p><h3>X0w<code>Zw</code></h3>",
+    "calls": 1,
+    "caret": "text:Zw@2",
+    "typed": "<p>A9w</p><h3>X0w<code>Zw</code>k</h3>"
+  },
+  "fwd|R|heading|rule|twin|lineF": {
+    "write": "<p>A9w</p><h3>X0wZw</h3>",
+    "calls": 1,
+    "caret": "text:X0wZw@5",
+    "typed": "<p>A9w</p><h3>X0wZwk</h3>"
+  },
+  "fwd|R|heading|rule|img|lineF": {
+    "write": "<p>A9w</p><h3>X0w<img /> </h3>",
+    "calls": 1,
+    "caret": "text: @1",
+    "typed": "<p>A9w</p><h3>X0w<img /> k</h3>"
+  },
+  "fwd|R|heading|rule|br|lineF": {
+    "write": "<p>A9w</p><h3>X0w<br /> </h3>",
+    "calls": 1,
+    "caret": "text: @1",
+    "typed": "<p>A9w</p><h3>X0w<br /> k</h3>"
+  },
+  "fwd|R|heading|rule|linkOut|lineF": {
+    "write": "<p>A9w</p><h3>X0w<a>Zw</a> </h3>",
+    "calls": 1,
+    "caret": "text: @1",
+    "typed": "<p>A9w</p><h3>X0w<a>Zw</a> k</h3>"
+  },
+  "fwd|R|heading|rule|linkIn|lineF": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@2",
+    "typed": "<p>A9w</p><h3>X0w<a>Zw</a>k</h3><hr />"
+  },
+  "fwd|R|heading|rule|code|lineF": {
+    "write": "<p>A9w</p><h3>X0w<code>Zw</code></h3>",
+    "calls": 1,
+    "caret": "text:Zw@2",
+    "typed": "<p>A9w</p><h3>X0w<code>Zwk</code></h3>"
+  },
+  "fwd|R|heading|rule|linkBold|lineF": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@2",
+    "typed": "<p>A9w</p><h3>X0w<a><b><strong>Zw</strong></b></a>k</h3><hr />"
+  },
+  "fwd|R|heading|rule|boldLink|lineF": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@2",
+    "typed": "<p>A9w</p><h3>X0w<a><b><strong>Zw</strong></b></a>k</h3><hr />"
+  },
+  "fwd|R|heading|rule|codeIn|lineF": {
+    "write": "<p>A9w</p><h3>X0w<code>Zw</code></h3>",
+    "calls": 1,
+    "caret": "text:Zw@2",
+    "typed": "<p>A9w</p><h3>X0w<code>Zw</code>k</h3>"
+  },
+  "fwd|R|para|rule|twin|del": {
+    "write": "<p>A9w</p><p>X0wZw</p>",
+    "calls": 1,
+    "caret": "text:X0wZw@5",
+    "typed": "<p>A9w</p><p>X0wZwk</p>"
+  },
+  "fwd|R|para|rule|img|del": {
+    "write": "<p>A9w</p><p>X0w<img /></p>",
+    "calls": 1,
+    "caret": "element:paragraph@2",
+    "typed": "<p>A9w</p><p>X0w<img />k</p>"
+  },
+  "fwd|R|para|rule|br|del": {
+    "write": "<p>A9w</p><p>X0w<br /></p>",
+    "calls": 1,
+    "caret": "element:paragraph@2",
+    "typed": "<p>A9w</p><p>X0w<br />k</p>"
+  },
+  "fwd|R|para|rule|linkOut|del": {
+    "write": "<p>A9w</p><p>X0w<a>Zw</a></p>",
+    "calls": 1,
+    "caret": "element:paragraph@2",
+    "typed": "<p>A9w</p><p>X0w<a>Zw</a>k</p>"
+  },
+  "fwd|R|para|rule|linkIn|del": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:root@3",
+    "typed": "<p>A9w</p><p>X0w<a>Zw</a></p><hr /><p>k</p>"
+  },
+  "fwd|R|para|rule|code|del": {
+    "write": "<p>A9w</p><p>X0w<code>Zw</code></p>",
+    "calls": 1,
+    "caret": "text:Zw@2",
+    "typed": "<p>A9w</p><p>X0w<code>Zwk</code></p>"
+  },
+  "fwd|R|para|rule|linkBold|del": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:root@3",
+    "typed": "<p>A9w</p><p>X0w<a><b><strong>Zw</strong></b></a></p><hr /><p>k</p>"
+  },
+  "fwd|R|para|rule|boldLink|del": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:root@3",
+    "typed": "<p>A9w</p><p>X0w<a><b><strong>Zw</strong></b></a></p><hr /><p>k</p>"
+  },
+  "fwd|R|para|rule|codeIn|del": {
+    "write": "<p>A9w</p><p>X0w<code>Zw</code></p>",
+    "calls": 1,
+    "caret": "text:Zw@2",
+    "typed": "<p>A9w</p><p>X0w<code>Zw</code>k</p>"
+  },
+  "fwd|R|para|rule|twin|wordF": {
+    "write": "<p>A9w</p><p>X0wZw</p>",
+    "calls": 1,
+    "caret": "text:X0wZw@5",
+    "typed": "<p>A9w</p><p>X0wZwk</p>"
+  },
+  "fwd|R|para|rule|img|wordF": {
+    "write": "<p>A9w</p><p>X0w</p>",
+    "calls": 1,
+    "caret": "text:X0w@3|element:root@2",
+    "typed": "<p>A9w</p><p>k</p>"
+  },
+  "fwd|R|para|rule|br|wordF": {
+    "write": "<p>A9w</p><p>X0w</p>",
+    "calls": 1,
+    "caret": "text:X0w@3|element:root@2",
+    "typed": "<p>A9w</p><p>k</p>"
+  },
+  "fwd|R|para|rule|linkOut|wordF": {
+    "write": "<p>A9w</p><p>X0w</p>",
+    "calls": 1,
+    "caret": "text:X0w@3|element:root@2",
+    "typed": "<p>A9w</p><p>k</p>"
+  },
+  "fwd|R|para|rule|linkIn|wordF": {
+    "write": "<p>A9w</p><p>X0w<a>Zw</a></p>",
+    "calls": 1,
+    "caret": "text:Zw@2",
+    "typed": "<p>A9w</p><p>X0w<a>Zw</a>k</p>"
+  },
+  "fwd|R|para|rule|code|wordF": {
+    "write": "<p>A9w</p><p>X0w<code>Zw</code></p>",
+    "calls": 1,
+    "caret": "text:Zw@2",
+    "typed": "<p>A9w</p><p>X0w<code>Zwk</code></p>"
+  },
+  "fwd|R|para|rule|linkBold|wordF": {
+    "write": "<p>A9w</p><p>X0w<a><b><strong>Zw</strong></b></a></p>",
+    "calls": 1,
+    "caret": "text:Zw@2",
+    "typed": "<p>A9w</p><p>X0w<a><b><strong>Zw</strong></b></a>k</p>"
+  },
+  "fwd|R|para|rule|boldLink|wordF": {
+    "write": "<p>A9w</p><p>X0w<a><b><strong>Zw</strong></b></a></p>",
+    "calls": 1,
+    "caret": "text:Zw@2",
+    "typed": "<p>A9w</p><p>X0w<a><b><strong>Zw</strong></b></a>k</p>"
+  },
+  "fwd|R|para|rule|codeIn|wordF": {
+    "write": "<p>A9w</p><p>X0w<code>Zw</code></p>",
+    "calls": 1,
+    "caret": "text:Zw@2",
+    "typed": "<p>A9w</p><p>X0w<code>Zw</code>k</p>"
+  },
+  "fwd|R|para|rule|twin|lineF": {
+    "write": "<p>A9w</p><p>X0wZw</p>",
+    "calls": 1,
+    "caret": "text:X0wZw@5",
+    "typed": "<p>A9w</p><p>X0wZwk</p>"
+  },
+  "fwd|R|para|rule|img|lineF": {
+    "write": "<p>A9w</p><p>X0w<img /> </p>",
+    "calls": 1,
+    "caret": "text: @1",
+    "typed": "<p>A9w</p><p>X0w<img /> k</p>"
+  },
+  "fwd|R|para|rule|br|lineF": {
+    "write": "<p>A9w</p><p>X0w<br /> </p>",
+    "calls": 1,
+    "caret": "text: @1",
+    "typed": "<p>A9w</p><p>X0w<br /> k</p>"
+  },
+  "fwd|R|para|rule|linkOut|lineF": {
+    "write": "<p>A9w</p><p>X0w<a>Zw</a> </p>",
+    "calls": 1,
+    "caret": "text: @1",
+    "typed": "<p>A9w</p><p>X0w<a>Zw</a> k</p>"
+  },
+  "fwd|R|para|rule|linkIn|lineF": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@2",
+    "typed": "<p>A9w</p><p>X0w<a>Zw</a>k</p><hr />"
+  },
+  "fwd|R|para|rule|code|lineF": {
+    "write": "<p>A9w</p><p>X0w<code>Zw</code></p>",
+    "calls": 1,
+    "caret": "text:Zw@2",
+    "typed": "<p>A9w</p><p>X0w<code>Zwk</code></p>"
+  },
+  "fwd|R|para|rule|linkBold|lineF": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@2",
+    "typed": "<p>A9w</p><p>X0w<a><b><strong>Zw</strong></b></a>k</p><hr />"
+  },
+  "fwd|R|para|rule|boldLink|lineF": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@2",
+    "typed": "<p>A9w</p><p>X0w<a><b><strong>Zw</strong></b></a>k</p><hr />"
+  },
+  "fwd|R|para|rule|codeIn|lineF": {
+    "write": "<p>A9w</p><p>X0w<code>Zw</code></p>",
+    "calls": 1,
+    "caret": "text:Zw@2",
+    "typed": "<p>A9w</p><p>X0w<code>Zw</code>k</p>"
+  },
+  "bwd|R|quote|rule|twin|bs": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:ZwX0w@0",
+    "typed": "<hr /><blockquote><p>kZwX0w</p></blockquote><p>E9w</p>"
+  },
+  "bwd|R|quote|rule|img|bs": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:paragraph@0",
+    "typed": "<hr /><blockquote><p>k<img />X0w</p></blockquote><p>E9w</p>"
+  },
+  "bwd|R|quote|rule|br|bs": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:paragraph@0",
+    "typed": "<hr /><blockquote><p>k<br />X0w</p></blockquote><p>E9w</p>"
+  },
+  "bwd|R|quote|rule|linkOut|bs": {
+    "write": "<hr /><blockquote><p><a>Zw</a>X0w</p></blockquote><p>E9w</p>",
+    "calls": 1,
+    "caret": "text:Zw@0",
+    "typed": "<hr /><blockquote><p>k<a>Zw</a>X0w</p></blockquote><p>E9w</p>"
+  },
+  "bwd|R|quote|rule|linkIn|bs": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@0",
+    "typed": "<hr /><blockquote><p>k<a>Zw</a>X0w</p></blockquote><p>E9w</p>"
+  },
+  "bwd|R|quote|rule|code|bs": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@0",
+    "typed": "<hr /><blockquote><p><code>kZw</code>X0w</p></blockquote><p>E9w</p>"
+  },
+  "bwd|R|quote|rule|linkBold|bs": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@0",
+    "typed": "<hr /><blockquote><p>k<a><b><strong>Zw</strong></b></a>X0w</p></blockquote><p>E9w</p>"
+  },
+  "bwd|R|quote|rule|boldLink|bs": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@0",
+    "typed": "<hr /><blockquote><p>k<a><b><strong>Zw</strong></b></a>X0w</p></blockquote><p>E9w</p>"
+  },
+  "bwd|R|quote|rule|codeIn|bs": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@0",
+    "typed": "<hr /><blockquote><p>k<code>Zw</code>X0w</p></blockquote><p>E9w</p>"
+  },
+  "bwd|R|quote|rule|twin|wordB": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:ZwX0w@0",
+    "typed": "<hr /><blockquote><p>kZwX0w</p></blockquote><p>E9w</p>"
+  },
+  "bwd|R|quote|rule|img|wordB": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:paragraph@0",
+    "typed": "<hr /><blockquote><p>k<img />X0w</p></blockquote><p>E9w</p>"
+  },
+  "bwd|R|quote|rule|br|wordB": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:paragraph@0",
+    "typed": "<hr /><blockquote><p>k<br />X0w</p></blockquote><p>E9w</p>"
+  },
+  "bwd|R|quote|rule|linkOut|wordB": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:paragraph@0",
+    "typed": "<hr /><blockquote><p>k<a>Zw</a>X0w</p></blockquote><p>E9w</p>"
+  },
+  "bwd|R|quote|rule|linkIn|wordB": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@0",
+    "typed": "<hr /><blockquote><p>k<a>Zw</a>X0w</p></blockquote><p>E9w</p>"
+  },
+  "bwd|R|quote|rule|code|wordB": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@0",
+    "typed": "<hr /><blockquote><p><code>kZw</code>X0w</p></blockquote><p>E9w</p>"
+  },
+  "bwd|R|quote|rule|linkBold|wordB": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@0",
+    "typed": "<hr /><blockquote><p>k<a><b><strong>Zw</strong></b></a>X0w</p></blockquote><p>E9w</p>"
+  },
+  "bwd|R|quote|rule|boldLink|wordB": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@0",
+    "typed": "<hr /><blockquote><p>k<a><b><strong>Zw</strong></b></a>X0w</p></blockquote><p>E9w</p>"
+  },
+  "bwd|R|quote|rule|codeIn|wordB": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@0",
+    "typed": "<hr /><blockquote><p>k<code>Zw</code>X0w</p></blockquote><p>E9w</p>"
+  },
+  "bwd|R|quote|rule|twin|lineB": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:ZwX0w@0",
+    "typed": "<hr /><blockquote><p>kZwX0w</p></blockquote><p>E9w</p>"
+  },
+  "bwd|R|quote|rule|img|lineB": {
+    "write": "<hr /><blockquote><p><img />X0w</p></blockquote><p>E9w</p>",
+    "calls": 1,
+    "caret": "element:paragraph@0",
+    "typed": "<hr /><blockquote><p>k<img />X0w</p></blockquote><p>E9w</p>"
+  },
+  "bwd|R|quote|rule|br|lineB": {
+    "write": "<hr /><blockquote><p><br />X0w</p></blockquote><p>E9w</p>",
+    "calls": 1,
+    "caret": "element:paragraph@0",
+    "typed": "<hr /><blockquote><p>k<br />X0w</p></blockquote><p>E9w</p>"
+  },
+  "bwd|R|quote|rule|linkOut|lineB": {
+    "write": "<hr /><blockquote><p><a>Zw</a>X0w</p></blockquote><p>E9w</p>",
+    "calls": 1,
+    "caret": "text:Zw@0",
+    "typed": "<hr /><blockquote><p>k<a>Zw</a>X0w</p></blockquote><p>E9w</p>"
+  },
+  "bwd|R|quote|rule|linkIn|lineB": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@0",
+    "typed": "<hr /><blockquote><p>k<a>Zw</a>X0w</p></blockquote><p>E9w</p>"
+  },
+  "bwd|R|quote|rule|code|lineB": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@0",
+    "typed": "<hr /><blockquote><p><code>kZw</code>X0w</p></blockquote><p>E9w</p>"
+  },
+  "bwd|R|quote|rule|linkBold|lineB": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@0",
+    "typed": "<hr /><blockquote><p>k<a><b><strong>Zw</strong></b></a>X0w</p></blockquote><p>E9w</p>"
+  },
+  "bwd|R|quote|rule|boldLink|lineB": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@0",
+    "typed": "<hr /><blockquote><p>k<a><b><strong>Zw</strong></b></a>X0w</p></blockquote><p>E9w</p>"
+  },
+  "bwd|R|quote|rule|codeIn|lineB": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@0",
+    "typed": "<hr /><blockquote><p>k<code>Zw</code>X0w</p></blockquote><p>E9w</p>"
+  },
+  "bwd|R|heading|rule|twin|bs": {
+    "write": "<h3>ZwX0w</h3><p>E9w</p>",
+    "calls": 1,
+    "caret": "text:ZwX0w@0",
+    "typed": "<h3>kZwX0w</h3><p>E9w</p>"
+  },
+  "bwd|R|heading|rule|img|bs": {
+    "write": "<h3><img />X0w</h3><p>E9w</p>",
+    "calls": 1,
+    "caret": "element:heading@0",
+    "typed": "<h3>k<img />X0w</h3><p>E9w</p>"
+  },
+  "bwd|R|heading|rule|br|bs": {
+    "write": "<h3><br />X0w</h3><p>E9w</p>",
+    "calls": 1,
+    "caret": "element:heading@0",
+    "typed": "<h3>k<br />X0w</h3><p>E9w</p>"
+  },
+  "bwd|R|heading|rule|linkOut|bs": {
+    "write": "<h3><a>Zw</a>X0w</h3><p>E9w</p>",
+    "calls": 1,
+    "caret": "element:heading@0",
+    "typed": "<h3>k<a>Zw</a>X0w</h3><p>E9w</p>"
+  },
+  "bwd|R|heading|rule|linkIn|bs": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@0",
+    "typed": "<hr /><h3>k<a>Zw</a>X0w</h3><p>E9w</p>"
+  },
+  "bwd|R|heading|rule|code|bs": {
+    "write": "<h3><code>Zw</code>X0w</h3><p>E9w</p>",
+    "calls": 1,
+    "caret": "text:Zw@0",
+    "typed": "<h3><code>kZw</code>X0w</h3><p>E9w</p>"
+  },
+  "bwd|R|heading|rule|linkBold|bs": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@0",
+    "typed": "<hr /><h3>k<a><b><strong>Zw</strong></b></a>X0w</h3><p>E9w</p>"
+  },
+  "bwd|R|heading|rule|boldLink|bs": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@0",
+    "typed": "<hr /><h3>k<a><b><strong>Zw</strong></b></a>X0w</h3><p>E9w</p>"
+  },
+  "bwd|R|heading|rule|codeIn|bs": {
+    "write": "<h3><code>Zw</code>X0w</h3><p>E9w</p>",
+    "calls": 1,
+    "caret": "text:Zw@0",
+    "typed": "<h3>k<code>Zw</code>X0w</h3><p>E9w</p>"
+  },
+  "bwd|R|heading|rule|twin|wordB": {
+    "write": "<h3>ZwX0w</h3><p>E9w</p>",
+    "calls": 1,
+    "caret": "text:ZwX0w@0",
+    "typed": "<h3>kZwX0w</h3><p>E9w</p>"
+  },
+  "bwd|R|heading|rule|img|wordB": {
+    "write": "<h3><img />X0w</h3><p>E9w</p>",
+    "calls": 1,
+    "caret": "element:heading@0|element:root@0",
+    "typed": "<h3>k<img />X0w</h3><p>E9w</p>"
+  },
+  "bwd|R|heading|rule|br|wordB": {
+    "write": "<h3><br />X0w</h3><p>E9w</p>",
+    "calls": 1,
+    "caret": "element:heading@0|element:root@0",
+    "typed": "<h3>k<br />X0w</h3><p>E9w</p>"
+  },
+  "bwd|R|heading|rule|linkOut|wordB": {
+    "write": "<h3>X0w</h3><p>E9w</p>",
+    "calls": 1,
+    "caret": "text:X0w@0|element:root@0",
+    "typed": "<h3>k</h3><p>E9w</p>"
+  },
+  "bwd|R|heading|rule|linkIn|wordB": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@0",
+    "typed": "<hr /><h3>k<a>Zw</a>X0w</h3><p>E9w</p>"
+  },
+  "bwd|R|heading|rule|code|wordB": {
+    "write": "<h3><code>Zw</code>X0w</h3><p>E9w</p>",
+    "calls": 1,
+    "caret": "text:Zw@0",
+    "typed": "<h3><code>kZw</code>X0w</h3><p>E9w</p>"
+  },
+  "bwd|R|heading|rule|linkBold|wordB": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@0",
+    "typed": "<hr /><h3>k<a><b><strong>Zw</strong></b></a>X0w</h3><p>E9w</p>"
+  },
+  "bwd|R|heading|rule|boldLink|wordB": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@0",
+    "typed": "<hr /><h3>k<a><b><strong>Zw</strong></b></a>X0w</h3><p>E9w</p>"
+  },
+  "bwd|R|heading|rule|codeIn|wordB": {
+    "write": "<h3><code>Zw</code>X0w</h3><p>E9w</p>",
+    "calls": 1,
+    "caret": "text:Zw@0",
+    "typed": "<h3>k<code>Zw</code>X0w</h3><p>E9w</p>"
+  },
+  "bwd|R|heading|rule|twin|lineB": {
+    "write": "<h3>ZwX0w</h3><p>E9w</p>",
+    "calls": 1,
+    "caret": "text:ZwX0w@0",
+    "typed": "<h3>kZwX0w</h3><p>E9w</p>"
+  },
+  "bwd|R|heading|rule|img|lineB": {
+    "write": "<h3><img />X0w</h3><p>E9w</p>",
+    "calls": 1,
+    "caret": "element:heading@0|element:root@0",
+    "typed": "<h3>k<img />X0w</h3><p>E9w</p>"
+  },
+  "bwd|R|heading|rule|br|lineB": {
+    "write": "<h3><br />X0w</h3><p>E9w</p>",
+    "calls": 1,
+    "caret": "element:heading@0|element:root@0",
+    "typed": "<h3>k<br />X0w</h3><p>E9w</p>"
+  },
+  "bwd|R|heading|rule|linkOut|lineB": {
+    "write": "<hr /><h3><a>Zw</a>X0w</h3><p>E9w</p>",
+    "calls": 1,
+    "caret": "text:Zw@0",
+    "typed": "<hr /><h3>k<a>Zw</a>X0w</h3><p>E9w</p>"
+  },
+  "bwd|R|heading|rule|linkIn|lineB": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@0",
+    "typed": "<hr /><h3>k<a>Zw</a>X0w</h3><p>E9w</p>"
+  },
+  "bwd|R|heading|rule|code|lineB": {
+    "write": "<h3><code>Zw</code>X0w</h3><p>E9w</p>",
+    "calls": 1,
+    "caret": "text:Zw@0",
+    "typed": "<h3><code>kZw</code>X0w</h3><p>E9w</p>"
+  },
+  "bwd|R|heading|rule|linkBold|lineB": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@0",
+    "typed": "<hr /><h3>k<a><b><strong>Zw</strong></b></a>X0w</h3><p>E9w</p>"
+  },
+  "bwd|R|heading|rule|boldLink|lineB": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@0",
+    "typed": "<hr /><h3>k<a><b><strong>Zw</strong></b></a>X0w</h3><p>E9w</p>"
+  },
+  "bwd|R|heading|rule|codeIn|lineB": {
+    "write": "<h3><code>Zw</code>X0w</h3><p>E9w</p>",
+    "calls": 1,
+    "caret": "text:Zw@0",
+    "typed": "<h3>k<code>Zw</code>X0w</h3><p>E9w</p>"
+  },
+  "bwd|R|para|rule|twin|bs": {
+    "write": "<p>ZwX0w</p><p>E9w</p>",
+    "calls": 1,
+    "caret": "text:ZwX0w@0",
+    "typed": "<p>kZwX0w</p><p>E9w</p>"
+  },
+  "bwd|R|para|rule|img|bs": {
+    "write": "<p><img />X0w</p><p>E9w</p>",
+    "calls": 1,
+    "caret": "element:paragraph@0",
+    "typed": "<p>k<img />X0w</p><p>E9w</p>"
+  },
+  "bwd|R|para|rule|br|bs": {
+    "write": "<p><br />X0w</p><p>E9w</p>",
+    "calls": 1,
+    "caret": "element:paragraph@0",
+    "typed": "<p>k<br />X0w</p><p>E9w</p>"
+  },
+  "bwd|R|para|rule|linkOut|bs": {
+    "write": "<p><a>Zw</a>X0w</p><p>E9w</p>",
+    "calls": 1,
+    "caret": "element:paragraph@0",
+    "typed": "<p>k<a>Zw</a>X0w</p><p>E9w</p>"
+  },
+  "bwd|R|para|rule|linkIn|bs": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@0",
+    "typed": "<hr /><p>k<a>Zw</a>X0w</p><p>E9w</p>"
+  },
+  "bwd|R|para|rule|code|bs": {
+    "write": "<p><code>Zw</code>X0w</p><p>E9w</p>",
+    "calls": 1,
+    "caret": "text:Zw@0",
+    "typed": "<p><code>kZw</code>X0w</p><p>E9w</p>"
+  },
+  "bwd|R|para|rule|linkBold|bs": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@0",
+    "typed": "<hr /><p>k<a><b><strong>Zw</strong></b></a>X0w</p><p>E9w</p>"
+  },
+  "bwd|R|para|rule|boldLink|bs": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@0",
+    "typed": "<hr /><p>k<a><b><strong>Zw</strong></b></a>X0w</p><p>E9w</p>"
+  },
+  "bwd|R|para|rule|codeIn|bs": {
+    "write": "<p><code>Zw</code>X0w</p><p>E9w</p>",
+    "calls": 1,
+    "caret": "text:Zw@0",
+    "typed": "<p>k<code>Zw</code>X0w</p><p>E9w</p>"
+  },
+  "bwd|R|para|rule|twin|wordB": {
+    "write": "<p>ZwX0w</p><p>E9w</p>",
+    "calls": 1,
+    "caret": "text:ZwX0w@0",
+    "typed": "<p>kZwX0w</p><p>E9w</p>"
+  },
+  "bwd|R|para|rule|img|wordB": {
+    "write": "<p><img />X0w</p><p>E9w</p>",
+    "calls": 1,
+    "caret": "element:paragraph@0|element:root@0",
+    "typed": "<p>k<img />X0w</p><p>E9w</p>"
+  },
+  "bwd|R|para|rule|br|wordB": {
+    "write": "<p><br />X0w</p><p>E9w</p>",
+    "calls": 1,
+    "caret": "element:paragraph@0|element:root@0",
+    "typed": "<p>k<br />X0w</p><p>E9w</p>"
+  },
+  "bwd|R|para|rule|linkOut|wordB": {
+    "write": "<p>X0w</p><p>E9w</p>",
+    "calls": 1,
+    "caret": "text:X0w@0|element:root@0",
+    "typed": "<p>k</p><p>E9w</p>"
+  },
+  "bwd|R|para|rule|linkIn|wordB": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@0",
+    "typed": "<hr /><p>k<a>Zw</a>X0w</p><p>E9w</p>"
+  },
+  "bwd|R|para|rule|code|wordB": {
+    "write": "<p><code>Zw</code>X0w</p><p>E9w</p>",
+    "calls": 1,
+    "caret": "text:Zw@0",
+    "typed": "<p><code>kZw</code>X0w</p><p>E9w</p>"
+  },
+  "bwd|R|para|rule|linkBold|wordB": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@0",
+    "typed": "<hr /><p>k<a><b><strong>Zw</strong></b></a>X0w</p><p>E9w</p>"
+  },
+  "bwd|R|para|rule|boldLink|wordB": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@0",
+    "typed": "<hr /><p>k<a><b><strong>Zw</strong></b></a>X0w</p><p>E9w</p>"
+  },
+  "bwd|R|para|rule|codeIn|wordB": {
+    "write": "<p><code>Zw</code>X0w</p><p>E9w</p>",
+    "calls": 1,
+    "caret": "text:Zw@0",
+    "typed": "<p>k<code>Zw</code>X0w</p><p>E9w</p>"
+  },
+  "bwd|R|para|rule|twin|lineB": {
+    "write": "<p>ZwX0w</p><p>E9w</p>",
+    "calls": 1,
+    "caret": "text:ZwX0w@0",
+    "typed": "<p>kZwX0w</p><p>E9w</p>"
+  },
+  "bwd|R|para|rule|img|lineB": {
+    "write": "<p><img />X0w</p><p>E9w</p>",
+    "calls": 1,
+    "caret": "element:paragraph@0|element:root@0",
+    "typed": "<p>k<img />X0w</p><p>E9w</p>"
+  },
+  "bwd|R|para|rule|br|lineB": {
+    "write": "<p><br />X0w</p><p>E9w</p>",
+    "calls": 1,
+    "caret": "element:paragraph@0|element:root@0",
+    "typed": "<p>k<br />X0w</p><p>E9w</p>"
+  },
+  "bwd|R|para|rule|linkOut|lineB": {
+    "write": "<hr /><p><a>Zw</a>X0w</p><p>E9w</p>",
+    "calls": 1,
+    "caret": "text:Zw@0",
+    "typed": "<hr /><p>k<a>Zw</a>X0w</p><p>E9w</p>"
+  },
+  "bwd|R|para|rule|linkIn|lineB": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@0",
+    "typed": "<hr /><p>k<a>Zw</a>X0w</p><p>E9w</p>"
+  },
+  "bwd|R|para|rule|code|lineB": {
+    "write": "<p><code>Zw</code>X0w</p><p>E9w</p>",
+    "calls": 1,
+    "caret": "text:Zw@0",
+    "typed": "<p><code>kZw</code>X0w</p><p>E9w</p>"
+  },
+  "bwd|R|para|rule|linkBold|lineB": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@0",
+    "typed": "<hr /><p>k<a><b><strong>Zw</strong></b></a>X0w</p><p>E9w</p>"
+  },
+  "bwd|R|para|rule|boldLink|lineB": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Zw@0",
+    "typed": "<hr /><p>k<a><b><strong>Zw</strong></b></a>X0w</p><p>E9w</p>"
+  },
+  "bwd|R|para|rule|codeIn|lineB": {
+    "write": "<p><code>Zw</code>X0w</p><p>E9w</p>",
+    "calls": 1,
+    "caret": "text:Zw@0",
+    "typed": "<p>k<code>Zw</code>X0w</p><p>E9w</p>"
+  }
+}

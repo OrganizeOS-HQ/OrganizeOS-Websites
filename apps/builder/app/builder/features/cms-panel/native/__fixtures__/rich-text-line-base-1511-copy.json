@@ -1,0 +1,82 @@
+{
+  "beforeRule -> prevP A0w@1": {
+    "before": "element:root@1|text:A0w@1",
+    "clipboard": {
+      "text/plain": "0w\n",
+      "text/html": "<p class=\"c-fraHYm\" dir=\"ltr\"><span style=\"white-space: pre-wrap;\">0w</span></p>",
+      "application/x-lexical-editor": "{\"namespace\":\"cms-rich-text-kit\",\"nodes\":[{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"0w\",\"type\":\"text\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"paragraph\",\"version\":1,\"textFormat\":0,\"textStyle\":\"\"}]}"
+    }
+  },
+  "prevP A0w@1 -> beforeRule": {
+    "before": "text:A0w@1|element:root@1",
+    "clipboard": {
+      "text/plain": "0w\n",
+      "text/html": "<p class=\"c-fraHYm\" dir=\"ltr\"><span style=\"white-space: pre-wrap;\">0w</span></p>",
+      "application/x-lexical-editor": "{\"namespace\":\"cms-rich-text-kit\",\"nodes\":[{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"0w\",\"type\":\"text\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"paragraph\",\"version\":1,\"textFormat\":0,\"textStyle\":\"\"}]}"
+    }
+  },
+  "beforeRule -> nextP B2w@1": {
+    "before": "element:root@1|text:B2w@1",
+    "clipboard": {
+      "text/plain": "\n\nB",
+      "text/html": "<hr><p class=\"c-fraHYm\" dir=\"ltr\"><span style=\"white-space: pre-wrap;\">B</span></p>",
+      "application/x-lexical-editor": "{\"namespace\":\"cms-rich-text-kit\",\"nodes\":[{\"type\":\"horizontalrule\",\"version\":1},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"B\",\"type\":\"text\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"paragraph\",\"version\":1,\"textFormat\":0,\"textStyle\":\"\"}]}"
+    }
+  },
+  "nextP B2w@1 -> beforeRule": {
+    "before": "text:B2w@1|element:root@1",
+    "clipboard": {
+      "text/plain": "\n\nB",
+      "text/html": "<hr><p class=\"c-fraHYm\" dir=\"ltr\"><span style=\"white-space: pre-wrap;\">B</span></p>",
+      "application/x-lexical-editor": "{\"namespace\":\"cms-rich-text-kit\",\"nodes\":[{\"type\":\"horizontalrule\",\"version\":1},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"B\",\"type\":\"text\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"paragraph\",\"version\":1,\"textFormat\":0,\"textStyle\":\"\"}]}"
+    }
+  },
+  "afterRule -> prevP A0w@1": {
+    "before": "element:root@2|text:A0w@1",
+    "clipboard": {
+      "text/plain": "0w\n\n\n",
+      "text/html": "<p class=\"c-fraHYm\" dir=\"ltr\"><span style=\"white-space: pre-wrap;\">0w</span></p><hr><p class=\"c-fraHYm\" dir=\"ltr\"><span style=\"white-space: pre-wrap;\">B2w</span></p>",
+      "application/x-lexical-editor": "{\"namespace\":\"cms-rich-text-kit\",\"nodes\":[{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"0w\",\"type\":\"text\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"paragraph\",\"version\":1,\"textFormat\":0,\"textStyle\":\"\"},{\"type\":\"horizontalrule\",\"version\":1},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"B2w\",\"type\":\"text\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"paragraph\",\"version\":1,\"textFormat\":0,\"textStyle\":\"\"}]}"
+    }
+  },
+  "prevP A0w@1 -> afterRule": {
+    "before": "text:A0w@1|element:root@2",
+    "clipboard": {
+      "text/plain": "0w\n\n\n",
+      "text/html": "<p class=\"c-fraHYm\" dir=\"ltr\"><span style=\"white-space: pre-wrap;\">0w</span></p><hr><p class=\"c-fraHYm\" dir=\"ltr\"><span style=\"white-space: pre-wrap;\">B2w</span></p>",
+      "application/x-lexical-editor": "{\"namespace\":\"cms-rich-text-kit\",\"nodes\":[{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"0w\",\"type\":\"text\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"paragraph\",\"version\":1,\"textFormat\":0,\"textStyle\":\"\"},{\"type\":\"horizontalrule\",\"version\":1},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"B2w\",\"type\":\"text\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"paragraph\",\"version\":1,\"textFormat\":0,\"textStyle\":\"\"}]}"
+    }
+  },
+  "afterRule -> nextP B2w@1": {
+    "before": "element:root@2|text:B2w@1",
+    "clipboard": {
+      "text/plain": "B",
+      "text/html": "<span style=\"white-space: pre-wrap;\">2w</span>",
+      "application/x-lexical-editor": "{\"namespace\":\"cms-rich-text-kit\",\"nodes\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"2w\",\"type\":\"text\",\"version\":1}]}"
+    }
+  },
+  "nextP B2w@1 -> afterRule": {
+    "before": "text:B2w@1|element:root@2",
+    "clipboard": {
+      "text/plain": "B",
+      "text/html": "<span style=\"white-space: pre-wrap;\">2w</span>",
+      "application/x-lexical-editor": "{\"namespace\":\"cms-rich-text-kit\",\"nodes\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"2w\",\"type\":\"text\",\"version\":1}]}"
+    }
+  },
+  "pair beforeRule..afterRule": {
+    "before": "element:root@1|element:root@2",
+    "clipboard": {
+      "text/plain": "\n\n",
+      "text/html": "<hr><p class=\"c-fraHYm\" dir=\"ltr\"><span style=\"white-space: pre-wrap;\">B2w</span></p>",
+      "application/x-lexical-editor": "{\"namespace\":\"cms-rich-text-kit\",\"nodes\":[{\"type\":\"horizontalrule\",\"version\":1},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"B2w\",\"type\":\"text\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"paragraph\",\"version\":1,\"textFormat\":0,\"textStyle\":\"\"}]}"
+    }
+  },
+  "pair-back beforeRule..afterRule": {
+    "before": "element:root@2|element:root@1",
+    "clipboard": {
+      "text/plain": "\n\n",
+      "text/html": "<hr><p class=\"c-fraHYm\" dir=\"ltr\"><span style=\"white-space: pre-wrap;\">B2w</span></p>",
+      "application/x-lexical-editor": "{\"namespace\":\"cms-rich-text-kit\",\"nodes\":[{\"type\":\"horizontalrule\",\"version\":1},{\"children\":[{\"detail\":0,\"format\":0,\"mode\":\"normal\",\"style\":\"\",\"text\":\"B2w\",\"type\":\"text\",\"version\":1}],\"direction\":\"ltr\",\"format\":\"\",\"indent\":0,\"type\":\"paragraph\",\"version\":1,\"textFormat\":0,\"textStyle\":\"\"}]}"
+    }
+  }
+}

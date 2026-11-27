@@ -1,0 +1,1390 @@
+{
+  "ltr-QR-F-1": {
+    "caret": "text:Pw@2|text:Q0w@0",
+    "edge": ""
+  },
+  "ltr-QR-F-2": {
+    "caret": "text:Pw@2|text:Q0w@1",
+    "edge": ""
+  },
+  "ltr-QR-F-3": {
+    "caret": "text:Pw@2|text:Q0w@2",
+    "edge": ""
+  },
+  "ltr-QR-F-4": {
+    "caret": "text:Pw@2|text:Q0w@3",
+    "edge": ""
+  },
+  "ltr-QR-F-5": {
+    "caret": "text:Pw@2|element:listitem@1",
+    "edge": ""
+  },
+  "ltr-QR-F-6": {
+    "caret": "text:Pw@2|element:listitem@2",
+    "edge": ""
+  },
+  "ltr-QR-F-7": {
+    "caret": "text:Pw@2|text:Nw@0",
+    "edge": ""
+  },
+  "ltr-QR-F-8": {
+    "caret": "text:Pw@2|text:Nw@1",
+    "edge": ""
+  },
+  "ltr-QR-F-9": {
+    "caret": "text:Pw@2|text:Nw@2",
+    "edge": "end"
+  },
+  "ltr-QR-B-1": {
+    "caret": "text:Pw@2|text:Nw@1",
+    "edge": ""
+  },
+  "ltr-QR-B-2": {
+    "caret": "text:Pw@2|text:Nw@0",
+    "edge": ""
+  },
+  "ltr-QR-B-3": {
+    "caret": "text:Pw@2|element:listitem@2",
+    "edge": ""
+  },
+  "ltr-QR-B-4": {
+    "caret": "text:Pw@2|element:quote@1",
+    "edge": ""
+  },
+  "ltr-QR-B-5": {
+    "caret": "text:Pw@2|text:Q0w@2",
+    "edge": ""
+  },
+  "ltr-QR-B-6": {
+    "caret": "text:Pw@2|text:Q0w@1",
+    "edge": ""
+  },
+  "ltr-QR-B-7": {
+    "caret": "text:Pw@2|text:Q0w@0",
+    "edge": ""
+  },
+  "ltr-QR-B-8": {
+    "caret": "text:Pw@2",
+    "edge": ""
+  },
+  "ltr-QR-B-9": {
+    "caret": "text:Pw@2|text:Pw@1",
+    "edge": ""
+  },
+  "ltr-QR-B-10": {
+    "caret": "text:Pw@2|text:Pw@0",
+    "edge": "start"
+  },
+  "ltr-RQ-F-1": {
+    "caret": "text:Pw@2|element:listitem@0",
+    "edge": ""
+  },
+  "ltr-RQ-F-2": {
+    "caret": "text:Pw@2|element:quote@0",
+    "edge": ""
+  },
+  "ltr-RQ-F-3": {
+    "caret": "text:Pw@2|text:Q1w@1",
+    "edge": ""
+  },
+  "ltr-RQ-F-4": {
+    "caret": "text:Pw@2|text:Q1w@2",
+    "edge": ""
+  },
+  "ltr-RQ-F-5": {
+    "caret": "text:Pw@2|text:Q1w@3",
+    "edge": ""
+  },
+  "ltr-RQ-F-6": {
+    "caret": "text:Pw@2|text:Nw@0",
+    "edge": ""
+  },
+  "ltr-RQ-F-7": {
+    "caret": "text:Pw@2|text:Nw@1",
+    "edge": ""
+  },
+  "ltr-RQ-F-8": {
+    "caret": "text:Pw@2|text:Nw@2",
+    "edge": "end"
+  },
+  "ltr-RQ-B-1": {
+    "caret": "text:Pw@2|text:Nw@1",
+    "edge": ""
+  },
+  "ltr-RQ-B-2": {
+    "caret": "text:Pw@2|text:Nw@0",
+    "edge": ""
+  },
+  "ltr-RQ-B-3": {
+    "caret": "text:Pw@2|text:Q1w@3",
+    "edge": ""
+  },
+  "ltr-RQ-B-4": {
+    "caret": "text:Pw@2|text:Q1w@2",
+    "edge": ""
+  },
+  "ltr-RQ-B-5": {
+    "caret": "text:Pw@2|text:Q1w@1",
+    "edge": ""
+  },
+  "ltr-RQ-B-6": {
+    "caret": "text:Pw@2|text:Q1w@0",
+    "edge": ""
+  },
+  "ltr-RQ-B-7": {
+    "caret": "text:Pw@2|text:Q1w@0",
+    "edge": ""
+  },
+  "ltr-RQ-B-8": {
+    "caret": "text:Pw@2|element:listitem@0",
+    "edge": ""
+  },
+  "ltr-RQ-B-9": {
+    "caret": "text:Pw@2",
+    "edge": ""
+  },
+  "ltr-RQ-B-10": {
+    "caret": "text:Pw@2|text:Pw@1",
+    "edge": ""
+  },
+  "ltr-RQ-B-11": {
+    "caret": "text:Pw@2|text:Pw@0",
+    "edge": "start"
+  },
+  "ltr-QRQ-F-1": {
+    "caret": "text:Pw@2|text:Q0w@0",
+    "edge": ""
+  },
+  "ltr-QRQ-F-2": {
+    "caret": "text:Pw@2|text:Q0w@1",
+    "edge": ""
+  },
+  "ltr-QRQ-F-3": {
+    "caret": "text:Pw@2|text:Q0w@2",
+    "edge": ""
+  },
+  "ltr-QRQ-F-4": {
+    "caret": "text:Pw@2|text:Q0w@3",
+    "edge": ""
+  },
+  "ltr-QRQ-F-5": {
+    "caret": "text:Pw@2|element:listitem@1",
+    "edge": ""
+  },
+  "ltr-QRQ-F-6": {
+    "caret": "text:Pw@2|element:quote@0",
+    "edge": ""
+  },
+  "ltr-QRQ-F-7": {
+    "caret": "text:Pw@2|text:Q2w@1",
+    "edge": ""
+  },
+  "ltr-QRQ-F-8": {
+    "caret": "text:Pw@2|text:Q2w@2",
+    "edge": ""
+  },
+  "ltr-QRQ-F-9": {
+    "caret": "text:Pw@2|text:Q2w@3",
+    "edge": ""
+  },
+  "ltr-QRQ-F-10": {
+    "caret": "text:Pw@2|text:Nw@0",
+    "edge": ""
+  },
+  "ltr-QRQ-F-11": {
+    "caret": "text:Pw@2|text:Nw@1",
+    "edge": ""
+  },
+  "ltr-QRQ-F-12": {
+    "caret": "text:Pw@2|text:Nw@2",
+    "edge": "end"
+  },
+  "ltr-QRQ-B-1": {
+    "caret": "text:Pw@2|text:Nw@1",
+    "edge": ""
+  },
+  "ltr-QRQ-B-2": {
+    "caret": "text:Pw@2|text:Nw@0",
+    "edge": ""
+  },
+  "ltr-QRQ-B-3": {
+    "caret": "text:Pw@2|text:Q2w@3",
+    "edge": ""
+  },
+  "ltr-QRQ-B-4": {
+    "caret": "text:Pw@2|text:Q2w@2",
+    "edge": ""
+  },
+  "ltr-QRQ-B-5": {
+    "caret": "text:Pw@2|text:Q2w@1",
+    "edge": ""
+  },
+  "ltr-QRQ-B-6": {
+    "caret": "text:Pw@2|text:Q2w@0",
+    "edge": ""
+  },
+  "ltr-QRQ-B-7": {
+    "caret": "text:Pw@2|text:Q2w@0",
+    "edge": ""
+  },
+  "ltr-QRQ-B-8": {
+    "caret": "text:Pw@2|element:listitem@1",
+    "edge": ""
+  },
+  "ltr-QRQ-B-9": {
+    "caret": "text:Pw@2|text:Q0w@3",
+    "edge": ""
+  },
+  "ltr-QRQ-B-10": {
+    "caret": "text:Pw@2|text:Q0w@2",
+    "edge": ""
+  },
+  "ltr-QRQ-B-11": {
+    "caret": "text:Pw@2|text:Q0w@1",
+    "edge": ""
+  },
+  "ltr-QRQ-B-12": {
+    "caret": "text:Pw@2|text:Q0w@0",
+    "edge": ""
+  },
+  "ltr-QRQ-B-13": {
+    "caret": "text:Pw@2",
+    "edge": ""
+  },
+  "ltr-QRQ-B-14": {
+    "caret": "text:Pw@2|text:Pw@1",
+    "edge": ""
+  },
+  "ltr-RQR-F-1": {
+    "caret": "text:Pw@2|element:listitem@0",
+    "edge": ""
+  },
+  "ltr-RQR-F-2": {
+    "caret": "text:Pw@2|element:quote@0",
+    "edge": ""
+  },
+  "ltr-RQR-F-3": {
+    "caret": "text:Pw@2|text:Q1w@1",
+    "edge": ""
+  },
+  "ltr-RQR-F-4": {
+    "caret": "text:Pw@2|text:Q1w@2",
+    "edge": ""
+  },
+  "ltr-RQR-F-5": {
+    "caret": "text:Pw@2|text:Q1w@3",
+    "edge": ""
+  },
+  "ltr-RQR-F-6": {
+    "caret": "text:Pw@2|element:listitem@2",
+    "edge": ""
+  },
+  "ltr-RQR-F-7": {
+    "caret": "text:Pw@2|element:listitem@3",
+    "edge": ""
+  },
+  "ltr-RQR-F-8": {
+    "caret": "text:Pw@2|text:Nw@0",
+    "edge": ""
+  },
+  "ltr-RQR-F-9": {
+    "caret": "text:Pw@2|text:Nw@1",
+    "edge": ""
+  },
+  "ltr-RQR-F-10": {
+    "caret": "text:Pw@2|text:Nw@2",
+    "edge": "end"
+  },
+  "ltr-RQR-B-1": {
+    "caret": "text:Pw@2|text:Nw@1",
+    "edge": ""
+  },
+  "ltr-RQR-B-2": {
+    "caret": "text:Pw@2|text:Nw@0",
+    "edge": ""
+  },
+  "ltr-RQR-B-3": {
+    "caret": "text:Pw@2|element:listitem@3",
+    "edge": ""
+  },
+  "ltr-RQR-B-4": {
+    "caret": "text:Pw@2|element:quote@1",
+    "edge": ""
+  },
+  "ltr-RQR-B-5": {
+    "caret": "text:Pw@2|text:Q1w@2",
+    "edge": ""
+  },
+  "ltr-RQR-B-6": {
+    "caret": "text:Pw@2|text:Q1w@1",
+    "edge": ""
+  },
+  "ltr-RQR-B-7": {
+    "caret": "text:Pw@2|text:Q1w@0",
+    "edge": ""
+  },
+  "ltr-RQR-B-8": {
+    "caret": "text:Pw@2|text:Q1w@0",
+    "edge": ""
+  },
+  "ltr-RQR-B-9": {
+    "caret": "text:Pw@2|element:listitem@0",
+    "edge": ""
+  },
+  "ltr-RQR-B-10": {
+    "caret": "text:Pw@2",
+    "edge": ""
+  },
+  "ltr-RQR-B-11": {
+    "caret": "text:Pw@2|text:Pw@1",
+    "edge": ""
+  },
+  "ltr-RQR-B-12": {
+    "caret": "text:Pw@2|text:Pw@0",
+    "edge": "start"
+  },
+  "ltr-QRR-F-1": {
+    "caret": "text:Pw@2|text:Q0w@0",
+    "edge": ""
+  },
+  "ltr-QRR-F-2": {
+    "caret": "text:Pw@2|text:Q0w@1",
+    "edge": ""
+  },
+  "ltr-QRR-F-3": {
+    "caret": "text:Pw@2|text:Q0w@2",
+    "edge": ""
+  },
+  "ltr-QRR-F-4": {
+    "caret": "text:Pw@2|text:Q0w@3",
+    "edge": ""
+  },
+  "ltr-QRR-F-5": {
+    "caret": "text:Pw@2|element:listitem@1",
+    "edge": ""
+  },
+  "ltr-QRR-F-6": {
+    "caret": "text:Pw@2|element:listitem@2",
+    "edge": ""
+  },
+  "ltr-QRR-F-7": {
+    "caret": "text:Pw@2|element:listitem@3",
+    "edge": ""
+  },
+  "ltr-QRR-F-8": {
+    "caret": "text:Pw@2|text:Nw@0",
+    "edge": ""
+  },
+  "ltr-QRR-F-9": {
+    "caret": "text:Pw@2|text:Nw@1",
+    "edge": ""
+  },
+  "ltr-QRR-F-10": {
+    "caret": "text:Pw@2|text:Nw@2",
+    "edge": "end"
+  },
+  "ltr-QRR-B-1": {
+    "caret": "text:Pw@2|text:Nw@1",
+    "edge": ""
+  },
+  "ltr-QRR-B-2": {
+    "caret": "text:Pw@2|text:Nw@0",
+    "edge": ""
+  },
+  "ltr-QRR-B-3": {
+    "caret": "text:Pw@2|element:listitem@3",
+    "edge": ""
+  },
+  "ltr-QRR-B-4": {
+    "caret": "text:Pw@2|element:listitem@2",
+    "edge": ""
+  },
+  "ltr-QRR-B-5": {
+    "caret": "text:Pw@2|element:quote@1",
+    "edge": ""
+  },
+  "ltr-QRR-B-6": {
+    "caret": "text:Pw@2|text:Q0w@2",
+    "edge": ""
+  },
+  "ltr-QRR-B-7": {
+    "caret": "text:Pw@2|text:Q0w@1",
+    "edge": ""
+  },
+  "ltr-QRR-B-8": {
+    "caret": "text:Pw@2|text:Q0w@0",
+    "edge": ""
+  },
+  "ltr-QRR-B-9": {
+    "caret": "text:Pw@2",
+    "edge": ""
+  },
+  "ltr-QRR-B-10": {
+    "caret": "text:Pw@2|text:Pw@1",
+    "edge": ""
+  },
+  "ltr-QRR-B-11": {
+    "caret": "text:Pw@2|text:Pw@0",
+    "edge": "start"
+  },
+  "ltr-Rfirst-F-1": {
+    "caret": "text:Pw@2|element:listitem@0",
+    "edge": ""
+  },
+  "ltr-Rfirst-F-2": {
+    "caret": "text:Pw@2|text:T1w@0",
+    "edge": ""
+  },
+  "ltr-Rfirst-F-3": {
+    "caret": "text:Pw@2|text:T1w@1",
+    "edge": ""
+  },
+  "ltr-Rfirst-F-4": {
+    "caret": "text:Pw@2|text:T1w@2",
+    "edge": ""
+  },
+  "ltr-Rfirst-F-5": {
+    "caret": "text:Pw@2|text:T1w@3",
+    "edge": ""
+  },
+  "ltr-Rfirst-F-6": {
+    "caret": "text:Pw@2|text:Nw@0",
+    "edge": ""
+  },
+  "ltr-Rfirst-F-7": {
+    "caret": "text:Pw@2|text:Nw@1",
+    "edge": ""
+  },
+  "ltr-Rfirst-F-8": {
+    "caret": "text:Pw@2|text:Nw@2",
+    "edge": "end"
+  },
+  "ltr-Rfirst-B-1": {
+    "caret": "text:Pw@2|text:Nw@1",
+    "edge": ""
+  },
+  "ltr-Rfirst-B-2": {
+    "caret": "text:Pw@2|text:Nw@0",
+    "edge": ""
+  },
+  "ltr-Rfirst-B-3": {
+    "caret": "text:Pw@2|text:T1w@3",
+    "edge": ""
+  },
+  "ltr-Rfirst-B-4": {
+    "caret": "text:Pw@2|text:T1w@2",
+    "edge": ""
+  },
+  "ltr-Rfirst-B-5": {
+    "caret": "text:Pw@2|text:T1w@1",
+    "edge": ""
+  },
+  "ltr-Rfirst-B-6": {
+    "caret": "text:Pw@2|text:T1w@0",
+    "edge": ""
+  },
+  "ltr-Rfirst-B-7": {
+    "caret": "text:Pw@2|element:listitem@0",
+    "edge": ""
+  },
+  "ltr-Rfirst-B-8": {
+    "caret": "text:Pw@2",
+    "edge": ""
+  },
+  "ltr-Rfirst-B-9": {
+    "caret": "text:Pw@2|text:Pw@1",
+    "edge": ""
+  },
+  "ltr-Rfirst-B-10": {
+    "caret": "text:Pw@2|text:Pw@0",
+    "edge": "start"
+  },
+  "ltr-Rlast-F-1": {
+    "caret": "text:Pw@2|text:T0w@0",
+    "edge": ""
+  },
+  "ltr-Rlast-F-2": {
+    "caret": "text:Pw@2|text:T0w@1",
+    "edge": ""
+  },
+  "ltr-Rlast-F-3": {
+    "caret": "text:Pw@2|text:T0w@2",
+    "edge": ""
+  },
+  "ltr-Rlast-F-4": {
+    "caret": "text:Pw@2|text:T0w@3",
+    "edge": ""
+  },
+  "ltr-Rlast-F-5": {
+    "caret": "text:Pw@2|element:listitem@2",
+    "edge": ""
+  },
+  "ltr-Rlast-F-6": {
+    "caret": "text:Pw@2|text:Nw@0",
+    "edge": ""
+  },
+  "ltr-Rlast-F-7": {
+    "caret": "text:Pw@2|text:Nw@1",
+    "edge": ""
+  },
+  "ltr-Rlast-F-8": {
+    "caret": "text:Pw@2|text:Nw@2",
+    "edge": "end"
+  },
+  "ltr-Rlast-B-1": {
+    "caret": "text:Pw@2|text:Nw@1",
+    "edge": ""
+  },
+  "ltr-Rlast-B-2": {
+    "caret": "text:Pw@2|text:Nw@0",
+    "edge": ""
+  },
+  "ltr-Rlast-B-3": {
+    "caret": "text:Pw@2|element:listitem@2",
+    "edge": ""
+  },
+  "ltr-Rlast-B-4": {
+    "caret": "text:Pw@2|text:T0w@3",
+    "edge": ""
+  },
+  "ltr-Rlast-B-5": {
+    "caret": "text:Pw@2|text:T0w@2",
+    "edge": ""
+  },
+  "ltr-Rlast-B-6": {
+    "caret": "text:Pw@2|text:T0w@1",
+    "edge": ""
+  },
+  "ltr-Rlast-B-7": {
+    "caret": "text:Pw@2|text:T0w@0",
+    "edge": ""
+  },
+  "ltr-Rlast-B-8": {
+    "caret": "text:Pw@2",
+    "edge": ""
+  },
+  "ltr-Rlast-B-9": {
+    "caret": "text:Pw@2|text:Pw@1",
+    "edge": ""
+  },
+  "ltr-Rlast-B-10": {
+    "caret": "text:Pw@2|text:Pw@0",
+    "edge": "start"
+  },
+  "ltr-d2-F-1": {
+    "caret": "text:Aw@2|text:Q0w@0",
+    "edge": ""
+  },
+  "ltr-d2-F-2": {
+    "caret": "text:Aw@2|text:Q0w@1",
+    "edge": ""
+  },
+  "ltr-d2-F-3": {
+    "caret": "text:Aw@2|text:Q0w@2",
+    "edge": ""
+  },
+  "ltr-d2-F-4": {
+    "caret": "text:Aw@2|text:Q0w@3",
+    "edge": ""
+  },
+  "ltr-d2-F-5": {
+    "caret": "text:Aw@2|element:listitem@1",
+    "edge": ""
+  },
+  "ltr-d2-F-6": {
+    "caret": "text:Aw@2|element:listitem@2",
+    "edge": ""
+  },
+  "ltr-d2-F-7": {
+    "caret": "text:Aw@2|text:Zw@0",
+    "edge": ""
+  },
+  "ltr-d2-F-8": {
+    "caret": "text:Aw@2|text:Zw@1",
+    "edge": ""
+  },
+  "ltr-d2-F-9": {
+    "caret": "text:Aw@2|text:Zw@2",
+    "edge": ""
+  },
+  "ltr-d2-F-10": {
+    "caret": "text:Aw@2|text:Nw@0",
+    "edge": ""
+  },
+  "ltr-d2-F-11": {
+    "caret": "text:Aw@2|text:Nw@1",
+    "edge": ""
+  },
+  "ltr-d2-F-12": {
+    "caret": "text:Aw@2|text:Nw@2",
+    "edge": "end"
+  },
+  "ltr-d2-B-1": {
+    "caret": "text:Aw@2|text:Nw@1",
+    "edge": ""
+  },
+  "ltr-d2-B-2": {
+    "caret": "text:Aw@2|text:Nw@0",
+    "edge": ""
+  },
+  "ltr-d2-B-3": {
+    "caret": "text:Aw@2|text:Zw@2",
+    "edge": ""
+  },
+  "ltr-d2-B-4": {
+    "caret": "text:Aw@2|text:Zw@1",
+    "edge": ""
+  },
+  "ltr-d2-B-5": {
+    "caret": "text:Aw@2|text:Zw@0",
+    "edge": ""
+  },
+  "ltr-d2-B-6": {
+    "caret": "text:Aw@2|element:listitem@2",
+    "edge": ""
+  },
+  "ltr-d2-B-7": {
+    "caret": "text:Aw@2|element:quote@1",
+    "edge": ""
+  },
+  "ltr-d2-B-8": {
+    "caret": "text:Aw@2|text:Q0w@2",
+    "edge": ""
+  },
+  "ltr-d2-B-9": {
+    "caret": "text:Aw@2|text:Q0w@1",
+    "edge": ""
+  },
+  "ltr-d2-B-10": {
+    "caret": "text:Aw@2|text:Q0w@0",
+    "edge": ""
+  },
+  "ltr-d2-B-11": {
+    "caret": "text:Aw@2",
+    "edge": ""
+  },
+  "ltr-d2-B-12": {
+    "caret": "text:Aw@2|text:Aw@1",
+    "edge": ""
+  },
+  "ltr-d2-B-13": {
+    "caret": "text:Aw@2|text:Aw@0",
+    "edge": ""
+  },
+  "ltr-d2-B-14": {
+    "caret": "text:Aw@2|text:Pw@2",
+    "edge": ""
+  },
+  "rtl-QR-F-1": {
+    "caret": "text:פא@2|text:קבג@0",
+    "edge": ""
+  },
+  "rtl-QR-F-2": {
+    "caret": "text:פא@2|text:קבג@1",
+    "edge": ""
+  },
+  "rtl-QR-F-3": {
+    "caret": "text:פא@2|text:קבג@2",
+    "edge": ""
+  },
+  "rtl-QR-F-4": {
+    "caret": "text:פא@2|text:קבג@3",
+    "edge": ""
+  },
+  "rtl-QR-F-5": {
+    "caret": "text:פא@2|element:listitem@1",
+    "edge": ""
+  },
+  "rtl-QR-F-6": {
+    "caret": "text:פא@2|element:listitem@2",
+    "edge": ""
+  },
+  "rtl-QR-F-7": {
+    "caret": "text:פא@2|text:נו@0",
+    "edge": ""
+  },
+  "rtl-QR-F-8": {
+    "caret": "text:פא@2|text:נו@1",
+    "edge": ""
+  },
+  "rtl-QR-F-9": {
+    "caret": "text:פא@2|text:נו@2",
+    "edge": "end"
+  },
+  "rtl-QR-B-1": {
+    "caret": "text:פא@2|text:נו@1",
+    "edge": ""
+  },
+  "rtl-QR-B-2": {
+    "caret": "text:פא@2|text:נו@0",
+    "edge": ""
+  },
+  "rtl-QR-B-3": {
+    "caret": "text:פא@2|element:listitem@2",
+    "edge": ""
+  },
+  "rtl-QR-B-4": {
+    "caret": "text:פא@2|element:listitem@1",
+    "edge": ""
+  },
+  "rtl-QR-B-5": {
+    "caret": "text:פא@2|text:קבג@3",
+    "edge": ""
+  },
+  "rtl-QR-B-6": {
+    "caret": "text:פא@2|text:קבג@2",
+    "edge": ""
+  },
+  "rtl-QR-B-7": {
+    "caret": "text:פא@2|text:קבג@1",
+    "edge": ""
+  },
+  "rtl-QR-B-8": {
+    "caret": "text:פא@2|text:קבג@0",
+    "edge": ""
+  },
+  "rtl-QR-B-9": {
+    "caret": "text:פא@2",
+    "edge": ""
+  },
+  "rtl-QR-B-10": {
+    "caret": "text:פא@2|text:פא@1",
+    "edge": ""
+  },
+  "rtl-QR-B-11": {
+    "caret": "text:פא@2|text:פא@0",
+    "edge": "start"
+  },
+  "rtl-RQ-F-1": {
+    "caret": "text:פא@2|element:listitem@0",
+    "edge": ""
+  },
+  "rtl-RQ-F-2": {
+    "caret": "text:פא@2|element:listitem@1",
+    "edge": ""
+  },
+  "rtl-RQ-F-3": {
+    "caret": "text:פא@2|text:קדה@0",
+    "edge": ""
+  },
+  "rtl-RQ-F-4": {
+    "caret": "text:פא@2|text:קדה@1",
+    "edge": ""
+  },
+  "rtl-RQ-F-5": {
+    "caret": "text:פא@2|text:קדה@2",
+    "edge": ""
+  },
+  "rtl-RQ-F-6": {
+    "caret": "text:פא@2|text:קדה@3",
+    "edge": ""
+  },
+  "rtl-RQ-F-7": {
+    "caret": "text:פא@2|text:נו@0",
+    "edge": ""
+  },
+  "rtl-RQ-F-8": {
+    "caret": "text:פא@2|text:נו@1",
+    "edge": ""
+  },
+  "rtl-RQ-F-9": {
+    "caret": "text:פא@2|text:נו@2",
+    "edge": "end"
+  },
+  "rtl-RQ-B-1": {
+    "caret": "text:פא@2|text:נו@1",
+    "edge": ""
+  },
+  "rtl-RQ-B-2": {
+    "caret": "text:פא@2|text:נו@0",
+    "edge": ""
+  },
+  "rtl-RQ-B-3": {
+    "caret": "text:פא@2|text:קדה@3",
+    "edge": ""
+  },
+  "rtl-RQ-B-4": {
+    "caret": "text:פא@2|text:קדה@2",
+    "edge": ""
+  },
+  "rtl-RQ-B-5": {
+    "caret": "text:פא@2|text:קדה@1",
+    "edge": ""
+  },
+  "rtl-RQ-B-6": {
+    "caret": "text:פא@2|text:קדה@0",
+    "edge": ""
+  },
+  "rtl-RQ-B-7": {
+    "caret": "text:פא@2|text:קדה@0",
+    "edge": ""
+  },
+  "rtl-RQ-B-8": {
+    "caret": "text:פא@2|element:listitem@0",
+    "edge": ""
+  },
+  "rtl-RQ-B-9": {
+    "caret": "text:פא@2",
+    "edge": ""
+  },
+  "rtl-RQ-B-10": {
+    "caret": "text:פא@2|text:פא@1",
+    "edge": ""
+  },
+  "rtl-RQ-B-11": {
+    "caret": "text:פא@2|text:פא@0",
+    "edge": "start"
+  },
+  "rtl-QRQ-F-1": {
+    "caret": "text:פא@2|text:קבג@0",
+    "edge": ""
+  },
+  "rtl-QRQ-F-2": {
+    "caret": "text:פא@2|text:קבג@1",
+    "edge": ""
+  },
+  "rtl-QRQ-F-3": {
+    "caret": "text:פא@2|text:קבג@2",
+    "edge": ""
+  },
+  "rtl-QRQ-F-4": {
+    "caret": "text:פא@2|text:קבג@3",
+    "edge": ""
+  },
+  "rtl-QRQ-F-5": {
+    "caret": "text:פא@2|element:listitem@1",
+    "edge": ""
+  },
+  "rtl-QRQ-F-6": {
+    "caret": "text:פא@2|element:listitem@2",
+    "edge": ""
+  },
+  "rtl-QRQ-F-7": {
+    "caret": "text:פא@2|text:קוז@0",
+    "edge": ""
+  },
+  "rtl-QRQ-F-8": {
+    "caret": "text:פא@2|text:קוז@1",
+    "edge": ""
+  },
+  "rtl-QRQ-F-9": {
+    "caret": "text:פא@2|text:קוז@2",
+    "edge": ""
+  },
+  "rtl-QRQ-F-10": {
+    "caret": "text:פא@2|text:קוז@3",
+    "edge": ""
+  },
+  "rtl-QRQ-F-11": {
+    "caret": "text:פא@2|text:נו@0",
+    "edge": ""
+  },
+  "rtl-QRQ-F-12": {
+    "caret": "text:פא@2|text:נו@1",
+    "edge": ""
+  },
+  "rtl-QRQ-F-13": {
+    "caret": "text:פא@2|text:נו@2",
+    "edge": "end"
+  },
+  "rtl-QRQ-B-1": {
+    "caret": "text:פא@2|text:נו@1",
+    "edge": ""
+  },
+  "rtl-QRQ-B-2": {
+    "caret": "text:פא@2|text:נו@0",
+    "edge": ""
+  },
+  "rtl-QRQ-B-3": {
+    "caret": "text:פא@2|text:קוז@3",
+    "edge": ""
+  },
+  "rtl-QRQ-B-4": {
+    "caret": "text:פא@2|text:קוז@2",
+    "edge": ""
+  },
+  "rtl-QRQ-B-5": {
+    "caret": "text:פא@2|text:קוז@1",
+    "edge": ""
+  },
+  "rtl-QRQ-B-6": {
+    "caret": "text:פא@2|text:קוז@0",
+    "edge": ""
+  },
+  "rtl-QRQ-B-7": {
+    "caret": "text:פא@2|text:קוז@0",
+    "edge": ""
+  },
+  "rtl-QRQ-B-8": {
+    "caret": "text:פא@2|element:listitem@1",
+    "edge": ""
+  },
+  "rtl-QRQ-B-9": {
+    "caret": "text:פא@2|text:קבג@3",
+    "edge": ""
+  },
+  "rtl-QRQ-B-10": {
+    "caret": "text:פא@2|text:קבג@2",
+    "edge": ""
+  },
+  "rtl-QRQ-B-11": {
+    "caret": "text:פא@2|text:קבג@1",
+    "edge": ""
+  },
+  "rtl-QRQ-B-12": {
+    "caret": "text:פא@2|text:קבג@0",
+    "edge": ""
+  },
+  "rtl-QRQ-B-13": {
+    "caret": "text:פא@2",
+    "edge": ""
+  },
+  "rtl-QRQ-B-14": {
+    "caret": "text:פא@2|text:פא@1",
+    "edge": ""
+  },
+  "rtl-RQR-F-1": {
+    "caret": "text:פא@2|element:listitem@0",
+    "edge": ""
+  },
+  "rtl-RQR-F-2": {
+    "caret": "text:פא@2|element:listitem@1",
+    "edge": ""
+  },
+  "rtl-RQR-F-3": {
+    "caret": "text:פא@2|text:קדה@0",
+    "edge": ""
+  },
+  "rtl-RQR-F-4": {
+    "caret": "text:פא@2|text:קדה@1",
+    "edge": ""
+  },
+  "rtl-RQR-F-5": {
+    "caret": "text:פא@2|text:קדה@2",
+    "edge": ""
+  },
+  "rtl-RQR-F-6": {
+    "caret": "text:פא@2|text:קדה@3",
+    "edge": ""
+  },
+  "rtl-RQR-F-7": {
+    "caret": "text:פא@2|element:listitem@2",
+    "edge": ""
+  },
+  "rtl-RQR-F-8": {
+    "caret": "text:פא@2|element:listitem@3",
+    "edge": ""
+  },
+  "rtl-RQR-F-9": {
+    "caret": "text:פא@2|text:נו@0",
+    "edge": ""
+  },
+  "rtl-RQR-F-10": {
+    "caret": "text:פא@2|text:נו@1",
+    "edge": ""
+  },
+  "rtl-RQR-F-11": {
+    "caret": "text:פא@2|text:נו@2",
+    "edge": "end"
+  },
+  "rtl-RQR-B-1": {
+    "caret": "text:פא@2|text:נו@1",
+    "edge": ""
+  },
+  "rtl-RQR-B-2": {
+    "caret": "text:פא@2|text:נו@0",
+    "edge": ""
+  },
+  "rtl-RQR-B-3": {
+    "caret": "text:פא@2|element:listitem@3",
+    "edge": ""
+  },
+  "rtl-RQR-B-4": {
+    "caret": "text:פא@2|element:listitem@2",
+    "edge": ""
+  },
+  "rtl-RQR-B-5": {
+    "caret": "text:פא@2|text:קדה@3",
+    "edge": ""
+  },
+  "rtl-RQR-B-6": {
+    "caret": "text:פא@2|text:קדה@2",
+    "edge": ""
+  },
+  "rtl-RQR-B-7": {
+    "caret": "text:פא@2|text:קדה@1",
+    "edge": ""
+  },
+  "rtl-RQR-B-8": {
+    "caret": "text:פא@2|text:קדה@0",
+    "edge": ""
+  },
+  "rtl-RQR-B-9": {
+    "caret": "text:פא@2|text:קדה@0",
+    "edge": ""
+  },
+  "rtl-RQR-B-10": {
+    "caret": "text:פא@2|element:listitem@0",
+    "edge": ""
+  },
+  "rtl-RQR-B-11": {
+    "caret": "text:פא@2",
+    "edge": ""
+  },
+  "rtl-RQR-B-12": {
+    "caret": "text:פא@2|text:פא@1",
+    "edge": ""
+  },
+  "rtl-RQR-B-13": {
+    "caret": "text:פא@2|text:פא@0",
+    "edge": "start"
+  },
+  "rtl-QRR-F-1": {
+    "caret": "text:פא@2|text:קבג@0",
+    "edge": ""
+  },
+  "rtl-QRR-F-2": {
+    "caret": "text:פא@2|text:קבג@1",
+    "edge": ""
+  },
+  "rtl-QRR-F-3": {
+    "caret": "text:פא@2|text:קבג@2",
+    "edge": ""
+  },
+  "rtl-QRR-F-4": {
+    "caret": "text:פא@2|text:קבג@3",
+    "edge": ""
+  },
+  "rtl-QRR-F-5": {
+    "caret": "text:פא@2|element:listitem@1",
+    "edge": ""
+  },
+  "rtl-QRR-F-6": {
+    "caret": "text:פא@2|element:listitem@2",
+    "edge": ""
+  },
+  "rtl-QRR-F-7": {
+    "caret": "text:פא@2|element:listitem@3",
+    "edge": ""
+  },
+  "rtl-QRR-F-8": {
+    "caret": "text:פא@2|text:נו@0",
+    "edge": ""
+  },
+  "rtl-QRR-F-9": {
+    "caret": "text:פא@2|text:נו@1",
+    "edge": ""
+  },
+  "rtl-QRR-F-10": {
+    "caret": "text:פא@2|text:נו@2",
+    "edge": "end"
+  },
+  "rtl-QRR-B-1": {
+    "caret": "text:פא@2|text:נו@1",
+    "edge": ""
+  },
+  "rtl-QRR-B-2": {
+    "caret": "text:פא@2|text:נו@0",
+    "edge": ""
+  },
+  "rtl-QRR-B-3": {
+    "caret": "text:פא@2|element:listitem@3",
+    "edge": ""
+  },
+  "rtl-QRR-B-4": {
+    "caret": "text:פא@2|element:listitem@2",
+    "edge": ""
+  },
+  "rtl-QRR-B-5": {
+    "caret": "text:פא@2|element:quote@1",
+    "edge": ""
+  },
+  "rtl-QRR-B-6": {
+    "caret": "text:פא@2|text:קבג@2",
+    "edge": ""
+  },
+  "rtl-QRR-B-7": {
+    "caret": "text:פא@2|text:קבג@1",
+    "edge": ""
+  },
+  "rtl-QRR-B-8": {
+    "caret": "text:פא@2|text:קבג@0",
+    "edge": ""
+  },
+  "rtl-QRR-B-9": {
+    "caret": "text:פא@2",
+    "edge": ""
+  },
+  "rtl-QRR-B-10": {
+    "caret": "text:פא@2|text:פא@1",
+    "edge": ""
+  },
+  "rtl-QRR-B-11": {
+    "caret": "text:פא@2|text:פא@0",
+    "edge": "start"
+  },
+  "rtl-Rfirst-F-1": {
+    "caret": "text:פא@2|element:listitem@0",
+    "edge": ""
+  },
+  "rtl-Rfirst-F-2": {
+    "caret": "text:פא@2|text:תגד@0",
+    "edge": ""
+  },
+  "rtl-Rfirst-F-3": {
+    "caret": "text:פא@2|text:תגד@0",
+    "edge": ""
+  },
+  "rtl-Rfirst-F-4": {
+    "caret": "text:פא@2|text:תגד@1",
+    "edge": ""
+  },
+  "rtl-Rfirst-F-5": {
+    "caret": "text:פא@2|text:תגד@2",
+    "edge": ""
+  },
+  "rtl-Rfirst-F-6": {
+    "caret": "text:פא@2|text:תגד@3",
+    "edge": ""
+  },
+  "rtl-Rfirst-F-7": {
+    "caret": "text:פא@2|text:נו@0",
+    "edge": ""
+  },
+  "rtl-Rfirst-F-8": {
+    "caret": "text:פא@2|text:נו@1",
+    "edge": ""
+  },
+  "rtl-Rfirst-F-9": {
+    "caret": "text:פא@2|text:נו@2",
+    "edge": "end"
+  },
+  "rtl-Rfirst-B-1": {
+    "caret": "text:פא@2|text:נו@1",
+    "edge": ""
+  },
+  "rtl-Rfirst-B-2": {
+    "caret": "text:פא@2|text:נו@0",
+    "edge": ""
+  },
+  "rtl-Rfirst-B-3": {
+    "caret": "text:פא@2|text:תגד@3",
+    "edge": ""
+  },
+  "rtl-Rfirst-B-4": {
+    "caret": "text:פא@2|text:תגד@2",
+    "edge": ""
+  },
+  "rtl-Rfirst-B-5": {
+    "caret": "text:פא@2|text:תגד@1",
+    "edge": ""
+  },
+  "rtl-Rfirst-B-6": {
+    "caret": "text:פא@2|text:תגד@0",
+    "edge": ""
+  },
+  "rtl-Rfirst-B-7": {
+    "caret": "text:פא@2|text:תגד@0",
+    "edge": ""
+  },
+  "rtl-Rfirst-B-8": {
+    "caret": "text:פא@2|element:listitem@0",
+    "edge": ""
+  },
+  "rtl-Rfirst-B-9": {
+    "caret": "text:פא@2",
+    "edge": ""
+  },
+  "rtl-Rfirst-B-10": {
+    "caret": "text:פא@2|text:פא@1",
+    "edge": ""
+  },
+  "rtl-Rfirst-B-11": {
+    "caret": "text:פא@2|text:פא@0",
+    "edge": "start"
+  },
+  "rtl-Rlast-F-1": {
+    "caret": "text:פא@2|text:תאב@0",
+    "edge": ""
+  },
+  "rtl-Rlast-F-2": {
+    "caret": "text:פא@2|text:תאב@1",
+    "edge": ""
+  },
+  "rtl-Rlast-F-3": {
+    "caret": "text:פא@2|text:תאב@2",
+    "edge": ""
+  },
+  "rtl-Rlast-F-4": {
+    "caret": "text:פא@2|text:תאב@3",
+    "edge": ""
+  },
+  "rtl-Rlast-F-5": {
+    "caret": "text:פא@2|element:listitem@1",
+    "edge": ""
+  },
+  "rtl-Rlast-F-6": {
+    "caret": "text:פא@2|element:listitem@2",
+    "edge": ""
+  },
+  "rtl-Rlast-F-7": {
+    "caret": "text:פא@2|text:נו@0",
+    "edge": ""
+  },
+  "rtl-Rlast-F-8": {
+    "caret": "text:פא@2|text:נו@1",
+    "edge": ""
+  },
+  "rtl-Rlast-F-9": {
+    "caret": "text:פא@2|text:נו@2",
+    "edge": "end"
+  },
+  "rtl-Rlast-B-1": {
+    "caret": "text:פא@2|text:נו@1",
+    "edge": ""
+  },
+  "rtl-Rlast-B-2": {
+    "caret": "text:פא@2|text:נו@0",
+    "edge": ""
+  },
+  "rtl-Rlast-B-3": {
+    "caret": "text:פא@2|element:listitem@2",
+    "edge": ""
+  },
+  "rtl-Rlast-B-4": {
+    "caret": "text:פא@2|element:listitem@1",
+    "edge": ""
+  },
+  "rtl-Rlast-B-5": {
+    "caret": "text:פא@2|text:תאב@3",
+    "edge": ""
+  },
+  "rtl-Rlast-B-6": {
+    "caret": "text:פא@2|text:תאב@2",
+    "edge": ""
+  },
+  "rtl-Rlast-B-7": {
+    "caret": "text:פא@2|text:תאב@1",
+    "edge": ""
+  },
+  "rtl-Rlast-B-8": {
+    "caret": "text:פא@2|text:תאב@0",
+    "edge": ""
+  },
+  "rtl-Rlast-B-9": {
+    "caret": "text:פא@2",
+    "edge": ""
+  },
+  "rtl-Rlast-B-10": {
+    "caret": "text:פא@2|text:פא@1",
+    "edge": ""
+  },
+  "rtl-Rlast-B-11": {
+    "caret": "text:פא@2|text:פא@0",
+    "edge": "start"
+  },
+  "rtl-d2-F-1": {
+    "caret": "text:אז@2|text:קבג@0",
+    "edge": ""
+  },
+  "rtl-d2-F-2": {
+    "caret": "text:אז@2|text:קבג@1",
+    "edge": ""
+  },
+  "rtl-d2-F-3": {
+    "caret": "text:אז@2|text:קבג@2",
+    "edge": ""
+  },
+  "rtl-d2-F-4": {
+    "caret": "text:אז@2|text:קבג@3",
+    "edge": ""
+  },
+  "rtl-d2-F-5": {
+    "caret": "text:אז@2|element:listitem@1",
+    "edge": ""
+  },
+  "rtl-d2-F-6": {
+    "caret": "text:אז@2|element:listitem@2",
+    "edge": ""
+  },
+  "rtl-d2-F-7": {
+    "caret": "text:אז@2|text:זט@0",
+    "edge": ""
+  },
+  "rtl-d2-F-8": {
+    "caret": "text:אז@2|text:זט@1",
+    "edge": ""
+  },
+  "rtl-d2-F-9": {
+    "caret": "text:אז@2|text:זט@2",
+    "edge": ""
+  },
+  "rtl-d2-F-10": {
+    "caret": "text:אז@2|text:נו@0",
+    "edge": ""
+  },
+  "rtl-d2-F-11": {
+    "caret": "text:אז@2|text:נו@1",
+    "edge": ""
+  },
+  "rtl-d2-F-12": {
+    "caret": "text:אז@2|text:נו@2",
+    "edge": "end"
+  },
+  "rtl-d2-B-1": {
+    "caret": "text:אז@2|text:נו@1",
+    "edge": ""
+  },
+  "rtl-d2-B-2": {
+    "caret": "text:אז@2|text:נו@0",
+    "edge": ""
+  },
+  "rtl-d2-B-3": {
+    "caret": "text:אז@2|text:זט@2",
+    "edge": ""
+  },
+  "rtl-d2-B-4": {
+    "caret": "text:אז@2|text:זט@1",
+    "edge": ""
+  },
+  "rtl-d2-B-5": {
+    "caret": "text:אז@2|text:זט@0",
+    "edge": ""
+  },
+  "rtl-d2-B-6": {
+    "caret": "text:אז@2|element:listitem@2",
+    "edge": ""
+  },
+  "rtl-d2-B-7": {
+    "caret": "text:אז@2|element:listitem@1",
+    "edge": ""
+  },
+  "rtl-d2-B-8": {
+    "caret": "text:אז@2|text:קבג@3",
+    "edge": ""
+  },
+  "rtl-d2-B-9": {
+    "caret": "text:אז@2|text:קבג@2",
+    "edge": ""
+  },
+  "rtl-d2-B-10": {
+    "caret": "text:אז@2|text:קבג@1",
+    "edge": ""
+  },
+  "rtl-d2-B-11": {
+    "caret": "text:אז@2|text:קבג@0",
+    "edge": ""
+  },
+  "rtl-d2-B-12": {
+    "caret": "text:אז@2",
+    "edge": ""
+  },
+  "rtl-d2-B-13": {
+    "caret": "text:אז@2|text:אז@1",
+    "edge": ""
+  },
+  "rtl-d2-B-14": {
+    "caret": "text:אז@2|text:אז@0",
+    "edge": ""
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "two text nodes of one paragraph|ordinary": {
+    "write": "<p>A​a<b><strong>1w</strong></b></p>",
+    "calls": 3,
+    "caret": "text:A​a@3",
+    "typed": "<p>A​ak<b><strong>1w</strong></b></p>"
+  },
+  "two text nodes of one paragraph|lined": {
+    "write": "<ul><li>Pw</li><li>A​a<b><strong>1w</strong></b></li><li>Nw</li></ul>",
+    "calls": 3,
+    "caret": "text:A​a@3",
+    "typed": "<ul><li>Pw</li><li>A​ak<b><strong>1w</strong></b></li><li>Nw</li></ul>"
+  },
+  "two paragraphs (lined: two lines)|ordinary": {
+    "write": "<p>A​a1w</p>",
+    "calls": 3,
+    "caret": "text:A​a1w@3",
+    "typed": "<p>A​ak1w</p>"
+  },
+  "two paragraphs (lined: two lines)|lined": {
+    "write": "<ul><li>Pw</li><li>A​a1w</li><li>Nw</li></ul>",
+    "calls": 3,
+    "caret": "text:A​a1w@3",
+    "typed": "<ul><li>Pw</li><li>A​ak1w</li><li>Nw</li></ul>"
+  },
+  "across an image|ordinary": {
+    "write": "<p>A​a1w</p>",
+    "calls": 3,
+    "caret": "text:A​a1w@3",
+    "typed": "<p>A​ak1w</p>"
+  },
+  "across an image|lined": {
+    "write": "<ul><li>Pw</li><li>A​a1w</li><li>Nw</li></ul>",
+    "calls": 3,
+    "caret": "text:A​a1w@3",
+    "typed": "<ul><li>Pw</li><li>A​ak1w</li><li>Nw</li></ul>"
+  },
+  "across a rule (ordinary: root-level)|ordinary": {
+    "write": "<p>A​a1w</p>",
+    "calls": 3,
+    "caret": "text:A​a1w@3",
+    "typed": "<p>A​ak1w</p>"
+  },
+  "across a rule (ordinary: root-level)|lined": {
+    "write": "<ul><li>Pw</li><li>A​a1w</li><li>Nw</li></ul>",
+    "calls": 3,
+    "caret": "text:A​a1w@3",
+    "typed": "<ul><li>Pw</li><li>A​ak1w</li><li>Nw</li></ul>"
+  }
+}

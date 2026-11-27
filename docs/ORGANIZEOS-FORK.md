@@ -352,14 +352,25 @@ can be merged with minimal conflict.
   nano-staged's `oxfmt --no-error-on-unmatched-pattern`, so a commit that stages
   only files the formatter ignores (this doc, under `docs/**`) passes the hook.
   `.github/workflows/main.yml`: one workflow, a `checks` job and a `tests` job
-  of twelve legs (the packages, the CLI, and one per builder Vitest project;
-  the CMS panels have three: `core-browser-builder-cms`,
-  `core-browser-builder-cms-rich-text` for the rich-text field's tests, and
+  of nineteen legs (the packages, the CLI, and one per builder Vitest project;
+  the CMS panels have ten: `core-browser-builder-cms`,
+  `core-browser-builder-cms-rich-text` for the rich-text field's tests,
   `core-browser-builder-cms-rich-text-sweeps` for its three generated sweeps,
-  the two toolbar-over-corpus files and the fuzz file), with
-  no secret, environment or checkout ref, and checkouts that keep no token in
-  the clone (`persist-credentials: false`); only its cli leg builds the blocks
-  package. The typecheck covers every package and fixture but two fixtures the
+  the two toolbar-over-corpus files and the fuzz file;
+  `core-browser-builder-cms-rich-text-lines` for the line rules' assertion
+  tests, `core-browser-builder-cms-rich-text-lines-b` for the slowest of those
+  files (press, readback, walks), split off so each leg stays under 400 s; and `core-browser-builder-cms-rich-text-grids-a` to
+  `core-browser-builder-cms-rich-text-grids-e` for their grids, click test,
+  mount sweep and layout test, split by file so each leg stays under 400 s;
+  the line rules also add to `apps/builder/vitest.config.ts` the
+  `grantClipboard` browser command (a test reads and writes the system
+  clipboard), the setup file `rich-text-line-invariant-setup.ts` that the
+  rich-text projects run (every test ends with the line invariant), and
+  `--font-render-hinting=none` in the seven line projects' Chromium launch, so
+  glyph widths match on every Linux machine),
+  with no secret, environment or checkout ref, and checkouts that keep no
+  token in the clone (`persist-credentials: false`); only its cli leg builds
+  the blocks package. The typecheck covers every package and fixture but two fixtures the
   fork never regenerates: `webstudio-features`, whose generated pages import
   the removed animation package (§2), and `react-router-vercel`, whose html
   routes import the copy prebuild writes (§8). Each builder project's step has

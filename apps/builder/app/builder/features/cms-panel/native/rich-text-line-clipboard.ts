@@ -1,0 +1,797 @@
+// The copy and cut handler with the cut's check, the plain text of a selection, the line edges of a node selection and the drag's data.
+import {
+  $getClipboardDataFromSelection,
+  $getLexicalContent,
+  setLexicalClipboardDataTransfer,
+} from "@lexical/clipboard";
+import { $isCodeNode } from "@lexical/code";
+import { $isListItemNode } from "@lexical/list";
+import { $dfs, $findMatchingParent } from "@lexical/utils";
+import {
+  $createRangeSelection,
+  $createTextNode,
+  $getEditor,
+  $getRoot,
+  $getSelection,
+  $isDecoratorNode,
+  $isElementNode,
+  $isNodeSelection,
+  $isRangeSelection,
+  $isTextNode,
+  $setSelection,
+  type BaseSelection,
+  COPY_COMMAND,
+  createEditor,
+  CUT_COMMAND,
+  ElementNode,
+  type LexicalEditor,
+  type LexicalNode,
+  type PointType,
+  type RangeSelection,
+  type SerializedEditorState,
+  type SerializedLexicalNode,
+} from "lexical";
+import {
+  markRichTextCopy,
+  parseHtml,
+  richTextHtmlConfig,
+} from "./rich-text-html";
+import {
+  $isCmsLineNode,
+  isLineBreak,
+  isLinedContainer,
+  PLACE_ATTRIBUTE,
+  PLACE_TYPES,
+  placeNodes,
+} from "./rich-text-line-node";
+import { $headPathOverNodeSelection } from "./rich-text-line-node-selection";
+import { $unwrapLines } from "./rich-text-line-normalise";
+import type { ScratchConfig } from "./rich-text-line-commands";
+import {
+  $endsInOrder,
+  $endsIntoText,
+  $lastPointToBlockEnd,
+  $nodesInRange,
+  $prepareRemoval,
+  $tagRemoval,
+} from "./rich-text-line-removal";
+
+/** What a range or node selection holds: its text (no new lines), images and rules. */
+export type HeldContent = { text: string; images: number; rules: number };
+
+export const $heldContent = (selection: BaseSelection): HeldContent => {
+  const held: HeldContent = { text: "", images: 0, rules: 0 };
+  const count = (node: LexicalNode) => {
+    if (node.getType() === "cms-image") {
+      held.images += 1;
+    } else if (node.getType() === "horizontalrule") {
+      held.rules += 1;
+    }
+  };
+  if ($isRangeSelection(selection)) {
+    const { nodes, start, end } = $nodesInRange(selection);
+    for (const node of nodes) {
+      if ($isTextNode(node)) {
+        const text = node.getTextContent();
+        const from =
+          start.type === "text" && start.key === node.getKey()
+            ? start.offset
+            : 0;
+        const to =
+          end.type === "text" && end.key === node.getKey()
+            ? end.offset
+            : text.length;
+        held.text += text.slice(from, to);
+      } else {
+        count(node);
+      }
+    }
+    return held;
+  }
+  const walk = (node: LexicalNode) => {
+    if ($isTextNode(node)) {
+      held.text += node.getTextContent();
+      return;
+    }
+    count(node);
+    if ($isElementNode(node)) {
+      node.getChildren().forEach(walk);
+    }
+  };
+  selection.getNodes().forEach(walk);
+  return held;
+};
+
+/**
+ * The text/plain of a copy or a cut (D6, F7; carried from round 10): the
+ * text of the selection as the person made it, read as Lexical reads a
+ * selection's text with each line's children standing in its container as
+ * at the head, its ends in document order; plus one new line where a
+ * line's end meets a block beside it or a block meets a line's start inside
+ * the selection, unless one stands there. Nothing else changes, and no run
+ * of new lines is collapsed.
+ */
+export const $plainTextOf = (selection: BaseSelection): string => {
+  if ($isRangeSelection(selection) === false) {
+    return selection.getTextContent();
+  }
+  const { nodes: held, start, end } = $nodesInRange(selection);
+  const ordered = selection.clone();
+  ordered.anchor.set(start.key, start.offset, start.type);
+  ordered.focus.set(end.key, end.offset, end.type);
+  // Lexical's order (a block counted where its text ends, as at the head),
+  // of the nodes the range holds: Lexical's own walk resolves an element
+  // point before a block down into the block and takes it in
+  const inRange = new Set(held.map((node) => node.getKey()));
+  const nodes = ordered.getNodes().filter((node) => inRange.has(node.getKey()));
+  // a range that ends at the start of a line after a block holds the break
+  // between them (F7): text/plain ends with a new line. The end is on the
+  // line at its start, or the container's point just before the line
+  const endNode = end.getNode();
+  let endLine: LexicalNode | null = null;
+  if (end.offset === 0 && $isCmsLineNode(endNode)) {
+    endLine = endNode;
+  } else if (end.offset === 0 && end.type === "text") {
+    const line = $findMatchingParent(endNode, $isCmsLineNode);
+    endLine = line?.getFirstDescendant()?.is(endNode) === true ? line : null;
+  } else if (end.type === "element" && isLinedContainer(endNode)) {
+    const at = endNode.getChildAtIndex(end.offset);
+    endLine = $isCmsLineNode(at) ? at : null;
+  }
+  const blockBefore = endLine?.getPreviousSibling() ?? null;
+  const breakAtEnd =
+    $isElementNode(blockBefore) &&
+    $isCmsLineNode(blockBefore) === false &&
+    blockBefore.isInline() === false;
+  if (nodes.length === 0) {
+    return breakAtEnd ? "\n" : "";
+  }
+  const last = nodes[nodes.length - 1];
+  let text = "";
+  let prevWasElement = true;
+  // whether the last leaf read stood in a block's text, not in a line
+  let lastInBlockText = false;
+  // T59 defect 1: Lexical's walk starts at the leaf the start rests on
+  // (a text end, or the child an element point resolves to) even where the
+  // range holds none of it, so a block boundary right after the start
+  // reads as a new line, as at the head; an empty line the start rests on
+  // (the caret line after a rule) reads the same way, as Lexical reads an
+  // empty block. Neither adds text.
+  const startNode = start.getNode();
+  const startLeaf =
+    start.type === "text"
+      ? startNode
+      : $isElementNode(startNode)
+        ? startNode.getDescendantByIndex(start.offset)
+        : null;
+  if (
+    startLeaf !== null &&
+    $isElementNode(startLeaf) === false &&
+    inRange.has(startLeaf.getKey()) === false
+  ) {
+    prevWasElement = false;
+    lastInBlockText = $findMatchingParent(startLeaf, $isCmsLineNode) === null;
+  } else if ($isCmsLineNode(startNode) && startNode.isEmpty()) {
+    prevWasElement = false;
+  }
+  for (const node of nodes) {
+    if ($isCmsLineNode(node)) {
+      continue;
+    }
+    if ($isElementNode(node) && node.isInline() === false) {
+      if (prevWasElement === false) {
+        text += "\n";
+      }
+      prevWasElement = node.isEmpty() === false;
+      continue;
+    }
+    const line = $findMatchingParent(node, $isCmsLineNode);
+    if (
+      line !== null &&
+      prevWasElement === false &&
+      lastInBlockText &&
+      isLineBreak(node) === false &&
+      text.endsWith("\n") === false
+    ) {
+      text += "\n";
+    }
+    lastInBlockText = line === null;
+    prevWasElement = false;
+    if ($isTextNode(node)) {
+      const part = node.getTextContent();
+      const from =
+        start.type === "text" && start.key === node.getKey() ? start.offset : 0;
+      const to =
+        end.type === "text" && end.key === node.getKey()
+          ? end.offset
+          : part.length;
+      text += part.slice(from, to);
+    } else if (
+      ($isDecoratorNode(node) || isLineBreak(node)) &&
+      (node !== last || selection.isCollapsed() === false)
+    ) {
+      text += node.getTextContent();
+    }
+  }
+  if (breakAtEnd && text.endsWith("\n") === false) {
+    text += "\n";
+  }
+  return text;
+};
+
+/** The clipboard type of Lexical's own copy, whose nodes carry their links. */
+export const LEXICAL_CLIPBOARD_TYPE = "application/x-lexical-editor";
+
+/** What a clipboard's editor data holds; null when it holds none. */
+const clipboardHeld = (
+  data: ReturnType<typeof $getClipboardDataFromSelection>
+): HeldContent | null => {
+  const json = data["application/x-lexical-editor"];
+  if (json === undefined || json === "") {
+    return null;
+  }
+  const found: HeldContent = { text: "", images: 0, rules: 0 };
+  const walk = (node: {
+    type?: string;
+    text?: string;
+    children?: unknown[];
+  }) => {
+    if (typeof node.text === "string") {
+      found.text += node.text;
+    }
+    if (node.type === "cms-image") {
+      found.images += 1;
+    } else if (node.type === "horizontalrule") {
+      found.rules += 1;
+    }
+    for (const child of node.children ?? []) {
+      walk(child as typeof node);
+    }
+  };
+  try {
+    for (const node of (JSON.parse(json) as { nodes: unknown[] }).nodes) {
+      walk(node as Parameters<typeof walk>[0]);
+    }
+  } catch {
+    return null;
+  }
+  return found;
+};
+
+const sameHeld = (a: HeldContent, b: HeldContent) =>
+  a.text === b.text && a.images === b.images && a.rules === b.rules;
+
+/** A node and its descendants as the editor state's JSON holds them. */
+const $treeJSON = (node: LexicalNode): SerializedLexicalNode => {
+  const json = node.exportJSON() as SerializedLexicalNode & {
+    children?: SerializedLexicalNode[];
+  };
+  if ($isElementNode(node)) {
+    json.children = node.getChildren().map($treeJSON);
+  }
+  return json;
+};
+
+/**
+ * What the document holds before a range's first end (P), between its two
+ * ends (H) and after its last end (S), read by the range's two ends in
+ * document order; with no range, the whole document as P.
+ */
+const $contentAtEnds = (
+  selection: RangeSelection | null
+): { p: HeldContent; h: HeldContent; s: HeldContent } => {
+  const leaves: LexicalNode[] = [];
+  const firstLeaf = new Map<string, number>();
+  const afterLeaf = new Map<string, number>();
+  const walk = (node: LexicalNode) => {
+    firstLeaf.set(node.getKey(), leaves.length);
+    if ($isElementNode(node)) {
+      node.getChildren().forEach(walk);
+    } else {
+      leaves.push(node);
+    }
+    afterLeaf.set(node.getKey(), leaves.length);
+  };
+  walk($getRoot());
+  // a point as [leaf, offset]: the gap before that offset of that leaf
+  const position = (point: PointType): [number, number] => {
+    const node = point.getNode();
+    if (point.type === "text") {
+      return [firstLeaf.get(node.getKey())!, point.offset];
+    }
+    if ($isElementNode(node)) {
+      const child = node.getChildAtIndex(point.offset);
+      return [
+        child === null
+          ? afterLeaf.get(node.getKey())!
+          : firstLeaf.get(child.getKey())!,
+        0,
+      ];
+    }
+    return [firstLeaf.get(node.getKey())!, point.offset];
+  };
+  const before = (a: [number, number], b: [number, number]) =>
+    a[0] < b[0] || (a[0] === b[0] && a[1] < b[1]);
+  const end: [number, number] = [leaves.length, 0];
+  let first = end;
+  let last = end;
+  if (selection !== null) {
+    const anchor = position(selection.anchor);
+    const focus = position(selection.focus);
+    [first, last] = before(focus, anchor) ? [focus, anchor] : [anchor, focus];
+  }
+  const held = () => ({ text: "", images: 0, rules: 0 });
+  const parts = { p: held(), h: held(), s: held() };
+  const partOf = (at: [number, number]) =>
+    before(at, first) ? parts.p : before(at, last) ? parts.h : parts.s;
+  leaves.forEach((leaf, index) => {
+    if ($isTextNode(leaf)) {
+      const text = leaf.getTextContent();
+      for (let offset = 0; offset < text.length; offset += 1) {
+        partOf([index, offset]).text += text[offset];
+      }
+      return;
+    }
+    const type = leaf.getType();
+    if (type === "cms-image") {
+      partOf([index, 0]).images += 1;
+    } else if (type === "horizontalrule") {
+      partOf([index, 0]).rules += 1;
+    }
+  });
+  return parts;
+};
+
+/**
+ * T11.1: a cut took what its range held, judged by the range's two ends:
+ * the document after it holds P followed by S, and the clipboard holds H.
+ * Never by comparing the documents before and after from their two ends.
+ */
+export const $cutTakesWhatItHolds = (
+  before: { p: HeldContent; h: HeldContent; s: HeldContent },
+  after: HeldContent,
+  held: HeldContent
+): boolean =>
+  sameHeld(after, {
+    text: before.p.text + before.s.text,
+    images: before.p.images + before.s.images,
+    rules: before.p.rules + before.s.rules,
+  }) && sameHeld(held, before.h);
+
+/** 15.11 (2, E): the nodes the scratch editor made to give an end its place leave nothing. */
+const dropPlaces = (
+  data: ReturnType<typeof $getClipboardDataFromSelection>
+) => {
+  const json = data["application/x-lexical-editor"];
+  if (json !== undefined && json !== "") {
+    const parsed = JSON.parse(json) as { nodes: SerializedLexicalNode[] };
+    const drop = (nodes: SerializedLexicalNode[]): SerializedLexicalNode[] =>
+      nodes.flatMap((node) => {
+        const item = node as SerializedLexicalNode & {
+          children?: SerializedLexicalNode[];
+        };
+        if (PLACE_TYPES.has(item.type)) {
+          return [];
+        }
+        if (item.children !== undefined) {
+          const had = item.children.length;
+          item.children = drop(item.children);
+          // a list the made item alone filled goes with it
+          if (had > 0 && item.children.length === 0 && item.type === "list") {
+            return [];
+          }
+        }
+        return [item];
+      });
+    parsed.nodes = drop(parsed.nodes);
+    data["application/x-lexical-editor"] = JSON.stringify(parsed);
+  }
+  const html = data["text/html"];
+  if (html !== undefined && html.includes(PLACE_ATTRIBUTE)) {
+    const doc = parseHtml(html);
+    for (const element of [
+      ...doc.body.querySelectorAll(`[${PLACE_ATTRIBUTE}]`),
+    ]) {
+      if (element.isConnected === false) {
+        continue;
+      }
+      // the made node, and any span or list it alone fills
+      let at: Element = element;
+      while (
+        at.parentElement !== null &&
+        at.parentElement !== doc.body &&
+        at.parentElement.childNodes.length === 1 &&
+        (at.parentElement.tagName === "SPAN" ||
+          ["UL", "OL"].includes(at.parentElement.tagName))
+      ) {
+        at = at.parentElement;
+      }
+      at.remove();
+    }
+    data["text/html"] = doc.body.innerHTML;
+  }
+  return data;
+};
+
+/** What a copy, a cut or a drag writes: Lexical's clipboard formats. */
+export type ClipboardData = ReturnType<typeof $getClipboardDataFromSelection>;
+
+/**
+ * The scratch editor the one writer runs in: the field's own namespace,
+ * theme and nodes (passed in; no read of the live editor's config), and the
+ * made-up place node types that only the scratch editor has.
+ */
+export const createScratchEditor = (config: ScratchConfig): LexicalEditor =>
+  createEditor({
+    namespace: config.namespace,
+    theme: config.theme,
+    nodes: [...config.nodes, ...placeNodes],
+    html: richTextHtmlConfig,
+    onError: (error: Error) => {
+      throw error;
+    },
+  });
+
+/**
+ * The made-up character `$markItemsNotHeldWhole` puts beside content an item
+ * holds outside the range, in the scratch editor only. A private-use
+ * character, so no clipboard flavour can hold it unseen (T68.3).
+ */
+const ITEM_NOT_WHOLE_MARK = "\uE000";
+
+/**
+ * D6: the copied HTML holds a list item only where the selection holds the
+ * whole item. Lexical's writer takes an item that holds both ends whole
+ * when the selection's text is as long as the item's, so an item whose
+ * content outside the range holds no text (an image beside the range) went
+ * whole into the clipboard (T59 defect 11). In the scratch editor such an
+ * item gets a made-up character beside that content, outside the range,
+ * which the clipboard never holds.
+ */
+const $markItemsNotHeldWhole = (selection: BaseSelection | null) => {
+  if (
+    $isRangeSelection(selection) === false ||
+    selection.anchor.type !== "text" ||
+    selection.focus.type !== "text"
+  ) {
+    return;
+  }
+  const held = new Set(selection.getNodes().map((node) => node.getKey()));
+  const anchor = selection.anchor.getNode();
+  const focus = selection.focus.getNode();
+  const start = selection.isBackward() ? focus : anchor;
+  for (
+    let item = $findMatchingParent(anchor, $isListItemNode);
+    item !== null;
+    item = $findMatchingParent(item.getParentOrThrow(), $isListItemNode)
+  ) {
+    if (item.isParentOf(focus) === false) {
+      continue;
+    }
+    const outside = $dfs(item)
+      .map(({ node }) => node)
+      .find(
+        (node) =>
+          node.is(item) === false &&
+          ($isElementNode(node) === false || node.getChildrenSize() === 0) &&
+          held.has(node.getKey()) === false
+      );
+    if (outside === undefined) {
+      continue;
+    }
+    const mark = $createTextNode(ITEM_NOT_WHOLE_MARK);
+    if (outside.isBefore(start)) {
+      outside.insertBefore(mark);
+    } else {
+      outside.insertAfter(mark);
+    }
+  }
+};
+
+/**
+ * The writer's two ends: the selection as the person made it, with the ends
+ * the writer shares with the removal in place (15.10, and a first point
+ * before a block), in document order.
+ */
+const $writerEnds = (selection: RangeSelection) => {
+  const range = selection.clone();
+  $prepareRemoval(range, "clipboard");
+  return { range, ...$endsInOrder(range) };
+};
+
+/**
+ * The one writer for every range (T10.9; check 4, 15.11): the clipboard
+ * Lexical writes for `selection` on the head's form of the tree. A scratch
+ * editor holds the state the command runs in; the range is carried over by
+ * path, its ends in document order; each element-point end gets a place of
+ * its own in text, and where no text can stand a made-up empty block of the
+ * kind that can stand there holds the made-up text; then every line gives
+ * way to its children. The made-up nodes, and any wrapper they alone fill,
+ * are dropped from the output by type. Null when it cannot write: a throw,
+ * or an end that does not carry over or does not fit its node.
+ */
+export const $headFormClipboard = (
+  _editor: LexicalEditor,
+  selection: RangeSelection,
+  config: ScratchConfig
+): ClipboardData | null => {
+  const pathOf = (node: LexicalNode) => {
+    const path: number[] = [];
+    let at: LexicalNode = node;
+    while (at.getParent() !== null) {
+      path.unshift(at.getIndexWithinParent());
+      at = at.getParentOrThrow();
+    }
+    return path;
+  };
+  const { start, end } = $writerEnds(selection);
+  // a point in a code block is carried by its character offset in the
+  // block: the scratch editor's code block holds the same text, split into
+  // nodes its own way
+  const ends = [start, end].map((point) => {
+    const node = point.getNode();
+    const code = $findMatchingParent(node, $isCodeNode);
+    if (code !== null) {
+      let chars = 0;
+      if (point.type === "element" && node.is(code)) {
+        for (const child of code.getChildren().slice(0, point.offset)) {
+          chars += child.getTextContentSize();
+        }
+      } else {
+        for (const child of code.getChildren()) {
+          if (child.is(node) || child.isParentOf(node)) {
+            break;
+          }
+          chars += child.getTextContentSize();
+        }
+        chars += point.type === "text" ? point.offset : 0;
+      }
+      return { path: pathOf(code), kind: "code", offset: chars, code: true };
+    }
+    return {
+      path: pathOf(node),
+      kind: node.getType(),
+      offset: point.offset,
+      type: point.type,
+      code: false,
+    };
+  });
+  const state = {
+    root: $treeJSON($getRoot()),
+  } as unknown as SerializedEditorState;
+  let data: ClipboardData | null = null;
+  try {
+    const scratch = createScratchEditor(config);
+    scratch.setEditorState(scratch.parseEditorState(state));
+    scratch.update(
+      () => {
+        const resolve = (path: number[]) =>
+          path.reduce<LexicalNode | null>(
+            (node, index) =>
+              $isElementNode(node) ? node.getChildAtIndex(index) : null,
+            $getRoot()
+          );
+        const range = $createRangeSelection();
+        const anchorNode = resolve(ends[0].path);
+        const focusNode = resolve(ends[1].path);
+        // an end that does not carry over: no clipboard
+        if (
+          anchorNode === null ||
+          focusNode === null ||
+          anchorNode.getType() !== ends[0].kind ||
+          focusNode.getType() !== ends[1].kind
+        ) {
+          return;
+        }
+        const place = (
+          point: typeof range.anchor,
+          node: LexicalNode,
+          end: (typeof ends)[number]
+        ) => {
+          if (end.code === false) {
+            point.set(node.getKey(), end.offset, end.type ?? "text");
+            return;
+          }
+          // the character offset in the scratch editor's code block
+          let left = end.offset;
+          const children = (node as ElementNode).getChildren();
+          for (const [index, child] of children.entries()) {
+            const size = child.getTextContentSize();
+            if ($isTextNode(child) && left <= size) {
+              point.set(child.getKey(), left, "text");
+              return;
+            }
+            if (left === 0) {
+              point.set(node.getKey(), index, "element");
+              return;
+            }
+            left -= size;
+          }
+          point.set(node.getKey(), children.length, "element");
+        };
+        place(range.anchor, anchorNode, ends[0]);
+        place(range.focus, focusNode, ends[1]);
+        // an end that does not fit the node it lands on: no clipboard
+        const fits = (point: typeof range.anchor) => {
+          const node = point.getNode();
+          return point.type === "text"
+            ? $isTextNode(node) && point.offset <= node.getTextContentSize()
+            : $isElementNode(node) && point.offset <= node.getChildrenSize();
+        };
+        if (fits(range.anchor) === false || fits(range.focus) === false) {
+          return;
+        }
+        $setSelection(range);
+        // 15.11: each element end a place of its own in text, before the
+        // lines give way; where no text can stand, a made-up block holds it
+        $endsIntoText(range, true);
+        for (const { node } of $dfs()) {
+          if ($isCmsLineNode(node) && node.isAttached()) {
+            $unwrapLines([node]);
+          }
+        }
+        $markItemsNotHeldWhole($getSelection());
+        // the copy mark, once, on this editor's own selection: a code block
+        // reached partway writes its selected text
+        markRichTextCopy($getSelection(), $getEditor());
+        data = dropPlaces({
+          ...$getClipboardDataFromSelection($getSelection()),
+        });
+      },
+      { discrete: true }
+    );
+  } catch {
+    return null;
+  }
+  return data;
+};
+
+/**
+ * The field's one copy and cut handler (5.4, D6; check 5, 16.3 to 16.5;
+ * T11.1, T11.2, T11.5, T12.3). A caret, or a range that holds nothing once
+ * its last point is in place (15.10), leaves the clipboard as it was. Else
+ * the clipboard is written from the selection as the person made it, by
+ * the one writer (a range) or from the mapped node selection; a cut then
+ * runs the removal step and the removal in this same update
+ * (`$removalStart` is the field's own first step of it), then the check by
+ * the range's two ends: where the removal took anything else, the update
+ * is abandoned by a throw (no onChange, no undo step, the selection as it
+ * was, the development assertion), and the clipboard stays as written: the
+ * cut acted as a copy. A failure of the writer itself writes text/plain
+ * only, and a cut then removes nothing.
+ */
+export const $writeCopyCut =
+  (config: ScratchConfig) =>
+  (
+    event: ClipboardEvent | KeyboardEvent | null,
+    command: typeof COPY_COMMAND | typeof CUT_COMMAND,
+    $removalStart: () => void
+  ): boolean => {
+    if (
+      event instanceof ClipboardEvent === false ||
+      event.clipboardData === null
+    ) {
+      return false;
+    }
+    const user = $getSelection();
+    if (user === null) {
+      return false;
+    }
+    // T11.5: nothing to copy; no write, no assertion, the clipboard as it
+    // was. At a caret the page's own copy writes nothing
+    if ($isRangeSelection(user)) {
+      if (user.isCollapsed()) {
+        return true;
+      }
+      // 15.10: over a range that holds nothing once its last point is in
+      // place, the page's own copy would write its range (an empty text or
+      // a new line): no native copy or cut, and the selection stays
+      const held = user.clone();
+      if ($lastPointToBlockEnd(held) && held.isCollapsed()) {
+        event.preventDefault();
+        return true;
+      }
+    }
+    // no native copy or cut, whatever follows
+    event.preventDefault();
+    const editor = $getEditor();
+    let data: ClipboardData | null;
+    let plain: string;
+    if ($isRangeSelection(user)) {
+      // G (D6), 14.9, 15.11: text/html and the editor data by the one
+      // writer, text/plain read from the structure, both from the writer's
+      // ends
+      plain = $plainTextOf($writerEnds(user).range);
+      data = $headFormClipboard(editor, user, config);
+      if (data === null && process.env.NODE_ENV !== "production") {
+        console.error(
+          "cms-line clipboard: the head-form copy could not be written"
+        );
+      }
+    } else {
+      // a node selection is copied as it is (D6)
+      markRichTextCopy(user, editor);
+      data = $getClipboardDataFromSelection(user);
+      plain = $plainTextOf(user);
+    }
+    if (data === null) {
+      // the safe result: text/plain only, and a cut removes nothing
+      setLexicalClipboardDataTransfer(event.clipboardData, {
+        "text/plain": plain,
+      });
+      return true;
+    }
+    data["text/plain"] = plain;
+    // the clipboard first, from the selection as the person made it
+    setLexicalClipboardDataTransfer(event.clipboardData, data);
+    if (command !== CUT_COMMAND) {
+      return true;
+    }
+    // then the removal step and the removal
+    if ($isRangeSelection(user) === false) {
+      $removalStart();
+      $tagRemoval();
+      if ($isNodeSelection(user)) {
+        $headPathOverNodeSelection();
+        for (const node of user.getNodes()) {
+          node.remove();
+        }
+      }
+      return true;
+    }
+    const before = $contentAtEnds(user);
+    $removalStart();
+    $prepareRemoval(user, "removal");
+    $tagRemoval();
+    const live = $getSelection();
+    if ($isRangeSelection(live)) {
+      live.removeText();
+    }
+    // then the check, by the range's two ends
+    const held = clipboardHeld(data);
+    if (
+      held === null ||
+      $cutTakesWhatItHolds(before, $contentAtEnds(null).p, held) === false
+    ) {
+      throw new Error(
+        "cms-line clipboard: the cut's removal does not take what its clipboard holds"
+      );
+    }
+    return true;
+  };
+
+/**
+ * A drag inside the editor carries its nodes, as a copy does. Over a range,
+ * its text/html and editor data are the one writer's, written at the drag's
+ * start, so no line leaves the field (D6; T11.21).
+ */
+export const $dragStart =
+  (config: ScratchConfig) =>
+  (event: DragEvent): boolean => {
+    const selection = $getSelection();
+    if (event.dataTransfer === null || selection === null) {
+      return false;
+    }
+    if ($isRangeSelection(selection) && selection.isCollapsed() === false) {
+      const data = $headFormClipboard($getEditor(), selection, config);
+      // the writer failed: nothing is set and the browser's own drag data
+      // stays; the development assertion is the copy's
+      if (data === null && process.env.NODE_ENV !== "production") {
+        console.error(
+          "cms-line clipboard: the head-form copy could not be written"
+        );
+      }
+      for (const type of ["text/html", LEXICAL_CLIPBOARD_TYPE] as const) {
+        const value = data?.[type];
+        if (value !== undefined) {
+          event.dataTransfer.setData(type, value);
+        }
+      }
+      return false;
+    }
+    const content = $getLexicalContent($getEditor(), selection);
+    if (content !== null) {
+      event.dataTransfer.setData(LEXICAL_CLIPBOARD_TYPE, content);
+    }
+    return false;
+  };

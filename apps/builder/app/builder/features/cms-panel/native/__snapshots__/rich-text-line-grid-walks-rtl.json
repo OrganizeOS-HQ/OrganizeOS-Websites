@@ -1,0 +1,866 @@
+{
+  "BQ-Down-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@0",
+    "typed": "<ul><li>פא</li><li>k<br /><blockquote><p>קדה</p></blockquote></li><li>נו</li></ul>"
+  },
+  "BQ-Down-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:קדה@1",
+    "typed": "<ul><li>פא</li><li><br /><blockquote><p>קkדה</p></blockquote></li><li>נו</li></ul>"
+  },
+  "BQ-Down-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:נו@2",
+    "typed": "<ul><li>פא</li><li><br /><blockquote><p>קדה</p></blockquote></li><li>נוk</li></ul>"
+  },
+  "BQ-Up-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:קדה@1",
+    "typed": "<ul><li>פא</li><li><br /><blockquote><p>קkדה</p></blockquote></li><li>נו</li></ul>"
+  },
+  "BQ-Up-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@0",
+    "typed": "<ul><li>פא</li><li>k<br /><blockquote><p>קדה</p></blockquote></li><li>נו</li></ul>"
+  },
+  "BQ-Up-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:פא@1",
+    "typed": "<ul><li>פkא</li><li><br /><blockquote><p>קדה</p></blockquote></li><li>נו</li></ul>"
+  },
+  "BQ-Left-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:קדה@3",
+    "typed": "<ul><li>פא</li><li><br /><blockquote><p>קדהk</p></blockquote></li><li>נו</li></ul>"
+  },
+  "BQ-Left-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:קדה@2",
+    "typed": "<ul><li>פא</li><li><br /><blockquote><p>קדkה</p></blockquote></li><li>נו</li></ul>"
+  },
+  "BQ-Left-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:קדה@1",
+    "typed": "<ul><li>פא</li><li><br /><blockquote><p>קkדה</p></blockquote></li><li>נו</li></ul>"
+  },
+  "BQ-Left-4": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:קדה@0",
+    "typed": "<ul><li>פא</li><li><br /><blockquote><p>kקדה</p></blockquote></li><li>נו</li></ul>"
+  },
+  "BQ-Left-5": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@0",
+    "typed": "<ul><li>פא</li><li>k<br /><blockquote><p>קדה</p></blockquote></li><li>נו</li></ul>"
+  },
+  "BQ-Right-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@0",
+    "typed": "<ul><li>פא</li><li>k<br /><blockquote><p>קדה</p></blockquote></li><li>נו</li></ul>"
+  },
+  "BQ-Right-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:קדה@0",
+    "typed": "<ul><li>פא</li><li><br /><blockquote><p>kקדה</p></blockquote></li><li>נו</li></ul>"
+  },
+  "BQ-Right-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:קדה@1",
+    "typed": "<ul><li>פא</li><li><br /><blockquote><p>קkדה</p></blockquote></li><li>נו</li></ul>"
+  },
+  "BQ-Right-4": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:קדה@2",
+    "typed": "<ul><li>פא</li><li><br /><blockquote><p>קדkה</p></blockquote></li><li>נו</li></ul>"
+  },
+  "BQ-Right-5": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:קדה@3",
+    "typed": "<ul><li>פא</li><li><br /><blockquote><p>קדהk</p></blockquote></li><li>נו</li></ul>"
+  },
+  "BR-Down-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@0",
+    "typed": "<ul><li>פא</li><li>k<br /><hr /></li><li>נו</li></ul>"
+  },
+  "BR-Down-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:נו@2",
+    "typed": "<ul><li>פא</li><li><br /><hr /></li><li>נוk</li></ul>"
+  },
+  "BR-Down-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:נו@2",
+    "typed": "<ul><li>פא</li><li><br /><hr /></li><li>נוk</li></ul>"
+  },
+  "BR-Up-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@0",
+    "typed": "<ul><li>פא</li><li>k<br /><hr /></li><li>נו</li></ul>"
+  },
+  "BR-Up-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:פא@1",
+    "typed": "<ul><li>פkא</li><li><br /><hr /></li><li>נו</li></ul>"
+  },
+  "BR-Up-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:פא@0",
+    "typed": "<ul><li>kפא</li><li><br /><hr /></li><li>נו</li></ul>"
+  },
+  "BR-Left-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>פא</li><li><br /><hr />k</li><li>נו</li></ul>"
+  },
+  "BR-Left-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>פא</li><li><br /><hr />k</li><li>נו</li></ul>"
+  },
+  "BR-Left-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>פא</li><li><br />k<hr /></li><li>נו</li></ul>"
+  },
+  "BR-Left-4": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>פא</li><li><br /><hr />k</li><li>נו</li></ul>"
+  },
+  "BR-Left-5": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>פא</li><li><br />k<hr /></li><li>נו</li></ul>"
+  },
+  "BR-Right-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@0",
+    "typed": "<ul><li>פא</li><li>k<br /><hr /></li><li>נו</li></ul>"
+  },
+  "BR-Right-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>פא</li><li><br />k<hr /></li><li>נו</li></ul>"
+  },
+  "BR-Right-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>פא</li><li><br /><hr />k</li><li>נו</li></ul>"
+  },
+  "BR-Right-4": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>פא</li><li><br /><hr />k</li><li>נו</li></ul>"
+  },
+  "BR-Right-5": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>פא</li><li><br /><hr />k</li><li>נו</li></ul>"
+  },
+  "QBR-Down-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:קבג@1",
+    "typed": "<ul><li>פא</li><li><blockquote><p>קkבג</p></blockquote><br /><hr /></li><li>נו</li></ul>"
+  },
+  "QBR-Down-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>פא</li><li><blockquote><p>קבג</p></blockquote>k<br /><hr /></li><li>נו</li></ul>"
+  },
+  "QBR-Down-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:נו@2",
+    "typed": "<ul><li>פא</li><li><blockquote><p>קבג</p></blockquote><br /><hr /></li><li>נוk</li></ul>"
+  },
+  "QBR-Up-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>פא</li><li><blockquote><p>קבג</p></blockquote>k<br /><hr /></li><li>נו</li></ul>"
+  },
+  "QBR-Up-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:קבג@1",
+    "typed": "<ul><li>פא</li><li><blockquote><p>קkבג</p></blockquote><br /><hr /></li><li>נו</li></ul>"
+  },
+  "QBR-Up-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:פא@1",
+    "typed": "<ul><li>פkא</li><li><blockquote><p>קבג</p></blockquote><br /><hr /></li><li>נו</li></ul>"
+  },
+  "QBR-Left-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@3",
+    "typed": "<ul><li>פא</li><li><blockquote><p>קבג</p></blockquote><br /><hr />k</li><li>נו</li></ul>"
+  },
+  "QBR-Left-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@3",
+    "typed": "<ul><li>פא</li><li><blockquote><p>קבג</p></blockquote><br /><hr />k</li><li>נו</li></ul>"
+  },
+  "QBR-Left-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>פא</li><li><blockquote><p>קבג</p></blockquote><br />k<hr /></li><li>נו</li></ul>"
+  },
+  "QBR-Left-4": {
+    "write": null,
+    "calls": 0,
+    "caret": "node:horizontalrule",
+    "typed": "<ul><li>פא</li><li><blockquote><p>קבג</p></blockquote><br /><hr />k</li><li>נו</li></ul>"
+  },
+  "QBR-Left-5": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>פא</li><li><blockquote><p>קבג</p></blockquote><br />k<hr /></li><li>נו</li></ul>"
+  },
+  "QBR-Right-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:קבג@0",
+    "typed": "<ul><li>פא</li><li><blockquote><p>kקבג</p></blockquote><br /><hr /></li><li>נו</li></ul>"
+  },
+  "QBR-Right-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:קבג@1",
+    "typed": "<ul><li>פא</li><li><blockquote><p>קkבג</p></blockquote><br /><hr /></li><li>נו</li></ul>"
+  },
+  "QBR-Right-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:קבג@2",
+    "typed": "<ul><li>פא</li><li><blockquote><p>קבkג</p></blockquote><br /><hr /></li><li>נו</li></ul>"
+  },
+  "QBR-Right-4": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:קבג@3",
+    "typed": "<ul><li>פא</li><li><blockquote><p>קבגk</p></blockquote><br /><hr /></li><li>נו</li></ul>"
+  },
+  "QBR-Right-5": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>פא</li><li><blockquote><p>קבג</p></blockquote>k<br /><hr /></li><li>נו</li></ul>"
+  },
+  "HB-Down-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:הבג@1",
+    "typed": "<ul><li>פא</li><li><h3>הkבג</h3><br /></li><li>נו</li></ul>"
+  },
+  "HB-Down-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>פא</li><li><h3>הבג</h3>k<br /></li><li>נו</li></ul>"
+  },
+  "HB-Down-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>פא</li><li><h3>הבג</h3><br />k</li><li>נו</li></ul>"
+  },
+  "HB-Up-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>פא</li><li><h3>הבג</h3><br />k</li><li>נו</li></ul>"
+  },
+  "HB-Up-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>פא</li><li><h3>הבג</h3>k<br /></li><li>נו</li></ul>"
+  },
+  "HB-Up-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:הבג@1",
+    "typed": "<ul><li>פא</li><li><h3>הkבג</h3><br /></li><li>נו</li></ul>"
+  },
+  "HB-Left-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>פא</li><li><h3>הבג</h3><br />k</li><li>נו</li></ul>"
+  },
+  "HB-Left-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>פא</li><li><h3>הבג</h3>k<br /></li><li>נו</li></ul>"
+  },
+  "HB-Left-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>פא</li><li><h3>הבג</h3><br />k</li><li>נו</li></ul>"
+  },
+  "HB-Left-4": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>פא</li><li><h3>הבג</h3>k<br /></li><li>נו</li></ul>"
+  },
+  "HB-Left-5": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>פא</li><li><h3>הבג</h3><br />k</li><li>נו</li></ul>"
+  },
+  "HB-Right-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:הבג@0",
+    "typed": "<ul><li>פא</li><li><h3>kהבג</h3><br /></li><li>נו</li></ul>"
+  },
+  "HB-Right-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:הבג@1",
+    "typed": "<ul><li>פא</li><li><h3>הkבג</h3><br /></li><li>נו</li></ul>"
+  },
+  "HB-Right-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:הבג@2",
+    "typed": "<ul><li>פא</li><li><h3>הבkג</h3><br /></li><li>נו</li></ul>"
+  },
+  "HB-Right-4": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:הבג@3",
+    "typed": "<ul><li>פא</li><li><h3>הבגk</h3><br /></li><li>נו</li></ul>"
+  },
+  "HB-Right-5": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>פא</li><li><h3>הבג</h3><br />k</li><li>נו</li></ul>"
+  },
+  "CB-Down-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:כבג@1",
+    "typed": "<ul><li>פא</li><li><pre><code>כkבג</code></pre><br /></li><li>נו</li></ul>"
+  },
+  "CB-Down-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>פא</li><li><pre><code>כבג</code></pre>k<br /></li><li>נו</li></ul>"
+  },
+  "CB-Down-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>פא</li><li><pre><code>כבג</code></pre><br />k</li><li>נו</li></ul>"
+  },
+  "CB-Up-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>פא</li><li><pre><code>כבג</code></pre><br />k</li><li>נו</li></ul>"
+  },
+  "CB-Up-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>פא</li><li><pre><code>כבג</code></pre>k<br /></li><li>נו</li></ul>"
+  },
+  "CB-Up-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:כבג@0",
+    "typed": "<ul><li>פא</li><li><pre><code>kכבג</code></pre><br /></li><li>נו</li></ul>"
+  },
+  "CB-Left-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>פא</li><li><pre><code>כבג</code></pre><br />k</li><li>נו</li></ul>"
+  },
+  "CB-Left-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>פא</li><li><pre><code>כבג</code></pre>k<br /></li><li>נו</li></ul>"
+  },
+  "CB-Left-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>פא</li><li><pre><code>כבג</code></pre><br />k</li><li>נו</li></ul>"
+  },
+  "CB-Left-4": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>פא</li><li><pre><code>כבג</code></pre>k<br /></li><li>נו</li></ul>"
+  },
+  "CB-Left-5": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>פא</li><li><pre><code>כבג</code></pre><br />k</li><li>נו</li></ul>"
+  },
+  "CB-Right-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:כבג@0",
+    "typed": "<ul><li>פא</li><li><pre><code>kכבג</code></pre><br /></li><li>נו</li></ul>"
+  },
+  "CB-Right-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:כבג@1",
+    "typed": "<ul><li>פא</li><li><pre><code>כkבג</code></pre><br /></li><li>נו</li></ul>"
+  },
+  "CB-Right-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:כבג@2",
+    "typed": "<ul><li>פא</li><li><pre><code>כבkג</code></pre><br /></li><li>נו</li></ul>"
+  },
+  "CB-Right-4": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:כבג@3",
+    "typed": "<ul><li>פא</li><li><pre><code>כבגk</code></pre><br /></li><li>נו</li></ul>"
+  },
+  "CB-Right-5": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>פא</li><li><pre><code>כבג</code></pre><br />k</li><li>נו</li></ul>"
+  },
+  "BH-Down-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@0",
+    "typed": "<ul><li>פא</li><li>k<br /><h3>הדה</h3></li><li>נו</li></ul>"
+  },
+  "BH-Down-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:הדה@1",
+    "typed": "<ul><li>פא</li><li><br /><h3>הkדה</h3></li><li>נו</li></ul>"
+  },
+  "BH-Down-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:נו@2",
+    "typed": "<ul><li>פא</li><li><br /><h3>הדה</h3></li><li>נוk</li></ul>"
+  },
+  "BH-Up-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:הדה@1",
+    "typed": "<ul><li>פא</li><li><br /><h3>הkדה</h3></li><li>נו</li></ul>"
+  },
+  "BH-Up-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@0",
+    "typed": "<ul><li>פא</li><li>k<br /><h3>הדה</h3></li><li>נו</li></ul>"
+  },
+  "BH-Up-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:פא@1",
+    "typed": "<ul><li>פkא</li><li><br /><h3>הדה</h3></li><li>נו</li></ul>"
+  },
+  "BH-Left-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:הדה@3",
+    "typed": "<ul><li>פא</li><li><br /><h3>הדהk</h3></li><li>נו</li></ul>"
+  },
+  "BH-Left-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:הדה@2",
+    "typed": "<ul><li>פא</li><li><br /><h3>הדkה</h3></li><li>נו</li></ul>"
+  },
+  "BH-Left-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:הדה@1",
+    "typed": "<ul><li>פא</li><li><br /><h3>הkדה</h3></li><li>נו</li></ul>"
+  },
+  "BH-Left-4": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:הדה@0",
+    "typed": "<ul><li>פא</li><li><br /><h3>kהדה</h3></li><li>נו</li></ul>"
+  },
+  "BH-Left-5": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@0",
+    "typed": "<ul><li>פא</li><li>k<br /><h3>הדה</h3></li><li>נו</li></ul>"
+  },
+  "BH-Right-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@0",
+    "typed": "<ul><li>פא</li><li>k<br /><h3>הדה</h3></li><li>נו</li></ul>"
+  },
+  "BH-Right-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:הדה@0",
+    "typed": "<ul><li>פא</li><li><br /><h3>kהדה</h3></li><li>נו</li></ul>"
+  },
+  "BH-Right-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:הדה@1",
+    "typed": "<ul><li>פא</li><li><br /><h3>הkדה</h3></li><li>נו</li></ul>"
+  },
+  "BH-Right-4": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:הדה@2",
+    "typed": "<ul><li>פא</li><li><br /><h3>הדkה</h3></li><li>נו</li></ul>"
+  },
+  "BH-Right-5": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:הדה@3",
+    "typed": "<ul><li>פא</li><li><br /><h3>הדהk</h3></li><li>נו</li></ul>"
+  },
+  "BC-Down-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@0",
+    "typed": "<ul><li>פא</li><li>k<br /><pre><code>כדה</code></pre></li><li>נו</li></ul>"
+  },
+  "BC-Down-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:כדה@1",
+    "typed": "<ul><li>פא</li><li><br /><pre><code>כkדה</code></pre></li><li>נו</li></ul>"
+  },
+  "BC-Down-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:נו@2",
+    "typed": "<ul><li>פא</li><li><br /><pre><code>כדה</code></pre></li><li>נוk</li></ul>"
+  },
+  "BC-Up-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:כדה@0",
+    "typed": "<ul><li>פא</li><li><br /><pre><code>kכדה</code></pre></li><li>נו</li></ul>"
+  },
+  "BC-Up-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@0",
+    "typed": "<ul><li>פא</li><li>k<br /><pre><code>כדה</code></pre></li><li>נו</li></ul>"
+  },
+  "BC-Up-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:פא@1",
+    "typed": "<ul><li>פkא</li><li><br /><pre><code>כדה</code></pre></li><li>נו</li></ul>"
+  },
+  "BC-Left-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:כדה@3",
+    "typed": "<ul><li>פא</li><li><br /><pre><code>כדהk</code></pre></li><li>נו</li></ul>"
+  },
+  "BC-Left-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:כדה@2",
+    "typed": "<ul><li>פא</li><li><br /><pre><code>כדkה</code></pre></li><li>נו</li></ul>"
+  },
+  "BC-Left-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:כדה@1",
+    "typed": "<ul><li>פא</li><li><br /><pre><code>כkדה</code></pre></li><li>נו</li></ul>"
+  },
+  "BC-Left-4": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:כדה@0",
+    "typed": "<ul><li>פא</li><li><br /><pre><code>kכדה</code></pre></li><li>נו</li></ul>"
+  },
+  "BC-Left-5": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@0",
+    "typed": "<ul><li>פא</li><li>k<br /><pre><code>כדה</code></pre></li><li>נו</li></ul>"
+  },
+  "BC-Right-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@0",
+    "typed": "<ul><li>פא</li><li>k<br /><pre><code>כדה</code></pre></li><li>נו</li></ul>"
+  },
+  "BC-Right-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:כדה@0",
+    "typed": "<ul><li>פא</li><li><br /><pre><code>kכדה</code></pre></li><li>נו</li></ul>"
+  },
+  "BC-Right-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:כדה@1",
+    "typed": "<ul><li>פא</li><li><br /><pre><code>כkדה</code></pre></li><li>נו</li></ul>"
+  },
+  "BC-Right-4": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:כדה@2",
+    "typed": "<ul><li>פא</li><li><br /><pre><code>כדkה</code></pre></li><li>נו</li></ul>"
+  },
+  "BC-Right-5": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:כדה@3",
+    "typed": "<ul><li>פא</li><li><br /><pre><code>כדהk</code></pre></li><li>נו</li></ul>"
+  },
+  "BQT-Down-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@0",
+    "typed": "<ul><li>פא</li><li>k<br /><blockquote><p>קדה</p></blockquote>תהו</li><li>נו</li></ul>"
+  },
+  "BQT-Down-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:קדה@1",
+    "typed": "<ul><li>פא</li><li><br /><blockquote><p>קkדה</p></blockquote>תהו</li><li>נו</li></ul>"
+  },
+  "BQT-Down-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:תהו@1",
+    "typed": "<ul><li>פא</li><li><br /><blockquote><p>קדה</p></blockquote>תkהו</li><li>נו</li></ul>"
+  },
+  "BQT-Up-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:תהו@1",
+    "typed": "<ul><li>פא</li><li><br /><blockquote><p>קדה</p></blockquote>תkהו</li><li>נו</li></ul>"
+  },
+  "BQT-Up-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:קדה@1",
+    "typed": "<ul><li>פא</li><li><br /><blockquote><p>קkדה</p></blockquote>תהו</li><li>נו</li></ul>"
+  },
+  "BQT-Up-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@0",
+    "typed": "<ul><li>פא</li><li>k<br /><blockquote><p>קדה</p></blockquote>תהו</li><li>נו</li></ul>"
+  },
+  "BQT-Left-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:תהו@3",
+    "typed": "<ul><li>פא</li><li><br /><blockquote><p>קדה</p></blockquote>תהוk</li><li>נו</li></ul>"
+  },
+  "BQT-Left-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:תהו@2",
+    "typed": "<ul><li>פא</li><li><br /><blockquote><p>קדה</p></blockquote>תהkו</li><li>נו</li></ul>"
+  },
+  "BQT-Left-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:תהו@1",
+    "typed": "<ul><li>פא</li><li><br /><blockquote><p>קדה</p></blockquote>תkהו</li><li>נו</li></ul>"
+  },
+  "BQT-Left-4": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:תהו@0",
+    "typed": "<ul><li>פא</li><li><br /><blockquote><p>קדה</p></blockquote>kתהו</li><li>נו</li></ul>"
+  },
+  "BQT-Left-5": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:קדה@3",
+    "typed": "<ul><li>פא</li><li><br /><blockquote><p>קדהk</p></blockquote>תהו</li><li>נו</li></ul>"
+  },
+  "BQT-Right-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@0",
+    "typed": "<ul><li>פא</li><li>k<br /><blockquote><p>קדה</p></blockquote>תהו</li><li>נו</li></ul>"
+  },
+  "BQT-Right-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:קדה@0",
+    "typed": "<ul><li>פא</li><li><br /><blockquote><p>kקדה</p></blockquote>תהו</li><li>נו</li></ul>"
+  },
+  "BQT-Right-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:קדה@1",
+    "typed": "<ul><li>פא</li><li><br /><blockquote><p>קkדה</p></blockquote>תהו</li><li>נו</li></ul>"
+  },
+  "BQT-Right-4": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:קדה@2",
+    "typed": "<ul><li>פא</li><li><br /><blockquote><p>קדkה</p></blockquote>תהו</li><li>נו</li></ul>"
+  },
+  "BQT-Right-5": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:קדה@3",
+    "typed": "<ul><li>פא</li><li><br /><blockquote><p>קדהk</p></blockquote>תהו</li><li>נו</li></ul>"
+  },
+  "QB-Down-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:קבג@1",
+    "typed": "<ul><li>פא</li><li><blockquote><p>קkבג</p></blockquote><br /></li><li>נו</li></ul>"
+  },
+  "QB-Down-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>פא</li><li><blockquote><p>קבג</p></blockquote>k<br /></li><li>נו</li></ul>"
+  },
+  "QB-Down-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>פא</li><li><blockquote><p>קבג</p></blockquote><br />k</li><li>נו</li></ul>"
+  },
+  "QB-Up-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>פא</li><li><blockquote><p>קבג</p></blockquote><br />k</li><li>נו</li></ul>"
+  },
+  "QB-Up-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>פא</li><li><blockquote><p>קבג</p></blockquote>k<br /></li><li>נו</li></ul>"
+  },
+  "QB-Up-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:קבג@1",
+    "typed": "<ul><li>פא</li><li><blockquote><p>קkבג</p></blockquote><br /></li><li>נו</li></ul>"
+  },
+  "QB-Left-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>פא</li><li><blockquote><p>קבג</p></blockquote><br />k</li><li>נו</li></ul>"
+  },
+  "QB-Left-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>פא</li><li><blockquote><p>קבג</p></blockquote>k<br /></li><li>נו</li></ul>"
+  },
+  "QB-Left-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>פא</li><li><blockquote><p>קבג</p></blockquote><br />k</li><li>נו</li></ul>"
+  },
+  "QB-Left-4": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>פא</li><li><blockquote><p>קבג</p></blockquote>k<br /></li><li>נו</li></ul>"
+  },
+  "QB-Left-5": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>פא</li><li><blockquote><p>קבג</p></blockquote><br />k</li><li>נו</li></ul>"
+  },
+  "QB-Right-1": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:קבג@0",
+    "typed": "<ul><li>פא</li><li><blockquote><p>kקבג</p></blockquote><br /></li><li>נו</li></ul>"
+  },
+  "QB-Right-2": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:קבג@1",
+    "typed": "<ul><li>פא</li><li><blockquote><p>קkבג</p></blockquote><br /></li><li>נו</li></ul>"
+  },
+  "QB-Right-3": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:קבג@2",
+    "typed": "<ul><li>פא</li><li><blockquote><p>קבkג</p></blockquote><br /></li><li>נו</li></ul>"
+  },
+  "QB-Right-4": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:קבג@3",
+    "typed": "<ul><li>פא</li><li><blockquote><p>קבגk</p></blockquote><br /></li><li>נו</li></ul>"
+  },
+  "QB-Right-5": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>פא</li><li><blockquote><p>קבג</p></blockquote>k<br /></li><li>נו</li></ul>"
+  }
+}

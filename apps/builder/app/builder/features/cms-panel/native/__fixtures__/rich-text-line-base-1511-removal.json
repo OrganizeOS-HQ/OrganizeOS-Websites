@@ -1,0 +1,110 @@
+{
+  "after the rule to B2w@1|forward|bs": {
+    "before": "element:root@2|text:B2w@1",
+    "write": "<p>A0w</p><hr /><p>B</p>",
+    "calls": 1,
+    "caret": "text:B@1"
+  },
+  "after the rule to B2w@1|forward|k": {
+    "before": "element:root@2|text:B2w@1",
+    "write": "<p>A0w</p><hr /><p>Bk</p>",
+    "calls": 1,
+    "caret": "text:Bk@2"
+  },
+  "after the rule to B2w@1|forward|cut": {
+    "before": "element:root@2|text:B2w@1",
+    "write": "<p>A0w</p><hr /><p>B</p>",
+    "calls": 1,
+    "caret": "text:B@1"
+  },
+  "after the rule to B2w@1|backward|bs": {
+    "before": "text:B2w@1|element:root@2",
+    "write": "<p>A0w</p><hr /><p>B</p>",
+    "calls": 1,
+    "caret": "text:B@1"
+  },
+  "after the rule to B2w@1|backward|k": {
+    "before": "text:B2w@1|element:root@2",
+    "write": "<p>A0w</p><hr /><p>Bk</p>",
+    "calls": 1,
+    "caret": "text:Bk@2"
+  },
+  "after the rule to B2w@1|backward|cut": {
+    "before": "text:B2w@1|element:root@2",
+    "write": "<p>A0w</p><hr /><p>B</p>",
+    "calls": 1,
+    "caret": "text:B@1"
+  },
+  "A0w@1 to after the rule|forward|bs": {
+    "before": "text:A0w@1|element:root@2",
+    "write": "<p>A</p>",
+    "calls": 1,
+    "caret": "text:A@1"
+  },
+  "A0w@1 to after the rule|forward|k": {
+    "before": "text:A0w@1|element:root@2",
+    "write": "<p>AkB2w</p>",
+    "calls": 1,
+    "caret": "text:AkB2w@2"
+  },
+  "A0w@1 to after the rule|forward|cut": {
+    "before": "text:A0w@1|element:root@2",
+    "write": "<p>A</p>",
+    "calls": 1,
+    "caret": "text:A@1"
+  },
+  "A0w@1 to after the rule|backward|bs": {
+    "before": "element:root@2|text:A0w@1",
+    "write": "<p>A</p>",
+    "calls": 1,
+    "caret": "text:A@1"
+  },
+  "A0w@1 to after the rule|backward|k": {
+    "before": "element:root@2|text:A0w@1",
+    "write": "<p>AkB2w</p>",
+    "calls": 1,
+    "caret": "text:AkB2w@2"
+  },
+  "A0w@1 to after the rule|backward|cut": {
+    "before": "element:root@2|text:A0w@1",
+    "write": "<p>A</p>",
+    "calls": 1,
+    "caret": "text:A@1"
+  },
+  "before the rule to after it|forward|bs": {
+    "before": "element:root@1|element:root@2",
+    "write": "<p>A0w</p>",
+    "calls": 1,
+    "caret": "element:root@1"
+  },
+  "before the rule to after it|forward|k": {
+    "before": "element:root@1|element:root@2",
+    "write": "<p>A0w</p><p>k</p>",
+    "calls": 1,
+    "caret": "text:k@1"
+  },
+  "before the rule to after it|forward|cut": {
+    "before": "element:root@1|element:root@2",
+    "write": "<p>A0w</p>",
+    "calls": 1,
+    "caret": "element:root@1"
+  },
+  "before the rule to after it|backward|bs": {
+    "before": "element:root@2|element:root@1",
+    "write": "<p>A0w</p>",
+    "calls": 1,
+    "caret": "element:root@1"
+  },
+  "before the rule to after it|backward|k": {
+    "before": "element:root@2|element:root@1",
+    "write": "<p>A0w</p><p>k</p>",
+    "calls": 1,
+    "caret": "text:k@1"
+  },
+  "before the rule to after it|backward|cut": {
+    "before": "element:root@2|element:root@1",
+    "write": "<p>A0w</p>",
+    "calls": 1,
+    "caret": "element:root@1"
+  }
+}

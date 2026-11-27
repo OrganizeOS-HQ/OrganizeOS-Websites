@@ -1,0 +1,74 @@
+{
+  "plain middle blockLed click": {
+    "write": "<ul><li>Pw</li><li><h3>Aw</h3><h3>Bw</h3>T1w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Bw@0",
+    "typed": "<ul><li>Pw</li><li><h3>Aw</h3><h3>kBw</h3>T1w</li><li>Nw</li></ul>"
+  },
+  "plain middle blockLed structure": {
+    "write": "<ul><li>Pw</li><li><h3>Aw</h3><h3>Bw</h3>T1w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Bw@0",
+    "typed": "<ul><li>Pw</li><li><h3>Aw</h3><h3>kBw</h3>T1w</li><li>Nw</li></ul>"
+  },
+  "plain middle lineLed click": {
+    "write": "<ul><li>Pw</li><li>T9w<h3>Aw</h3><h3>Bw</h3>T1w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Bw@0",
+    "typed": "<ul><li>Pw</li><li>T9w<h3>Aw</h3><h3>kBw</h3>T1w</li><li>Nw</li></ul>"
+  },
+  "plain middle lineLed structure": {
+    "write": "<ul><li>Pw</li><li>T9w<h3>Aw</h3><h3>Bw</h3>T1w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Bw@0",
+    "typed": "<ul><li>Pw</li><li>T9w<h3>Aw</h3><h3>kBw</h3>T1w</li><li>Nw</li></ul>"
+  },
+  "plain middle ordinary click": {
+    "write": "<p>T0w</p><h3>Aw</h3><h3>Bw</h3><p>T1w</p>",
+    "calls": 1,
+    "caret": "text:Bw@0",
+    "typed": "<p>T0w</p><h3>Aw</h3><h3>kBw</h3><p>T1w</p>"
+  },
+  "plain middle ordinary structure": {
+    "write": "<p>T0w</p><h3>Aw</h3><h3>Bw</h3><p>T1w</p>",
+    "calls": 1,
+    "caret": "text:Bw@0",
+    "typed": "<p>T0w</p><h3>Aw</h3><h3>kBw</h3><p>T1w</p>"
+  },
+  "text end blockLed click": {
+    "write": "<ul><li>Pw</li><li><h3>AwBw</h3><p></p>T1w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:paragraph@0",
+    "typed": "<ul><li>Pw</li><li><h3>AwBw</h3><p>k</p>T1w</li><li>Nw</li></ul>"
+  },
+  "text end blockLed structure": {
+    "write": "<ul><li>Pw</li><li><h3>AwBw</h3><p></p>T1w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:paragraph@0",
+    "typed": "<ul><li>Pw</li><li><h3>AwBw</h3><p>k</p>T1w</li><li>Nw</li></ul>"
+  },
+  "text end lineLed click": {
+    "write": "<ul><li>Pw</li><li>T9w<h3>AwBw</h3><p></p>T1w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:paragraph@0",
+    "typed": "<ul><li>Pw</li><li>T9w<h3>AwBw</h3><p>k</p>T1w</li><li>Nw</li></ul>"
+  },
+  "text end lineLed structure": {
+    "write": "<ul><li>Pw</li><li>T9w<h3>AwBw</h3><p></p>T1w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:paragraph@0",
+    "typed": "<ul><li>Pw</li><li>T9w<h3>AwBw</h3><p>k</p>T1w</li><li>Nw</li></ul>"
+  },
+  "text end ordinary click": {
+    "write": "<p>T0w</p><h3>AwBw</h3><p></p><p>T1w</p>",
+    "calls": 1,
+    "caret": "element:paragraph@0",
+    "typed": "<p>T0w</p><h3>AwBw</h3><p>k</p><p>T1w</p>"
+  },
+  "text end ordinary structure": {
+    "write": "<p>T0w</p><h3>AwBw</h3><p></p><p>T1w</p>",
+    "calls": 1,
+    "caret": "element:paragraph@0",
+    "typed": "<p>T0w</p><h3>AwBw</h3><p>k</p><p>T1w</p>"
+  }
+}

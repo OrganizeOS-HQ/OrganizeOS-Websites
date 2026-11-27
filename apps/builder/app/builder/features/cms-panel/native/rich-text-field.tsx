@@ -7,7 +7,13 @@
  * A value the editor would not keep whole (a block shape its export does
  * not reproduce) opens read-only, so nothing is lost silently.
  */
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   $copyNode,
   $createNodeSelection,
@@ -26,21 +32,10 @@ import {
   $isParagraphNode,
   $isRootNode,
   $isLineBreakNode,
-  COMMAND_PRIORITY_CRITICAL,
-  DELETE_CHARACTER_COMMAND,
-  DELETE_LINE_COMMAND,
-  DELETE_WORD_COMMAND,
-  DRAGSTART_COMMAND,
   INSERT_LINE_BREAK_COMMAND,
   INSERT_PARAGRAPH_COMMAND,
-  KEY_BACKSPACE_COMMAND,
-  KEY_DELETE_COMMAND,
-  REMOVE_TEXT_COMMAND,
-  type LexicalCommand,
-  DROP_COMMAND,
   KEY_ARROW_DOWN_COMMAND,
   KEY_ARROW_LEFT_COMMAND,
-  KEY_ARROW_RIGHT_COMMAND,
   KEY_ARROW_UP_COMMAND,
   KEY_DOWN_COMMAND,
   type BaseSelection,
@@ -48,8 +43,7 @@ import {
   COMMAND_PRIORITY_LOW,
   COMMAND_PRIORITY_NORMAL,
   CONTROLLED_TEXT_INSERTION_COMMAND,
-  COPY_COMMAND,
-  CUT_COMMAND,
+  DELETE_CHARACTER_COMMAND,
   FORMAT_TEXT_COMMAND,
   ParagraphNode,
   PASTE_COMMAND,
@@ -91,7 +85,6 @@ import {
 } from "@lexical/rich-text";
 import {
   $generateNodesFromSerializedNodes,
-  $getLexicalContent,
   $insertDataTransferForRichText,
 } from "@lexical/clipboard";
 import { $createCodeNode, $isCodeNode } from "@lexical/code";
@@ -106,13 +99,57 @@ import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
-import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
 import { LinkPlugin } from "@lexical/react/LexicalLinkPlugin";
 import { ListPlugin } from "@lexical/react/LexicalListPlugin";
-import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
 import { HorizontalRulePlugin } from "@lexical/react/LexicalHorizontalRulePlugin";
-import { INSERT_HORIZONTAL_RULE_COMMAND } from "@lexical/react/LexicalHorizontalRuleNode";
+import { LEXICAL_CLIPBOARD_TYPE } from "./rich-text-line-clipboard";
+import {
+  fieldNamespaceOf,
+  provideFieldHandlers,
+  registerRichTextCommands,
+} from "./rich-text-line-commands";
+import {
+  CmsHistoryPlugin,
+  compositionHoldsStartChar,
+  registerCompositionEndOnKey,
+  registerCompositionStep,
+} from "./rich-text-line-history";
+import { $isCmsLineNode } from "./rich-text-line-node";
+import { registerLineInputListener } from "./rich-text-line-node-selection";
+import {
+  $unwrapLines,
+  registerLineTransforms,
+} from "./rich-text-line-normalise";
+import {
+  $intoLine,
+  $pasteTextIntoItemLine,
+  $removeRangeBeforePlainText,
+} from "./rich-text-line-paste";
+import {
+  $caretOffEmptyLine,
+  $pointIntoAdjacentBlock,
+  $resolveLinedPoints,
+  focusEditor,
+  isPressing,
+  d7Document,
+  removeKeptLines,
+} from "./rich-text-line-points";
+import { $rangeEndsIntoText } from "./rich-text-line-removal";
+import {
+  $quotedLineContent,
+  $refuseBlockTypeOnLine,
+  $refuseParagraphInQuote,
+  $restoreLinesAfterBlockType,
+  $unwrapListLinesAtCaret,
+  $unwrapQuoteLinesForParagraph,
+  type BlockType,
+} from "./rich-text-line-toolbar";
+import { watchField, type FieldValue } from "./rich-text-field-watch";
+import {
+  $isHorizontalRuleNode,
+  INSERT_HORIZONTAL_RULE_COMMAND,
+} from "@lexical/react/LexicalHorizontalRuleNode";
 import {
   Button,
   css,
@@ -161,7 +198,6 @@ import {
   exportRichTextHtml,
   getRichTextReadOnlyReason,
   importRichTextHtml,
-  markRichTextCopy,
   readRichTextValue,
   richTextHasImage,
   richTextHref,
@@ -263,6 +299,14 @@ const contentStyle = css(textVariants.regular, {
     borderTop: `1px solid ${cssVar("--border-default")}`,
     marginBlock: theme.spacing[5],
   },
+  // a line adds no space of its own: the break Lexical adds after a stored
+  // break that ends a line draws nothing where something follows the line,
+  // as the stored break draws nothing at the head before a block. An empty
+  // line's single break stays, and so does the added break of the line
+  // that holds the caret after its last break
+  "& [data-cms-line]:not([data-cms-caret]):has(+ *) > br + br:last-child": {
+    display: "none",
+  },
 });
 
 const NumberedListIcon = () => (
@@ -310,8 +354,6 @@ const ToolbarButton = ({
     </IconButton>
   </Tooltip>
 );
-
-type BlockType = "paragraph" | "h2" | "h3" | "h4" | "quote" | "code";
 
 const blockTypes: BlockType[] = [
   "paragraph",
@@ -422,6 +464,17 @@ const setBlockType = (editor: LexicalEditor, block: BlockType) => {
     if (selection.anchor.key === "root" || selection.focus.key === "root") {
       return;
     }
+    if (block === "paragraph") {
+      if ($refuseParagraphInQuote()) {
+        return;
+      }
+      $unwrapQuoteLinesForParagraph(selection);
+    }
+    if ($refuseBlockTypeOnLine(block, $nestingOf)) {
+      return;
+    }
+
+    const before = $quotedLineContent();
     $setBlocksType(selection, () => {
       switch (block) {
         case "paragraph":
@@ -434,8 +487,9 @@ const setBlockType = (editor: LexicalEditor, block: BlockType) => {
           return $createHeadingNode(block);
       }
     });
+    $restoreLinesAfterBlockType(before);
   });
-  editor.focus();
+  focusEditor(editor);
 };
 
 /**
@@ -449,11 +503,12 @@ const setBlockType = (editor: LexicalEditor, block: BlockType) => {
  * level stay.
  */
 const $liftBlocksAfterNestedList = (item: ListItemNode) => {
-  const children = item.getChildren();
-  const listAt = children.findIndex($isListNode);
+  const listAt = item.getChildren().findIndex($isListNode);
   if (listAt === -1) {
     return;
   }
+  $unwrapLines(item.getChildren().slice(listAt + 1));
+  const children = item.getChildren();
   const after = children.slice(listAt + 1);
   const isBlock = (node: LexicalNode) =>
     ($isElementNode(node) || $isDecoratorNode(node)) &&
@@ -742,7 +797,7 @@ const $nestingOf = (node: LexicalNode) => {
  * follows them.
  */
 const $liftQuoteOutOfItem = (quote: QuoteNode, item: ListItemNode) => {
-  const rest = quote.getNextSiblings();
+  const rest = $unwrapLines(quote.getNextSiblings());
   let at: LexicalNode = item;
   // a quote inside gives way to its blocks too, in order
   const children: LexicalNode[] = [];
@@ -867,20 +922,33 @@ const $liftBlocksOutOfTextBlock = (block: ElementNode) => {
 };
 
 /** The node rules the read-only check runs too (`registerRichTextTransforms`). */
-const TransformsPlugin = () => {
+const TransformsPlugin = ({ namespace }: { namespace: string }) => {
   const [editor] = useLexicalComposerContext();
   useEffect(
     () =>
       mergeRegister(
+        // first: the field's earliest keydown listener (T43.1)
+        registerCompositionEndOnKey(editor),
         registerRichTextTransforms(editor),
         // the live editor's alone: a stored value of these shapes reads lossy
-        editor.registerNodeTransform(ListItemNode, $liftBlocksAfterNestedList),
         editor.registerNodeTransform(ListNode, $liftPastDepthLimit),
         editor.registerNodeTransform(QuoteNode, $liftPastDepthLimit),
         editor.registerNodeTransform(ParagraphNode, $liftBlocksOutOfTextBlock),
-        editor.registerNodeTransform(HeadingNode, $liftBlocksOutOfTextBlock)
+        editor.registerNodeTransform(HeadingNode, $liftBlocksOutOfTextBlock),
+        // a list item's lift runs first in the item's one transform
+        registerLineTransforms(editor, $liftBlocksAfterNestedList),
+        // every handler that shares a command and a priority with a line
+        // handler, in one stated order; the field's plugins above provide
+        // theirs
+        registerRichTextCommands(editor, {
+          namespace,
+          theme: editorTheme,
+          nodes: editorNodes,
+        }),
+        registerLineInputListener(editor),
+        registerCompositionStep(editor)
       ),
-    [editor]
+    [editor, namespace]
   );
   return null;
 };
@@ -912,7 +980,10 @@ const LinkButton = ({
     });
   };
 
+  const closedByPressInEditor = useRef(false);
   const apply = () => {
+    // B: an edit: lines a press's caret left go first
+    removeKeptLines(editor);
     // only an address the site shows as a link
     const href = richTextHref(url);
     if (href === null) {
@@ -955,9 +1026,23 @@ const LinkButton = ({
       <PopoverContent
         align="start"
         css={{ width: theme.spacing[33], padding: theme.panel.padding }}
+        // 15.14 (a): a close that came from a press inside the editor does
+        // not hand focus back (the press gives the editor focus itself)
+        onPointerDownOutside={(event) => {
+          const target = (event.detail?.originalEvent?.target ??
+            event.target) as Node | null;
+          closedByPressInEditor.current =
+            target !== null &&
+            editor.getRootElement()?.contains(target) === true;
+        }}
         onCloseAutoFocus={(event) => {
           event.preventDefault();
-          editor.focus();
+          const byPress = closedByPressInEditor.current;
+          closedByPressInEditor.current = false;
+          if (byPress) {
+            return;
+          }
+          focusEditor(editor);
         }}
       >
         <Grid gap="2">
@@ -999,6 +1084,7 @@ const LinkButton = ({
                 <Button
                   color="ghost"
                   onClick={() => {
+                    removeKeptLines(editor);
                     editor.dispatchCommand(TOGGLE_LINK_COMMAND, null);
                     setOpen(false);
                   }}
@@ -1029,34 +1115,126 @@ type ImageUpload = {
 };
 
 /**
- * Inserts the image where the caret was when Image was chosen, or in a new
- * paragraph at the end when that place is gone or is a code block.
+ * Inserts the image where the caret was when Image was chosen; after the
+ * code block that place is in (for a range, the caret the field's removal
+ * leaves); or in a new paragraph at the end when that place is gone.
  */
 const insertImage = (
   editor: LexicalEditor,
   caret: RangeSelection | null,
   attributes: CmsImageAttributes
 ) => {
+  // 15.14: an upload that finishes during a press in the editor leaves the
+  // press's own caret where the press made it
+  const pressed = isPressing(editor);
   editor.update(() => {
+    const kept = pressed ? ($getSelection()?.clone() ?? null) : null;
     const image = $createCmsImageNode(attributes);
+    // the insert splits the text the image lands in: the node keeps the
+    // text before the image and the rest follows the image in a new node,
+    // so a press later in that text is the same place in the new node
+    // (T95.5)
+    const pressedTexts = new Map(
+      $isRangeSelection(kept)
+        ? [kept.anchor, kept.focus].map((point) => [
+            point.key,
+            $getNodeByKey(point.key)?.getTextContent(),
+          ])
+        : []
+    );
+    const $followSplit = (point: RangeSelection["anchor"]) => {
+      const node = $getNodeByKey(point.key);
+      if (
+        point.type !== "text" ||
+        $isTextNode(node) === false ||
+        point.offset <= node.getTextContentSize()
+      ) {
+        return;
+      }
+      const rest = node.getNextSibling()?.is(image)
+        ? node.getNextSibling()?.getNextSibling()
+        : null;
+      if (
+        $isTextNode(rest) &&
+        node.getTextContent() + rest.getTextContent() ===
+          pressedTexts.get(point.key)
+      ) {
+        point.set(
+          rest.getKey(),
+          point.offset - node.getTextContentSize(),
+          "text"
+        );
+      }
+    };
+    const $keepPress = () => {
+      if ($isRangeSelection(kept)) {
+        $followSplit(kept.anchor);
+        $followSplit(kept.focus);
+      }
+      if (
+        $isRangeSelection(kept) === false ||
+        [kept.anchor, kept.focus].some((point) => {
+          const node = $getNodeByKey(point.key);
+          return (
+            node === null ||
+            node.isAttached() === false ||
+            point.offset >
+              ($isTextNode(node)
+                ? node.getTextContentSize()
+                : $isElementNode(node)
+                  ? node.getChildrenSize()
+                  : 0)
+          );
+        })
+      ) {
+        return;
+      }
+      $setSelection(kept);
+    };
     const isAttached =
       caret !== null &&
       $getNodeByKey(caret.anchor.key) !== null &&
       $getNodeByKey(caret.focus.key) !== null;
+    const $inCode = (point: RangeSelection["anchor"]) =>
+      $findMatchingParent(point.getNode(), $isCodeNode);
+    let place: RangeSelection | null = isAttached ? caret : null;
+    if (place !== null && place.isCollapsed() === false) {
+      // T41.2: a range goes by the field's own removal, the one Backspace
+      // over it runs (T36.1); the caret that leaves is the place (T40.4)
+      $setSelection(place.clone());
+      editor.dispatchCommand(DELETE_CHARACTER_COMMAND, true);
+      const removed = $getSelection();
+      place = $isRangeSelection(removed) ? removed : null;
+    }
     if (
-      caret !== null &&
-      isAttached &&
-      $findMatchingParent(caret.anchor.getNode(), $isCodeNode) === null &&
-      $findMatchingParent(caret.focus.getNode(), $isCodeNode) === null
+      place !== null &&
+      $inCode(place.anchor) === null &&
+      $inCode(place.focus) === null
     ) {
-      const selection = caret.clone();
-      $setSelection(selection);
+      if (place === caret) {
+        $setSelection(place.clone());
+      }
+      $resolveLinedPoints(true);
+      const selection = $getSelection() as RangeSelection;
       $editInBlockLedItem(selection, () => selection.insertNodes([image]));
+      $keepPress();
       return;
     }
     const paragraph = $createParagraphNode();
     paragraph.append(image);
+    // T13.1: a caret in a code block (a code block holds no image) puts
+    // the image directly after that block, in the block's own container: a
+    // paragraph at the root and in a quote, a line in a list item
+    const code =
+      place !== null ? ($inCode(place.focus) ?? $inCode(place.anchor)) : null;
+    if (code !== null) {
+      code.insertAfter(paragraph);
+      $keepPress();
+      return;
+    }
+    // the end of the content: the place Image was chosen at is gone
     $getRoot().append(paragraph);
+    $keepPress();
   });
 };
 
@@ -1234,6 +1412,78 @@ const $unwrapQuotedBlocks = () => {
 };
 
 /** One `role="toolbar"` row, on upstream's `MarkdownToolbar` pattern. */
+/**
+ * T10: when the Block type select closes, the keys go back to the editor
+ * at its caret, through the one focus function (the select's own close
+ * focuses its button after the change, so the editor takes the focus when
+ * the button gets it). A close that came from a press inside the editor
+ * hands no focus (15.14).
+ */
+const BlockTypeSelect = ({
+  block,
+  disabled,
+}: {
+  block: BlockType;
+  disabled: boolean;
+}) => {
+  const [editor] = useLexicalComposerContext();
+  const [open, setOpen] = useState(false);
+  // how the select last closed, until its button takes the focus back
+  const close = useRef<"press" | "other" | undefined>(undefined);
+  const pressedInEditor = useRef(false);
+  useEffect(() => {
+    if (open === false) {
+      return;
+    }
+    pressedInEditor.current = false;
+    // the select is modal: a press outside its list reaches no element, so
+    // the editor is found by the press's place
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      const box = editor.getRootElement()?.getBoundingClientRect();
+      pressedInEditor.current =
+        (target instanceof Element &&
+          target.closest("[data-radix-popper-content-wrapper]") !== null) ===
+          false &&
+        box !== undefined &&
+        event.clientX >= box.left &&
+        event.clientX <= box.right &&
+        event.clientY >= box.top &&
+        event.clientY <= box.bottom;
+    };
+    window.addEventListener("pointerdown", onPointerDown, true);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown, true);
+    };
+  }, [editor, open]);
+  return (
+    <Select
+      aria-label="Block type"
+      options={blockTypes}
+      value={block}
+      getLabel={(block: BlockType) => blockLabels[block]}
+      disabled={disabled}
+      open={open}
+      onOpenChange={(next) => {
+        close.current = next
+          ? undefined
+          : pressedInEditor.current
+            ? "press"
+            : "other";
+        setOpen(next);
+      }}
+      onChange={(block) => setBlockType(editor, block)}
+      onFocus={() => {
+        const how = close.current;
+        close.current = undefined;
+        if (how === "other") {
+          focusEditor(editor);
+        }
+      }}
+    />
+  );
+};
+
 const Toolbar = ({
   id,
   disabled,
@@ -1253,6 +1503,7 @@ const Toolbar = ({
   const toggleList = (type: "bullet" | "number") => {
     // one update: one undo step
     editor.update(() => {
+      $caretOffEmptyLine();
       // an element caret is kept by the node beside it, as the list
       // commands replace the block it points into
       const selection = $getSelection();
@@ -1274,6 +1525,7 @@ const Toolbar = ({
           })
         : [];
       if (state.list === type) {
+        $unwrapListLinesAtCaret();
         editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
       } else {
         // a quote holding paragraphs gives up the ones the list covers
@@ -1295,6 +1547,21 @@ const Toolbar = ({
         }
         for (const [index, point] of [next.anchor, next.focus].entries()) {
           const at = kept[index];
+          // T59 defect 2, T71.2: a rule the caret is kept by leaves the
+          // paragraph the item became now, as the transform would at the
+          // commit; the caret then stays beside it, not in the paragraph
+          // the transform removes (5.7, V16, D13). Beside a quote, a
+          // heading or a code block the head's result stands
+          const isRule = at !== undefined && $isHorizontalRuleNode(at.node);
+          let holder = at?.node.getParent();
+          while (
+            at !== undefined &&
+            isRule &&
+            ($isParagraphNode(holder) || $isHeadingNode(holder))
+          ) {
+            $liftBlocksOutOfTextBlock(holder);
+            holder = at.node.getParent();
+          }
           const parent = at?.node.getParent();
           if (
             at === undefined ||
@@ -1313,15 +1580,27 @@ const Toolbar = ({
     });
   };
   return (
-    <div className={toolbarStyle()} role="toolbar" aria-label="Formatting">
-      <Select
-        aria-label="Block type"
-        options={blockTypes}
-        value={state.block}
-        getLabel={(block: BlockType) => blockLabels[block]}
-        disabled={disabled}
-        onChange={(block) => setBlockType(editor, block)}
-      />
+    <div
+      className={toolbarStyle()}
+      role="toolbar"
+      aria-label="Formatting"
+      // 15.13 (a): lines a press's caret left go before a toolbar command,
+      // at the click (the press is over: nothing moves under the pointer)
+      // or the key that runs it
+      onClickCapture={(event) => {
+        // the toolbar's own controls; a popover's content (a portal) runs
+        // the removal at its own command
+        if (event.currentTarget.contains(event.target as Node)) {
+          removeKeptLines(editor);
+        }
+      }}
+      onKeyDownCapture={(event) => {
+        if (event.currentTarget.contains(event.target as Node)) {
+          removeKeptLines(editor);
+        }
+      }}
+    >
+      <BlockTypeSelect block={state.block} disabled={disabled} />
       <ToolbarButton
         label="Bold"
         active={state.bold && inCode === false}
@@ -1390,9 +1669,6 @@ const Toolbar = ({
     </div>
   );
 };
-
-/** The clipboard type of Lexical's own copy, whose nodes carry their links. */
-const LEXICAL_CLIPBOARD_TYPE = "application/x-lexical-editor";
 
 const imageAttributeKeys = ["alt", "height", "src", "title", "width"];
 
@@ -2156,6 +2432,21 @@ const ImageEditingPlugin = () => {
           if ($isRangeSelection(selection) === false) {
             return false;
           }
+          // T45.2 (D10): at a collapsed caret in a line with no word at it
+          // (no text node at the caret), Link writes nothing, before
+          // anything is touched
+          if (
+            selection.isCollapsed() &&
+            $isCmsLineNode(selection.anchor.getNode())
+          ) {
+            return true;
+          }
+          // 16.11: the range's element-point ends take their place in text
+          // first (the removal step's placement), as the toggle reads only
+          // text ends; a range that then holds nothing links nothing
+          if ($rangeEndsIntoText(selection)) {
+            return true;
+          }
           // the images the selection reaches, found before the toggle
           // moves the selection's offsets past a link it inserts
           const images = selection
@@ -2197,81 +2488,73 @@ const ImageEditingPlugin = () => {
         },
         COMMAND_PRIORITY_NORMAL
       ),
-      // an arrow onto an image selects it (an inline image beside the
-      // caret, or a figure beside the block's edge); the next arrow moves
-      // past it as a text caret
-      ...(
-        [
-          [KEY_ARROW_LEFT_COMMAND, true],
-          [KEY_ARROW_RIGHT_COMMAND, false],
-        ] as const
-      ).map(([command, isBackward]) =>
-        editor.registerCommand(
-          command,
-          (event: KeyboardEvent) => {
-            if (event.altKey || event.ctrlKey || event.metaKey) {
-              return false;
-            }
-            const selection = $getSelection();
-            if ($isNodeSelection(selection)) {
-              const image = $selectedImage(selection);
-              if (image === undefined || event.shiftKey) {
-                return false;
-              }
-              event.preventDefault();
-              $caretBeside(image, isBackward);
-              lastArrow.current = undefined;
-              return true;
-            }
-            if ($isRangeSelection(selection) === false || event.shiftKey) {
-              return false;
-            }
-            // a range with a plain arrow collapses toward the arrow
-            if (selection.isCollapsed() === false) {
-              event.preventDefault();
-              const [start, end] = selection.isBackward()
-                ? [selection.focus, selection.anchor]
-                : [selection.anchor, selection.focus];
-              const to = isBackward ? start : end;
-              const point = { key: to.key, offset: to.offset, type: to.type };
-              selection.anchor.set(point.key, point.offset, point.type);
-              selection.focus.set(point.key, point.offset, point.type);
-              lastArrow.current = undefined;
-              return true;
-            }
-            // a line break beside the caret: the caret steps just past it,
-            // so the next arrow reaches what starts the next line
-            const beside = $getAdjacentNode(selection.focus, isBackward);
-            if ($isLineBreakNode(beside)) {
-              event.preventDefault();
-              const parent = beside.getParentOrThrow().getKey();
-              const offset =
-                beside.getIndexWithinParent() + (isBackward ? 0 : 1);
-              selection.anchor.set(parent, offset, "element");
-              selection.focus.set(parent, offset, "element");
-              lastArrow.current = undefined;
-              return true;
-            }
-            const image = $imageBeside(selection, isBackward);
-            if (image === undefined) {
+      // the field's handlers of commands the line rules share, run in
+      // COMMAND_ORDER's order by the one registration
+      provideFieldHandlers(editor, {
+        // an arrow onto an image selects it (an inline image beside the
+        // caret, or a figure beside the block's edge); the next arrow moves
+        // past it as a text caret
+        imageArrow: (payload, _editor, command) => {
+          const event = payload as KeyboardEvent;
+          const isBackward = command === KEY_ARROW_LEFT_COMMAND;
+          if (event.altKey || event.ctrlKey || event.metaKey) {
+            return false;
+          }
+          const selection = $getSelection();
+          if ($isNodeSelection(selection)) {
+            const image = $selectedImage(selection);
+            if (image === undefined || event.shiftKey) {
               return false;
             }
             event.preventDefault();
-            const next = $createNodeSelection();
-            next.add(image.getKey());
-            $setSelection(next);
-            lastArrow.current = isBackward ? "back" : "forward";
+            $caretBeside(image, isBackward);
+            lastArrow.current = undefined;
             return true;
-          },
-          COMMAND_PRIORITY_LOW
-        )
-      ),
-      // typing with an image selected first puts a caret beside it: on
-      // the side the arrow was moving toward (after it when no arrow
-      // selected it)
-      editor.registerCommand(
-        KEY_DOWN_COMMAND,
-        (event) => {
+          }
+          if ($isRangeSelection(selection) === false || event.shiftKey) {
+            return false;
+          }
+          // a range with a plain arrow collapses toward the arrow
+          if (selection.isCollapsed() === false) {
+            event.preventDefault();
+            const [start, end] = selection.isBackward()
+              ? [selection.focus, selection.anchor]
+              : [selection.anchor, selection.focus];
+            const to = isBackward ? start : end;
+            const point = { key: to.key, offset: to.offset, type: to.type };
+            selection.anchor.set(point.key, point.offset, point.type);
+            selection.focus.set(point.key, point.offset, point.type);
+            lastArrow.current = undefined;
+            return true;
+          }
+          // a line break beside the caret: the caret steps just past it,
+          // so the next arrow reaches what starts the next line
+          const beside = $getAdjacentNode(selection.focus, isBackward);
+          if ($isLineBreakNode(beside)) {
+            event.preventDefault();
+            const parent = beside.getParentOrThrow().getKey();
+            const offset = beside.getIndexWithinParent() + (isBackward ? 0 : 1);
+            selection.anchor.set(parent, offset, "element");
+            selection.focus.set(parent, offset, "element");
+            lastArrow.current = undefined;
+            return true;
+          }
+          const image = $imageBeside(selection, isBackward);
+          if (image === undefined) {
+            return false;
+          }
+          event.preventDefault();
+          const next = $createNodeSelection();
+          next.add(image.getKey());
+          $setSelection(next);
+          lastArrow.current = isBackward ? "back" : "forward";
+          return true;
+        },
+        // typing with an image selected first puts a caret beside it: on
+        // the side the arrow was moving toward (after it when no arrow
+        // selected it)
+        caretBesideImageOnKey: (payload) => {
+          const event = payload as KeyboardEvent;
           if (
             isTextInputKey(event) === false ||
             event.ctrlKey ||
@@ -2283,8 +2566,85 @@ const ImageEditingPlugin = () => {
           $caretBesideSelectedImage(lastArrow);
           return false;
         },
-        COMMAND_PRIORITY_CRITICAL
-      ),
+        // text input with no key of its own (an IME, dictation, an emoji
+        // picker), a paste or a drop with an image selected works as
+        // typing does: from a caret beside it
+        caretBesideSelectedImage: () => {
+          $caretBesideSelectedImage(lastArrow);
+          return false;
+        },
+        // Backspace at an element caret right after a line break takes the
+        // line break (the browser reads that caret as one before it)
+        deleteAfterLineBreak: (isBackward) => {
+          const selection = $getSelection();
+          if (
+            isBackward === false ||
+            $isRangeSelection(selection) === false ||
+            selection.isCollapsed() === false ||
+            $isAfterLineBreak(selection.anchor) === false
+          ) {
+            return false;
+          }
+          const parent = selection.anchor.getNode() as ElementNode;
+          const offset = selection.anchor.offset - 1;
+          parent.getChildAtIndex(offset)?.remove();
+          selection.anchor.set(parent.getKey(), offset, "element");
+          selection.focus.set(parent.getKey(), offset, "element");
+          return true;
+        },
+        // a selection Home or End extended keeps its anchor while it is
+        // extended further: the browser reads an anchor right after a line
+        // break as one before it
+        pinAnchorOnExtend: (payload) => {
+          const event = payload as KeyboardEvent;
+          if (event.key === "Shift") {
+            return false;
+          }
+          const isExtending =
+            event.shiftKey && /^(Arrow|Home$|End$|Page)/.test(event.key);
+          if (isExtending === false) {
+            pinnedAnchor.current = undefined;
+            return false;
+          }
+          const selection = $getSelection();
+          if (
+            pinnedAnchor.current === undefined &&
+            $isRangeSelection(selection) &&
+            $isAfterLineBreak(selection.anchor)
+          ) {
+            const { anchor } = selection;
+            pinnedAnchor.current = {
+              key: anchor.key,
+              offset: anchor.offset,
+              type: anchor.type,
+            };
+          }
+          return false;
+        },
+        pinImageAnchor: () => {
+          const pinned = pinnedAnchor.current;
+          if (pinned === undefined) {
+            return false;
+          }
+          const selection = $getSelection();
+          if (
+            $isRangeSelection(selection) === false ||
+            $getNodeByKey(pinned.key) === null
+          ) {
+            pinnedAnchor.current = undefined;
+            return false;
+          }
+          const { anchor } = selection;
+          if (
+            anchor.key !== pinned.key ||
+            anchor.offset !== pinned.offset ||
+            anchor.type !== pinned.type
+          ) {
+            anchor.set(pinned.key, pinned.offset, pinned.type);
+          }
+          return false;
+        },
+      }),
       // text input with no key of its own (an IME, dictation, an emoji
       // picker) does the same, before the browser inserts it
       editor.registerRootListener((rootElement, previous) => {
@@ -2293,26 +2653,6 @@ const ImageEditingPlugin = () => {
           rootElement?.addEventListener(type, beforeTextInput, true);
         }
       }),
-      editor.registerCommand(
-        CONTROLLED_TEXT_INSERTION_COMMAND,
-        () => {
-          $caretBesideSelectedImage(lastArrow);
-          return false;
-        },
-        COMMAND_PRIORITY_CRITICAL
-      ),
-      // a paste or drop with an image selected works as typing does: from
-      // a caret beside it
-      ...[PASTE_COMMAND, DROP_COMMAND].map((command) =>
-        editor.registerCommand(
-          command as LexicalCommand<unknown>,
-          () => {
-            $caretBesideSelectedImage(lastArrow);
-            return false;
-          },
-          COMMAND_PRIORITY_CRITICAL
-        )
-      ),
       // Up and Down from a selected figure go to the end of the block
       // before it, or the start of the block after it
       ...(
@@ -2410,88 +2750,6 @@ const ImageEditingPlugin = () => {
         },
         COMMAND_PRIORITY_NORMAL
       ),
-      // Backspace at an element caret right after a line break takes the
-      // line break (the browser reads that caret as one before it)
-      editor.registerCommand(
-        DELETE_CHARACTER_COMMAND,
-        (isBackward) => {
-          const selection = $getSelection();
-          if (
-            isBackward === false ||
-            $isRangeSelection(selection) === false ||
-            selection.isCollapsed() === false ||
-            $isAfterLineBreak(selection.anchor) === false
-          ) {
-            return false;
-          }
-          const parent = selection.anchor.getNode() as ElementNode;
-          const offset = selection.anchor.offset - 1;
-          parent.getChildAtIndex(offset)?.remove();
-          selection.anchor.set(parent.getKey(), offset, "element");
-          selection.focus.set(parent.getKey(), offset, "element");
-          return true;
-        },
-        COMMAND_PRIORITY_NORMAL
-      ),
-      // a selection Home or End extended keeps its anchor while it is
-      // extended further: the browser reads an anchor right after a line
-      // break as one before it
-      editor.registerCommand(
-        KEY_DOWN_COMMAND,
-        (event) => {
-          if (event.key === "Shift") {
-            return false;
-          }
-          const isExtending =
-            event.shiftKey && /^(Arrow|Home$|End$|Page)/.test(event.key);
-          if (isExtending === false) {
-            pinnedAnchor.current = undefined;
-            return false;
-          }
-          const selection = $getSelection();
-          if (
-            pinnedAnchor.current === undefined &&
-            $isRangeSelection(selection) &&
-            $isAfterLineBreak(selection.anchor)
-          ) {
-            const { anchor } = selection;
-            pinnedAnchor.current = {
-              key: anchor.key,
-              offset: anchor.offset,
-              type: anchor.type,
-            };
-          }
-          return false;
-        },
-        COMMAND_PRIORITY_CRITICAL
-      ),
-      editor.registerCommand(
-        SELECTION_CHANGE_COMMAND,
-        () => {
-          const pinned = pinnedAnchor.current;
-          if (pinned === undefined) {
-            return false;
-          }
-          const selection = $getSelection();
-          if (
-            $isRangeSelection(selection) === false ||
-            $getNodeByKey(pinned.key) === null
-          ) {
-            pinnedAnchor.current = undefined;
-            return false;
-          }
-          const { anchor } = selection;
-          if (
-            anchor.key !== pinned.key ||
-            anchor.offset !== pinned.offset ||
-            anchor.type !== pinned.type
-          ) {
-            anchor.set(pinned.key, pinned.offset, pinned.type);
-          }
-          return false;
-        },
-        COMMAND_PRIORITY_CRITICAL
-      ),
       // an edit ends the extension
       editor.registerUpdateListener(({ dirtyElements, dirtyLeaves }) => {
         if (dirtyLeaves.size > 0 || dirtyElements.size > 0) {
@@ -2505,26 +2763,109 @@ const ImageEditingPlugin = () => {
         rootElement?.addEventListener("focusout", unpinOnFocusOut);
         previous?.removeEventListener("mousedown", unpinOnTripleClick);
         rootElement?.addEventListener("mousedown", unpinOnTripleClick);
-      }),
-      // a copy or cut marks its selection, for the code block's export
-      editor.registerCommand(
-        COPY_COMMAND,
-        () => {
-          markRichTextCopy($getSelection());
-          return false;
-        },
-        COMMAND_PRIORITY_CRITICAL
-      ),
-      editor.registerCommand(
-        CUT_COMMAND,
-        () => {
-          markRichTextCopy($getSelection());
-          return false;
-        },
-        COMMAND_PRIORITY_CRITICAL
-      )
+      })
     );
   }, [editor]);
+  return null;
+};
+
+/** The value the field reports for the editor's document. */
+const fieldValueOf = (editor: LexicalEditor): FieldValue => {
+  const html = exportRichTextHtml(editor);
+  const text = editor.getEditorState().read(() => $getRoot().getTextContent());
+  // no value only with neither text nor an image
+  return text.trim() === "" && /<img\b/i.test(html) === false
+    ? null
+    : { html, text };
+};
+
+/**
+ * The field's change handler (16.10, first contract; 16.21; T42.1; T67.2):
+ * it hands out the value of each commit that changes the document, except
+ * one equal to the value it handed out last, one that holds a
+ * composition-start character the composition under way added, and the
+ * commit a composition's start makes where it leaves the D7 document as it
+ * was. Values are compared by their HTML, and every "no value" is one value
+ * (its text follows from the HTML but for the blank lines an empty line
+ * adds). Before the first onChange of this mounted field nothing has been
+ * handed out: the first value after mount is handed out even where it
+ * equals the stored one; only repeats of the value handed out last are
+ * withheld. Its filter is Lexical's `OnChangePlugin` with
+ * `ignoreSelectionChange` and `ignoreHistoryMergeTagChange`, in a listener
+ * that sees every commit, so that it knows the commit at which the editor
+ * starts composing.
+ */
+const ChangePlugin = ({
+  onChange,
+}: {
+  onChange: (value: FieldValue) => void;
+}) => {
+  const [editor] = useLexicalComposerContext();
+  const handedOut = useRef<{ key: string | null } | undefined>(undefined);
+  useLayoutEffect(() => {
+    // whether the editor composed at the commit before
+    let composedBefore = editor.isComposing();
+    return editor.registerUpdateListener(
+      ({ editorState, prevEditorState, dirtyElements, dirtyLeaves, tags }) => {
+        // T67.2: the commit at which the editor starts composing is the
+        // update of Lexical's own `compositionstart` handler: it sets the
+        // composition's key, which makes the caret's node dirty, and
+        // inserts the start character only within 30 ms of the last
+        // keydown or away from a plain text caret
+        const composing = editor.isComposing();
+        const compositionStart = composing && composedBefore === false;
+        composedBefore = composing;
+        if (
+          (dirtyElements.size === 0 && dirtyLeaves.size === 0) ||
+          tags.has("history-merge") ||
+          prevEditorState.isEmpty()
+        ) {
+          return;
+        }
+        if (compositionHoldsStartChar(editor)) {
+          return;
+        }
+        // a composition hands out its composed values and nothing else: its
+        // start's commit that leaves the document as it was is not handed
+        // out, also as the first change since mount (T42.1's exception
+        // holds for every other first change)
+        if (
+          compositionStart &&
+          d7Document(prevEditorState) === d7Document(editorState)
+        ) {
+          return;
+        }
+        const value = fieldValueOf(editor);
+        const key = value === null ? null : value.html;
+        if (handedOut.current !== undefined && key === handedOut.current.key) {
+          return;
+        }
+        handedOut.current = { key };
+        onChange(value);
+      }
+    );
+  }, [editor, onChange]);
+  return null;
+};
+
+/** Development only: the field's harness watch, dropped at unmount. */
+const WatchPlugin = ({
+  watched,
+}: {
+  watched: { current: ((value: FieldValue) => void) | undefined };
+}) => {
+  const [editor] = useLexicalComposerContext();
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") {
+      return;
+    }
+    const watch = watchField(editor, () => fieldValueOf(editor));
+    watched.current = watch.changed;
+    return () => {
+      watched.current = undefined;
+      watch.unwatch();
+    };
+  }, [editor, watched]);
   return null;
 };
 
@@ -2554,21 +2895,6 @@ const LinkRulePlugin = () => {
             return true;
           },
           COMMAND_PRIORITY_LOW
-        ),
-        // a drag inside the editor carries its nodes, as a copy does
-        editor.registerCommand(
-          DRAGSTART_COMMAND,
-          (event) => {
-            const selection = $getSelection();
-            if (event.dataTransfer !== null && selection !== null) {
-              const content = $getLexicalContent(editor, selection);
-              if (content !== null) {
-                event.dataTransfer.setData(LEXICAL_CLIPBOARD_TYPE, content);
-              }
-            }
-            return false;
-          },
-          COMMAND_PRIORITY_CRITICAL
         ),
         editor.registerCommand(
           PASTE_COMMAND,
@@ -2968,7 +3294,7 @@ const $ownClipboardNodes = (editor: LexicalEditor, data: DataTransfer) => {
       nodes?: unknown;
     };
     if (
-      payload.namespace === editor._config.namespace &&
+      payload.namespace === fieldNamespaceOf(editor) &&
       Array.isArray(payload.nodes)
     ) {
       return $generateNodesFromSerializedNodes(payload.nodes);
@@ -3082,6 +3408,9 @@ const $placeAfterCode = (code: LexicalNode, images: LexicalNode[]) => {
  * The block that directly holds a point (a list item, a quote), when its
  * first child is a block: the editor's own edits read no such element as a
  * block. A list holds only items, and the root is not such a block.
+ * With lines (R1) still reached by a two-paragraph HTML paste in a
+ * block-led item, and by pastes at the end of an item that starts with a
+ * quote.
  */
 const $blockLedItemAt = (point: PointType) => {
   let block: LexicalNode | null =
@@ -3108,6 +3437,9 @@ const $blockLedItemAt = (point: PointType) => {
  * image) with the block-led item or quote holding its start read as a block:
  * an empty text leads the item meanwhile, and a quote takes the edit in a
  * paragraph of its own at the caret, as in its other paragraphs.
+ * With lines (R1) still reached by a two-paragraph HTML paste in a
+ * block-led item, and by pastes at the end of an item that starts with a
+ * quote.
  */
 const $editInBlockLedItem = (selection: RangeSelection, edit: () => void) => {
   const start = selection.isBackward() ? selection.focus : selection.anchor;
@@ -3159,7 +3491,9 @@ const $editInBlockLedItem = (selection: RangeSelection, edit: () => void) => {
 
 /**
  * Runs an edit at the selection where its start is in a block-led item or
- * quote; false, with nothing done, anywhere else.
+ * quote; false, with nothing done, anywhere else. With lines still reached
+ * by a two-line plain-text paste or drop at the end of a quote that holds a
+ * paragraph and a rule and is not lined.
  */
 const $editAtBlockLed = (edit: (selection: RangeSelection) => void) => {
   const selection = $getSelection();
@@ -3176,7 +3510,8 @@ const $editAtBlockLed = (edit: (selection: RangeSelection) => void) => {
 /**
  * Plain text pasted or dropped where the selection starts in a block-led
  * item or quote, when the data holds no HTML and none of the field's own
- * nodes: its lines and tabs land as in any other item.
+ * nodes: its lines and tabs land as in any other item. With lines still
+ * reached by the same quote cases as `$editAtBlockLed`.
  */
 const $insertPlainTextAtBlockLed = (
   editor: LexicalEditor,
@@ -3193,7 +3528,8 @@ const $insertPlainTextAtBlockLed = (
  * Nodes inserted in a list item: the item split at the selection leaves no
  * empty item when the last inserted item starts with a block (its content
  * cannot join the split-off rest). Items empty before, or inserted empty,
- * stay.
+ * stay. With lines still reached by a pasted last item that starts with a
+ * rule, by paste and drop, at depths 1 and 3.
  */
 const $insertIntoListItem = (
   nodes: LexicalNode[],
@@ -3283,13 +3619,14 @@ const $insertIntoListItem = (
  * it. Where it starts at a heading's start, blocks go before the heading.
  */
 const $insertClipboardNodes = (
-  nodes: LexicalNode[],
+  pasted: LexicalNode[],
   selection: BaseSelection
 ) => {
   if ($isRangeSelection(selection) === false) {
     return false;
   }
   const start = selection.isBackward() ? selection.focus : selection.anchor;
+  const nodes = $intoLine(pasted, selection);
   const code = $findMatchingParent(start.getNode(), $isCodeNode);
   if (code !== null) {
     selection.removeText();
@@ -3434,46 +3771,6 @@ const $pasteFiguresBesideHeading = (
 };
 
 /**
- * Where a point sits on a quote or list item between a block child and
- * another child, it moves into the block: to the start of the block at it,
- * else to the end of the block before it.
- */
-const $pointIntoAdjacentBlock = (point: PointType) => {
-  if (point.type !== "element") {
-    return;
-  }
-  const parent = point.getNode();
-  if ($isQuoteNode(parent) === false && $isListItemNode(parent) === false) {
-    return;
-  }
-  const isBlock = (node: LexicalNode | null): node is ElementNode =>
-    $isElementNode(node) && node.isInline() === false;
-  const at = parent.getChildAtIndex(point.offset);
-  const before =
-    point.offset > 0 ? parent.getChildAtIndex(point.offset - 1) : null;
-  const atEnd = isBlock(at) === false;
-  let block = isBlock(at) ? at : isBlock(before) ? before : undefined;
-  if (block === undefined) {
-    return;
-  }
-  for (;;) {
-    const child: LexicalNode | null = atEnd
-      ? block.getLastChild()
-      : block.getFirstChild();
-    if ($isElementNode(child)) {
-      block = child;
-      continue;
-    }
-    if ($isTextNode(child)) {
-      point.set(child.getKey(), atEnd ? child.getTextContentSize() : 0, "text");
-      return;
-    }
-    point.set(block.getKey(), atEnd ? block.getChildrenSize() : 0, "element");
-    return;
-  }
-};
-
-/**
  * An element point on an inline element (a link) moves out of it, to a text
  * point where one is beside it: before the element, the end of the text
  * before it; after it, the start of the text after it. An offset past an
@@ -3523,6 +3820,12 @@ const $pointOutOfInline = (point: PointType) => {
   }
 };
 
+/**
+ * A point on an inline element goes out to the place beside it, or into an
+ * adjacent block. With lines still reached by edits from an element point on
+ * a link, and in containers that are not lined (a lined container's points
+ * never rest on it: 5.3).
+ */
 const $selectionIntoAdjacentBlocks = () => {
   const selection = $getSelection();
   if ($isRangeSelection(selection)) {
@@ -3534,35 +3837,17 @@ const $selectionIntoAdjacentBlocks = () => {
   return false;
 };
 
-/** The commands that edit at the selection. */
-const editingCommands: LexicalCommand<never>[] = [
-  INSERT_PARAGRAPH_COMMAND,
-  INSERT_LINE_BREAK_COMMAND,
-  CONTROLLED_TEXT_INSERTION_COMMAND,
-  PASTE_COMMAND,
-  CUT_COMMAND,
-  KEY_BACKSPACE_COMMAND,
-  KEY_DELETE_COMMAND,
-  DELETE_CHARACTER_COMMAND,
-  DELETE_WORD_COMMAND,
-  DELETE_LINE_COMMAND,
-  REMOVE_TEXT_COMMAND,
-] as LexicalCommand<never>[];
-
 const PasteRulesPlugin = () => {
   const [editor] = useLexicalComposerContext();
   useEffect(
     () =>
       mergeRegister(
         // an edit at an element point between a quote's or item's blocks
-        // starts from a text point in the block beside it
-        ...editingCommands.map((command) =>
-          editor.registerCommand(
-            command,
-            $selectionIntoAdjacentBlocks,
-            COMMAND_PRIORITY_CRITICAL
-          )
-        ),
+        // starts from a text point in the block beside it (COMMAND_ORDER
+        // runs it on the editing commands, and a cut's removal step)
+        provideFieldHandlers(editor, {
+          selectionIntoAdjacentBlocks: $selectionIntoAdjacentBlocks,
+        }),
         // Enter and Shift+Enter in a block-led item or quote split it and
         // break the line, as in any other item
         editor.registerCommand(
@@ -3590,7 +3875,10 @@ const PasteRulesPlugin = () => {
             if (typeof payload === "string" || payload.dataTransfer === null) {
               return false;
             }
-            if ($insertPlainTextAtBlockLed(editor, payload.dataTransfer)) {
+            if (
+              $insertPlainTextAtBlockLed(editor, payload.dataTransfer) ||
+              $pasteTextIntoItemLine(payload.dataTransfer, { drop: true })
+            ) {
               payload.preventDefault();
               return true;
             }
@@ -3624,7 +3912,9 @@ const PasteRulesPlugin = () => {
             if (
               $pasteIntoCode(editor, data) ||
               $pasteFiguresBesideHeading(editor, data) ||
-              $insertPlainTextAtBlockLed(editor, data)
+              $insertPlainTextAtBlockLed(editor, data) ||
+              $removeRangeBeforePlainText(data) ||
+              $pasteTextIntoItemLine(data)
             ) {
               event.preventDefault();
               return true;
@@ -3714,6 +4004,7 @@ export const RichTextField = ({
   useEffect(() => {
     isLoading.current = false;
   }, []);
+  const watched = useRef<((value: FieldValue) => void) | undefined>(undefined);
 
   if (readOnlyReason !== undefined) {
     return (
@@ -3794,30 +4085,21 @@ export const RichTextField = ({
           ErrorBoundary={LexicalErrorBoundary}
         />
         <EditablePlugin editable={disabled === false} />
-        <HistoryPlugin />
+        <CmsHistoryPlugin />
         <ListPlugin />
         <LinkPlugin />
         <LinkRulePlugin />
         <PasteRulesPlugin />
         <ImageEditingPlugin />
         <HorizontalRulePlugin />
-        <TransformsPlugin />
-        <OnChangePlugin
-          ignoreSelectionChange
-          ignoreHistoryMergeTagChange
-          onChange={(editorState, editor) => {
-            const html = exportRichTextHtml(editor);
-            editorState.read(() => {
-              const text = $getRoot().getTextContent();
-              // no value only with neither text nor an image
-              onChange(
-                text.trim() === "" && /<img\b/i.test(html) === false
-                  ? null
-                  : { html, text }
-              );
-            });
+        <TransformsPlugin namespace={namespace} />
+        <ChangePlugin
+          onChange={(value) => {
+            watched.current?.(value);
+            onChange(value);
           }}
         />
+        <WatchPlugin watched={watched} />
       </div>
     </LexicalComposer>
   );

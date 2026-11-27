@@ -570,6 +570,52 @@ describe("a range with a plain arrow collapses toward the arrow (R5-5)", () => {
     expect(lastHtml(onChange)).toMatch(/<img[^>]*>(<[^>]+>)*xyhere/);
   });
 
+  // T95.2: in a list item, a block beside a line that starts (or ends) with
+  // a line break; the arrow over the block's text collapses as it does in
+  // ordinary content, not past the break
+  test.each([
+    {
+      name: "a heading before a line that starts with a break",
+      html: "<ul><li><h2>Title</h2><br>more</li></ul>",
+      key: "ArrowRight",
+      backward: false,
+      typed: /Titlex(<[^>]+>)*<\/h2>/,
+    },
+    {
+      name: "a quote before a line that starts with a break",
+      html: "<ul><li><blockquote><p>Title</p></blockquote><br>more</li></ul>",
+      key: "ArrowRight",
+      backward: false,
+      typed: /Titlex(<[^>]+>)*<\/p><\/blockquote>/,
+    },
+    {
+      name: "a heading after a line that ends with a break",
+      html: "<ul><li>more<br><h2>Title</h2></li></ul>",
+      key: "ArrowLeft",
+      backward: true,
+      typed: /<h2[^>]*>(<[^>]+>)*xTitle/,
+    },
+    {
+      name: "a quote after a line that ends with a break",
+      html: "<ul><li>more<br><blockquote><p>Title</p></blockquote></li></ul>",
+      key: "ArrowLeft",
+      backward: true,
+      typed: /<blockquote[^>]*><p[^>]*>(<[^>]+>)*xTitle/,
+    },
+  ])(
+    "$name: $key over the block's text collapses toward the arrow, and typing lands there",
+    async ({ html, key, backward, typed }) => {
+      const onChange = mountField(html);
+      await settle();
+      await click(editable()!.querySelector<HTMLElement>("li"));
+      await update(selectText("Title", backward));
+      await type(`{${key}}x`);
+      expect(lastHtml(onChange)).toMatch(typed);
+      expect(lastHtml(onChange)).toMatch(/more/);
+      expect(lastHtml(onChange)).not.toMatch(/xmore|morex/);
+    }
+  );
+
   test("Enter after the arrow breaks the line, and opens no settings", async () => {
     const onChange = await caretBy(`<p>See ${A}here</p>`, selectText("See "));
     await type("{ArrowRight}{Enter}");

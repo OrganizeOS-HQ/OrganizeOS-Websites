@@ -26,25 +26,41 @@ const keepRequestInterception: BrowserCommand<[]> = async (context) => {
   );
 };
 
+// OrganizeOS fork: lets a test read and write the system clipboard through
+// navigator.clipboard, to see what a real copy or cut key leaves there.
+const grantClipboard: BrowserCommand<[]> = async (context) => {
+  if (context.provider.name !== "playwright") {
+    return;
+  }
+  const { page } = context as unknown as { page: Page };
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+};
+
 const browserProject = (
   group: "core" | "app",
   name: string,
   include: string[],
-  exclude: string[] = []
+  exclude: string[] = [],
+  setupFiles: string[] = [],
+  launchArgs: string[] = []
 ) => ({
   extends: "./vitest.config.ts",
   test: {
     name: `${group}-browser-${name}`,
     include,
     exclude: [nodeTestGlob, ...exclude],
-    setupFiles: ["./vitest.browser-setup.ts"],
+    setupFiles: ["./vitest.browser-setup.ts", ...setupFiles],
     browser: {
       provider: "playwright" as const,
       enabled: true,
       headless: true,
       screenshotFailures: false,
-      instances: [{ browser: "chromium" as const }],
-      commands: { keepRequestInterception },
+      instances: [
+        launchArgs.length === 0
+          ? { browser: "chromium" as const }
+          : { browser: "chromium" as const, launch: { args: launchArgs } },
+      ],
+      commands: { keepRequestInterception, grantClipboard },
     },
   },
 });
@@ -62,7 +78,9 @@ const serverProject = {
 // stays inside its step limit (fork doc section 7): the rich-text field's
 // tests, its generated sweeps, and everything else in the two panels. A file
 // joins a project by its name; scripts/check-every-test-runs.mjs fails when
-// two projects collect one file.
+// two projects collect one file. The line rules' tests run as seven more
+// projects for the same reason: the assertion files in two (lines, and
+// lines-b for its slowest files) and the grids in five (grids-a to grids-e).
 const cmsPanelTests =
   "app/builder/features/{cms-panel,organizeos-panel}/**/*.{test,spec}.{ts,tsx}";
 const richTextTests =
@@ -71,6 +89,86 @@ const richTextSweeps = [
   "app/builder/features/cms-panel/native/rich-text-toolbar-corpus-*.{test,spec}.{ts,tsx}",
   "app/builder/features/cms-panel/native/rich-text-fuzz.{test,spec}.{ts,tsx}",
 ];
+const richTextLineTests =
+  "app/builder/features/cms-panel/native/rich-text-line-*.{test,spec}.{ts,tsx}";
+const richTextLineGrids = [
+  "app/builder/features/cms-panel/native/rich-text-line-grid-*.{test,spec}.{ts,tsx}",
+  "app/builder/features/cms-panel/native/rich-text-line-clicks.{test,spec}.{ts,tsx}",
+  "app/builder/features/cms-panel/native/rich-text-line-mount.{test,spec}.{ts,tsx}",
+  "app/builder/features/cms-panel/native/rich-text-line-layout.{test,spec}.{ts,tsx}",
+];
+// The slowest line assertion files run as the lines-b project; the lines
+// project excludes them, so no file is in two projects (Task 25).
+const richTextLineTestsB = ["press", "readback", "walks"].map(
+  (name) =>
+    `app/builder/features/cms-panel/native/rich-text-line-${name}.{test,spec}.{ts,tsx}`
+);
+// The grids run as five projects by file, each leg under its 400 s bound on
+// CI by the files' measured times (Task 22).
+const lineGrid = (names: string[]) =>
+  names.map(
+    (name) =>
+      `app/builder/features/cms-panel/native/rich-text-line-${name}.{test,spec}.{ts,tsx}`
+  );
+const richTextLineGridLegs: Array<[string, string[]]> = [
+  [
+    "a",
+    lineGrid([
+      "grid-twin-edge",
+      "grid-shift-nowait-ltr-1",
+      "grid-meeting",
+      "grid-clipboard",
+      "mount",
+    ]),
+  ],
+  [
+    "b",
+    lineGrid([
+      "grid-shift-nowait-rtl-2",
+      "grid-1510-list",
+      "grid-1510-other",
+      "grid-node",
+      "grid-twin-backward",
+    ]),
+  ],
+  [
+    "c",
+    lineGrid([
+      "grid-1510-mirror",
+      "grid-unreached",
+      "grid-removal",
+      "grid-walks",
+      "clicks",
+    ]),
+  ],
+  [
+    "d",
+    lineGrid([
+      "grid-points",
+      "grid-shift-nowait-ltr-2",
+      "grid-removal-2",
+      "layout",
+      "grid-twin-forward",
+    ]),
+  ],
+  [
+    "e",
+    lineGrid([
+      "grid-walks-nowait",
+      "grid-shift-nowait-rtl-1",
+      "grid-1510-quote",
+      "grid-paste-node",
+      "grid-enter-heading",
+    ]),
+  ],
+];
+const richTextNet =
+  "./app/builder/features/cms-panel/native/rich-text-line-invariant-setup.ts";
+
+// OrganizeOS fork: the line rules' projects pin text rendering, so glyph
+// widths are the same on every Linux machine; the layout baseline and the
+// vertical walks depend on them to within a pixel (fork doc section 7).
+const pinnedTextRendering = ["--font-render-hinting=none"];
 
 const projects = [
   serverProject,
@@ -82,9 +180,42 @@ const projects = [
     "core",
     "builder-cms-rich-text",
     [richTextTests],
-    richTextSweeps
+    [...richTextSweeps, richTextLineTests],
+    [richTextNet]
   ),
-  browserProject("core", "builder-cms-rich-text-sweeps", richTextSweeps),
+  browserProject(
+    "core",
+    "builder-cms-rich-text-sweeps",
+    richTextSweeps,
+    [],
+    [richTextNet]
+  ),
+  browserProject(
+    "core",
+    "builder-cms-rich-text-lines",
+    [richTextLineTests],
+    [...richTextLineGrids, ...richTextLineTestsB],
+    [richTextNet],
+    pinnedTextRendering
+  ),
+  browserProject(
+    "core",
+    "builder-cms-rich-text-lines-b",
+    richTextLineTestsB,
+    [],
+    [richTextNet],
+    pinnedTextRendering
+  ),
+  ...richTextLineGridLegs.map(([leg, include]) =>
+    browserProject(
+      "core",
+      `builder-cms-rich-text-grids-${leg}`,
+      include,
+      [],
+      [richTextNet],
+      pinnedTextRendering
+    )
+  ),
   browserProject(
     "core",
     "builder-features",

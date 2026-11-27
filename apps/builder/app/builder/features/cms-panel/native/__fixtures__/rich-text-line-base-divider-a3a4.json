@@ -1,0 +1,80 @@
+{
+  "A3 QL L1w@0": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><ul><li></li></ul></li></ul><hr /><ul><li><ul><li>L1w</li></ul></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:L1w@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><ul><li></li></ul></li></ul><hr /><ul><li><ul><li>kL1w</li></ul></li><li>Nw</li></ul>"
+  },
+  "A3 QL L1w@end": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><ul></ul></li></ul><hr /><ul><li><ul><li>L1w</li></ul></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:L1w@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><ul></ul></li></ul><hr /><ul><li><ul><li>kL1w</li></ul></li><li>Nw</li></ul>"
+  },
+  "A3 HL L1w@0": {
+    "write": "<ul><li>Pw</li><li><h3>H0w</h3><ul><li></li></ul></li></ul><hr /><ul><li><ul><li>L1w</li></ul></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:L1w@0",
+    "typed": "<ul><li>Pw</li><li><h3>H0w</h3><ul><li></li></ul></li></ul><hr /><ul><li><ul><li>kL1w</li></ul></li><li>Nw</li></ul>"
+  },
+  "A3 HL L1w@end": {
+    "write": "<ul><li>Pw</li><li><h3>H0w</h3><ul></ul></li></ul><hr /><ul><li><ul><li>L1w</li></ul></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:L1w@0",
+    "typed": "<ul><li>Pw</li><li><h3>H0w</h3><ul></ul></li></ul><hr /><ul><li><ul><li>kL1w</li></ul></li><li>Nw</li></ul>"
+  },
+  "A3 CL L1w@0": {
+    "write": "<ul><li>Pw</li><li><pre><code>C0w</code></pre><ul><li></li></ul></li></ul><hr /><ul><li><ul><li>L1w</li></ul></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:L1w@0",
+    "typed": "<ul><li>Pw</li><li><pre><code>C0w</code></pre><ul><li></li></ul></li></ul><hr /><ul><li><ul><li>kL1w</li></ul></li><li>Nw</li></ul>"
+  },
+  "A3 CL L1w@end": {
+    "write": "<ul><li>Pw</li><li><pre><code>C0w</code></pre><ul></ul></li></ul><hr /><ul><li><ul><li>L1w</li></ul></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:L1w@0",
+    "typed": "<ul><li>Pw</li><li><pre><code>C0w</code></pre><ul></ul></li></ul><hr /><ul><li><ul><li>kL1w</li></ul></li><li>Nw</li></ul>"
+  },
+  "A3 TQL L2w@0": {
+    "write": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote><ul><li></li></ul></li></ul><hr /><ul><li><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:L2w@0",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote><ul><li></li></ul></li></ul><hr /><ul><li><ul><li>kL2w</li></ul></li><li>Nw</li></ul>"
+  },
+  "A3 TQL L2w@end": {
+    "write": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote><ul></ul></li></ul><hr /><ul><li><ul><li>L2w</li></ul></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:L2w@0",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote><ul></ul></li></ul><hr /><ul><li><ul><li>kL2w</li></ul></li><li>Nw</li></ul>"
+  },
+  "A4 QT whole": {
+    "write": "<ul><li>Pw</li></ul><hr /><ul><li><blockquote><p>Q0w</p></blockquote>T1w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Q0w@0",
+    "typed": "<ul><li>Pw</li></ul><hr /><ul><li><blockquote><p>kQ0w</p></blockquote>T1w</li><li>Nw</li></ul>"
+  },
+  "A4 HT whole": {
+    "write": "<ul><li>Pw</li></ul><hr /><ul><li><h3>H0w</h3>T1w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:H0w@0",
+    "typed": "<ul><li>Pw</li></ul><hr /><ul><li><h3>kH0w</h3>T1w</li><li>Nw</li></ul>"
+  },
+  "A4 CT whole": {
+    "write": "<ul><li>Pw</li></ul><hr /><ul><li><pre><code>C0w</code></pre>T1w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:C0w@0",
+    "typed": "<ul><li>Pw</li></ul><hr /><ul><li><pre><code>kC0w</code></pre>T1w</li><li>Nw</li></ul>"
+  },
+  "A4 QTR whole": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>T1w</li></ul><hr /><ul><li><hr /></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>T1w</li></ul><hr /><ul><li>k<hr /></li><li>Nw</li></ul>"
+  },
+  "A4 BQT whole": {
+    "write": "<ul><li>Pw</li></ul><hr /><ul><li><br /><blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@0",
+    "typed": "<ul><li>Pw</li></ul><hr /><ul><li>k<br /><blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>"
+  }
+}

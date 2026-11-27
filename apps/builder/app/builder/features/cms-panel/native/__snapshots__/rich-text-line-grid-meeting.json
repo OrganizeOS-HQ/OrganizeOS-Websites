@@ -1,0 +1,1993 @@
+{
+  "AQ el1 Backspace": {
+    "write": "<ul><li>Pw</li><li><a>A</a><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:A@1",
+    "typed": "<ul><li>Pw</li><li><a>A</a>k<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "AQ el1 Bold": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Aw@2",
+    "typed": "<ul><li>Pw</li><li><a>Aw</a><b><strong>k</strong></b><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "AQ el1 Bulleted list": {
+    "write": "<p>Pw</p><p><a>Aw</a></p><blockquote><p>Q1w</p></blockquote><p>Nw</p>",
+    "calls": 1,
+    "caret": "text:Aw@2",
+    "typed": "<p>Pw</p><p><a>Aw</a>k</p><blockquote><p>Q1w</p></blockquote><p>Nw</p>"
+  },
+  "AQ el1 Code": {
+    "write": "<ul><li>Pw</li><li><pre><code>Aw</code></pre><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Aw@2",
+    "typed": "<ul><li>Pw</li><li><pre><code>Awk</code></pre><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "AQ el1 Ctrl+Backspace": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@0",
+    "typed": "<ul><li>Pw</li><li>k<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "AQ el1 Ctrl+Delete": {
+    "write": "<ul><li>Pw</li><li><a>Aw</a>Q1w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Q1w@0",
+    "typed": "<ul><li>Pw</li><li><a>Aw</a>kQ1w</li><li>Nw</li></ul>"
+  },
+  "AQ el1 Delete": {
+    "write": "<ul><li>Pw</li><li><a>Aw</a>Q1w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Q1w@0",
+    "typed": "<ul><li>Pw</li><li><a>Aw</a>kQ1w</li><li>Nw</li></ul>"
+  },
+  "AQ el1 Divider": {
+    "write": "<ul><li>Pw</li><li><a>Aw</a></li></ul><hr /><ul><li><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Q1w@0",
+    "typed": "<ul><li>Pw</li><li><a>Aw</a></li></ul><hr /><ul><li><blockquote><p>kQ1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "AQ el1 Enter": {
+    "write": "<ul><li>Pw</li><li><a>Aw</a></li><li><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Q1w@0",
+    "typed": "<ul><li>Pw</li><li><a>Aw</a></li><li><blockquote><p>kQ1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "AQ el1 Heading 2": {
+    "write": "<ul><li>Pw</li><li><h2><a>Aw</a></h2><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Aw@2",
+    "typed": "<ul><li>Pw</li><li><h2><a>Aw</a>k</h2><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "AQ el1 Image": {
+    "write": "<ul><li>Pw</li><li><a>Aw</a><img /><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li><a>Aw</a><img />k<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "AQ el1 Italic": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Aw@2",
+    "typed": "<ul><li>Pw</li><li><a>Aw</a><i><em>k</em></i><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "AQ el1 Link": {
+    "write": "<ul><li>Pw</li><li><a>Aw</a><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Aw@2",
+    "typed": "<ul><li>Pw</li><li><a>Aw</a>k<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "AQ el1 Numbered list": {
+    "write": "<ol><li>Pw</li><li><a>Aw</a><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ol>",
+    "calls": 1,
+    "caret": "text:Aw@2",
+    "typed": "<ol><li>Pw</li><li><a>Aw</a>k<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ol>"
+  },
+  "AQ el1 Paragraph": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Aw@2",
+    "typed": "<ul><li>Pw</li><li><a>Aw</a>k<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "AQ el1 Quote": {
+    "write": "<ul><li>Pw</li><li><blockquote><a>Aw</a></blockquote><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Aw@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><a>Aw</a>k</blockquote><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "AQ el1 Shift+Enter": {
+    "write": "<ul><li>Pw</li><li><a>Aw</a><br /><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li><a>Aw</a><br />k<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "AQ el1 Shift+Tab": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Aw@2",
+    "typed": ""
+  },
+  "AQ el1 Strikethrough": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Aw@2",
+    "typed": "<ul><li>Pw</li><li><a>Aw</a><s>k</s><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "AQ el1 Tab": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Aw@2",
+    "typed": ""
+  },
+  "AQ el1 Underline": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Aw@2",
+    "typed": "<ul><li>Pw</li><li><a>Aw</a><u>k</u><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "AQ el1 cut": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Aw@2",
+    "typed": "<ul><li>Pw</li><li><a>Aw</a>k<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "AQ el1 drop": {
+    "write": "<ul><li>Pw</li><li><a>Aw</a>Dq<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Dq@2",
+    "typed": "<ul><li>Pw</li><li><a>Aw</a>Dqk<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "AQ el1 ime": {
+    "write": "<ul><li>Pw</li><li><a>Awa</a><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Awa@3",
+    "typed": "<ul><li>Pw</li><li><a>Awa</a>k<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "AQ el1 letter": {
+    "write": "<ul><li>Pw</li><li><a>Aw</a>k<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:k@1",
+    "typed": "<ul><li>Pw</li><li><a>Aw</a>kk<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "AQ el1 lineBack": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@0",
+    "typed": "<ul><li>Pw</li><li>k<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "AQ el1 lineForward": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>Pw</li><li><a>Aw</a>k<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "AQ el1 paste HTML": {
+    "write": "<ul><li>Pw</li><li><a>Aw</a>Aq</li></ul><p>Bq</p><blockquote><p>Q1w</p></blockquote><ul><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Bq@2",
+    "typed": "<ul><li>Pw</li><li><a>Aw</a>Aq</li></ul><p>Bqk</p><blockquote><p>Q1w</p></blockquote><ul><li>Nw</li></ul>"
+  },
+  "AQ el1 paste own": {
+    "write": "<ul><li>Pw</li><li><a>Aw</a>Aq</li></ul><p>Bq</p><blockquote><p>Q1w</p></blockquote><ul><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Bq@2",
+    "typed": "<ul><li>Pw</li><li><a>Aw</a>Aq</li></ul><p>Bqk</p><blockquote><p>Q1w</p></blockquote><ul><li>Nw</li></ul>"
+  },
+  "AQ el1 paste text": {
+    "write": "<ul><li>Pw</li><li><a>Aw</a>Aq<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Aq@2",
+    "typed": "<ul><li>Pw</li><li><a>Aw</a>Aqk<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "AQ el1 placed": "text:Aw@2",
+  "BQ el1 Backspace": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@0",
+    "typed": "<ul><li>Pw</li><li>k<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "BQ el1 Bold": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>Pw</li><li><br /><b><strong>k</strong></b><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "BQ el1 Bulleted list": {
+    "write": "<p>Pw</p><p><br /></p><blockquote><p>Q1w</p></blockquote><p>Nw</p>",
+    "calls": 1,
+    "caret": "element:paragraph@1",
+    "typed": "<p>Pw</p><p><br />k</p><blockquote><p>Q1w</p></blockquote><p>Nw</p>"
+  },
+  "BQ el1 Code": {
+    "write": "<ul><li>Pw</li><li><pre><code>\n</code></pre><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:code@1",
+    "typed": "<ul><li>Pw</li><li><pre><code>\nk</code></pre><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "BQ el1 Ctrl+Backspace": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@0",
+    "typed": "<ul><li>Pw</li><li>k<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "BQ el1 Ctrl+Delete": {
+    "write": "<ul><li>Pw</li><li><br />Q1w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Q1w@0",
+    "typed": "<ul><li>Pw</li><li><br />kQ1w</li><li>Nw</li></ul>"
+  },
+  "BQ el1 Delete": {
+    "write": "<ul><li>Pw</li><li><br />Q1w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Q1w@0",
+    "typed": "<ul><li>Pw</li><li><br />kQ1w</li><li>Nw</li></ul>"
+  },
+  "BQ el1 Divider": {
+    "write": "<ul><li>Pw</li><li><br /></li></ul><hr /><ul><li><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Q1w@0",
+    "typed": "<ul><li>Pw</li><li><br /></li></ul><hr /><ul><li><blockquote><p>kQ1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "BQ el1 Enter": {
+    "write": "<ul><li>Pw</li><li><br /></li><li><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Q1w@0",
+    "typed": "<ul><li>Pw</li><li><br /></li><li><blockquote><p>kQ1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "BQ el1 Heading 2": {
+    "write": "<ul><li>Pw</li><li><h2><br /></h2><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:heading@1",
+    "typed": "<ul><li>Pw</li><li><h2><br />k</h2><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "BQ el1 Image": {
+    "write": "<ul><li>Pw</li><li><br /><img /><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li><br /><img />k<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "BQ el1 Italic": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>Pw</li><li><br /><i><em>k</em></i><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "BQ el1 Link": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>Pw</li><li><br />k<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "BQ el1 Numbered list": {
+    "write": "<ol><li>Pw</li><li><br /><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ol>",
+    "calls": 1,
+    "caret": "element:listitem@1",
+    "typed": "<ol><li>Pw</li><li><br />k<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ol>"
+  },
+  "BQ el1 Paragraph": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>Pw</li><li><br />k<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "BQ el1 Quote": {
+    "write": "<ul><li>Pw</li><li><blockquote><br /></blockquote><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:quote@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><br />k</blockquote><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "BQ el1 Shift+Enter": {
+    "write": "<ul><li>Pw</li><li><br /><br /><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li><br /><br />k<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "BQ el1 Shift+Tab": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": ""
+  },
+  "BQ el1 Strikethrough": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>Pw</li><li><br /><s>k</s><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "BQ el1 Tab": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": ""
+  },
+  "BQ el1 Underline": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>Pw</li><li><br /><u>k</u><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "BQ el1 cut": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>Pw</li><li><br />k<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "BQ el1 drop": {
+    "write": "<ul><li>Pw</li><li><br />Dq<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Dq@2",
+    "typed": "<ul><li>Pw</li><li><br />Dqk<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "BQ el1 ime": {
+    "write": "<ul><li>Pw</li><li><br />a<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:a@1",
+    "typed": "<ul><li>Pw</li><li><br />ak<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "BQ el1 letter": {
+    "write": "<ul><li>Pw</li><li><br />k<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:k@1",
+    "typed": "<ul><li>Pw</li><li><br />kk<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "BQ el1 lineBack": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@0",
+    "typed": "<ul><li>Pw</li><li>k<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "BQ el1 lineForward": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>Pw</li><li><br />k<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "BQ el1 paste HTML": {
+    "write": "<ul><li>Pw</li><li><br />Aq</li></ul><p>Bq</p><blockquote><p>Q1w</p></blockquote><ul><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Bq@2",
+    "typed": "<ul><li>Pw</li><li><br />Aq</li></ul><p>Bqk</p><blockquote><p>Q1w</p></blockquote><ul><li>Nw</li></ul>"
+  },
+  "BQ el1 paste own": {
+    "write": "<ul><li>Pw</li><li><br />Aq</li></ul><p>Bq</p><blockquote><p>Q1w</p></blockquote><ul><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Bq@2",
+    "typed": "<ul><li>Pw</li><li><br />Aq</li></ul><p>Bqk</p><blockquote><p>Q1w</p></blockquote><ul><li>Nw</li></ul>"
+  },
+  "BQ el1 paste text": {
+    "write": "<ul><li>Pw</li><li><br />Aq<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Aq@2",
+    "typed": "<ul><li>Pw</li><li><br />Aqk<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "BQ el1 placed": "element:listitem@1",
+  "QA el1 Backspace": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w<a>Lw</a></p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Q0w@3",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0wk<a>Lw</a></p></blockquote></li><li>Nw</li></ul>"
+  },
+  "QA el1 Bold": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Lw@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><b><strong>k</strong></b><a>Lw</a></li><li>Nw</li></ul>"
+  },
+  "QA el1 Bulleted list": {
+    "write": "<p>Pw</p><blockquote><p>Q0w</p></blockquote><p><a>Lw</a></p><p>Nw</p>",
+    "calls": 1,
+    "caret": "text:Lw@0",
+    "typed": "<p>Pw</p><blockquote><p>Q0w</p></blockquote><p>k<a>Lw</a></p><p>Nw</p>"
+  },
+  "QA el1 Code": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><pre><code>Lw</code></pre></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Lw@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><pre><code>kLw</code></pre></li><li>Nw</li></ul>"
+  },
+  "QA el1 Ctrl+Backspace": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w<a>Lw</a></p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Q0w@3",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0wk<a>Lw</a></p></blockquote></li><li>Nw</li></ul>"
+  },
+  "QA el1 Ctrl+Delete": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>k</li><li>Nw</li></ul>"
+  },
+  "QA el1 Delete": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><a>w</a></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:w@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>k<a>w</a></li><li>Nw</li></ul>"
+  },
+  "QA el1 Divider": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote></li></ul><hr /><ul><li><a>Lw</a></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Lw@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote></li></ul><hr /><ul><li>k<a>Lw</a></li><li>Nw</li></ul>"
+  },
+  "QA el1 Enter": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote></li><li><a>Lw</a></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Lw@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote></li><li>k<a>Lw</a></li><li>Nw</li></ul>"
+  },
+  "QA el1 Heading 2": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><h2><a>Lw</a></h2></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Lw@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><h2>k<a>Lw</a></h2></li><li>Nw</li></ul>"
+  },
+  "QA el1 Image": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><img /><a>Lw</a></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Lw@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><img />k<a>Lw</a></li><li>Nw</li></ul>"
+  },
+  "QA el1 Italic": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Lw@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><i><em>k</em></i><a>Lw</a></li><li>Nw</li></ul>"
+  },
+  "QA el1 Link": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><a>Lw</a></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Lw@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>k<a>Lw</a></li><li>Nw</li></ul>"
+  },
+  "QA el1 Numbered list": {
+    "write": "<ol><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><a>Lw</a></li><li>Nw</li></ol>",
+    "calls": 1,
+    "caret": "text:Lw@0",
+    "typed": "<ol><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>k<a>Lw</a></li><li>Nw</li></ol>"
+  },
+  "QA el1 Paragraph": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Lw@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>k<a>Lw</a></li><li>Nw</li></ul>"
+  },
+  "QA el1 Quote": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><blockquote><a>Lw</a></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Lw@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><blockquote>k<a>Lw</a></blockquote></li><li>Nw</li></ul>"
+  },
+  "QA el1 Shift+Enter": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><br /><a>Lw</a></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Lw@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><br />k<a>Lw</a></li><li>Nw</li></ul>"
+  },
+  "QA el1 Shift+Tab": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Lw@0",
+    "typed": ""
+  },
+  "QA el1 Strikethrough": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Lw@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><s>k</s><a>Lw</a></li><li>Nw</li></ul>"
+  },
+  "QA el1 Tab": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Lw@0",
+    "typed": ""
+  },
+  "QA el1 Underline": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Lw@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><u>k</u><a>Lw</a></li><li>Nw</li></ul>"
+  },
+  "QA el1 cut": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:Lw@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>k<a>Lw</a></li><li>Nw</li></ul>"
+  },
+  "QA el1 drop": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>Dq<a>Lw</a></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Dq@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>Dqk<a>Lw</a></li><li>Nw</li></ul>"
+  },
+  "QA el1 ime": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>a<a>Lw</a></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:a@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>ak<a>Lw</a></li><li>Nw</li></ul>"
+  },
+  "QA el1 letter": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>k<a>Lw</a></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:k@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>kk<a>Lw</a></li><li>Nw</li></ul>"
+  },
+  "QA el1 lineBack": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w<a>Lw</a></p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Q0w@3",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0wk<a>Lw</a></p></blockquote></li><li>Nw</li></ul>"
+  },
+  "QA el1 lineForward": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>k</li><li>Nw</li></ul>"
+  },
+  "QA el1 paste HTML": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>Aq</li></ul><p>Bq<a>Lw</a></p><ul><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Bq@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>Aq</li></ul><p>Bqk<a>Lw</a></p><ul><li>Nw</li></ul>"
+  },
+  "QA el1 paste own": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>Aq</li></ul><p>Bq<a>Lw</a></p><ul><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Bq@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>Aq</li></ul><p>Bqk<a>Lw</a></p><ul><li>Nw</li></ul>"
+  },
+  "QA el1 paste text": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>Aq<a>Lw</a></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Aq@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>Aqk<a>Lw</a></li><li>Nw</li></ul>"
+  },
+  "QA el1 placed": "text:Lw@0",
+  "QB el1 Backspace": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Q0w@3",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0wk</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "QB el1 Bold": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><b><strong>k</strong></b><br /></li><li>Nw</li></ul>"
+  },
+  "QB el1 Bulleted list": {
+    "write": "<p>Pw</p><blockquote><p>Q0w</p></blockquote><p><br /></p><p>Nw</p>",
+    "calls": 1,
+    "caret": "element:root@3",
+    "typed": "<p>Pw</p><blockquote><p>Q0w</p></blockquote><p><br /></p><p>k</p><p>Nw</p>"
+  },
+  "QB el1 Code": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><pre><code>\n</code></pre></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:code@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><pre><code>k\n</code></pre></li><li>Nw</li></ul>"
+  },
+  "QB el1 Ctrl+Backspace": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Q0w@3",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0wk</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "QB el1 Ctrl+Delete": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>k</li><li>Nw</li></ul>"
+  },
+  "QB el1 Delete": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>k</li><li>Nw</li></ul>"
+  },
+  "QB el1 Divider": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote></li></ul><hr /><ul><li><br /></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote></li></ul><hr /><ul><li>k<br /></li><li>Nw</li></ul>"
+  },
+  "QB el1 Enter": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote></li><li><br /></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote></li><li>k<br /></li><li>Nw</li></ul>"
+  },
+  "QB el1 Heading 2": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><h2><br /></h2></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:heading@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><h2>k<br /></h2></li><li>Nw</li></ul>"
+  },
+  "QB el1 Image": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><img /><br /></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><img />k<br /></li><li>Nw</li></ul>"
+  },
+  "QB el1 Italic": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><i><em>k</em></i><br /></li><li>Nw</li></ul>"
+  },
+  "QB el1 Link": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>k<br /></li><li>Nw</li></ul>"
+  },
+  "QB el1 Numbered list": {
+    "write": "<ol><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><br /></li><li>Nw</li></ol>",
+    "calls": 1,
+    "caret": "element:listitem@1",
+    "typed": "<ol><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>k<br /></li><li>Nw</li></ol>"
+  },
+  "QB el1 Paragraph": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>k<br /></li><li>Nw</li></ul>"
+  },
+  "QB el1 Quote": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><blockquote><br /></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:quote@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><blockquote>k<br /></blockquote></li><li>Nw</li></ul>"
+  },
+  "QB el1 Shift+Enter": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><br /><br /></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><br />k<br /></li><li>Nw</li></ul>"
+  },
+  "QB el1 Shift+Tab": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": ""
+  },
+  "QB el1 Strikethrough": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><s>k</s><br /></li><li>Nw</li></ul>"
+  },
+  "QB el1 Tab": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": ""
+  },
+  "QB el1 Underline": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><u>k</u><br /></li><li>Nw</li></ul>"
+  },
+  "QB el1 cut": {
+    "write": null,
+    "calls": 0,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>k<br /></li><li>Nw</li></ul>"
+  },
+  "QB el1 drop": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>Dq<br /></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Dq@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>Dqk<br /></li><li>Nw</li></ul>"
+  },
+  "QB el1 ime": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>a<br /></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:a@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>ak<br /></li><li>Nw</li></ul>"
+  },
+  "QB el1 letter": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>k<br /></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:k@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>kk<br /></li><li>Nw</li></ul>"
+  },
+  "QB el1 lineBack": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Q0w@3",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0wk</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "QB el1 lineForward": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>k</li><li>Nw</li></ul>"
+  },
+  "QB el1 paste HTML": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>Aq</li></ul><p>Bq<br /></p><ul><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Bq@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>Aq</li></ul><p>Bqk<br /></p><ul><li>Nw</li></ul>"
+  },
+  "QB el1 paste own": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>Aq</li></ul><p>Bq<br /></p><ul><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Bq@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>Aq</li></ul><p>Bqk<br /></p><ul><li>Nw</li></ul>"
+  },
+  "QB el1 paste text": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>Aq<br /></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Aq@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>Aqk<br /></li><li>Nw</li></ul>"
+  },
+  "QB el1 placed": "element:listitem@1",
+  "QT@1 Backspace": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0wT1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Q0wT1w@3",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0wkT1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "QT@1 Bold": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T1w@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><b><strong>k</strong></b>T1w</li><li>Nw</li></ul>"
+  },
+  "QT@1 Bulleted list": {
+    "write": "<p>Pw</p><blockquote><p>Q0w</p></blockquote><p>T1w</p><p>Nw</p>",
+    "calls": 1,
+    "caret": "text:T1w@0",
+    "typed": "<p>Pw</p><blockquote><p>Q0w</p></blockquote><p>kT1w</p><p>Nw</p>"
+  },
+  "QT@1 Code": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><pre><code>T1w</code></pre></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T1w@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><pre><code>kT1w</code></pre></li><li>Nw</li></ul>"
+  },
+  "QT@1 Ctrl+Backspace": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0wT1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Q0wT1w@3",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0wkT1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "QT@1 Ctrl+Delete": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>k</li><li>Nw</li></ul>"
+  },
+  "QT@1 Delete": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>1w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:1w@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>k1w</li><li>Nw</li></ul>"
+  },
+  "QT@1 Divider": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote></li></ul><hr /><ul><li>T1w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T1w@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote></li></ul><hr /><ul><li>kT1w</li><li>Nw</li></ul>"
+  },
+  "QT@1 Enter": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote></li><li>T1w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T1w@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote></li><li>kT1w</li><li>Nw</li></ul>"
+  },
+  "QT@1 Heading 2": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><h2>T1w</h2></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T1w@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><h2>kT1w</h2></li><li>Nw</li></ul>"
+  },
+  "QT@1 Image": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><img />T1w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T1w@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><img />kT1w</li><li>Nw</li></ul>"
+  },
+  "QT@1 Italic": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T1w@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><i><em>k</em></i>T1w</li><li>Nw</li></ul>"
+  },
+  "QT@1 Link": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><a>T1w</a></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T1w@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>k<a>T1w</a></li><li>Nw</li></ul>"
+  },
+  "QT@1 Numbered list": {
+    "write": "<ol><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>T1w</li><li>Nw</li></ol>",
+    "calls": 1,
+    "caret": "text:T1w@0",
+    "typed": "<ol><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>kT1w</li><li>Nw</li></ol>"
+  },
+  "QT@1 Paragraph": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T1w@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>kT1w</li><li>Nw</li></ul>"
+  },
+  "QT@1 Quote": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><blockquote>T1w</blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T1w@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><blockquote>kT1w</blockquote></li><li>Nw</li></ul>"
+  },
+  "QT@1 Shift+Enter": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><br />T1w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T1w@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><br />kT1w</li><li>Nw</li></ul>"
+  },
+  "QT@1 Shift+Tab": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T1w@0",
+    "typed": ""
+  },
+  "QT@1 Strikethrough": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T1w@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><s>k</s>T1w</li><li>Nw</li></ul>"
+  },
+  "QT@1 Tab": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T1w@0",
+    "typed": ""
+  },
+  "QT@1 Underline": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T1w@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><u>k</u>T1w</li><li>Nw</li></ul>"
+  },
+  "QT@1 cut": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T1w@0",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>kT1w</li><li>Nw</li></ul>"
+  },
+  "QT@1 drop": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>DqT1w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:DqT1w@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>DqkT1w</li><li>Nw</li></ul>"
+  },
+  "QT@1 ime": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>aT1w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:aT1w@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>akT1w</li><li>Nw</li></ul>"
+  },
+  "QT@1 letter": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>kT1w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:kT1w@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>kkT1w</li><li>Nw</li></ul>"
+  },
+  "QT@1 lineBack": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0wT1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Q0wT1w@3",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0wkT1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "QT@1 lineForward": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@1",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>k</li><li>Nw</li></ul>"
+  },
+  "QT@1 paste HTML": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>Aq</li></ul><p>BqT1w</p><ul><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:BqT1w@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>Aq</li></ul><p>BqkT1w</p><ul><li>Nw</li></ul>"
+  },
+  "QT@1 paste own": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>Aq</li></ul><p>BqT1w</p><ul><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:BqT1w@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>Aq</li></ul><p>BqkT1w</p><ul><li>Nw</li></ul>"
+  },
+  "QT@1 paste text": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>AqT1w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:AqT1w@2",
+    "typed": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote>AqkT1w</li><li>Nw</li></ul>"
+  },
+  "QT@1 placed": "text:T1w@0",
+  "TC@1 Backspace": {
+    "write": "<ul><li>Pw</li><li>T0<pre><code>C1w</code></pre></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0@2",
+    "typed": "<ul><li>Pw</li><li>T0k<pre><code>C1w</code></pre></li><li>Nw</li></ul>"
+  },
+  "TC@1 Bold": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li>T0w<b><strong>k</strong></b><pre><code>C1w</code></pre></li><li>Nw</li></ul>"
+  },
+  "TC@1 Bulleted list": {
+    "write": "<p>Pw</p><p>T0w</p><pre><code>C1w</code></pre><p>Nw</p>",
+    "calls": 1,
+    "caret": "text:T0w@3",
+    "typed": "<p>Pw</p><p>T0wk</p><pre><code>C1w</code></pre><p>Nw</p>"
+  },
+  "TC@1 Code": {
+    "write": "<ul><li>Pw</li><li><pre><code>T0w</code></pre><pre><code>C1w</code></pre></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li><pre><code>T0wk</code></pre><pre><code>C1w</code></pre></li><li>Nw</li></ul>"
+  },
+  "TC@1 Ctrl+Backspace": {
+    "write": "<ul><li>Pw</li><li><pre><code>C1w</code></pre></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@0",
+    "typed": "<ul><li>Pw</li><li>k<pre><code>C1w</code></pre></li><li>Nw</li></ul>"
+  },
+  "TC@1 Ctrl+Delete": {
+    "write": "<ul><li>Pw</li><li>T0wC1w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0wC1w@3",
+    "typed": "<ul><li>Pw</li><li>T0wkC1w</li><li>Nw</li></ul>"
+  },
+  "TC@1 Delete": {
+    "write": "<ul><li>Pw</li><li>T0wC1w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0wC1w@3",
+    "typed": "<ul><li>Pw</li><li>T0wkC1w</li><li>Nw</li></ul>"
+  },
+  "TC@1 Divider": {
+    "write": "<ul><li>Pw</li><li>T0w</li></ul><hr /><ul><li><pre><code>C1w</code></pre></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:C1w@0",
+    "typed": "<ul><li>Pw</li><li>T0w</li></ul><hr /><ul><li><pre><code>kC1w</code></pre></li><li>Nw</li></ul>"
+  },
+  "TC@1 Enter": {
+    "write": "<ul><li>Pw</li><li>T0w</li><li><pre><code>C1w</code></pre></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:C1w@0",
+    "typed": "<ul><li>Pw</li><li>T0w</li><li><pre><code>kC1w</code></pre></li><li>Nw</li></ul>"
+  },
+  "TC@1 Heading 2": {
+    "write": "<ul><li>Pw</li><li><h2>T0w</h2><pre><code>C1w</code></pre></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li><h2>T0wk</h2><pre><code>C1w</code></pre></li><li>Nw</li></ul>"
+  },
+  "TC@1 Image": {
+    "write": "<ul><li>Pw</li><li>T0w<img /><pre><code>C1w</code></pre></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li>T0w<img />k<pre><code>C1w</code></pre></li><li>Nw</li></ul>"
+  },
+  "TC@1 Italic": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li>T0w<i><em>k</em></i><pre><code>C1w</code></pre></li><li>Nw</li></ul>"
+  },
+  "TC@1 Link": {
+    "write": "<ul><li>Pw</li><li><a>T0w</a><pre><code>C1w</code></pre></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li><a>T0w</a>k<pre><code>C1w</code></pre></li><li>Nw</li></ul>"
+  },
+  "TC@1 Numbered list": {
+    "write": "<ol><li>Pw</li><li>T0w<pre><code>C1w</code></pre></li><li>Nw</li></ol>",
+    "calls": 1,
+    "caret": "text:T0w@3",
+    "typed": "<ol><li>Pw</li><li>T0wk<pre><code>C1w</code></pre></li><li>Nw</li></ol>"
+  },
+  "TC@1 Paragraph": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li>T0wk<pre><code>C1w</code></pre></li><li>Nw</li></ul>"
+  },
+  "TC@1 Quote": {
+    "write": "<ul><li>Pw</li><li><blockquote>T0w</blockquote><pre><code>C1w</code></pre></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li><blockquote>T0wk</blockquote><pre><code>C1w</code></pre></li><li>Nw</li></ul>"
+  },
+  "TC@1 Shift+Enter": {
+    "write": "<ul><li>Pw</li><li>T0w<br /><pre><code>C1w</code></pre></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li>T0w<br />k<pre><code>C1w</code></pre></li><li>Nw</li></ul>"
+  },
+  "TC@1 Shift+Tab": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T0w@3",
+    "typed": ""
+  },
+  "TC@1 Strikethrough": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li>T0w<s>k</s><pre><code>C1w</code></pre></li><li>Nw</li></ul>"
+  },
+  "TC@1 Tab": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T0w@3",
+    "typed": ""
+  },
+  "TC@1 Underline": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li>T0w<u>k</u><pre><code>C1w</code></pre></li><li>Nw</li></ul>"
+  },
+  "TC@1 cut": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li>T0wk<pre><code>C1w</code></pre></li><li>Nw</li></ul>"
+  },
+  "TC@1 drop": {
+    "write": "<ul><li>Pw</li><li>T0wDq<pre><code>C1w</code></pre></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0wDq@5",
+    "typed": "<ul><li>Pw</li><li>T0wDqk<pre><code>C1w</code></pre></li><li>Nw</li></ul>"
+  },
+  "TC@1 ime": {
+    "write": "<ul><li>Pw</li><li>T0wa<pre><code>C1w</code></pre></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0wa@4",
+    "typed": "<ul><li>Pw</li><li>T0wak<pre><code>C1w</code></pre></li><li>Nw</li></ul>"
+  },
+  "TC@1 letter": {
+    "write": "<ul><li>Pw</li><li>T0wk<pre><code>C1w</code></pre></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0wk@4",
+    "typed": "<ul><li>Pw</li><li>T0wkk<pre><code>C1w</code></pre></li><li>Nw</li></ul>"
+  },
+  "TC@1 lineBack": {
+    "write": "<ul><li>Pw</li><li><pre><code>C1w</code></pre></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@0",
+    "typed": "<ul><li>Pw</li><li>k<pre><code>C1w</code></pre></li><li>Nw</li></ul>"
+  },
+  "TC@1 lineForward": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li>T0wk<pre><code>C1w</code></pre></li><li>Nw</li></ul>"
+  },
+  "TC@1 paste HTML": {
+    "write": "<ul><li>Pw</li><li>T0wAq</li></ul><p>Bq</p><pre><code>C1w</code></pre><ul><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Bq@2",
+    "typed": "<ul><li>Pw</li><li>T0wAq</li></ul><p>Bqk</p><pre><code>C1w</code></pre><ul><li>Nw</li></ul>"
+  },
+  "TC@1 paste own": {
+    "write": "<ul><li>Pw</li><li>T0wAq</li></ul><p>Bq</p><pre><code>C1w</code></pre><ul><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Bq@2",
+    "typed": "<ul><li>Pw</li><li>T0wAq</li></ul><p>Bqk</p><pre><code>C1w</code></pre><ul><li>Nw</li></ul>"
+  },
+  "TC@1 paste text": {
+    "write": "<ul><li>Pw</li><li>T0wAq<pre><code>C1w</code></pre></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0wAq@5",
+    "typed": "<ul><li>Pw</li><li>T0wAqk<pre><code>C1w</code></pre></li><li>Nw</li></ul>"
+  },
+  "TC@1 placed": "text:T0w@3",
+  "TH@1 Backspace": {
+    "write": "<ul><li>Pw</li><li>T0<h3>H1w</h3></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0@2",
+    "typed": "<ul><li>Pw</li><li>T0k<h3>H1w</h3></li><li>Nw</li></ul>"
+  },
+  "TH@1 Bold": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li>T0w<b><strong>k</strong></b><h3>H1w</h3></li><li>Nw</li></ul>"
+  },
+  "TH@1 Bulleted list": {
+    "write": "<p>Pw</p><p>T0w</p><h3>H1w</h3><p>Nw</p>",
+    "calls": 1,
+    "caret": "text:T0w@3",
+    "typed": "<p>Pw</p><p>T0wk</p><h3>H1w</h3><p>Nw</p>"
+  },
+  "TH@1 Code": {
+    "write": "<ul><li>Pw</li><li><pre><code>T0w</code></pre><h3>H1w</h3></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li><pre><code>T0wk</code></pre><h3>H1w</h3></li><li>Nw</li></ul>"
+  },
+  "TH@1 Ctrl+Backspace": {
+    "write": "<ul><li>Pw</li><li><h3>H1w</h3></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@0",
+    "typed": "<ul><li>Pw</li><li>k<h3>H1w</h3></li><li>Nw</li></ul>"
+  },
+  "TH@1 Ctrl+Delete": {
+    "write": "<ul><li>Pw</li><li>T0wH1w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0wH1w@3",
+    "typed": "<ul><li>Pw</li><li>T0wkH1w</li><li>Nw</li></ul>"
+  },
+  "TH@1 Delete": {
+    "write": "<ul><li>Pw</li><li>T0wH1w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0wH1w@3",
+    "typed": "<ul><li>Pw</li><li>T0wkH1w</li><li>Nw</li></ul>"
+  },
+  "TH@1 Divider": {
+    "write": "<ul><li>Pw</li><li>T0w</li></ul><hr /><ul><li><h3>H1w</h3></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:H1w@0",
+    "typed": "<ul><li>Pw</li><li>T0w</li></ul><hr /><ul><li><h3>kH1w</h3></li><li>Nw</li></ul>"
+  },
+  "TH@1 Enter": {
+    "write": "<ul><li>Pw</li><li>T0w</li><li><h3>H1w</h3></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:H1w@0",
+    "typed": "<ul><li>Pw</li><li>T0w</li><li><h3>kH1w</h3></li><li>Nw</li></ul>"
+  },
+  "TH@1 Heading 2": {
+    "write": "<ul><li>Pw</li><li><h2>T0w</h2><h3>H1w</h3></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li><h2>T0wk</h2><h3>H1w</h3></li><li>Nw</li></ul>"
+  },
+  "TH@1 Image": {
+    "write": "<ul><li>Pw</li><li>T0w<img /><h3>H1w</h3></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li>T0w<img />k<h3>H1w</h3></li><li>Nw</li></ul>"
+  },
+  "TH@1 Italic": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li>T0w<i><em>k</em></i><h3>H1w</h3></li><li>Nw</li></ul>"
+  },
+  "TH@1 Link": {
+    "write": "<ul><li>Pw</li><li><a>T0w</a><h3>H1w</h3></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li><a>T0w</a>k<h3>H1w</h3></li><li>Nw</li></ul>"
+  },
+  "TH@1 Numbered list": {
+    "write": "<ol><li>Pw</li><li>T0w<h3>H1w</h3></li><li>Nw</li></ol>",
+    "calls": 1,
+    "caret": "text:T0w@3",
+    "typed": "<ol><li>Pw</li><li>T0wk<h3>H1w</h3></li><li>Nw</li></ol>"
+  },
+  "TH@1 Paragraph": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li>T0wk<h3>H1w</h3></li><li>Nw</li></ul>"
+  },
+  "TH@1 Quote": {
+    "write": "<ul><li>Pw</li><li><blockquote>T0w</blockquote><h3>H1w</h3></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li><blockquote>T0wk</blockquote><h3>H1w</h3></li><li>Nw</li></ul>"
+  },
+  "TH@1 Shift+Enter": {
+    "write": "<ul><li>Pw</li><li>T0w<br /><h3>H1w</h3></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li>T0w<br />k<h3>H1w</h3></li><li>Nw</li></ul>"
+  },
+  "TH@1 Shift+Tab": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T0w@3",
+    "typed": ""
+  },
+  "TH@1 Strikethrough": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li>T0w<s>k</s><h3>H1w</h3></li><li>Nw</li></ul>"
+  },
+  "TH@1 Tab": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T0w@3",
+    "typed": ""
+  },
+  "TH@1 Underline": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li>T0w<u>k</u><h3>H1w</h3></li><li>Nw</li></ul>"
+  },
+  "TH@1 cut": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li>T0wk<h3>H1w</h3></li><li>Nw</li></ul>"
+  },
+  "TH@1 drop": {
+    "write": "<ul><li>Pw</li><li>T0wDq<h3>H1w</h3></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0wDq@5",
+    "typed": "<ul><li>Pw</li><li>T0wDqk<h3>H1w</h3></li><li>Nw</li></ul>"
+  },
+  "TH@1 ime": {
+    "write": "<ul><li>Pw</li><li>T0wa<h3>H1w</h3></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0wa@4",
+    "typed": "<ul><li>Pw</li><li>T0wak<h3>H1w</h3></li><li>Nw</li></ul>"
+  },
+  "TH@1 letter": {
+    "write": "<ul><li>Pw</li><li>T0wk<h3>H1w</h3></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0wk@4",
+    "typed": "<ul><li>Pw</li><li>T0wkk<h3>H1w</h3></li><li>Nw</li></ul>"
+  },
+  "TH@1 lineBack": {
+    "write": "<ul><li>Pw</li><li><h3>H1w</h3></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@0",
+    "typed": "<ul><li>Pw</li><li>k<h3>H1w</h3></li><li>Nw</li></ul>"
+  },
+  "TH@1 lineForward": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li>T0wk<h3>H1w</h3></li><li>Nw</li></ul>"
+  },
+  "TH@1 paste HTML": {
+    "write": "<ul><li>Pw</li><li>T0wAq</li></ul><p>Bq</p><h3>H1w</h3><ul><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Bq@2",
+    "typed": "<ul><li>Pw</li><li>T0wAq</li></ul><p>Bqk</p><h3>H1w</h3><ul><li>Nw</li></ul>"
+  },
+  "TH@1 paste own": {
+    "write": "<ul><li>Pw</li><li>T0wAq</li></ul><p>Bq</p><h3>H1w</h3><ul><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Bq@2",
+    "typed": "<ul><li>Pw</li><li>T0wAq</li></ul><p>Bqk</p><h3>H1w</h3><ul><li>Nw</li></ul>"
+  },
+  "TH@1 paste text": {
+    "write": "<ul><li>Pw</li><li>T0wAq<h3>H1w</h3></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0wAq@5",
+    "typed": "<ul><li>Pw</li><li>T0wAqk<h3>H1w</h3></li><li>Nw</li></ul>"
+  },
+  "TH@1 placed": "text:T0w@3",
+  "TQ@1 Backspace": {
+    "write": "<ul><li>Pw</li><li>T0<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0@2",
+    "typed": "<ul><li>Pw</li><li>T0k<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "TQ@1 Bold": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li>T0w<b><strong>k</strong></b><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "TQ@1 Bulleted list": {
+    "write": "<p>Pw</p><p>T0w</p><blockquote><p>Q1w</p></blockquote><p>Nw</p>",
+    "calls": 1,
+    "caret": "text:T0w@3",
+    "typed": "<p>Pw</p><p>T0wk</p><blockquote><p>Q1w</p></blockquote><p>Nw</p>"
+  },
+  "TQ@1 Code": {
+    "write": "<ul><li>Pw</li><li><pre><code>T0w</code></pre><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li><pre><code>T0wk</code></pre><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "TQ@1 Ctrl+Backspace": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@0",
+    "typed": "<ul><li>Pw</li><li>k<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "TQ@1 Ctrl+Delete": {
+    "write": "<ul><li>Pw</li><li>T0wQ1w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0wQ1w@3",
+    "typed": "<ul><li>Pw</li><li>T0wkQ1w</li><li>Nw</li></ul>"
+  },
+  "TQ@1 Delete": {
+    "write": "<ul><li>Pw</li><li>T0wQ1w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0wQ1w@3",
+    "typed": "<ul><li>Pw</li><li>T0wkQ1w</li><li>Nw</li></ul>"
+  },
+  "TQ@1 Divider": {
+    "write": "<ul><li>Pw</li><li>T0w</li></ul><hr /><ul><li><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Q1w@0",
+    "typed": "<ul><li>Pw</li><li>T0w</li></ul><hr /><ul><li><blockquote><p>kQ1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "TQ@1 Enter": {
+    "write": "<ul><li>Pw</li><li>T0w</li><li><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Q1w@0",
+    "typed": "<ul><li>Pw</li><li>T0w</li><li><blockquote><p>kQ1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "TQ@1 Heading 2": {
+    "write": "<ul><li>Pw</li><li><h2>T0w</h2><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li><h2>T0wk</h2><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "TQ@1 Image": {
+    "write": "<ul><li>Pw</li><li>T0w<img /><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li>T0w<img />k<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "TQ@1 Italic": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li>T0w<i><em>k</em></i><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "TQ@1 Link": {
+    "write": "<ul><li>Pw</li><li><a>T0w</a><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li><a>T0w</a>k<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "TQ@1 Numbered list": {
+    "write": "<ol><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ol>",
+    "calls": 1,
+    "caret": "text:T0w@3",
+    "typed": "<ol><li>Pw</li><li>T0wk<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ol>"
+  },
+  "TQ@1 Paragraph": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li>T0wk<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "TQ@1 Quote": {
+    "write": "<ul><li>Pw</li><li><blockquote>T0w</blockquote><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li><blockquote>T0wk</blockquote><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "TQ@1 Shift+Enter": {
+    "write": "<ul><li>Pw</li><li>T0w<br /><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li>T0w<br />k<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "TQ@1 Shift+Tab": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T0w@3",
+    "typed": ""
+  },
+  "TQ@1 Strikethrough": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li>T0w<s>k</s><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "TQ@1 Tab": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T0w@3",
+    "typed": ""
+  },
+  "TQ@1 Underline": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li>T0w<u>k</u><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "TQ@1 cut": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li>T0wk<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "TQ@1 drop": {
+    "write": "<ul><li>Pw</li><li>T0wDq<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0wDq@5",
+    "typed": "<ul><li>Pw</li><li>T0wDqk<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "TQ@1 ime": {
+    "write": "<ul><li>Pw</li><li>T0wa<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0wa@4",
+    "typed": "<ul><li>Pw</li><li>T0wak<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "TQ@1 letter": {
+    "write": "<ul><li>Pw</li><li>T0wk<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0wk@4",
+    "typed": "<ul><li>Pw</li><li>T0wkk<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "TQ@1 lineBack": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@0",
+    "typed": "<ul><li>Pw</li><li>k<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "TQ@1 lineForward": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li>T0wk<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "TQ@1 paste HTML": {
+    "write": "<ul><li>Pw</li><li>T0wAq</li></ul><p>Bq</p><blockquote><p>Q1w</p></blockquote><ul><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Bq@2",
+    "typed": "<ul><li>Pw</li><li>T0wAq</li></ul><p>Bqk</p><blockquote><p>Q1w</p></blockquote><ul><li>Nw</li></ul>"
+  },
+  "TQ@1 paste own": {
+    "write": "<ul><li>Pw</li><li>T0wAq</li></ul><p>Bq</p><blockquote><p>Q1w</p></blockquote><ul><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Bq@2",
+    "typed": "<ul><li>Pw</li><li>T0wAq</li></ul><p>Bqk</p><blockquote><p>Q1w</p></blockquote><ul><li>Nw</li></ul>"
+  },
+  "TQ@1 paste text": {
+    "write": "<ul><li>Pw</li><li>T0wAq<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0wAq@5",
+    "typed": "<ul><li>Pw</li><li>T0wAqk<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "TQ@1 placed": "text:T0w@3",
+  "TQT el1 Backspace": {
+    "write": "<ul><li>Pw</li><li>T0<blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0@2",
+    "typed": "<ul><li>Pw</li><li>T0k<blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>"
+  },
+  "TQT el1 Bold": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li>T0w<b><strong>k</strong></b><blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>"
+  },
+  "TQT el1 Bulleted list": {
+    "write": "<p>Pw</p><p>T0w</p><blockquote><p>Q1w</p></blockquote><p>T2w</p><p>Nw</p>",
+    "calls": 1,
+    "caret": "text:T0w@3",
+    "typed": "<p>Pw</p><p>T0wk</p><blockquote><p>Q1w</p></blockquote><p>T2w</p><p>Nw</p>"
+  },
+  "TQT el1 Code": {
+    "write": "<ul><li>Pw</li><li><pre><code>T0w</code></pre><blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li><pre><code>T0wk</code></pre><blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>"
+  },
+  "TQT el1 Ctrl+Backspace": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@0",
+    "typed": "<ul><li>Pw</li><li>k<blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>"
+  },
+  "TQT el1 Ctrl+Delete": {
+    "write": "<ul><li>Pw</li><li>T0wQ1w<br />T2w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0wQ1w@3",
+    "typed": "<ul><li>Pw</li><li>T0wkQ1w<br />T2w</li><li>Nw</li></ul>"
+  },
+  "TQT el1 Delete": {
+    "write": "<ul><li>Pw</li><li>T0wQ1w<br />T2w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0wQ1w@3",
+    "typed": "<ul><li>Pw</li><li>T0wkQ1w<br />T2w</li><li>Nw</li></ul>"
+  },
+  "TQT el1 Divider": {
+    "write": "<ul><li>Pw</li><li>T0w</li></ul><hr /><ul><li><blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Q1w@0",
+    "typed": "<ul><li>Pw</li><li>T0w</li></ul><hr /><ul><li><blockquote><p>kQ1w</p></blockquote>T2w</li><li>Nw</li></ul>"
+  },
+  "TQT el1 Enter": {
+    "write": "<ul><li>Pw</li><li>T0w</li><li><blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Q1w@0",
+    "typed": "<ul><li>Pw</li><li>T0w</li><li><blockquote><p>kQ1w</p></blockquote>T2w</li><li>Nw</li></ul>"
+  },
+  "TQT el1 Heading 2": {
+    "write": "<ul><li>Pw</li><li><h2>T0w</h2><blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li><h2>T0wk</h2><blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>"
+  },
+  "TQT el1 Image": {
+    "write": "<ul><li>Pw</li><li>T0w<img /><blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li>T0w<img />k<blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>"
+  },
+  "TQT el1 Italic": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li>T0w<i><em>k</em></i><blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>"
+  },
+  "TQT el1 Link": {
+    "write": "<ul><li>Pw</li><li><a>T0w</a><blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li><a>T0w</a>k<blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>"
+  },
+  "TQT el1 Numbered list": {
+    "write": "<ol><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ol>",
+    "calls": 1,
+    "caret": "text:T0w@3",
+    "typed": "<ol><li>Pw</li><li>T0wk<blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ol>"
+  },
+  "TQT el1 Paragraph": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li>T0wk<blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>"
+  },
+  "TQT el1 Quote": {
+    "write": "<ul><li>Pw</li><li><blockquote>T0w</blockquote><blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li><blockquote>T0wk</blockquote><blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>"
+  },
+  "TQT el1 Shift+Enter": {
+    "write": "<ul><li>Pw</li><li>T0w<br /><blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li>T0w<br />k<blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>"
+  },
+  "TQT el1 Shift+Tab": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T0w@3",
+    "typed": ""
+  },
+  "TQT el1 Strikethrough": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li>T0w<s>k</s><blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>"
+  },
+  "TQT el1 Tab": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T0w@3",
+    "typed": ""
+  },
+  "TQT el1 Underline": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li>T0w<u>k</u><blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>"
+  },
+  "TQT el1 cut": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li>T0wk<blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>"
+  },
+  "TQT el1 drop": {
+    "write": "<ul><li>Pw</li><li>T0wDq<blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0wDq@5",
+    "typed": "<ul><li>Pw</li><li>T0wDqk<blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>"
+  },
+  "TQT el1 ime": {
+    "write": "<ul><li>Pw</li><li>T0wa<blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0wa@4",
+    "typed": "<ul><li>Pw</li><li>T0wak<blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>"
+  },
+  "TQT el1 letter": {
+    "write": "<ul><li>Pw</li><li>T0wk<blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0wk@4",
+    "typed": "<ul><li>Pw</li><li>T0wkk<blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>"
+  },
+  "TQT el1 lineBack": {
+    "write": "<ul><li>Pw</li><li><blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@0",
+    "typed": "<ul><li>Pw</li><li>k<blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>"
+  },
+  "TQT el1 lineForward": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T0w@3",
+    "typed": "<ul><li>Pw</li><li>T0wk<blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>"
+  },
+  "TQT el1 paste HTML": {
+    "write": "<ul><li>Pw</li><li>T0wAq</li></ul><p>Bq</p><blockquote><p>Q1w</p></blockquote><p>T2w</p><ul><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Bq@2",
+    "typed": "<ul><li>Pw</li><li>T0wAq</li></ul><p>Bqk</p><blockquote><p>Q1w</p></blockquote><p>T2w</p><ul><li>Nw</li></ul>"
+  },
+  "TQT el1 paste own": {
+    "write": "<ul><li>Pw</li><li>T0wAq</li></ul><p>Bq</p><blockquote><p>Q1w</p></blockquote><p>T2w</p><ul><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Bq@2",
+    "typed": "<ul><li>Pw</li><li>T0wAq</li></ul><p>Bqk</p><blockquote><p>Q1w</p></blockquote><p>T2w</p><ul><li>Nw</li></ul>"
+  },
+  "TQT el1 paste text": {
+    "write": "<ul><li>Pw</li><li>T0wAq<blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T0wAq@5",
+    "typed": "<ul><li>Pw</li><li>T0wAqk<blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>"
+  },
+  "TQT el1 placed": "text:T0w@3",
+  "TQT el2 Backspace": {
+    "write": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1wT2w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Q1wT2w@3",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1wkT2w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "TQT el2 Bold": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T2w@0",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote><b><strong>k</strong></b>T2w</li><li>Nw</li></ul>"
+  },
+  "TQT el2 Bulleted list": {
+    "write": "<p>Pw</p><p>T0w</p><blockquote><p>Q1w</p></blockquote><p>T2w</p><p>Nw</p>",
+    "calls": 1,
+    "caret": "text:T2w@0",
+    "typed": "<p>Pw</p><p>T0w</p><blockquote><p>Q1w</p></blockquote><p>kT2w</p><p>Nw</p>"
+  },
+  "TQT el2 Code": {
+    "write": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote><pre><code>T2w</code></pre></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T2w@0",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote><pre><code>kT2w</code></pre></li><li>Nw</li></ul>"
+  },
+  "TQT el2 Ctrl+Backspace": {
+    "write": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1wT2w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Q1wT2w@3",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1wkT2w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "TQT el2 Ctrl+Delete": {
+    "write": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>k</li><li>Nw</li></ul>"
+  },
+  "TQT el2 Delete": {
+    "write": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>2w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:2w@0",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>k2w</li><li>Nw</li></ul>"
+  },
+  "TQT el2 Divider": {
+    "write": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote></li></ul><hr /><ul><li>T2w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T2w@0",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote></li></ul><hr /><ul><li>kT2w</li><li>Nw</li></ul>"
+  },
+  "TQT el2 Enter": {
+    "write": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote></li><li>T2w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T2w@0",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote></li><li>kT2w</li><li>Nw</li></ul>"
+  },
+  "TQT el2 Heading 2": {
+    "write": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote><h2>T2w</h2></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T2w@0",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote><h2>kT2w</h2></li><li>Nw</li></ul>"
+  },
+  "TQT el2 Image": {
+    "write": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote><img />T2w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T2w@0",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote><img />kT2w</li><li>Nw</li></ul>"
+  },
+  "TQT el2 Italic": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T2w@0",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote><i><em>k</em></i>T2w</li><li>Nw</li></ul>"
+  },
+  "TQT el2 Link": {
+    "write": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote><a>T2w</a></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T2w@0",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>k<a>T2w</a></li><li>Nw</li></ul>"
+  },
+  "TQT el2 Numbered list": {
+    "write": "<ol><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ol>",
+    "calls": 1,
+    "caret": "text:T2w@0",
+    "typed": "<ol><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>kT2w</li><li>Nw</li></ol>"
+  },
+  "TQT el2 Paragraph": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T2w@0",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>kT2w</li><li>Nw</li></ul>"
+  },
+  "TQT el2 Quote": {
+    "write": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote><blockquote>T2w</blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T2w@0",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote><blockquote>kT2w</blockquote></li><li>Nw</li></ul>"
+  },
+  "TQT el2 Shift+Enter": {
+    "write": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote><br />T2w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:T2w@0",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote><br />kT2w</li><li>Nw</li></ul>"
+  },
+  "TQT el2 Shift+Tab": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T2w@0",
+    "typed": ""
+  },
+  "TQT el2 Strikethrough": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T2w@0",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote><s>k</s>T2w</li><li>Nw</li></ul>"
+  },
+  "TQT el2 Tab": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T2w@0",
+    "typed": ""
+  },
+  "TQT el2 Underline": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T2w@0",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote><u>k</u>T2w</li><li>Nw</li></ul>"
+  },
+  "TQT el2 cut": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:T2w@0",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>kT2w</li><li>Nw</li></ul>"
+  },
+  "TQT el2 drop": {
+    "write": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>DqT2w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:DqT2w@2",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>DqkT2w</li><li>Nw</li></ul>"
+  },
+  "TQT el2 ime": {
+    "write": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>aT2w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:aT2w@1",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>akT2w</li><li>Nw</li></ul>"
+  },
+  "TQT el2 letter": {
+    "write": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>kT2w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:kT2w@1",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>kkT2w</li><li>Nw</li></ul>"
+  },
+  "TQT el2 lineBack": {
+    "write": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1wT2w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:Q1wT2w@3",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1wkT2w</p></blockquote></li><li>Nw</li></ul>"
+  },
+  "TQT el2 lineForward": {
+    "write": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote></li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "element:listitem@2",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>k</li><li>Nw</li></ul>"
+  },
+  "TQT el2 paste HTML": {
+    "write": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>Aq</li></ul><p>BqT2w</p><ul><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:BqT2w@2",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>Aq</li></ul><p>BqkT2w</p><ul><li>Nw</li></ul>"
+  },
+  "TQT el2 paste own": {
+    "write": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>Aq</li></ul><p>BqT2w</p><ul><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:BqT2w@2",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>Aq</li></ul><p>BqkT2w</p><ul><li>Nw</li></ul>"
+  },
+  "TQT el2 paste text": {
+    "write": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>AqT2w</li><li>Nw</li></ul>",
+    "calls": 1,
+    "caret": "text:AqT2w@2",
+    "typed": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>AqkT2w</li><li>Nw</li></ul>"
+  },
+  "TQT el2 placed": "text:T2w@0",
+  "root el1 Backspace": {
+    "write": "<blockquote>X1<p>X2w</p></blockquote>",
+    "calls": 1,
+    "caret": "text:X1@2",
+    "typed": "<blockquote>X1k<p>X2w</p></blockquote>"
+  },
+  "root el1 Bold": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:X1w@3",
+    "typed": "<blockquote>X1w<b><strong>k</strong></b><p>X2w</p></blockquote>"
+  },
+  "root el1 Bulleted list": {
+    "write": "<ul><li>X1w</li></ul><blockquote><p>X2w</p></blockquote>",
+    "calls": 1,
+    "caret": "text:X1w@3",
+    "typed": "<ul><li>X1wk</li></ul><blockquote><p>X2w</p></blockquote>"
+  },
+  "root el1 Code": {
+    "write": "<blockquote><pre><code>X1w</code></pre><p>X2w</p></blockquote>",
+    "calls": 1,
+    "caret": "text:X1w@3",
+    "typed": "<blockquote><pre><code>X1wk</code></pre><p>X2w</p></blockquote>"
+  },
+  "root el1 Ctrl+Backspace": {
+    "write": "<blockquote><p>X2w</p></blockquote>",
+    "calls": 1,
+    "caret": "element:quote@0",
+    "typed": "<blockquote>k<p>X2w</p></blockquote>"
+  },
+  "root el1 Ctrl+Delete": {
+    "write": "<blockquote>X1wX2w</blockquote>",
+    "calls": 1,
+    "caret": "text:X1wX2w@3",
+    "typed": "<blockquote>X1wkX2w</blockquote>"
+  },
+  "root el1 Delete": {
+    "write": "<blockquote>X1wX2w</blockquote>",
+    "calls": 1,
+    "caret": "text:X1wX2w@3",
+    "typed": "<blockquote>X1wkX2w</blockquote>"
+  },
+  "root el1 Divider": {
+    "write": "<blockquote>X1w</blockquote><hr /><blockquote><p>X2w</p></blockquote>",
+    "calls": 1,
+    "caret": "text:X2w@0",
+    "typed": "<blockquote>X1w</blockquote><hr /><blockquote><p>kX2w</p></blockquote>"
+  },
+  "root el1 Enter": {
+    "write": "<blockquote>X1w<p></p><p>X2w</p></blockquote>",
+    "calls": 1,
+    "caret": "element:paragraph@0",
+    "typed": "<blockquote>X1w<p>k</p><p>X2w</p></blockquote>"
+  },
+  "root el1 Heading 2": {
+    "write": "<blockquote><h2>X1w</h2><p>X2w</p></blockquote>",
+    "calls": 1,
+    "caret": "text:X1w@3",
+    "typed": "<blockquote><h2>X1wk</h2><p>X2w</p></blockquote>"
+  },
+  "root el1 Image": {
+    "write": "<blockquote>X1w<img /><p>X2w</p></blockquote>",
+    "calls": 1,
+    "caret": "element:quote@2",
+    "typed": "<blockquote>X1w<img />k<p>X2w</p></blockquote>"
+  },
+  "root el1 Italic": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:X1w@3",
+    "typed": "<blockquote>X1w<i><em>k</em></i><p>X2w</p></blockquote>"
+  },
+  "root el1 Link": {
+    "write": "<blockquote><a>X1w</a><p>X2w</p></blockquote>",
+    "calls": 1,
+    "caret": "text:X1w@3",
+    "typed": "<blockquote><a>X1w</a>k<p>X2w</p></blockquote>"
+  },
+  "root el1 Numbered list": {
+    "write": "<ol><li>X1w</li></ol><blockquote><p>X2w</p></blockquote>",
+    "calls": 1,
+    "caret": "text:X1w@3",
+    "typed": "<ol><li>X1wk</li></ol><blockquote><p>X2w</p></blockquote>"
+  },
+  "root el1 Paragraph": {
+    "write": "<p>X1w</p><p>X2w</p>",
+    "calls": 1,
+    "caret": "text:X1w@3",
+    "typed": "<p>X1wk</p><p>X2w</p>"
+  },
+  "root el1 Quote": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:X1w@3",
+    "typed": "<blockquote>X1wk<p>X2w</p></blockquote>"
+  },
+  "root el1 Shift+Enter": {
+    "write": "<blockquote>X1w<br /><p>X2w</p></blockquote>",
+    "calls": 1,
+    "caret": "element:quote@2",
+    "typed": "<blockquote>X1w<br />k<p>X2w</p></blockquote>"
+  },
+  "root el1 Shift+Tab": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:X1w@3",
+    "typed": ""
+  },
+  "root el1 Strikethrough": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:X1w@3",
+    "typed": "<blockquote>X1w<s>k</s><p>X2w</p></blockquote>"
+  },
+  "root el1 Tab": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:X1w@3",
+    "typed": ""
+  },
+  "root el1 Underline": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:X1w@3",
+    "typed": "<blockquote>X1w<u>k</u><p>X2w</p></blockquote>"
+  },
+  "root el1 cut": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:X1w@3",
+    "typed": "<blockquote>X1wk<p>X2w</p></blockquote>"
+  },
+  "root el1 drop": {
+    "write": "<blockquote>X1wDq<p>X2w</p></blockquote>",
+    "calls": 1,
+    "caret": "text:X1wDq@5",
+    "typed": "<blockquote>X1wDqk<p>X2w</p></blockquote>"
+  },
+  "root el1 ime": {
+    "write": "<blockquote>X1wa<p>X2w</p></blockquote>",
+    "calls": 1,
+    "caret": "text:X1wa@4",
+    "typed": "<blockquote>X1wak<p>X2w</p></blockquote>"
+  },
+  "root el1 letter": {
+    "write": "<blockquote>X1wk<p>X2w</p></blockquote>",
+    "calls": 1,
+    "caret": "text:X1wk@4",
+    "typed": "<blockquote>X1wkk<p>X2w</p></blockquote>"
+  },
+  "root el1 lineBack": {
+    "write": "<blockquote><p>X2w</p></blockquote>",
+    "calls": 1,
+    "caret": "element:quote@0",
+    "typed": "<blockquote>k<p>X2w</p></blockquote>"
+  },
+  "root el1 lineForward": {
+    "write": null,
+    "calls": 0,
+    "caret": "text:X1w@3",
+    "typed": "<blockquote>X1wk<p>X2w</p></blockquote>"
+  },
+  "root el1 paste HTML": {
+    "write": "<blockquote>X1wAq</blockquote><p>Bq</p><p>X2w</p>",
+    "calls": 1,
+    "caret": "text:Bq@2",
+    "typed": "<blockquote>X1wAq</blockquote><p>Bqk</p><p>X2w</p>"
+  },
+  "root el1 paste own": {
+    "write": "<blockquote>X1wAq</blockquote><p>Bq</p><p>X2w</p>",
+    "calls": 1,
+    "caret": "text:Bq@2",
+    "typed": "<blockquote>X1wAq</blockquote><p>Bqk</p><p>X2w</p>"
+  },
+  "root el1 paste text": {
+    "write": "<blockquote>X1wAq<p>X2w</p></blockquote>",
+    "calls": 1,
+    "caret": "text:X1wAq@5",
+    "typed": "<blockquote>X1wAqk<p>X2w</p></blockquote>"
+  },
+  "root el1 placed": "text:X1w@3"
+}
