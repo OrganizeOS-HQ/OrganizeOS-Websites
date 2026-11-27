@@ -180,3 +180,108 @@ and T80.7's re-run does not arise.
 | PIMG  | pdown | code          | 'a\\nb' | text@0"a" #text"a"@0 (9)                                   | text@0"a" #text"a"@0 (9)                                              | =                                                                                                                                                         | =                                                                                                                                                                                                            | =                                                                                                                                                                                                                    |
 | PIMG  | pdown | press         | 'a'     | text@1"a" #text"a"@1 (9)                                   | text@1"a" #text"a"@1 (9)                                              | =                                                                                                                                                         | =                                                                                                                                                                                                            | =                                                                                                                                                                                                                    |
 | PIMG  | pdown | press         | 'a\\nb' | text@0"a" #text"a"@0 (9)                                   | text@0"a" #text"a"@0 (9)                                              | =                                                                                                                                                         | =                                                                                                                                                                                                            | =                                                                                                                                                                                                                    |
+
+# T81.6: P-t80-2 measured (300 runs per case per build)
+
+Worktree `/home/user/OrganizeOS-Websites/.claude/worktrees/agent-a940e2e89d2af5ae5` at `c36b65e`, unchanged. The base is
+`SP/r1-base`, run under `timeout 600`. The probe (`native/zzt80/`) was removed from both trees afterwards, so both are clean
+(the base's untracked `zz13base.log` was there before me). Scripts are in `SP/t80/`: `gen.py`, `gtr2.py`, `run.sh`,
+`freq.py`, `var.py`, `tr2.py`, `chk.py`. Raw data is in `SP/t80/data-h`, `data-h2`, `data-p3`, `data-t2`, `data-t3` and
+`data-t4`. Per-run forms are in `freq-h.txt`, `freq-h2.txt` and `var-h.txt`.
+
+## The batches
+
+Each batch runs the three cases interleaved (QTR, then the ordinary rule, then the ordinary image, for each run index).
+
+- Case 1, ordinary rule: `<p>Pw</p><hr><p>Nw</p>`, the `pdown` start, the rule selected by code.
+- Case 2, ordinary image: `<p>X0w<img></p>`, the `nocl` start, the image selected by code.
+- Case 3, QTR: the `pdown` start, the rule selected by a press.
+
+In every case the action is to compose `'a\nb'` by CDP, then press Backspace.
+
+| batch | runs per case per build | load average before / after (base) | (R1)        |
+| ----- | ----------------------- | ---------------------------------- | ----------- |
+| h     | 100                     | 0.79 / 1.58                        | 1.45 / 1.64 |
+| h2    | 200                     | 0.98 / 1.34                        | 1.34 / 1.68 |
+
+Each record holds the values handed out, the write, Lexical's and the page's caret after the composition, and the same
+after the Backspace.
+
+## The forms, over the 300 runs per case per build
+
+**Ordinary rule** (`<p>Pw</p><hr><p>Nw</p>`):
+
+- Normal form: the composition writes `bPw`, the rule stays selected, and the Backspace writes `<p>bPw</p><p>Nw</p>`. The
+  base gave it 290 times, R1 281 times.
+- (v1) The composed `a` replaces `Pw`, giving `<p>a</p><hr>`. The caret is at `a@0`, and the Backspace writes nothing.
+  - The base gave it 3 + 3 times, R1 0 + 5 times.
+- (v2) The write is `bPw` with the rule selected, and the Backspace writes nothing.
+  - The base gave it 1 + 3 times, R1 0 + 5 times.
+- **(v3), at R1 only.** The composition hands out `aPw`, `bPw`, then `<p>a\nb</p><hr>`: a literal newline written into
+  the text. The caret is at `a\nb@3`, and the Backspace writes `<p>a\n</p><hr>`.
+  - The base gave it **0 times**, R1 3 + 6 = **9 times**.
+- Overall the variant rates are close: the base 10 of 300, R1 19 of 300. The form v3, though, is R1's alone.
+
+**Ordinary image** (`<p>X0w<img></p>`):
+
+- Normal form: the base gave it 300 of 300.
+- R1's variant: a single value handed out (`<p>X0w<img>a</p>`, no `b`). The selection is the range `a@0` to `a@1`, and the
+  Backspace removes the `a`, giving `<p>X0w<img></p>`.
+  - R1 gave it 2 times in batch h and 0 in h2.
+  - It did not recur in 300 runs of the case alone, or in 650 traced runs.
+  - That is 2 in 1,250 R1 runs in all, against 0 in 300 at the base.
+
+**QTR:**
+
+- The base: 6 variants of 300, the `<p>a</p>` form (the item's `a` lifted out of the list) and the `<p>bPw</p>` form.
+- R1: 11 variants of 300.
+  - 7 of them: the composed `a`, after which the Backspace empties the item.
+  - **4, at R1 only:** `<li>a\nbQ0w</li><li>T1w<hr>`. The newline is literal, and the quote is joined into the first item.
+
+Outcome: **(B) for both ordinary cases.** Both show a form at R1 that the base never gives in 300 runs: v3 for the rule,
+and the single-value form for the image. On rates alone the ordinary rule would read as (A).
+
+## The trace (instrumented temporarily, then reverted)
+
+300 traced runs of the ordinary rule at R1 gave 16 variant runs. In all 16, Lexical's pointerdown mark was consumed
+partway through the composition: a `selectionchange` arrived while the page showed `aPw@0`, and the node selection became
+a range. Lexical's composition key stays null, because its `compositionstart` saw a node selection, so
+`editor.isComposing()` is false throughout.
+
+- In **8 of 8** v3 runs, R1's `beforeKeyOrEdit` (`rich-text-line-points.ts`, from line 1265) ran its update at the
+  composition's `beforeinput insertCompositionText "a\nb"`.
+  - Its `isComposing()` guard does not apply, since there is no composition key.
+  - With a range held and the page moved, its 15.12 read-back (`$readBack`, line 1230) replaces Lexical's collapsed
+    `aPw@0` with the page's composition range `aPw@0` to `aPw@1`.
+  - Lexical's later `input` then writes the IME string `a\nb` into the text node as text.
+- In the other 8 runs, the mark was consumed the same way but `beforeKeyOrEdit` ran no update. These end in v1, the
+  base's form.
+- In the 284 runs where the node selection held through the composition, neither happened.
+
+The image variant did not recur under instrumentation, so its step is not traced. Its range selection after the
+composition matches the same read-back's footprint, but that is not shown.
+
+## P record P-t81-6
+
+- Stored: `<p>Pw</p><hr><p>Nw</p>`.
+- How the point was placed: the caret set by code at Pw@1, then a pointerdown on Nw with no selection change after it
+  (Lexical's press mark left pending), then the rule node-selected by code.
+- Action: compose `'a\nb'` by CDP IME, then Backspace.
+- The base gives the normal form 290 of 300, and v1 or v2 in 10.
+- R1 gives v3 in 9 of 300, a form the base never gave:
+  - the composition hands out `<p>a\nb</p><hr><p>Nw</p>`, a literal newline in the text;
+  - the Backspace then writes `<p>a\n</p>`.
+- The R1 step: `beforeKeyOrEdit`'s 15.12 read-back runs at the composition's `beforeinput`, because Lexical holds a range
+  but has no composition key (the composition started at a node selection). It sets the page's composition range as the
+  selection.
+- The same step is the likely source of:
+  - QTR's R1-only `a\nbQ0w` form (4 of 300);
+  - the image's single-value form (2 of 1,250, untraced).
+- Reaching it needs Lexical's press mark pending at a node selection, then consumed mid-composition. This run used a
+  synthetic pointerdown to set the mark.
+- Candidates:
+  - (a) an R1 difference to fix: the read-back should not run during a composition that Lexical tracks without a key;
+  - (b) the CDP driver's timing, listed with T70.12's entry.
+  - The trace (8 of 8, against 0 of 8 in the base-form variants) points to (a).
+- The count of ordinary-content cases with an R1-only form, which is T60.3's number until ruled: **2**. One is the
+  ordinary rule (v3, traced); the other is the ordinary image (2 runs, untraced).
