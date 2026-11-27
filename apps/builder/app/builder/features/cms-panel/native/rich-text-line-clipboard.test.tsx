@@ -60,7 +60,6 @@ import {
   UNLINED_CASES,
 } from "./rich-text-line-writer-cases";
 import fixture1511CopyJson from "./__fixtures__/rich-text-line-base-1511-copy.json";
-import { ITEM_NOT_WHOLE_MARK } from "./rich-text-line-clipboard";
 
 declare module "@vitest/browser/context" {
   interface BrowserCommands {
@@ -1099,7 +1098,7 @@ describe("Task 18: real empty blocks and whole items (check 4, 15.11)", () => {
     const held = clipboard();
     for (const type of ["text/plain", "text/html", EDITOR_DATA]) {
       expect(held[type], type).toBeDefined();
-      expect(held[type], type).not.toContain(ITEM_NOT_WHOLE_MARK);
+      expect(held[type], type).not.toMatch(/[\uE000-\uF8FF]/);
     }
   };
 

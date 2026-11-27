@@ -46,7 +46,6 @@ import {
 } from "./rich-text-line-writer-cases";
 import { editable, editorOf, settle } from "./rich-text-test-harness";
 import { exportRichTextHtml } from "./rich-text-html";
-import { ITEM_NOT_WHOLE_MARK } from "./rich-text-line-clipboard";
 
 declare module "@vitest/browser/context" {
   interface BrowserCommands {
@@ -358,7 +357,7 @@ const runCell = async (cell: Case) => {
       expect(
         data[type] ?? "",
         `${name} ${type}: no made-up character`
-      ).not.toContain(ITEM_NOT_WHOLE_MARK);
+      ).not.toMatch(/[\uE000-\uF8FF]/);
     }
   }
   if (NO_RANGE.includes(cell.id)) {

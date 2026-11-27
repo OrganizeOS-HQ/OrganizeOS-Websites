@@ -437,7 +437,7 @@ export const createScratchEditor = (config: ScratchConfig): LexicalEditor =>
  * holds outside the range, in the scratch editor only. A private-use
  * character, so no clipboard flavour can hold it unseen (T68.3).
  */
-export const ITEM_NOT_WHOLE_MARK = "\uE000";
+const ITEM_NOT_WHOLE_MARK = "\uE000";
 
 /**
  * D6: the copied HTML holds a list item only where the selection holds the
