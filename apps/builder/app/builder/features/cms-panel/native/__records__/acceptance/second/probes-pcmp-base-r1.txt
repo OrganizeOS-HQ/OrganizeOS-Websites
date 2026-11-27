@@ -1,0 +1,112 @@
+probe file                               base (tests; exit, s)        head                           recs  equal   diff one-side
+clip-skeptic/zzv15-clip-skeptic-main     3 passed; 0/9                3 passed; 0/9                    41     11     30      0
+clip/zzv15-clip-copy                     none; 1/3                    none; 1/2                         0      0      0      0
+clip/zzv15-clip-cost                     1 passed; 0/31               1 passed; 0/57                    8      8      0      0
+clip/zzv15-clip-d                        1 passed; 0/13               1 passed; 0/11                 2647   2282    365      0
+clip/zzv15-clip-diag                     1 passed; 0/4                1 passed; 0/6                     8      2      6      0
+clip/zzv15-clip-e                        none; 0/308                  1 passed; 0/33                10735    429    159  10147
+clip/zzv15-clip-fs9                      1 passed; 0/7                1 passed; 0/6                     4      0      4      0
+clip/zzv15-clip-p5                       1 failed; 1/4                1 failed; 1/3                     0      0      0      0
+clip/zzv15-clip-x                        none; 0/177                  9 passed; 0/167                 939    340    555     44
+code-skeptic/zzv15-code-skeptic-k        9 passed; 0/8                9 passed; 0/8                     9      9      0      0
+code/zzv15-code-a                        none; 137/600                29 passed; 0/14                  29     11      7     11
+code/zzv15-code-b                        22 passed; 0/15              22 passed; 0/13                  22     15      7      0
+code/zzv15-code-c                        7 passed; 0/8                7 passed; 0/7                     7      7      0      0
+comp-skeptic/zzv15-comp-skeptic-v        32 passed; 0/32              32 passed; 0/32                 288    108    180      0
+comp/zzv15-comp-a                        none; 0/50                   110 passed; 0/105               990    166    302    522
+comp/zzv15-comp-c                        6 passed; 0/8                6 passed; 0/8                    54     19     35      0
+comp/zzv15-comp-e                        1 failed | 33 passed; 1/34   1 failed | 33 passed; 1/36      297    112    185      0
+comp/zzv15-comp-e2                       1 passed; 0/8                1 passed; 0/8                     4      3      1      0
+comp/zzv15-comp-f                        42 passed; 0/43              42 passed; 0/42                 378    154    224      0
+comp/zzv15-comp-k                        70 passed; 0/71              70 passed; 0/76                 630    261    369      0
+comp/zzv15-comp-n                        95 passed; 0/32              95 passed; 0/31                 855    544    311      0
+comp/zzv15-comp-x                        41 passed; 0/40              41 passed; 0/38                 369    142    227      0
+hist/zzv15-hist-a                        none; 137/600                93 passed; 0/66                 744    419    261     64
+hist/zzv15-hist-ab                       none; 137/600                8 passed; 0/10                   64      6     10     48
+hist/zzv15-hist-d                        68 passed; 0/25              68 passed; 0/28                 544    251    293      0
+hist/zzv15-hist-k                        70 passed; 0/75              70 passed; 0/73                 560    260    300      0
+hist/zzv15-hist-k2                       20 passed; 0/16              20 passed; 0/17                 122     86     36      0
+hist/zzv15-hist-p                        67 passed; 0/50              67 passed; 0/38                 536    308    228      0
+hist/zzv15-hist-z                        60 passed; 0/54              60 passed; 0/51                 480    274    206      0
+hist/zzv15-hist-z2                       76 passed; 0/61              76 passed; 0/66                 608    342    266      0
+insert-skeptic/zzq1s-a                   152 passed; 0/37             152 passed; 0/45                152    124     28      0
+insert/zzq1-a-BQA                        4 passed | 290 skipped; 0/6  4 passed | 290 skipped; 0/8       4      0      4      0
+insert/zzq1-a-CTRL                       1 passed | 293 skipped; 0/5  1 passed | 293 skipped; 0/6       1      1      0      0
+insert/zzq1-a-NAV                        7 passed | 287 skipped; 0/26 7 passed | 287 skipped; 0/35      7      7      0      0
+insert/zzq1-a-R                          217 passed | 77 skipped; 0/1 217 passed | 77 skipped; 0/1    217    176     41      0
+insert/zzq1-a-S                          142 passed | 152 skipped; 0/ 142 passed | 152 skipped; 0/    142     93     49      0
+insert/zzq1-a-TAGS                       2 passed | 292 skipped; 0/6  2 passed | 292 skipped; 0/7       2      2      0      0
+keys/zzv15-keys-i1br                     none; 137/600                1 passed; 0/203                1350    112    168   1070
+keys/zzv15-keys-i1code                   none; 137/600                1 passed; 0/209                1350    140    140   1070
+keys/zzv15-keys-i1hr                     none; 0/344                  1 passed; 0/80                  450    152    128    170
+keys/zzv15-keys-i1img                    none; 137/600                1 passed; 0/290                1350    112    168   1070
+keys/zzv15-keys-i1link                   none; 137/600                1 passed; 0/232                1350    104    176   1070
+keys/zzv15-keys-i1linkbtn                1 passed; 0/35               1 passed; 0/33                   90     60     30      0
+keys/zzv15-keys-i1linkh                  none; 137/600                1 passed; 0/80                  450     40     80    330
+keys/zzv15-keys-i1named                  1 passed; 0/24               1 passed; 0/26                   99     51     48      0
+keys/zzv15-keys-i1word                   none; 137/600                1 passed; 0/69                  450     72     48    330
+keys/zzv15-keys-i2b                      2 passed; 0/94               2 passed; 0/86                  510    292    218      0
+keys/zzv15-keys-i2l                      1 passed; 0/91               1 passed; 0/91                  512    457     55      0
+keys/zzv15-keys-i2r0                     1 passed; 0/180              1 passed; 0/172                 992    662    330      0
+keys/zzv15-keys-i2r1                     1 passed; 0/164              1 passed; 0/163                 928    604    324      0
+keys/zzv15-keys-i3ba                     none; 137/600                1 passed; 0/99                  684    136    184    364
+keys/zzv15-keys-i3bb                     none; 137/600                none; 0/73                      480     78    162    240
+keys/zzv15-keys-i3bwda                   none; 137/600                1 passed; 0/75                  513     99    141    273
+keys/zzv15-keys-i3bwdb                   none; 137/600                1 passed; 0/97                  684    115    205    364
+keys/zzv15-keys-i3fa                     none; 0/290                  1 passed; 0/117                 840     88    152    600
+keys/zzv15-keys-i3fb                     none; 0/544                  1 passed; 0/91                  630    103     97    430
+keys/zzv15-keys-i3fwda                   none; 137/600                1 passed; 0/91                  630     57    143    430
+keys/zzv15-keys-i3fwdb                   none; 0/298                  1 passed; 0/115                 840    132    108    600
+keys/zzv15-keys-i3h                      1 passed; 0/57               1 passed; 0/55                  378    169    209      0
+keys/zzv15-keys-i3lb                     none; 137/600                1 passed; 0/7                     8      0      0      8
+keys/zzv15-keys-i3lr                     1 passed; 0/8                1 passed; 0/8                    18     18      0      0
+keys/zzv15-keys-i3named                  none; 0/240                  1 passed; 0/20                   96      0      0     96
+keys/zzv15-keys-i3real                   none; 137/600                1 passed; 0/71                  381     29     11    341
+keys/zzv15-keys-i3rr                     1 passed; 0/27               1 passed; 0/27                  162     98     64      0
+keys/zzv15-keys-i3sub                    1 passed; 0/66               1 passed; 0/62                  450    213    237      0
+keys/zzv15-keys-i4bwd                    none; 137/600                1 passed; 0/98                  684    128    192    364
+keys/zzv15-keys-i4fwd                    none; 0/424                  1 passed; 0/111                 840    150     90    600
+keys/zzv15-keys-i5                       1 passed; 0/158              1 passed; 0/159                1100    943    157      0
+keys/zzv15-keys-i5r                      1 passed; 0/12               1 passed; 0/14                   54     54      0      0
+keys/zzv15-keys-i5u                      1 passed; 0/19               1 passed; 0/18                   96     96      0      0
+keys/zzv15-keys-i6                       none; 1/3                    1 passed; 0/28                   72      0      0     72
+keys/zzv15-keys-i6p                      none; 1/2                    1 passed; 0/22                   56      0      0     56
+keys/zzv15-keys-i7                       1 passed; 0/7                1 passed; 0/6                    21     21      0      0
+keys/zzv15-keys-smoke                    1 passed; 0/8                1 passed; 0/5                    11      2      9      0
+nav/zzv15-nav-c                          12 passed; 0/100             12 passed; 0/88                  12     12      0      0
+nav/zzv15-nav-f                          59 passed; 0/130             59 passed; 0/128                 59     43     16      0
+nav/zzv15-nav-h                          64 passed; 0/278             64 passed; 0/304                 64     64      0      0
+nav/zzv15-nav-k1                         152 passed; 0/123            152 passed; 0/119               152    152      0      0
+nav/zzv15-nav-k2                         16 passed; 0/42              16 passed; 0/38                  16     14      2      0
+nav/zzv15-nav-p                          43 passed; 0/74              43 passed; 0/80                  43     19     24      0
+nav/zzv15-nav-w1                         160 passed; 0/92             160 passed; 0/91                224    142     82      0
+nav/zzv15-nav-w2                         160 passed; 0/53             160 passed; 0/45                190    130      0     60
+nav/zzv15-nav-w5                         56 passed; 0/102             56 passed; 0/101                 56     56      0      0
+
+clip                132  composition-start character only (16.19, 16.21; T46.3: R1 withholds the value that holds it)
+clip                 66  every final value equal; steps between differ (see detail)
+clip                733  final values differ (see detail)
+clip                158  onChange count only (D7, 16.10: no repeat of the value handed out last)
+clip-skeptic         11  every final value equal; steps between differ (see detail)
+clip-skeptic         19  final values differ (see detail)
+code                 13  final values differ (see detail)
+code                  1  onChange count only (D7, 16.10: no repeat of the value handed out last)
+comp                178  composition-start character only (16.19, 16.21; T46.3: R1 withholds the value that holds it)
+comp                 16  every final value equal; steps between differ (see detail)
+comp               1233  final values differ (see detail)
+comp                  1  final values equal but for the composition-start character (16.19, 16.21)
+comp                226  onChange count only (D7, 16.10: no repeat of the value handed out last)
+comp-skeptic         34  composition-start character only (16.19, 16.21; T46.3: R1 withholds the value that holds it)
+comp-skeptic        122  final values differ (see detail)
+comp-skeptic         24  onChange count only (D7, 16.10: no repeat of the value handed out last)
+hist                  4  composition-start character only (16.19, 16.21; T46.3: R1 withholds the value that holds it)
+hist                 21  every final value equal; steps between differ (see detail)
+hist               1365  final values differ (see detail)
+hist                210  onChange count only (D7, 16.10: no repeat of the value handed out last)
+insert               94  final values differ (see detail)
+insert-skeptic       28  final values differ (see detail)
+keys               4074  final values differ (see detail)
+nav                   7  composition-start character only (16.19, 16.21; T46.3: R1 withholds the value that holds it)
+nav                  18  every final value equal; steps between differ (see detail)
+nav                  59  final values differ (see detail)
+nav                  40  onChange count only (D7, 16.10: no repeat of the value handed out last)

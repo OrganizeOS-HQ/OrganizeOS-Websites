@@ -1,0 +1,310 @@
+[
+  {
+    "set": "toolbar",
+    "id": "B::ul-d1|TQT|Q1w->T2w|Im",
+    "stored": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>",
+    "hungStep": 4,
+    "hungLast": "[{\"step\":\"[\\\"clickWord\\\",\\\"Q1w\\\",1]\",\"ms\":99,\"caret\":\"root/list[0]/listitem[1]/quote[1]/paragraph[0]/text[0]@text:1\\\"Q1w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:1 on text[] item[text,quote,text] led=false\",\"sh\":1978283165,\"ep\":[],\"focus\":true,\"overlays\":0,\"live\":\"<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>\",\"newErrors\":[]},{\"step\":\"[\\\"shiftClickWord\\\",\\\"T2w\\\",2]\",\"ms\":87,\"caret\":\"root/list[0]/listitem[1]/quote[1]/paragraph[0]/text[0]@text:1\\\"Q1w\\\" -> root/list[0]/listitem[1]/text[2]@text:2\\\"T2w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:1 on t"
+  },
+  {
+    "set": "toolbar",
+    "id": "B::ul-d1|BQT|whole|Im",
+    "stored": "<ul><li>Pw</li><li><br><blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>",
+    "hungStep": 4,
+    "hungLast": "[{\"step\":\"[\\\"clickWord\\\",\\\"Q1w\\\",0]\",\"ms\":43,\"caret\":\"root/list[0]/listitem[1]/quote[1]/paragraph[0]/text[0]@text:0\\\"Q1w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:0 on text[] item[linebreak,quote,text] led=false\",\"sh\":-695134228,\"ep\":[],\"focus\":true,\"overlays\":0,\"live\":\"<ul><li>Pw</li><li><br /><blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>\",\"newErrors\":[]},{\"step\":\"[\\\"shiftClickWord\\\",\\\"T2w\\\"]\",\"ms\":80,\"caret\":\"root/list[0]/listitem[1]/quote[1]/paragraph[0]/text[0]@text:0\\\"Q1w\\\" -> root/list[0]/listitem[1]/text[2]@text:3\\\"T2w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:"
+  },
+  {
+    "set": "toolbar",
+    "id": "B::ul-d1|BQT|Q1w->T2w|Im",
+    "stored": "<ul><li>Pw</li><li><br><blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>",
+    "hungStep": 4,
+    "hungLast": "[{\"step\":\"[\\\"clickWord\\\",\\\"Q1w\\\",1]\",\"ms\":56,\"caret\":\"root/list[0]/listitem[1]/quote[1]/paragraph[0]/text[0]@text:1\\\"Q1w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:1 on text[] item[linebreak,quote,text] led=false\",\"sh\":-695134228,\"ep\":[],\"focus\":true,\"overlays\":0,\"live\":\"<ul><li>Pw</li><li><br /><blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>\",\"newErrors\":[]},{\"step\":\"[\\\"shiftClickWord\\\",\\\"T2w\\\",2]\",\"ms\":86,\"caret\":\"root/list[0]/listitem[1]/quote[1]/paragraph[0]/text[0]@text:1\\\"Q1w\\\" -> root/list[0]/listitem[1]/text[2]@text:2\\\"T2w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"tex"
+  },
+  {
+    "set": "toolbar",
+    "id": "R::ul-d1|r-QxLy|X1w->X2w|Im",
+    "stored": "<p>Pw</p><blockquote>X0w<ul><li>X1w</li></ul>X2w</blockquote><p>Nw</p>",
+    "hungStep": 4,
+    "hungLast": "[{\"step\":\"[\\\"clickWord\\\",\\\"X1w\\\",1]\",\"ms\":46,\"caret\":\"root/quote[1]/list[1]/listitem[0]/text[0]@text:1\\\"X1w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:1 on text[] item[text] led=false\",\"sh\":-1290676223,\"ep\":[],\"focus\":true,\"overlays\":0,\"live\":\"<p>Pw</p><blockquote>X0w<ul><li>X1w</li></ul>X2w</blockquote><p>Nw</p>\",\"newErrors\":[]},{\"step\":\"[\\\"shiftClickWord\\\",\\\"X2w\\\",2]\",\"ms\":71,\"caret\":\"root/quote[1]/list[1]/listitem[0]/text[0]@text:1\\\"X1w\\\" -> root/quote[1]/text[2]@text:2\\\"X2w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:1 on text[] item[text] led=false\",\"sh\":-1290676223,\"ep\":[],\"focu"
+  },
+  {
+    "set": "toolbar",
+    "id": "X::ul-d1|QxLy|X1w->X2w|Im",
+    "stored": "<ul><li>Pw</li><li><blockquote>X0w<ul><li>X1w</li></ul>X2w</blockquote></li><li>Nw</li></ul>",
+    "hungStep": 4,
+    "hungLast": "[{\"step\":\"[\\\"clickWord\\\",\\\"X1w\\\",1]\",\"ms\":39,\"caret\":\"root/list[0]/listitem[1]/quote[0]/list[1]/listitem[0]/text[0]@text:1\\\"X1w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:1 on text[] item[text] led=false\",\"sh\":58181271,\"ep\":[],\"focus\":true,\"overlays\":0,\"live\":\"<ul><li>Pw</li><li><blockquote>X0w<ul><li>X1w</li></ul>X2w</blockquote></li><li>Nw</li></ul>\",\"newErrors\":[]},{\"step\":\"[\\\"shiftClickWord\\\",\\\"X2w\\\",2]\",\"ms\":120,\"caret\":\"root/list[0]/listitem[1]/quote[0]/list[1]/listitem[0]/text[0]@text:1\\\"X1w\\\" -> root/list[0]/listitem[1]/quote[0]/text[2]@text:2\\\"X2w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad"
+  },
+  {
+    "set": "clipboard",
+    "id": "p2::R2 block@0->item text (P10) / p1",
+    "stored": "<ul><li>xq<blockquote><p>qq</p></blockquote>yyq</li><li>nq</li></ul><p>sepq</p>",
+    "hungStep": 3,
+    "hungLast": "[{\"step\":\"[\\\"range\\\",\\\"qq\\\",0,\\\"yyq\\\",1]\",\"ms\":8,\"caret\":\"root/list[0]/listitem[0]/quote[1]/paragraph[0]/text[0]@text:0\\\"qq\\\" -> root/list[0]/listitem[0]/text[2]@text:1\\\"yyq\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:0 on text[] item[text,quote,text] led=false\",\"sh\":580120031,\"ep\":[],\"overlays\":0,\"live\":\"<ul><li>xq<blockquote><p>qq</p></blockquote>yyq</li><li>nq</li></ul><p>sepq</p>\",\"newErrors\":[]},{\"step\":\"[\\\"snap\\\",\\\"b\\\"]\",\"ms\":0,\"caret\":\"root/list[0]/listitem[0]/quote[1]/paragraph[0]/text[0]@text:0\\\"qq\\\" -> root/list[0]/listitem[0]/text[2]@text:1\\\"yyq\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\""
+  },
+  {
+    "set": "clipboard",
+    "id": "p2::R2 block@0->item text (P10) / p2",
+    "stored": "<ul><li>xq<blockquote><p>qq</p></blockquote>yyq</li><li>nq</li></ul><p>sepq</p>",
+    "hungStep": 3,
+    "hungLast": "[{\"step\":\"[\\\"range\\\",\\\"qq\\\",0,\\\"yyq\\\",1]\",\"ms\":32,\"caret\":\"root/list[0]/listitem[0]/quote[1]/paragraph[0]/text[0]@text:0\\\"qq\\\" -> root/list[0]/listitem[0]/text[2]@text:1\\\"yyq\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:0 on text[] item[text,quote,text] led=false\",\"sh\":580120031,\"ep\":[],\"overlays\":0,\"live\":\"<ul><li>xq<blockquote><p>qq</p></blockquote>yyq</li><li>nq</li></ul><p>sepq</p>\",\"newErrors\":[]},{\"step\":\"[\\\"snap\\\",\\\"b\\\"]\",\"ms\":1,\"caret\":\"root/list[0]/listitem[0]/quote[1]/paragraph[0]/text[0]@text:0\\\"qq\\\" -> root/list[0]/listitem[0]/text[2]@text:1\\\"yyq\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad"
+  },
+  {
+    "set": "clipboard",
+    "id": "p2::R2 block@0->item text (P10) / b",
+    "stored": "<ul><li>xq<blockquote><p>qq</p></blockquote>yyq</li><li>nq</li></ul><p>sepq</p>",
+    "hungStep": 3,
+    "hungLast": "[{\"step\":\"[\\\"range\\\",\\\"qq\\\",0,\\\"yyq\\\",1]\",\"ms\":28,\"caret\":\"root/list[0]/listitem[0]/quote[1]/paragraph[0]/text[0]@text:0\\\"qq\\\" -> root/list[0]/listitem[0]/text[2]@text:1\\\"yyq\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:0 on text[] item[text,quote,text] led=false\",\"sh\":580120031,\"ep\":[],\"overlays\":0,\"live\":\"<ul><li>xq<blockquote><p>qq</p></blockquote>yyq</li><li>nq</li></ul><p>sepq</p>\",\"newErrors\":[]},{\"step\":\"[\\\"snap\\\",\\\"b\\\"]\",\"ms\":2,\"caret\":\"root/list[0]/listitem[0]/quote[1]/paragraph[0]/text[0]@text:0\\\"qq\\\" -> root/list[0]/listitem[0]/text[2]@text:1\\\"yyq\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad"
+  },
+  {
+    "set": "clipboard",
+    "id": "p2::R2 block@0->item text (P10) / p2 drop",
+    "stored": "<ul><li>xq<blockquote><p>qq</p></blockquote>yyq</li><li>nq</li></ul><p>sepq</p>",
+    "hungStep": 3,
+    "hungLast": "[{\"step\":\"[\\\"range\\\",\\\"qq\\\",0,\\\"yyq\\\",1]\",\"ms\":20,\"caret\":\"root/list[0]/listitem[0]/quote[1]/paragraph[0]/text[0]@text:0\\\"qq\\\" -> root/list[0]/listitem[0]/text[2]@text:1\\\"yyq\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:0 on text[] item[text,quote,text] led=false\",\"sh\":580120031,\"ep\":[],\"overlays\":0,\"live\":\"<ul><li>xq<blockquote><p>qq</p></blockquote>yyq</li><li>nq</li></ul><p>sepq</p>\",\"newErrors\":[]},{\"step\":\"[\\\"snap\\\",\\\"b\\\"]\",\"ms\":1,\"caret\":\"root/list[0]/listitem[0]/quote[1]/paragraph[0]/text[0]@text:0\\\"qq\\\" -> root/list[0]/listitem[0]/text[2]@text:1\\\"yyq\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad"
+  },
+  {
+    "set": "clipboard",
+    "id": "p2::R2 block@0->item text (P10) / own copy",
+    "stored": "<ul><li>xq<blockquote><p>qq</p></blockquote>yyq</li><li>nq</li></ul><p>sepq</p>",
+    "hungStep": 5,
+    "hungLast": "[{\"step\":\"[\\\"copy\\\"]\",\"ms\":3,\"note\":{\"text/plain\":\"sep\",\"text/html\":\"<span style=\\\"white-space: pre-wrap;\\\">sep</span>\",\"application/x-lexical-editor\":\"{\\\"namespace\\\":\\\"cms-rich-text-1771eec6-704b-4f62-acd3-fffbc874f324\\\",\\\"nodes\\\":[{\\\"detail\\\":0,\\\"format\\\":0,\\\"mode\\\":\\\"normal\\\",\\\"style\\\":\\\"\\\",\\\"text\\\":\\\"sep\\\",\\\"type\\\":\\\"text\\\",\\\"version\\\":1}]}\"},\"caret\":\"root/paragraph[1]/text[0]@text:0\\\"sepq\\\" -> root/paragraph[1]/text[0]@text:3\\\"sepq\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:0 on text[] item[-] led=false\",\"sh\":580120031,\"ep\":[],\"overlays\":0,\"live\":\"<ul><li>xq<blockquote><p>qq</p></blo"
+  },
+  {
+    "set": "clipboard",
+    "id": "p2::R2b block mid->item text / p1",
+    "stored": "<ul><li>xq<blockquote><p>qq</p></blockquote>yyq</li><li>nq</li></ul><p>sepq</p>",
+    "hungStep": 3,
+    "hungLast": "[{\"step\":\"[\\\"range\\\",\\\"qq\\\",1,\\\"yyq\\\",1]\",\"ms\":8,\"caret\":\"root/list[0]/listitem[0]/quote[1]/paragraph[0]/text[0]@text:1\\\"qq\\\" -> root/list[0]/listitem[0]/text[2]@text:1\\\"yyq\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:1 on text[] item[text,quote,text] led=false\",\"sh\":580120031,\"ep\":[],\"overlays\":0,\"live\":\"<ul><li>xq<blockquote><p>qq</p></blockquote>yyq</li><li>nq</li></ul><p>sepq</p>\",\"newErrors\":[]},{\"step\":\"[\\\"snap\\\",\\\"b\\\"]\",\"ms\":0,\"caret\":\"root/list[0]/listitem[0]/quote[1]/paragraph[0]/text[0]@text:1\\\"qq\\\" -> root/list[0]/listitem[0]/text[2]@text:1\\\"yyq\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\""
+  },
+  {
+    "set": "clipboard",
+    "id": "p2::R2b block mid->item text / p2",
+    "stored": "<ul><li>xq<blockquote><p>qq</p></blockquote>yyq</li><li>nq</li></ul><p>sepq</p>",
+    "hungStep": 3,
+    "hungLast": "[{\"step\":\"[\\\"range\\\",\\\"qq\\\",1,\\\"yyq\\\",1]\",\"ms\":13,\"caret\":\"root/list[0]/listitem[0]/quote[1]/paragraph[0]/text[0]@text:1\\\"qq\\\" -> root/list[0]/listitem[0]/text[2]@text:1\\\"yyq\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:1 on text[] item[text,quote,text] led=false\",\"sh\":580120031,\"ep\":[],\"overlays\":0,\"live\":\"<ul><li>xq<blockquote><p>qq</p></blockquote>yyq</li><li>nq</li></ul><p>sepq</p>\",\"newErrors\":[]},{\"step\":\"[\\\"snap\\\",\\\"b\\\"]\",\"ms\":3,\"caret\":\"root/list[0]/listitem[0]/quote[1]/paragraph[0]/text[0]@text:1\\\"qq\\\" -> root/list[0]/listitem[0]/text[2]@text:1\\\"yyq\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad"
+  },
+  {
+    "set": "clipboard",
+    "id": "p2::R2b block mid->item text / b",
+    "stored": "<ul><li>xq<blockquote><p>qq</p></blockquote>yyq</li><li>nq</li></ul><p>sepq</p>",
+    "hungStep": 3,
+    "hungLast": "[{\"step\":\"[\\\"range\\\",\\\"qq\\\",1,\\\"yyq\\\",1]\",\"ms\":18,\"caret\":\"root/list[0]/listitem[0]/quote[1]/paragraph[0]/text[0]@text:1\\\"qq\\\" -> root/list[0]/listitem[0]/text[2]@text:1\\\"yyq\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:1 on text[] item[text,quote,text] led=false\",\"sh\":580120031,\"ep\":[],\"overlays\":0,\"live\":\"<ul><li>xq<blockquote><p>qq</p></blockquote>yyq</li><li>nq</li></ul><p>sepq</p>\",\"newErrors\":[]},{\"step\":\"[\\\"snap\\\",\\\"b\\\"]\",\"ms\":1,\"caret\":\"root/list[0]/listitem[0]/quote[1]/paragraph[0]/text[0]@text:1\\\"qq\\\" -> root/list[0]/listitem[0]/text[2]@text:1\\\"yyq\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad"
+  },
+  {
+    "set": "clipboard",
+    "id": "p2::R2b block mid->item text / p2 drop",
+    "stored": "<ul><li>xq<blockquote><p>qq</p></blockquote>yyq</li><li>nq</li></ul><p>sepq</p>",
+    "hungStep": 3,
+    "hungLast": "[{\"step\":\"[\\\"range\\\",\\\"qq\\\",1,\\\"yyq\\\",1]\",\"ms\":24,\"caret\":\"root/list[0]/listitem[0]/quote[1]/paragraph[0]/text[0]@text:1\\\"qq\\\" -> root/list[0]/listitem[0]/text[2]@text:1\\\"yyq\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:1 on text[] item[text,quote,text] led=false\",\"sh\":580120031,\"ep\":[],\"overlays\":0,\"live\":\"<ul><li>xq<blockquote><p>qq</p></blockquote>yyq</li><li>nq</li></ul><p>sepq</p>\",\"newErrors\":[]},{\"step\":\"[\\\"snap\\\",\\\"b\\\"]\",\"ms\":1,\"caret\":\"root/list[0]/listitem[0]/quote[1]/paragraph[0]/text[0]@text:1\\\"qq\\\" -> root/list[0]/listitem[0]/text[2]@text:1\\\"yyq\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad"
+  },
+  {
+    "set": "clipboard",
+    "id": "p2::R2b block mid->item text / own copy",
+    "stored": "<ul><li>xq<blockquote><p>qq</p></blockquote>yyq</li><li>nq</li></ul><p>sepq</p>",
+    "hungStep": 5,
+    "hungLast": "[{\"step\":\"[\\\"copy\\\"]\",\"ms\":4,\"note\":{\"text/plain\":\"sep\",\"text/html\":\"<span style=\\\"white-space: pre-wrap;\\\">sep</span>\",\"application/x-lexical-editor\":\"{\\\"namespace\\\":\\\"cms-rich-text-a01f9aa2-88fd-4add-8415-c58659b19fa5\\\",\\\"nodes\\\":[{\\\"detail\\\":0,\\\"format\\\":0,\\\"mode\\\":\\\"normal\\\",\\\"style\\\":\\\"\\\",\\\"text\\\":\\\"sep\\\",\\\"type\\\":\\\"text\\\",\\\"version\\\":1}]}\"},\"caret\":\"root/paragraph[1]/text[0]@text:0\\\"sepq\\\" -> root/paragraph[1]/text[0]@text:3\\\"sepq\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:0 on text[] item[-] led=false\",\"sh\":580120031,\"ep\":[],\"overlays\":0,\"live\":\"<ul><li>xq<blockquote><p>qq</p></blo"
+  },
+  {
+    "set": "clipboard",
+    "id": "p2::R6 ol TQT block->text / p1",
+    "stored": "<ol><li>xq<blockquote><p>qq</p></blockquote>yyq</li><li>nq</li></ol><p>sepq</p>",
+    "hungStep": 3,
+    "hungLast": "[{\"step\":\"[\\\"range\\\",\\\"qq\\\",0,\\\"yyq\\\",1]\",\"ms\":7,\"caret\":\"root/list[0]/listitem[0]/quote[1]/paragraph[0]/text[0]@text:0\\\"qq\\\" -> root/list[0]/listitem[0]/text[2]@text:1\\\"yyq\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:0 on text[] item[text,quote,text] led=false\",\"sh\":-475550658,\"ep\":[],\"overlays\":0,\"live\":\"<ol><li>xq<blockquote><p>qq</p></blockquote>yyq</li><li>nq</li></ol><p>sepq</p>\",\"newErrors\":[]},{\"step\":\"[\\\"snap\\\",\\\"b\\\"]\",\"ms\":0,\"caret\":\"root/list[0]/listitem[0]/quote[1]/paragraph[0]/text[0]@text:0\\\"qq\\\" -> root/list[0]/listitem[0]/text[2]@text:1\\\"yyq\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad"
+  },
+  {
+    "set": "clipboard",
+    "id": "p2::R6 ol TQT block->text / p2",
+    "stored": "<ol><li>xq<blockquote><p>qq</p></blockquote>yyq</li><li>nq</li></ol><p>sepq</p>",
+    "hungStep": 3,
+    "hungLast": "[{\"step\":\"[\\\"range\\\",\\\"qq\\\",0,\\\"yyq\\\",1]\",\"ms\":25,\"caret\":\"root/list[0]/listitem[0]/quote[1]/paragraph[0]/text[0]@text:0\\\"qq\\\" -> root/list[0]/listitem[0]/text[2]@text:1\\\"yyq\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:0 on text[] item[text,quote,text] led=false\",\"sh\":-475550658,\"ep\":[],\"overlays\":0,\"live\":\"<ol><li>xq<blockquote><p>qq</p></blockquote>yyq</li><li>nq</li></ol><p>sepq</p>\",\"newErrors\":[]},{\"step\":\"[\\\"snap\\\",\\\"b\\\"]\",\"ms\":1,\"caret\":\"root/list[0]/listitem[0]/quote[1]/paragraph[0]/text[0]@text:0\\\"qq\\\" -> root/list[0]/listitem[0]/text[2]@text:1\\\"yyq\\\"\",\"calls\":0,\"emptyTexts\":0,\"ba"
+  },
+  {
+    "set": "clipboard",
+    "id": "p2::R6 ol TQT block->text / b",
+    "stored": "<ol><li>xq<blockquote><p>qq</p></blockquote>yyq</li><li>nq</li></ol><p>sepq</p>",
+    "hungStep": 3,
+    "hungLast": "[{\"step\":\"[\\\"range\\\",\\\"qq\\\",0,\\\"yyq\\\",1]\",\"ms\":38,\"caret\":\"root/list[0]/listitem[0]/quote[1]/paragraph[0]/text[0]@text:0\\\"qq\\\" -> root/list[0]/listitem[0]/text[2]@text:1\\\"yyq\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:0 on text[] item[text,quote,text] led=false\",\"sh\":-475550658,\"ep\":[],\"overlays\":0,\"live\":\"<ol><li>xq<blockquote><p>qq</p></blockquote>yyq</li><li>nq</li></ol><p>sepq</p>\",\"newErrors\":[]},{\"step\":\"[\\\"snap\\\",\\\"b\\\"]\",\"ms\":2,\"caret\":\"root/list[0]/listitem[0]/quote[1]/paragraph[0]/text[0]@text:0\\\"qq\\\" -> root/list[0]/listitem[0]/text[2]@text:1\\\"yyq\\\"\",\"calls\":0,\"emptyTexts\":0,\"ba"
+  },
+  {
+    "set": "clipboard",
+    "id": "p2::R6 ol TQT block->text / p2 drop",
+    "stored": "<ol><li>xq<blockquote><p>qq</p></blockquote>yyq</li><li>nq</li></ol><p>sepq</p>",
+    "hungStep": 3,
+    "hungLast": "[{\"step\":\"[\\\"range\\\",\\\"qq\\\",0,\\\"yyq\\\",1]\",\"ms\":23,\"caret\":\"root/list[0]/listitem[0]/quote[1]/paragraph[0]/text[0]@text:0\\\"qq\\\" -> root/list[0]/listitem[0]/text[2]@text:1\\\"yyq\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:0 on text[] item[text,quote,text] led=false\",\"sh\":-475550658,\"ep\":[],\"overlays\":0,\"live\":\"<ol><li>xq<blockquote><p>qq</p></blockquote>yyq</li><li>nq</li></ol><p>sepq</p>\",\"newErrors\":[]},{\"step\":\"[\\\"snap\\\",\\\"b\\\"]\",\"ms\":4,\"caret\":\"root/list[0]/listitem[0]/quote[1]/paragraph[0]/text[0]@text:0\\\"qq\\\" -> root/list[0]/listitem[0]/text[2]@text:1\\\"yyq\\\"\",\"calls\":0,\"emptyTexts\":0,\"ba"
+  },
+  {
+    "set": "clipboard",
+    "id": "p2::R6 ol TQT block->text / own copy",
+    "stored": "<ol><li>xq<blockquote><p>qq</p></blockquote>yyq</li><li>nq</li></ol><p>sepq</p>",
+    "hungStep": 5,
+    "hungLast": "[{\"step\":\"[\\\"copy\\\"]\",\"ms\":5,\"note\":{\"text/plain\":\"sep\",\"text/html\":\"<span style=\\\"white-space: pre-wrap;\\\">sep</span>\",\"application/x-lexical-editor\":\"{\\\"namespace\\\":\\\"cms-rich-text-0f71ca24-f7f2-4895-bd6d-6ed6681fef19\\\",\\\"nodes\\\":[{\\\"detail\\\":0,\\\"format\\\":0,\\\"mode\\\":\\\"normal\\\",\\\"style\\\":\\\"\\\",\\\"text\\\":\\\"sep\\\",\\\"type\\\":\\\"text\\\",\\\"version\\\":1}]}\"},\"caret\":\"root/paragraph[1]/text[0]@text:0\\\"sepq\\\" -> root/paragraph[1]/text[0]@text:3\\\"sepq\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:0 on text[] item[-] led=false\",\"sh\":-475550658,\"ep\":[],\"overlays\":0,\"live\":\"<ol><li>xq<blockquote><p>qq</p></bl"
+  },
+  {
+    "set": "clipboard",
+    "id": "p4::C4 TQT block->text",
+    "stored": "<ul><li>xq<blockquote><p>qq</p></blockquote>yq</li></ul>",
+    "hungStep": 3,
+    "hungLast": "[{\"step\":\"[\\\"range\\\",\\\"qq\\\",1,\\\"yq\\\",1]\",\"ms\":14,\"caret\":\"root/list[0]/listitem[0]/quote[1]/paragraph[0]/text[0]@text:1\\\"qq\\\" -> root/list[0]/listitem[0]/text[2]@text:1\\\"yq\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:1 on text[] item[text,quote,text] led=false\",\"sh\":-365650496,\"ep\":[],\"overlays\":0,\"live\":\"<ul><li>xq<blockquote><p>qq</p></blockquote>yq</li></ul>\",\"newErrors\":[]},{\"step\":\"[\\\"snap\\\",\\\"b\\\"]\",\"ms\":1,\"caret\":\"root/list[0]/listitem[0]/quote[1]/paragraph[0]/text[0]@text:1\\\"qq\\\" -> root/list[0]/listitem[0]/text[2]@text:1\\\"yq\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:1 on text"
+  },
+  {
+    "set": "keys-phase-1",
+    "id": "k1::ul-d1|BQT|Q1w@end|DEL",
+    "stored": "<ul><li>Pw</li><li><br><blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>",
+    "hungStep": 3,
+    "hungLast": "[{\"step\":\"[\\\"clickWord\\\",\\\"Q1w\\\"]\",\"ms\":50,\"caret\":\"root/list[0]/listitem[1]/quote[1]/paragraph[0]/text[0]@text:3\\\"Q1w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:3 on text[] item[linebreak,quote,text] led=false\",\"sh\":-695134228,\"ep\":[],\"overlays\":0,\"live\":\"<ul><li>Pw</li><li><br /><blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>\",\"newErrors\":[]},{\"step\":\"[\\\"snap\\\",\\\"m\\\"]\",\"ms\":0,\"caret\":\"root/list[0]/listitem[1]/quote[1]/paragraph[0]/text[0]@text:3\\\"Q1w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:3 on text[] item[linebreak,quote,text] led=false\",\"sh\":-695134228,\"ep\":[],\"ove"
+  },
+  {
+    "set": "keys-phase-1",
+    "id": "k1::ul-d1|BQT|T2w@start|BS",
+    "stored": "<ul><li>Pw</li><li><br><blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>",
+    "hungStep": 3,
+    "hungLast": "[{\"step\":\"[\\\"clickWord\\\",\\\"T2w\\\",0]\",\"ms\":81,\"caret\":\"root/list[0]/listitem[1]/text[2]@text:0\\\"T2w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:0 on text[] item[linebreak,quote,text] led=false\",\"sh\":-695134228,\"ep\":[],\"overlays\":0,\"live\":\"<ul><li>Pw</li><li><br /><blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>\",\"newErrors\":[]},{\"step\":\"[\\\"snap\\\",\\\"m\\\"]\",\"ms\":0,\"caret\":\"root/list[0]/listitem[1]/text[2]@text:0\\\"T2w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:0 on text[] item[linebreak,quote,text] led=false\",\"sh\":-695134228,\"ep\":[],\"overlays\":0,\"live\":\"<ul><li>Pw</li><li><br />"
+  },
+  {
+    "set": "keys-phase-1",
+    "id": "k1::ul-d1|BQT|R:whole|BS",
+    "stored": "<ul><li>Pw</li><li><br><blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>",
+    "hungStep": 4,
+    "hungLast": "[{\"step\":\"[\\\"clickWord\\\",\\\"Q1w\\\",0]\",\"ms\":47,\"caret\":\"root/list[0]/listitem[1]/quote[1]/paragraph[0]/text[0]@text:0\\\"Q1w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:0 on text[] item[linebreak,quote,text] led=false\",\"sh\":-695134228,\"ep\":[],\"overlays\":0,\"live\":\"<ul><li>Pw</li><li><br /><blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>\",\"newErrors\":[]},{\"step\":\"[\\\"shiftClickWord\\\",\\\"T2w\\\"]\",\"ms\":96,\"caret\":\"root/list[0]/listitem[1]/quote[1]/paragraph[0]/text[0]@text:0\\\"Q1w\\\" -> root/list[0]/listitem[1]/text[2]@text:3\\\"T2w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:0 on text[] i"
+  },
+  {
+    "set": "keys-phase-1",
+    "id": "k1::ul-d1|BQT|R:own T2w->Q1w|BS",
+    "stored": "<ul><li>Pw</li><li><br><blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>",
+    "hungStep": 4,
+    "hungLast": "[{\"step\":\"[\\\"clickWord\\\",\\\"T2w\\\",1]\",\"ms\":61,\"caret\":\"root/list[0]/listitem[1]/text[2]@text:1\\\"T2w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:1 on text[] item[linebreak,quote,text] led=false\",\"sh\":-695134228,\"ep\":[],\"overlays\":0,\"live\":\"<ul><li>Pw</li><li><br /><blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>\",\"newErrors\":[]},{\"step\":\"[\\\"shiftClickWord\\\",\\\"Q1w\\\",2]\",\"ms\":92,\"caret\":\"root/list[0]/listitem[1]/text[2]@text:1\\\"T2w\\\" -> root/list[0]/listitem[1]/quote[1]/paragraph[0]/text[0]@text:2\\\"Q1w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:1 on text[] item[linebreak,quote,"
+  },
+  {
+    "set": "keys-phase-1",
+    "id": "k3::ul-d1|TQT|Q1w@end|DEL",
+    "stored": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>",
+    "hungStep": 3,
+    "hungLast": "[{\"step\":\"[\\\"clickWord\\\",\\\"Q1w\\\"]\",\"ms\":40,\"caret\":\"root/list[0]/listitem[1]/quote[1]/paragraph[0]/text[0]@text:3\\\"Q1w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:3 on text[] item[text,quote,text] led=false\",\"sh\":1978283165,\"ep\":[],\"overlays\":0,\"live\":\"<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>\",\"newErrors\":[]},{\"step\":\"[\\\"snap\\\",\\\"m\\\"]\",\"ms\":0,\"caret\":\"root/list[0]/listitem[1]/quote[1]/paragraph[0]/text[0]@text:3\\\"Q1w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:3 on text[] item[text,quote,text] led=false\",\"sh\":1978283165,\"ep\":[],\"overlays\":0,\"liv"
+  },
+  {
+    "set": "keys-phase-1",
+    "id": "k3::ul-d1|TQT|T2w@start|BS",
+    "stored": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>",
+    "hungStep": 3,
+    "hungLast": "[{\"step\":\"[\\\"clickWord\\\",\\\"T2w\\\",0]\",\"ms\":54,\"caret\":\"root/list[0]/listitem[1]/text[2]@text:0\\\"T2w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:0 on text[] item[text,quote,text] led=false\",\"sh\":1978283165,\"ep\":[],\"overlays\":0,\"live\":\"<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>\",\"newErrors\":[]},{\"step\":\"[\\\"snap\\\",\\\"m\\\"]\",\"ms\":0,\"caret\":\"root/list[0]/listitem[1]/text[2]@text:0\\\"T2w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:0 on text[] item[text,quote,text] led=false\",\"sh\":1978283165,\"ep\":[],\"overlays\":0,\"live\":\"<ul><li>Pw</li><li>T0w<blockquote><p>Q"
+  },
+  {
+    "set": "keys-phase-1",
+    "id": "k3::ul-d1|TQT|R:own T2w->Q1w|BS",
+    "stored": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>",
+    "hungStep": 4,
+    "hungLast": "[{\"step\":\"[\\\"clickWord\\\",\\\"T2w\\\",1]\",\"ms\":45,\"caret\":\"root/list[0]/listitem[1]/text[2]@text:1\\\"T2w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:1 on text[] item[text,quote,text] led=false\",\"sh\":1978283165,\"ep\":[],\"overlays\":0,\"live\":\"<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>\",\"newErrors\":[]},{\"step\":\"[\\\"shiftClickWord\\\",\\\"Q1w\\\",2]\",\"ms\":77,\"caret\":\"root/list[0]/listitem[1]/text[2]@text:1\\\"T2w\\\" -> root/list[0]/listitem[1]/quote[1]/paragraph[0]/text[0]@text:2\\\"Q1w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:1 on text[] item[text,quote,text] led=fal"
+  },
+  {
+    "set": "keys-phase-2",
+    "id": "n1::ul-d1|TQTQ|Q1w@end|DEL",
+    "stored": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>T2w<blockquote><p>Q3w</p></blockquote></li><li>Nw</li></ul>",
+    "hungStep": 3,
+    "hungLast": "[{\"step\":\"[\\\"clickWord\\\",\\\"Q1w\\\"]\",\"ms\":67,\"caret\":\"root/list[0]/listitem[1]/quote[1]/paragraph[0]/text[0]@text:3\\\"Q1w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:3 on text[] item[text,quote,text,quote] led=false\",\"sh\":2096148530,\"ep\":[],\"overlays\":0,\"live\":\"<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>T2w<blockquote><p>Q3w</p></blockquote></li><li>Nw</li></ul>\",\"newErrors\":[]},{\"step\":\"[\\\"snap\\\",\\\"m\\\"]\",\"ms\":0,\"caret\":\"root/list[0]/listitem[1]/quote[1]/paragraph[0]/text[0]@text:3\\\"Q1w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:3 on text[] item[text,quote,text,quote] led=f"
+  },
+  {
+    "set": "keys-phase-2",
+    "id": "n1::ul-d1|TQTQ|T2w@start|BS",
+    "stored": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>T2w<blockquote><p>Q3w</p></blockquote></li><li>Nw</li></ul>",
+    "hungStep": 3,
+    "hungLast": "[{\"step\":\"[\\\"clickWord\\\",\\\"T2w\\\",0]\",\"ms\":87,\"caret\":\"root/list[0]/listitem[1]/text[2]@text:0\\\"T2w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:0 on text[] item[text,quote,text,quote] led=false\",\"sh\":2096148530,\"ep\":[],\"overlays\":0,\"live\":\"<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>T2w<blockquote><p>Q3w</p></blockquote></li><li>Nw</li></ul>\",\"newErrors\":[]},{\"step\":\"[\\\"snap\\\",\\\"m\\\"]\",\"ms\":0,\"caret\":\"root/list[0]/listitem[1]/text[2]@text:0\\\"T2w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:0 on text[] item[text,quote,text,quote] led=false\",\"sh\":2096148530,\"ep\":[],\"overlays\":0"
+  },
+  {
+    "set": "keys-phase-2",
+    "id": "n1::ul-d1|TRQT|Q2w@end|DEL",
+    "stored": "<ul><li>Pw</li><li>T0w<hr><blockquote><p>Q2w</p></blockquote>T3w</li><li>Nw</li></ul>",
+    "hungStep": 3,
+    "hungLast": "[{\"step\":\"[\\\"clickWord\\\",\\\"Q2w\\\"]\",\"ms\":35,\"caret\":\"root/list[0]/listitem[1]/quote[2]/paragraph[0]/text[0]@text:3\\\"Q2w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:3 on text[] item[text,horizontalrule,quote,text] led=false\",\"sh\":-1881373316,\"ep\":[],\"overlays\":0,\"live\":\"<ul><li>Pw</li><li>T0w<hr /><blockquote><p>Q2w</p></blockquote>T3w</li><li>Nw</li></ul>\",\"newErrors\":[]},{\"step\":\"[\\\"snap\\\",\\\"m\\\"]\",\"ms\":0,\"caret\":\"root/list[0]/listitem[1]/quote[2]/paragraph[0]/text[0]@text:3\\\"Q2w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:3 on text[] item[text,horizontalrule,quote,text] led=false\",\"sh\""
+  },
+  {
+    "set": "keys-phase-2",
+    "id": "n1::ul-d1|TRQT|T3w@start|BS",
+    "stored": "<ul><li>Pw</li><li>T0w<hr><blockquote><p>Q2w</p></blockquote>T3w</li><li>Nw</li></ul>",
+    "hungStep": 3,
+    "hungLast": "[{\"step\":\"[\\\"clickWord\\\",\\\"T3w\\\",0]\",\"ms\":81,\"caret\":\"root/list[0]/listitem[1]/text[3]@text:0\\\"T3w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:0 on text[] item[text,horizontalrule,quote,text] led=false\",\"sh\":-1881373316,\"ep\":[],\"overlays\":0,\"live\":\"<ul><li>Pw</li><li>T0w<hr /><blockquote><p>Q2w</p></blockquote>T3w</li><li>Nw</li></ul>\",\"newErrors\":[]},{\"step\":\"[\\\"snap\\\",\\\"m\\\"]\",\"ms\":0,\"caret\":\"root/list[0]/listitem[1]/text[3]@text:0\\\"T3w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:0 on text[] item[text,horizontalrule,quote,text] led=false\",\"sh\":-1881373316,\"ep\":[],\"overlays\":0,\"live\":\""
+  },
+  {
+    "set": "keys-phase-2",
+    "id": "n1::ul-d1|TQQT|Q2w@end|DEL",
+    "stored": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote><blockquote><p>Q2w</p></blockquote>T3w</li><li>Nw</li></ul>",
+    "hungStep": 3,
+    "hungLast": "[{\"step\":\"[\\\"clickWord\\\",\\\"Q2w\\\"]\",\"ms\":34,\"caret\":\"root/list[0]/listitem[1]/quote[2]/paragraph[0]/text[0]@text:3\\\"Q2w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:3 on text[] item[text,quote,quote,text] led=false\",\"sh\":420033074,\"ep\":[],\"overlays\":0,\"live\":\"<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote><blockquote><p>Q2w</p></blockquote>T3w</li><li>Nw</li></ul>\",\"newErrors\":[]},{\"step\":\"[\\\"snap\\\",\\\"m\\\"]\",\"ms\":0,\"caret\":\"root/list[0]/listitem[1]/quote[2]/paragraph[0]/text[0]@text:3\\\"Q2w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:3 on text[] item[text,quote,quote,text] led=fa"
+  },
+  {
+    "set": "keys-phase-2",
+    "id": "n1::ul-d1|TQQT|T3w@start|BS",
+    "stored": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote><blockquote><p>Q2w</p></blockquote>T3w</li><li>Nw</li></ul>",
+    "hungStep": 3,
+    "hungLast": "[{\"step\":\"[\\\"clickWord\\\",\\\"T3w\\\",0]\",\"ms\":79,\"caret\":\"root/list[0]/listitem[1]/text[3]@text:0\\\"T3w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:0 on text[] item[text,quote,quote,text] led=false\",\"sh\":420033074,\"ep\":[],\"overlays\":0,\"live\":\"<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote><blockquote><p>Q2w</p></blockquote>T3w</li><li>Nw</li></ul>\",\"newErrors\":[]},{\"step\":\"[\\\"snap\\\",\\\"m\\\"]\",\"ms\":0,\"caret\":\"root/list[0]/listitem[1]/text[3]@text:0\\\"T3w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:0 on text[] item[text,quote,quote,text] led=false\",\"sh\":420033074,\"ep\":[],\"overlays\":0,\""
+  },
+  {
+    "set": "keys-phase-2",
+    "id": "n1::ul-d1|BQTB|Q1w@end|DEL",
+    "stored": "<ul><li>Pw</li><li><br><blockquote><p>Q1w</p></blockquote>T2w<br></li><li>Nw</li></ul>",
+    "hungStep": 3,
+    "hungLast": "[{\"step\":\"[\\\"clickWord\\\",\\\"Q1w\\\"]\",\"ms\":40,\"caret\":\"root/list[0]/listitem[1]/quote[1]/paragraph[0]/text[0]@text:3\\\"Q1w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:3 on text[] item[linebreak,quote,text,linebreak] led=false\",\"sh\":-1910087578,\"ep\":[],\"overlays\":0,\"live\":\"<ul><li>Pw</li><li><br /><blockquote><p>Q1w</p></blockquote>T2w<br /></li><li>Nw</li></ul>\",\"newErrors\":[]},{\"step\":\"[\\\"snap\\\",\\\"m\\\"]\",\"ms\":0,\"caret\":\"root/list[0]/listitem[1]/quote[1]/paragraph[0]/text[0]@text:3\\\"Q1w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:3 on text[] item[linebreak,quote,text,linebreak] led=false\",\""
+  },
+  {
+    "set": "keys-phase-2",
+    "id": "n1::ul-d1|BQTB|T2w@start|BS",
+    "stored": "<ul><li>Pw</li><li><br><blockquote><p>Q1w</p></blockquote>T2w<br></li><li>Nw</li></ul>",
+    "hungStep": 3,
+    "hungLast": "[{\"step\":\"[\\\"clickWord\\\",\\\"T2w\\\",0]\",\"ms\":66,\"caret\":\"root/list[0]/listitem[1]/text[2]@text:0\\\"T2w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:0 on text[] item[linebreak,quote,text,linebreak] led=false\",\"sh\":-1910087578,\"ep\":[],\"overlays\":0,\"live\":\"<ul><li>Pw</li><li><br /><blockquote><p>Q1w</p></blockquote>T2w<br /></li><li>Nw</li></ul>\",\"newErrors\":[]},{\"step\":\"[\\\"snap\\\",\\\"m\\\"]\",\"ms\":0,\"caret\":\"root/list[0]/listitem[1]/text[2]@text:0\\\"T2w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:0 on text[] item[linebreak,quote,text,linebreak] led=false\",\"sh\":-1910087578,\"ep\":[],\"overlays\":0,\"live"
+  },
+  {
+    "set": "keys-phase-2",
+    "id": "n2::ul-d1|TQT|rightQ|DEL",
+    "stored": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>",
+    "hungStep": 4,
+    "hungLast": "[{\"step\":\"[\\\"clickEl\\\",\\\"blockquote\\\",0,\\\"end\\\"]\",\"ms\":35,\"caret\":\"root/list[0]/listitem[1]/quote[1]/paragraph[0]/text[0]@text:3\\\"Q1w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:3 on text[] item[text,quote,text] led=false\",\"sh\":1978283165,\"ep\":[],\"overlays\":0,\"live\":\"<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>\",\"newErrors\":[]},{\"step\":\"[\\\"domsel\\\"]\",\"ms\":0,\"note\":\"#text\\\"Q1w\\\"<span@3 -> #text\\\"Q1w\\\"<span@3 active=true\",\"caret\":\"root/list[0]/listitem[1]/quote[1]/paragraph[0]/text[0]@text:3\\\"Q1w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:3 on text[]"
+  },
+  {
+    "set": "keys-phase-2",
+    "id": "n2::ul-d1|QB|afterBr0|ins \\n\\n",
+    "stored": "<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><br></li><li>Nw</li></ul>",
+    "hungStep": 5,
+    "hungLast": "[{\"step\":\"[\\\"elAfterBr\\\",0]\",\"ms\":11,\"note\":\"root/list[0]/listitem[1]@element:2\",\"caret\":\"root/list[0]/listitem[1]@element:2\",\"calls\":0,\"emptyTexts\":0,\"bad\":[\"BLOCKLED+INLINE [quote,linebreak] Q0w|\\n\"],\"cd\":\"element:2 on listitem[quote,linebreak] item[quote,linebreak] led=true\",\"sh\":-1557460048,\"ep\":[],\"overlays\":0,\"live\":\"<ul><li>Pw</li><li><blockquote><p>Q0w</p></blockquote><br /></li><li>Nw</li></ul>\",\"newErrors\":[]},{\"step\":\"[\\\"domsel\\\"]\",\"ms\":0,\"note\":\"<li>[3]@2 -> <li>[3]@2 active=true\",\"caret\":\"root/list[0]/listitem[1]@element:2\",\"calls\":0,\"emptyTexts\":0,\"bad\":[\"BLOCKLED+INLINE [quote,l"
+  },
+  {
+    "set": "keys-phase-2",
+    "id": "n2::ul-d1|HTB|afterBr0|ins \\n\\n",
+    "stored": "<ul><li>Pw</li><li><h3>H0w</h3>T1w<br></li><li>Nw</li></ul>",
+    "hungStep": 5,
+    "hungLast": "[{\"step\":\"[\\\"elAfterBr\\\",0]\",\"ms\":7,\"note\":\"root/list[0]/listitem[1]@element:3\",\"caret\":\"root/list[0]/listitem[1]@element:3\",\"calls\":0,\"emptyTexts\":0,\"bad\":[\"BLOCKLED+INLINE [heading,text,linebreak] H0w|T1w|\\n\"],\"cd\":\"element:3 on listitem[heading,text,linebreak] item[heading,text,linebreak] led=true\",\"sh\":-2074976202,\"ep\":[],\"overlays\":0,\"live\":\"<ul><li>Pw</li><li><h3>H0w</h3>T1w<br /></li><li>Nw</li></ul>\",\"newErrors\":[]},{\"step\":\"[\\\"domsel\\\"]\",\"ms\":0,\"note\":\"<li>[4]@3 -> <li>[4]@3 active=true\",\"caret\":\"root/list[0]/listitem[1]@element:3\",\"calls\":0,\"emptyTexts\":0,\"bad\":[\"BLOCKLED+INLINE [hea"
+  },
+  {
+    "set": "keys-phase-2",
+    "id": "n2::top-QpTB|afterBr0|ins \\n\\n",
+    "stored": "<p>Pw</p><blockquote><p>X1w</p>X2w<br></blockquote><p>Nw</p>",
+    "hungStep": 5,
+    "hungLast": "[{\"step\":\"[\\\"elAfterBr\\\",0]\",\"ms\":6,\"note\":\"root/quote[1]@element:3\",\"caret\":\"root/quote[1]@element:3\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"element:3 on quote[paragraph,text,linebreak] item[-] led=false\",\"sh\":1553117135,\"ep\":[],\"overlays\":0,\"live\":\"<p>Pw</p><blockquote><p>X1w</p>X2w<br /></blockquote><p>Nw</p>\",\"newErrors\":[]},{\"step\":\"[\\\"domsel\\\"]\",\"ms\":0,\"note\":\"<blockquote>[4]@3 -> <blockquote>[4]@3 active=true\",\"caret\":\"root/quote[1]@element:3\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"element:3 on quote[paragraph,text,linebreak] item[-] led=false\",\"sh\":1553117135,\"ep\":[],\"overlays\":0,\"li"
+  },
+  {
+    "set": "keys-phase-2",
+    "id": "n2::ul-d1|TQT|R:own T2w->Q1w|cutonly",
+    "stored": "<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>",
+    "hungStep": 4,
+    "hungLast": "[{\"step\":\"[\\\"clickWord\\\",\\\"T2w\\\",1]\",\"ms\":48,\"caret\":\"root/list[0]/listitem[1]/text[2]@text:1\\\"T2w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:1 on text[] item[text,quote,text] led=false\",\"sh\":1978283165,\"ep\":[],\"overlays\":0,\"live\":\"<ul><li>Pw</li><li>T0w<blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>\",\"newErrors\":[]},{\"step\":\"[\\\"shiftClickWord\\\",\\\"Q1w\\\",2]\",\"ms\":94,\"caret\":\"root/list[0]/listitem[1]/text[2]@text:1\\\"T2w\\\" -> root/list[0]/listitem[1]/quote[1]/paragraph[0]/text[0]@text:2\\\"Q1w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:1 on text[] item[text,quote,text] led=fal"
+  },
+  {
+    "set": "keys-phase-2",
+    "id": "n2::ul-d1|BQT|R:whole|cutonly",
+    "stored": "<ul><li>Pw</li><li><br><blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>",
+    "hungStep": 4,
+    "hungLast": "[{\"step\":\"[\\\"clickWord\\\",\\\"Q1w\\\",0]\",\"ms\":87,\"caret\":\"root/list[0]/listitem[1]/quote[1]/paragraph[0]/text[0]@text:0\\\"Q1w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:0 on text[] item[linebreak,quote,text] led=false\",\"sh\":-695134228,\"ep\":[],\"overlays\":0,\"live\":\"<ul><li>Pw</li><li><br /><blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>\",\"newErrors\":[]},{\"step\":\"[\\\"shiftClickWord\\\",\\\"T2w\\\"]\",\"ms\":82,\"caret\":\"root/list[0]/listitem[1]/quote[1]/paragraph[0]/text[0]@text:0\\\"Q1w\\\" -> root/list[0]/listitem[1]/text[2]@text:3\\\"T2w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:0 on text[] i"
+  },
+  {
+    "set": "keys-phase-2",
+    "id": "n2::ul-d1|BQT|R:own T2w->Q1w|cutonly",
+    "stored": "<ul><li>Pw</li><li><br><blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>",
+    "hungStep": 4,
+    "hungLast": "[{\"step\":\"[\\\"clickWord\\\",\\\"T2w\\\",1]\",\"ms\":227,\"caret\":\"root/list[0]/listitem[1]/text[2]@text:1\\\"T2w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:1 on text[] item[linebreak,quote,text] led=false\",\"sh\":-695134228,\"ep\":[],\"overlays\":0,\"live\":\"<ul><li>Pw</li><li><br /><blockquote><p>Q1w</p></blockquote>T2w</li><li>Nw</li></ul>\",\"newErrors\":[]},{\"step\":\"[\\\"shiftClickWord\\\",\\\"Q1w\\\",2]\",\"ms\":98,\"caret\":\"root/list[0]/listitem[1]/text[2]@text:1\\\"T2w\\\" -> root/list[0]/listitem[1]/quote[1]/paragraph[0]/text[0]@text:2\\\"Q1w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:1 on text[] item[linebreak,quote"
+  },
+  {
+    "set": "gap-fill",
+    "id": "c1::c1|S1|Q1w1-T2w2",
+    "stored": "<ul><li>T0w<blockquote><p>Q1w</p></blockquote>T2w</li></ul>",
+    "hungStep": 4,
+    "hungLast": "[{\"step\":\"[\\\"clickWord\\\",\\\"Q1w\\\",1]\",\"ms\":61,\"caret\":\"root/list[0]/listitem[0]/quote[1]/paragraph[0]/text[0]@text:1\\\"Q1w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:1 on text[] item[text,quote,text] led=false\",\"sh\":622839344,\"ep\":[],\"lines\":[],\"focus\":true,\"overlays\":0,\"live\":\"<ul><li>T0w<blockquote><p>Q1w</p></blockquote>T2w</li></ul>\",\"newErrors\":[]},{\"step\":\"[\\\"shiftClickWord\\\",\\\"T2w\\\",2]\",\"ms\":87,\"caret\":\"root/list[0]/listitem[0]/quote[1]/paragraph[0]/text[0]@text:1\\\"Q1w\\\" -> root/list[0]/listitem[0]/text[2]@text:2\\\"T2w\\\"\",\"calls\":0,\"emptyTexts\":0,\"bad\":[],\"cd\":\"text:1 on text[] item[t"
+  }
+]
