@@ -31,12 +31,15 @@ import {
   LI,
   mount,
   pasteText,
+  setUpload,
   short,
   type Step,
 } from "./rich-text-line-test-kit";
 import {
+  byLabel,
   editable,
   editorOf,
+  fieldContainer,
   lastHtml,
   settle,
   unmountField,
@@ -1081,5 +1084,103 @@ describe("15.14: the press's own caret, a popover open", () => {
         short(stored.replace(">Cw<", ">Ckw<"))
       );
     });
+  }
+});
+
+// 5.3 (T95.5): an upload that ends while a press is down leaves the press's
+// caret where the press made it, though the image's insert splits the text
+// the press is in. The image lands at Abcdefgh's offset 2; the press is
+// before, at and after that place.
+describe("5.3: an upload that ends during a press keeps the press's caret", () => {
+  const SHAPES: Array<[string, (text: string) => string]> = [
+    ["a paragraph", (text) => `<p>${text}</p>`],
+    ["a line", (text) => `<ul><li>${text}<br>T1w</li></ul>`],
+    [
+      "a line after a heading",
+      (text) => `<ul><li><h2>H0w</h2>${text}</li></ul>`,
+    ],
+  ];
+  const PRESSES: Array<[string, number, string]> = [
+    ["before", 1, `Akb${IMG}cdefgh`],
+    ["at", 2, `Abk${IMG}cdefgh`],
+    ["after", 6, `Ab${IMG}cdefkgh`],
+  ];
+  const pointIn = (word: string, offset: number): Point => {
+    const span = spanOf(word);
+    const range = document.createRange();
+    range.setStart(span.firstChild!, offset);
+    range.setEnd(span.firstChild!, offset);
+    const rect = range.getBoundingClientRect();
+    const box = span.getBoundingClientRect();
+    return { x: rect.left + 0.5, y: box.top + box.height / 2 };
+  };
+  for (const [shape, stored] of SHAPES) {
+    test.each(PRESSES)(
+      `${shape}: a press %s the image's place: the letter lands where the press put the caret`,
+      async (_name, offset, typed) => {
+        let finish: (() => void) | undefined;
+        setUpload(
+          () =>
+            new Promise((resolve) => {
+              finish = () =>
+                resolve({
+                  url: "https://cdn.example.org/x.png",
+                  path: "org/x.png",
+                });
+            })
+        );
+        const onChange = await mount(stored("Abcdefgh"));
+        await at("Abcdefgh", 2)();
+        const canvas = document.createElement("canvas");
+        canvas.width = 2;
+        canvas.height = 3;
+        const blob = await new Promise<Blob>((resolve) =>
+          canvas.toBlob((result) => resolve(result!), "image/png")
+        );
+        const files = new DataTransfer();
+        files.items.add(new File([blob], "a.png", { type: "image/png" }));
+        const input =
+          fieldContainer()!.querySelector<HTMLInputElement>(
+            'input[type="file"]'
+          )!;
+        await act(async () => {
+          byLabel("Image")!.click();
+        });
+        await act(async () => {
+          input.files = files.files;
+          input.dispatchEvent(new Event("change", { bubbles: true }));
+        });
+        for (let n = 0; n < 200 && finish === undefined; n += 1) {
+          await wait(5);
+        }
+        expect(finish, "the upload started").toBeDefined();
+        const calls = onChange.mock.calls.length;
+        const point = pointIn("Abcdefgh", offset);
+        await mouse("mousePressed", point);
+        await wait(150);
+        await settle();
+        expect(isPressing(editorOf()!), "the press is down").toBe(true);
+        finish!();
+        for (
+          let n = 0;
+          n < 200 && onChange.mock.calls.length === calls;
+          n += 1
+        ) {
+          await settle();
+          await wait(5);
+        }
+        expect(short(lastHtml(onChange)), "the image's write").toBe(
+          short(stored(`Ab${IMG}cdefgh`))
+        );
+        await mouse("mouseReleased", point);
+        await settle();
+        await letter();
+        expect(short(lastHtml(onChange))).toBe(short(stored(typed)));
+        expect(
+          onChange.mock.calls.length - calls,
+          "the image, then the letter"
+        ).toBe(2);
+      }
+    );
   }
 });

@@ -1129,7 +1129,48 @@ const insertImage = (
   const pressed = isPressing(editor);
   editor.update(() => {
     const kept = pressed ? ($getSelection()?.clone() ?? null) : null;
+    const image = $createCmsImageNode(attributes);
+    // the insert splits the text the image lands in: the node keeps the
+    // text before the image and the rest follows the image in a new node,
+    // so a press later in that text is the same place in the new node
+    // (T95.5)
+    const pressedTexts = new Map(
+      $isRangeSelection(kept)
+        ? [kept.anchor, kept.focus].map((point) => [
+            point.key,
+            $getNodeByKey(point.key)?.getTextContent(),
+          ])
+        : []
+    );
+    const $followSplit = (point: RangeSelection["anchor"]) => {
+      const node = $getNodeByKey(point.key);
+      if (
+        point.type !== "text" ||
+        $isTextNode(node) === false ||
+        point.offset <= node.getTextContentSize()
+      ) {
+        return;
+      }
+      const rest = node.getNextSibling()?.is(image)
+        ? node.getNextSibling()?.getNextSibling()
+        : null;
+      if (
+        $isTextNode(rest) &&
+        node.getTextContent() + rest.getTextContent() ===
+          pressedTexts.get(point.key)
+      ) {
+        point.set(
+          rest.getKey(),
+          point.offset - node.getTextContentSize(),
+          "text"
+        );
+      }
+    };
     const $keepPress = () => {
+      if ($isRangeSelection(kept)) {
+        $followSplit(kept.anchor);
+        $followSplit(kept.focus);
+      }
       if (
         $isRangeSelection(kept) === false ||
         [kept.anchor, kept.focus].some((point) => {
@@ -1150,7 +1191,6 @@ const insertImage = (
       }
       $setSelection(kept);
     };
-    const image = $createCmsImageNode(attributes);
     const isAttached =
       caret !== null &&
       $getNodeByKey(caret.anchor.key) !== null &&
